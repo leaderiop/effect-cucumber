@@ -220,6 +220,10 @@ None — no external service configuration required.
 - Plan 04-05 should carry module doc comment (c) of `DataTable.ts` into `spec/`: ADR-EC-008's worked example is stale in two independent ways (`table.hashes()` is now an `Effect` that must be `yield*`-ed, and `Schema.decodeUnknown` is `Schema.decodeUnknownEffect` in effect v4). That note is written as the correction's source text.
 - No blockers.
 
+## Self-Check: PASSED
+
+All four claimed files exist on disk (`packages/gherkin/src/Errors.ts`, `packages/gherkin/src/DataTable.ts`, `packages/gherkin/test/DataTable.test.ts`, `.planning/phases/04-datatable-docstring/04-02-SUMMARY.md`), and all four claimed commits are present in `git log` (`45b369e`, `086303b`, `b13904c`, `8d4887b`), all on branch `worktree-agent-aa6bac72c123547a2` above base `3ebb845`. No item missing.
+
 ---
 *Phase: 04-datatable-docstring*
 *Completed: 2026-08-28*
