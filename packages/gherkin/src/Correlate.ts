@@ -34,9 +34,18 @@
  * error.
  */
 import { type Dialect, dialects } from "@cucumber/gherkin"
-import type { Feature, GherkinDocument, Location, Pickle, Scenario, Step, Tag } from "@cucumber/messages"
+import {
+  type Feature,
+  type GherkinDocument,
+  type Location,
+  type Pickle,
+  type PickleStep,
+  type Scenario,
+  type Step,
+  StepKeywordType
+} from "@cucumber/messages"
 import { LoadFeatureError } from "./Errors.ts"
-import type { ParsedFeatureCore, StepOwner } from "./Model.ts"
+import type { ParsedFeatureCore, ParsedRule, ParsedScenario, ParsedStep, StepOwner } from "./Model.ts"
 
 /**
  * One AST step, indexed by its own node id, carrying everything the matching `PickleStep`
@@ -122,7 +131,12 @@ export interface CorrelationResult {
   readonly index: AstIndex
 }
 
-const tagNames = (tags: ReadonlyArray<Tag>): ReadonlyArray<string> => tags.map((tag) => tag.name)
+/**
+ * Structurally typed on `{ name }` alone so one helper serves both an AST `Tag` (which also
+ * carries `location` and `id`) and a `PickleTag` (which carries `name` and `astNodeId`). The
+ * two are unrelated nominal shapes upstream and share no common supertype.
+ */
+const tagNames = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray<string> => tags.map((tag) => tag.name)
 
 /**
  * Look up a dialect, narrowing the `Dialect | undefined` that `noUncheckedIndexedAccess` gives
@@ -318,4 +332,145 @@ export const buildAstIndex = (
     astRules: acc.astRules,
     language: feature.language
   }
+}
+
+/**
+ * Join one `PickleStep` with its AST node.
+ *
+ * The pickle supplies what only `compile()` knows — the substituted `text` and the raw
+ * `argument`. The AST node supplies what only the document knows: the keyword, its
+ * `keywordType`, the origin, and the line.
+ *
+ * Three of those four deserve a note:
+ *
+ * - `keyword` is trimmed here because the raw AST value carries a TRAILING SPACE (`"Given "`,
+ *   `"And "`, `"* "`).
+ * - `keywordType` is taken from the AST, never from the pickle step's own coarser field. The
+ *   pickle's version has no `Conjunction` member, so `And b` after `Given a` reports `Context`
+ *   and `But d` after `When c` reports `Action` — verified, and silently wrong. It is optional
+ *   on the AST node, so an absent value normalises to `Unknown` rather than being asserted away.
+ * - `line` exists nowhere on a `PickleStep`; the AST location is the only source.
+ *
+ * A missed lookup throws rather than defaulting (threat T-02-13): a pickle step referencing an
+ * AST node no walk produced means parse and compile disagree about the same document, and a
+ * fabricated keyword or origin would bury that. Per the package's full-content policy the step
+ * text is quoted verbatim (threat T-02-02, accepted).
+ */
+const resolveStep = (
+  pickleStep: PickleStep,
+  byStepId: ReadonlyMap<string, AstStepInfo>,
+  uri: string
+): ParsedStep => {
+  const sourceId = pickleStep.astNodeIds[0]
+  const info = sourceId === undefined ? undefined : byStepId.get(sourceId)
+  if (info === undefined) {
+    throw new LoadFeatureError({
+      reason: "ParseFailed",
+      uri,
+      message: `Pickle step ${JSON.stringify(pickleStep.text)} in ${uri} references AST node `
+        + `${sourceId === undefined ? "<none>" : sourceId}, which the parsed document does not `
+        + `declare. The parser and the pickle compiler disagree about this file; they must have `
+        + `been given the same id generator and the same document.`
+    })
+  }
+  return {
+    id: pickleStep.id,
+    text: pickleStep.text,
+    keyword: info.step.keyword.trim(),
+    keywordType: info.step.keywordType ?? StepKeywordType.UNKNOWN,
+    origin: info.owner,
+    line: info.step.location.line,
+    argument: pickleStep.argument
+  }
+}
+
+/**
+ * Correlate a parsed document with its pickles into a `ParsedFeatureCore`.
+ *
+ * `uri` is the caller's, always: `GherkinDocument.uri` is `undefined` when parsing from a
+ * string, so the document can never be the source of this value.
+ *
+ * An AST Scenario with no entry in `byScenarioId` contributes no `ParsedScenario` and is NOT an
+ * error here. That absence is a legal intermediate state and the only evidence `Validate.ts`
+ * has for the Examples blocks that compiled to nothing, so swallowing or throwing on it would
+ * destroy the finding rather than report it.
+ *
+ * Nothing below re-derives what `compile()` already did. `tags` is `pickle.tags` mapped to
+ * names, in the order `compile()` flattened them, never sorted, deduplicated or recomputed from
+ * the AST. `steps` is `pickle.steps` in order, never re-stacked. `location` is `pickle.location`,
+ * which is already per-Examples-row precise for an Outline — looking the row node up in a
+ * separate map would be dead code.
+ */
+export const correlateFeature = (
+  document: GherkinDocument,
+  pickles: ReadonlyArray<Pickle>,
+  uri: string
+): CorrelationResult => {
+  const feature = featureOf(document, uri)
+  const index = buildAstIndex(document, pickles, uri)
+
+  const allScenarios: Array<ParsedScenario> = []
+  const featureScenarios: Array<ParsedScenario> = []
+  const scenariosByRule = new Map<string, Array<ParsedScenario>>()
+
+  for (const node of index.astScenarios) {
+    for (const pickle of index.byScenarioId.get(node.id) ?? []) {
+      const scenario: ParsedScenario = {
+        id: pickle.id,
+        astId: node.id,
+        name: pickle.name,
+        astName: node.name,
+        keyword: node.keyword,
+        tags: tagNames(pickle.tags),
+        steps: pickle.steps.map((pickleStep) => resolveStep(pickleStep, index.byStepId, uri)),
+        // `Pickle.location` is declared optional by @cucumber/messages even though `compile()`
+        // always sets it, and `ParsedScenario.location` is not. The AST Scenario's own location
+        // is the correct fallback because that is exactly what `compile()` copies for a plain
+        // Scenario; for an Outline the pickle's value — the Examples BODY ROW — wins, which is
+        // the whole point of reading it from the pickle.
+        location: pickle.location ?? node.location,
+        ruleId: node.ruleId,
+        pickle
+      }
+      allScenarios.push(scenario)
+
+      if (node.ruleId === undefined) {
+        featureScenarios.push(scenario)
+      } else {
+        const bucket = scenariosByRule.get(node.ruleId)
+        if (bucket === undefined) {
+          scenariosByRule.set(node.ruleId, [scenario])
+        } else {
+          bucket.push(scenario)
+        }
+      }
+    }
+  }
+
+  const rules: ReadonlyArray<ParsedRule> = index.astRules.map((rule) => ({
+    id: rule.id,
+    name: rule.name,
+    keyword: rule.keyword,
+    tags: rule.tags,
+    location: rule.location,
+    description: rule.description,
+    scenarios: scenariosByRule.get(rule.id) ?? []
+  }))
+
+  const correlated: ParsedFeatureCore = {
+    uri,
+    name: feature.name,
+    keyword: feature.keyword.trim(),
+    language: feature.language,
+    description: feature.description,
+    tags: tagNames(feature.tags),
+    location: feature.location,
+    scenarios: featureScenarios,
+    rules,
+    allScenarios,
+    document,
+    pickles
+  }
+
+  return { feature: correlated, index }
 }
