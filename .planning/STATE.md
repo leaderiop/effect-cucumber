@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 03 plan 02 complete (2/6). `StepArgs<P>` + its `@ts-expect-error` type test landed; 273 tests passing (unchanged by design), all gates green. Next: 03-03."
-last_updated: "2026-08-28T15:02:16.757Z"
-last_activity: 2026-08-28 -- 03-02 complete (StepArgs + MATCH-01 type test)
+stopped_at: "Phase 03 plan 03 complete (3/6). `src/ParameterTypes.ts` + `test/ParameterTypes.test.ts` landed; 304 tests passing (273 before), both required mutations recorded, all gates green. Next: 03-04 (StepMatcher)."
+last_updated: "2026-08-28T15:15:00.000Z"
+last_activity: 2026-08-28 -- 03-03 complete (custom parameter types as data)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
   percent: 18
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 03 (parameter-types-and-step-matching) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-08-28
 
@@ -34,16 +34,16 @@ Last activity: 2026-08-28
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
 Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [███░░░░░░░] 33% (2/6 plans)
-Overall progress:  [████░░░░░░] ~35% (19 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Phase 3 progress: [█████░░░░░] 50% (3/6 plans)
+Overall progress:  [████░░░░░░] ~37% (20 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: ~10m
-- Total execution time: ~80m
+- Total execution time: ~86m
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Overall progress:  [████░░░░░░] ~35% (19 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 2/6 | ~20m | ~10m |
+| 03 | 3/6 | ~26m | ~9m |
 
 **Per-plan detail:**
 
@@ -65,11 +65,12 @@ Overall progress:  [████░░░░░░] ~35% (19 of 23 planned plans
 | 01-06 | ~3m | 2 | 4 |
 | 03-01 | ~13m | 3 | 3 |
 | 03-02 | ~7m | 2 | 2 |
+| 03-03 | ~6m | 2 | 2 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-03 (~18m), 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m)
-- Trend: 01-02, 01-03 and 01-05 each spent most of their time mutation-testing a gate script rather than writing the thing it guards; 01-04 was the outlier because its equivalent proof (unpacking a `pnpm pack` tarball) was a single command rather than a script that has to be written and then attacked. 01-05 turned that one-off command into the standing gate, which is why it costs script-writing time again. 01-06 is the payoff and the cheapest plan in the phase: because every gate was already a root script proven by mutation, wiring them into CI was assembly, not design.
+- Last 6 plans: 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m)
+- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so 03-02 and 03-03 could verify their assumptions by reading an assertion instead of re-running the dependency.
 
 *Updated after each plan completion*
 
@@ -116,6 +117,11 @@ Recent decisions affecting current work:
 - [03-02]: `StepArgs`' `Custom` default is `Record<never, never>`. `Record<string, never>` would be silently wrong — its `keyof` is `string`, so every name would hit the custom branch and resolve to `never`, killing both the `unknown` fallback and built-in precedence.
 - [03-02]: **"The emitted JS is byte-empty" is not a portable acceptance criterion** under workspace-wide `moduleDetection: "force"` — `tsc` emits a bare `export {}` for every file and preserves a module doc comment that is not attached to an elided import. Assert "zero statements after stripping comments and the module marker" instead. (`dist/Model.js` looks empty only by accident.)
 - [03-02]: A compile-time-only claim goes in a **`.types.ts`** file: `packages/gherkin/tsconfig.test.json` compiles it under `pnpm typecheck:test` (a required CI step) while vitest's include glob ignores it. Renaming one to `.test.ts` breaks `pnpm test` with "No test suite found".
+- [03-03]: define() touches no ParameterTypeRegistry at all — custom parameter types are plain records; buildRegistry() constructs a FRESH registry every call and replays them, and is never memoized. The reference-inequality test, not the twenty-iteration loop, is what proves freshness (a memoized registry passes the loop).
+- [03-03]: builtInParameterTypeNames is DERIVED by iterating a live registry; zero built-in name literals appear in ParameterTypes.ts. A twelfth upstream built-in is then rejected at define() time, and expressions-pin.test.ts still fails first so the change stays visible.
+- [03-03]: All five parameter-type rejections fire at DEFINITION time, in a fixed order (built-in name first, which is also what rejects the anonymous empty-string name). Upstream's duplicate message text is never reproduced or matched.
+- [03-03]: A module-level default store does NOT contradict ARCHITECTURE.md Anti-Pattern 4 — that anti-pattern is about mutable per-run state, this store is append-only and process-wide by design. createParameterTypeStore() exists so no test ever depends on the default one.
+- [03-03]: The store is a plain object, not a Layer-provided service — ADR-EC-015 forbids effect in this package's manifest and verify:no-runner-dep enforces it. ADR-EC-007's open option is closed in writing by 03-06; note (c) of the module doc comment is its source text.
 
 ### Pending Todos
 
@@ -202,8 +208,20 @@ New since 03-02 (not blockers, constraints to respect):
 - **MATCH-01 is still Pending in REQUIREMENTS.md after 03-02, deliberately.** This plan shipped the type-level half only; roadmap success criterion 1 also asks for the runtime assertion, which is 03-04's. Same precedent as 03-01 and as PARSE-01..03 at 02-09.
 - Repo test count is **unchanged at 273 across 11 files** — `test/StepArgs.types.ts` is compiled by `pnpm typecheck:test` and never collected by vitest, which is the point of its suffix.
 
+New since 03-03 (not blockers, constraints to respect):
+
+- **`buildRegistry()` must never be memoized, and 03-05 must call it once per `loadFeature`/`parseFeature` invocation.** Freshness is the requirement (MATCH-02), not an implementation detail. Note that the twenty-iteration loop test does NOT catch memoization — a memoized registry loops happily. The reference-inequality test is what carries the claim; do not consolidate the two.
+- **`StepMatcher` (03-04) owns the two runtime transform guards `ParameterTypes.ts` deliberately lacks:** a thenable result → `AsyncParameterTransform`, a throwing transform → `ParameterTransformFailed`. The type-level `PromiseLike` exclusion only covers callers who do not cast through `any`.
+- **`StepMatcher`'s compilation cache must be keyed on the (registry, pattern) PAIR**, never the pattern alone — a fresh registry per build makes a pattern-keyed cache serve an expression bound to a dead registry.
+- **The module-level `defaultParameterTypeStore` is append-only for the life of the process** — no `remove`, no `clear`, by design. Every test creates its own store via `createParameterTypeStore()`; `test/ParameterTypes.test.ts` has exactly one `it` block that touches the default one, and the probe name `moneyDefaultStoreProbe` is claimed by that test and must never be reused.
+- **No built-in parameter type name may appear as a literal in `packages/gherkin/src/ParameterTypes.ts`.** The set is derived from a live registry; an acceptance grep asserts zero literals, and `test/expressions-pin.test.ts` pins the size at eleven.
+- **`ParameterTypes.ts` and `StepPatternError` are still not exported from `packages/gherkin/src/index.ts`.** 03-05 owns `index.ts` and its `must_haves` already names `defineParameterType`, `StepPatternError`, `createStepMatcher` and `StepArgs` as the surface to export. Until then, import by direct relative path.
+- **MATCH-02 is still Pending in REQUIREMENTS.md after 03-03, deliberately** — same call and same precedent as 03-01 and 03-02. 03-05 is the plan that makes the lifecycle true end to end and should mark MATCH-01/MATCH-02.
+- **03-06 owes ADR-EC-007 an implementation note** closing its `Layer`-provided-service option against ADR-EC-015. Note (c) of `ParameterTypes.ts`'s module doc comment is the source text for it.
+- Repo test count is now **304 across 12 files** (273 before this plan).
+
 ## Session Continuity
 
-Last session: 2026-08-28T15:03:00.000Z
-Stopped at: Phase 03 plan 02 complete (2/6). `src/StepArgs.ts` + `test/StepArgs.types.ts` landed; 273 tests passing (unchanged on purpose — the type test is compiled, never collected), all gates green. Next: 03-03.
+Last session: 2026-08-28T15:15:00.000Z
+Stopped at: Phase 03 plan 03 complete (3/6). `src/ParameterTypes.ts` + `test/ParameterTypes.test.ts` landed; 304 tests passing, both required mutations recorded and the tree restored clean, all gates green. Next: 03-04 (StepMatcher).
 Resume file: None

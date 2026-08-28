@@ -139,7 +139,7 @@ Plans:
 
 **Wave 2** *(blocked on 03-01)*
 
-- [ ] 03-03-PLAN.md — `ParameterTypes.ts`: custom types as data, fresh-registry-per-call replay, and declaration-time rejection of built-in names, duplicates, illegal names and flagged regexps
+- [x] 03-03-PLAN.md — `ParameterTypes.ts`: custom types as data, fresh-registry-per-call replay, and declaration-time rejection of built-in names, duplicates, illegal names and flagged regexps
 
 **Wave 3** *(blocked on 03-02 and 03-03)*
 
@@ -320,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 2/6 | In Progress|  |
+| 3. Parameter Types and Step Matching | 3/6 | In Progress|  |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
