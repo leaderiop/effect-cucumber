@@ -18,3 +18,7 @@ entries:
     file: "04-loadfeature-parse-and-validation.md"
     title: "loadFeature parse and validation"
     id_range: "014"
+  - id: "BEH-EC-015"
+    file: "05-step-matching-and-parameter-types.md"
+    title: "Step matching and parameter types"
+    id_range: "015"

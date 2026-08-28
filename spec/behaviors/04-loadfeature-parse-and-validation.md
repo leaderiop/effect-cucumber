@@ -153,3 +153,5 @@ const load = (path: string): ParsedFeature => {
 ---
 
 _Previous: [03 — Rules, Scenario Outlines, and TestClock](./03-rules-outlines-and-testclock.md)_
+
+_Next: [05 — Step matching and parameter types](./05-step-matching-and-parameter-types.md)_
