@@ -12,6 +12,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 - [ ] **PARSE-01**: A `.feature` file can be loaded via `loadFeature`, which parses it via `@cucumber/gherkin` and has no observable effect on the test run by itself (BEH-EC-001)
 - [ ] **PARSE-02**: `loadFeature` correlates the raw `GherkinDocument` structure with `compile()`'s Pickle output, so a step's text arrives already placeholder-substituted, its tags already inherited, and Background steps already stacked ahead of it (ADR-EC-014)
 - [ ] **PARSE-03**: A Background step with a leftover un-interpolated `<placeholder>` (the known `@cucumber/gherkin` limitation for a Background nested under a Scenario Outline) fails with a specific, named error rather than a confusing downstream "unmatched step" (ADR-EC-014 correction)
+- [ ] **PARSE-04**: A Gherkin data table reaches a step as a `DataTable` wrapper exposing `.hashes()`/`.raw()`/`.rowsHash()` (`.hashes()` is not native to `@cucumber/gherkin`), whose rows decode through `Schema`; a step whose Gherkin carries both a DocString and a DataTable receives both (ADR-EC-008) *[added during roadmap creation — listed as an active requirement in PROJECT.md and delivered by research Phase 3, but had no REQ-ID]*
 
 ### Step matching
 
@@ -75,37 +76,43 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Populated during roadmap creation.
+Phase numbers refer to `.planning/ROADMAP.md`. Note: research/SUMMARY.md numbers the
+same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PARSE-01 | TBD | Pending |
-| PARSE-02 | TBD | Pending |
-| PARSE-03 | TBD | Pending |
-| MATCH-01 | TBD | Pending |
-| MATCH-02 | TBD | Pending |
-| MATCH-03 | TBD | Pending |
-| MATCH-04 | TBD | Pending |
-| MATCH-05 | TBD | Pending |
-| DSL-01 | TBD | Pending |
-| DSL-02 | TBD | Pending |
-| DSL-03 | TBD | Pending |
-| DSL-04 | TBD | Pending |
-| DSL-05 | TBD | Pending |
-| DSL-06 | TBD | Pending |
-| DSL-07 | TBD | Pending |
-| RUN-01 | TBD | Pending |
-| RUN-02 | TBD | Pending |
-| RUN-03 | TBD | Pending |
-| RUN-04 | TBD | Pending |
-| RUN-05 | TBD | Pending |
-| RUN-06 | TBD | Pending |
+| PARSE-01 | Phase 2 | Pending |
+| PARSE-02 | Phase 2 | Pending |
+| PARSE-03 | Phase 2 | Pending |
+| PARSE-04 | Phase 4 | Pending |
+| MATCH-01 | Phase 3 | Pending |
+| MATCH-02 | Phase 3 | Pending |
+| MATCH-03 | Phase 6 | Pending |
+| MATCH-04 | Phase 6 | Pending |
+| MATCH-05 | Phase 6 | Pending |
+| DSL-01 | Phase 5 | Pending |
+| DSL-02 | Phase 5 | Pending |
+| DSL-03 | Phase 5 | Pending |
+| DSL-04 | Phase 5 | Pending |
+| DSL-05 | Phase 8 | Pending |
+| DSL-06 | Phase 8 | Pending |
+| DSL-07 | Phase 7 | Pending |
+| RUN-01 | Phase 6 | Pending |
+| RUN-02 | Phase 7 | Pending |
+| RUN-03 | Phase 10 | Pending |
+| RUN-04 | Phase 10 | Pending |
+| RUN-05 | Phase 9 | Pending |
+| RUN-06 | Phase 11 | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 21 ⚠️ (expected — roadmap not yet created)
+- v1 requirements: 22 total (21 originally defined + PARSE-04 added during roadmap creation)
+- Mapped to phases: 22 ✓
+- Unmapped: 0
+- Duplicated across phases: 0
+
+Phase 1 (Workspace, toolchain, dependency policy) carries no v1 requirement — it is an
+enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-28 after initial definition, informed by GSD Stack/Features/Architecture/Pitfalls research*
+*Last updated: 2026-08-28 after roadmap creation — PARSE-04 added, traceability populated*
