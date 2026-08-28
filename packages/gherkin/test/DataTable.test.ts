@@ -1,0 +1,221 @@
+/**
+ * PARSE-04's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
+ *
+ * **This file parses no feature file.** Every table under test is an inline `PickleTable` literal
+ * built by `tableOf`, because the accessors are pure data transformations and the fixture corpus
+ * belongs to `upstream-pin.test.ts` and `Correlate.test.ts`. Keeping this file parser-free is what
+ * makes a failure here attributable to `DataTable.ts` alone rather than to anything upstream of it.
+ *
+ * Failure assertions read `err.reason` plus the `row`/`column` locator, never message prose — with
+ * three deliberate exceptions where the MESSAGE is itself the requirement: the duplicate header
+ * column must quote the whole header row (the executable form of `Errors.ts` note (b)'s
+ * no-truncation policy), and the width failure must name both the expected width and the actual
+ * one, since "2 columns, got 3" is the entire content of that error.
+ *
+ * The prototype-pollution guard is the one test here that is not about Gherkin at all — see its own
+ * comment. It is the live assertion behind threat T-04-03.
+ *
+ * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
+ * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`, and plan
+ * 04-04 has not added the Phase 4 barrel exports yet in any case.
+ */
+import type { PickleTable } from "@cucumber/messages"
+import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
+import { describe, expect, it } from "vitest"
+import { makeDataTable } from "../src/DataTable.ts"
+import { DataTableError } from "../src/Errors.ts"
+
+/** The uri and line every table below is located at, so the locator assertions have a target. */
+const uri = "features/checkout.feature"
+const line = 12
+
+/** Build a `PickleTable` from rows of plain strings: `{ rows: [{ cells: [{ value }] }] }`. */
+const tableOf = (...rows: ReadonlyArray<ReadonlyArray<string>>): PickleTable => ({
+  rows: rows.map((cells) => ({ cells: cells.map((value) => ({ value })) }))
+})
+
+/** Wrap rows at the shared `uri`/`line`. */
+const dataTableOf = (...rows: ReadonlyArray<ReadonlyArray<string>>) => makeDataTable(tableOf(...rows), uri, line)
+
+/**
+ * The result of running one accessor, as a value rather than as a throw.
+ *
+ * Discriminated on `failed` rather than on a `_tag`, so no assertion below has to read an
+ * underscore-prefixed member off an object.
+ */
+type Outcome<A> =
+  | { readonly failed: false; readonly value: A }
+  | { readonly failed: true; readonly error: DataTableError }
+
+const outcomeOf = <A>(effect: Effect.Effect<A, DataTableError>): Outcome<A> =>
+  Effect.runSync(Effect.match(effect, {
+    onFailure: (error): Outcome<A> => ({ failed: true, error }),
+    onSuccess: (value): Outcome<A> => ({ failed: false, value })
+  }))
+
+/**
+ * Run an accessor that must succeed, and return its value.
+ *
+ * A failure is re-raised naming the reason it failed with, so a regression reads as
+ * "expected success, got DuplicateHeaderColumn" rather than as an opaque shape mismatch.
+ */
+const succeeds = <A>(effect: Effect.Effect<A, DataTableError>): A => {
+  const outcome = outcomeOf(effect)
+  if (outcome.failed) {
+    throw new Error(`expected the accessor to succeed, but it failed with ${outcome.error.reason}`)
+  }
+  return outcome.value
+}
+
+/**
+ * Run an accessor that must fail, and return the `DataTableError` it failed with.
+ *
+ * Succeeding is itself a failure and says so, quoting what came back — a silently-wrong result is
+ * exactly what these two accessors exist to prevent, so a test that stopped detecting one must not
+ * read as a passing test. Deliberately not `expect(...).toThrow()`: nothing here throws, and
+ * oxlint's `vitest(require-to-throw-message)` is error-level anyway.
+ */
+const fails = <A>(effect: Effect.Effect<A, DataTableError>): DataTableError => {
+  const outcome = outcomeOf(effect)
+  if (!outcome.failed) {
+    throw new Error(`expected the accessor to fail, but it succeeded with ${JSON.stringify(outcome.value)}`)
+  }
+  return outcome.error
+}
+
+describe("raw", () => {
+  it("returns every row including the header, in order", () => {
+    const table = dataTableOf(["name", "role"], ["alice", "admin"])
+    expect(table.raw()).toEqual([["name", "role"], ["alice", "admin"]])
+  })
+
+  it("returns the single row of a header-only table", () => {
+    expect(dataTableOf(["name", "role"]).raw()).toEqual([["name", "role"]])
+  })
+
+  it("returns [] for an empty table", () => {
+    expect(dataTableOf().raw()).toEqual([])
+  })
+})
+
+describe("hashes", () => {
+  it("maps every body row against the header row", () => {
+    const table = dataTableOf(["name", "role"], ["alice", "admin"], ["bob", "viewer"])
+    expect(succeeds(table.hashes())).toEqual([
+      { name: "alice", role: "admin" },
+      { name: "bob", role: "viewer" }
+    ])
+  })
+
+  it("handles a single-column table", () => {
+    // The roadmap's first named edge case. A one-column table is a perfectly ordinary table for
+    // hashes(); only rowsHash() rejects it, and for its own reason.
+    expect(succeeds(dataTableOf(["name"], ["alice"]).hashes())).toEqual([{ name: "alice" }])
+  })
+
+  it("returns [] for a header-only table", () => {
+    // The roadmap's second named edge case (F30). Zero body rows is not a failure — it is a table
+    // with nothing in it, and the empty array says exactly that.
+    expect(succeeds(dataTableOf(["name", "role"]).hashes())).toEqual([])
+  })
+
+  it("returns [] for an empty table", () => {
+    expect(succeeds(dataTableOf().hashes())).toEqual([])
+  })
+
+  it("fails with DuplicateHeaderColumn, naming the repeated column and quoting the whole header", () => {
+    const error = fails(dataTableOf(["name", "name"], ["alice", "bob"]).hashes())
+
+    expect(error).toBeInstanceOf(DataTableError)
+    expect(error.reason).toBe("DuplicateHeaderColumn")
+    expect(error.column).toEqual(Option.some("name"))
+    // The fault is in the header row, so there is no body-row ordinal to report.
+    expect(error.row).toEqual(Option.none())
+    expect(error.uri).toBe(uri)
+    expect(error.line).toEqual(Option.some(line))
+    // Both repeated header cells, verbatim: Errors.ts note (b)'s no-truncation policy applies to
+    // this class too, and this is where it is pinned for DataTableError.
+    expect(error.message).toContain("| name | name |")
+  })
+
+  it("gives a __proto__ header cell an own property rather than mutating a prototype", () => {
+    // This test guards threat T-04-03, and it guards a specific WRONG implementation: building the
+    // record with an assignment loop over a `{}` literal. Verified against Node 22 — assigning to
+    // `record.__proto__` when the value is a string is silently a no-op, so the naive form leaves
+    // NO own property behind and the column disappears from the result with nothing failing
+    // anywhere. `Object.fromEntries` defines it as an ordinary own property instead. If this test
+    // ever passes against the assignment-loop form, it has stopped asserting anything.
+    const [record] = succeeds(dataTableOf(["__proto__"], ["polluted"]).hashes())
+    if (record === undefined) {
+      throw new Error("expected hashes() to produce exactly one record for a single body row")
+    }
+
+    expect(Object.hasOwn(record, "__proto__")).toBe(true)
+    expect(Object.getOwnPropertyDescriptor(record, "__proto__")?.value).toBe("polluted")
+    expect(Object.getPrototypeOf(record) === Object.prototype).toBe(true)
+    // Nothing else in the process was touched: a fresh object knows nothing about "polluted".
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined()
+  })
+})
+
+describe("rowsHash", () => {
+  it("reads every row as a key/value pair, with no header row", () => {
+    const table = dataTableOf(["name", "alice"], ["role", "admin"])
+    expect(succeeds(table.rowsHash())).toEqual({ name: "alice", role: "admin" })
+  })
+
+  it("fails with RowsHashRequiresTwoColumns on a three-column table, naming both widths", () => {
+    const error = fails(dataTableOf(["name", "alice", "extra"]).rowsHash())
+
+    expect(error.reason).toBe("RowsHashRequiresTwoColumns")
+    expect(error.row).toEqual(Option.some(1))
+    expect(error.column).toEqual(Option.none())
+    // The message IS the requirement here: "must be 2 wide, this row is 3 wide" is the whole
+    // content of the error, and a reason tag alone would not tell the author what to change.
+    expect(error.message).toContain("exactly 2 cells wide")
+    expect(error.message).toContain("row 1 is 3 cells wide")
+    expect(error.message).toContain("| name | alice | extra |")
+  })
+
+  it("fails the same way on a one-column table rather than returning {}", () => {
+    // A header-only, one-column table is NOT special-cased into a silent empty result: it is not a
+    // rowsHash table at all, and saying so at row 1 is the point.
+    const error = fails(dataTableOf(["name"]).rowsHash())
+
+    expect(error.reason).toBe("RowsHashRequiresTwoColumns")
+    expect(error.row).toEqual(Option.some(1))
+    expect(error.message).toContain("row 1 is 1 cells wide")
+  })
+
+  it("fails with DuplicateRowKey at the SECOND occurrence of the repeated key", () => {
+    const error = fails(dataTableOf(["name", "alice"], ["name", "bob"]).rowsHash())
+
+    expect(error.reason).toBe("DuplicateRowKey")
+    expect(error.column).toEqual(Option.some("name"))
+    // The second row is the offending one: the first is fine on its own, and it is the repeat that
+    // would collapse two rows into one entry.
+    expect(error.row).toEqual(Option.some(2))
+  })
+
+  it("returns {} for an empty table", () => {
+    expect(succeeds(dataTableOf().rowsHash())).toEqual({})
+  })
+})
+
+describe("makeDataTable", () => {
+  it("carries the _tag, the location it was handed, and the raw rows by reference", () => {
+    const raw = tableOf(["name", "role"], ["alice", "admin"])
+    const table = makeDataTable(raw, uri, line)
+
+    // Destructured rather than read by dotted member access off the object: `no-underscore-dangle`
+    // is error-level in this repo for member expressions, and allows object destructuring.
+    const { _tag } = table
+    expect(_tag).toBe("DataTable")
+    expect(table.uri).toBe(uri)
+    expect(table.line).toBe(line)
+    // The escape hatch is a pass-through, not a copy — the same guarantee ParsedFeature.pickles
+    // makes.
+    expect(table.rows).toBe(raw.rows)
+  })
+})

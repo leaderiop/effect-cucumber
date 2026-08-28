@@ -74,6 +74,18 @@
  *     different failure entirely: a perfectly valid pattern that resolves to zero, or to
  *     many, registered step definitions. Do not merge the two.
  *
+ * (e) `DataTableError` is a THIRD class, for the same reason (d) gives and one more. BEH-EC-014
+ *     still closes `LoadFeatureErrorReason` at exactly ten tags with the words "drawn from
+ *     exactly this set", so a table failure cannot join it without making a normative document
+ *     false; and `StepPatternError` is scoped to a pattern the STEP AUTHOR wrote, which a table
+ *     failure is not. A `DataTableError` is a third kind again: it is raised against table
+ *     CONTENT in a `.feature` file, at step-body time, long after loading succeeded — so it
+ *     carries a `uri`/`line` like `LoadFeatureError` does, plus a `row`/`column` locator that
+ *     neither of the other two classes has.
+ *
+ *     The no-truncation policy of (b) applies to this class verbatim as well: a message quoting
+ *     a cell value, a header name, or a whole table row quotes it whole. Do not add an ellipsis.
+ *
  * `.name` is derived automatically by `Schema.TaggedError` from the tag string, matching
  * `@cucumber/gherkin`'s own error classes' failure to do this at all — their `.name` reports
  * the useless string `"Error"` and `instanceof` is the only reliable discriminator upstream.
@@ -211,6 +223,72 @@ export class StepPatternError extends Schema.TaggedError<StepPatternError>()("St
   ]),
   parameterTypeName: Schema.OptionFromUndefinedOr(Schema.String),
   pattern: Schema.OptionFromUndefinedOr(Schema.String),
+  message: Schema.String,
+  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+}) {}
+
+/**
+ * Why a `DataTableError` was raised. Four members, and the union is closed at four: each names a
+ * shape that would otherwise produce a silently-wrong result rather than a failure.
+ *
+ * - `DuplicateHeaderColumn` — the header row of a table repeats a cell value, so `.hashes()`
+ *   cannot build a record without one column overwriting the other. `@cucumber/gherkin` accepts
+ *   this without complaint (pinned as fixture row F32) and `@cucumber/cucumber`'s own `hashes()`
+ *   lets the LAST cell win. This library refuses both and names the repeated column.
+ * - `DuplicateRowKey` — `.rowsHash()` found the same key-column value twice, which would collapse
+ *   two rows into one entry.
+ * - `RowsHashRequiresTwoColumns` — `.rowsHash()` was called on a table whose rows are not exactly
+ *   two cells wide. `@cucumber/gherkin`'s parser already rejects an inconsistent cell count within
+ *   one table (fixture row F10), so every row of a parsed table has the SAME width; a width other
+ *   than two is the whole remaining failure.
+ * - `RowDecodeFailed` — a `.hashes()` row failed `Schema` decoding (ADR-EC-008). Raised by
+ *   `decodeHashes`, which lands in the next plan; the tag is declared here so this union is
+ *   written once and closed once rather than widened later.
+ *
+ * A union type rather than an enum: `erasableSyntaxOnly` forbids enums.
+ */
+export type DataTableErrorReason =
+  | "DuplicateHeaderColumn"
+  | "DuplicateRowKey"
+  | "RowsHashRequiresTwoColumns"
+  | "RowDecodeFailed"
+
+/**
+ * A fatal problem with a step's DataTable argument, or with decoding one.
+ *
+ * Shaped like the two classes above — same derived `_tag`/`name`, same "no custom constructor"
+ * constraint, same `Option<T>` fields that every construction site must fill with an explicit
+ * `Option.some(x)`/`Option.none()` (module doc comment (a)). See note (e) for why this is a third
+ * class and not more members on either existing reason union.
+ *
+ * Two field choices are worth stating, because neither is guessable from the code:
+ *
+ * `line` is the STEP's line, not the offending row's. A `PickleTableRow` carries NO location
+ * field at all — `Object.keys(row)` is exactly `["cells"]`, asserted directly against the
+ * installed `@cucumber/messages` in `test/upstream-pin.test.ts`. The step's line is therefore the
+ * finest source location that exists for a table, and there is no second line number to report.
+ *
+ * `row` is what narrows it further: the 1-based ordinal of the offending BODY row — the row after
+ * the header for `.hashes()`, the row itself for `.rowsHash()`, which has no header row. It is
+ * `Option.none()` when the fault is in the header row rather than in any body row. `column` is
+ * the offending header or key column name, likewise `Option.none()` when no single column is at
+ * fault.
+ *
+ * The no-truncation policy of module doc comment (b) applies here verbatim: a message quoting a
+ * cell value, a header name, or a whole row quotes it whole. Do not add an ellipsis, a maximum
+ * length, or a slice.
+ */
+export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTableError", {
+  reason: Schema.Literals([
+    "DuplicateHeaderColumn",
+    "DuplicateRowKey",
+    "RowsHashRequiresTwoColumns",
+    "RowDecodeFailed"
+  ]),
+  uri: Schema.String,
+  line: Schema.OptionFromUndefinedOr(Schema.Number),
+  row: Schema.OptionFromUndefinedOr(Schema.Number),
+  column: Schema.OptionFromUndefinedOr(Schema.String),
   message: Schema.String,
   cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
 }) {}
