@@ -1,0 +1,16 @@
+kind: behaviors
+package: effect-cucumber
+infix: EC
+entries:
+  - id: "BEH-EC-001"
+    file: "01-steps-and-world.md"
+    title: "Steps, World, and describeFeature"
+    id_range: "001-004"
+  - id: "BEH-EC-005"
+    file: "02-shared-layers-and-tags.md"
+    title: "Background, hooks, shared Layers, and tags"
+    id_range: "005-008"
+  - id: "BEH-EC-009"
+    file: "03-rules-outlines-and-testclock.md"
+    title: "Rules, Scenario Outlines, and TestClock"
+    id_range: "009-012"
