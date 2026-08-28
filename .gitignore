@@ -5,3 +5,8 @@ coverage/
 .DS_Store
 .claude/worktrees/
 .claude/settings.local.json
+
+# Transient fixtures written by scripts/verify-oxlint-plugin.sh. The script
+# removes them on exit; this entry only guards against a hard kill leaving a
+# deliberate lint violation on disk.
+.oxlint-probe/

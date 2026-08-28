@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "oxc", "eslint", "unicorn", "vitest"],
+  "jsPlugins": [
+    { "name": "effect", "specifier": "./tools/oxlint/effect/index.ts" }
+  ],
+  "categories": { "correctness": "error", "suspicious": "error", "perf": "error" },
+  "ignorePatterns": [
+    "**/dist",
+    "**/node_modules",
+    "**/*.md",
+    ".planning",
+    "packages/vitest/test/tsgo-gate"
+  ],
+  "rules": {
+    "eqeqeq": "error",
+    "import/no-cycle": "error",
+    "import/no-duplicates": ["error", { "preferInline": true }],
+    "typescript/consistent-type-imports": ["error", { "fixStyle": "inline-type-imports" }],
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "unicorn/prefer-node-protocol": "error",
+    "vitest/no-focused-tests": "error",
+    "vitest/no-identical-title": "error",
+    "effect/no-import-from-barrel-package": ["error", {
+      "checkPatterns": [
+        "^effect$",
+        "^effect/(.+/)?[a-z][a-z0-9]*$",
+        "^@effect/[^/]+$",
+        "^@effect/[^/]+/(.+/)?[a-z][a-z0-9]*$"
+      ],
+      "checkRelativeIndexImports": true
+    }],
+    "effect/no-js-extension-imports": "error",
+    "effect/no-opaque-instance-fields": "error",
+    "effect/no-bigint-literals": "error"
+  },
+  "overrides": [
+    {
+      // Vendored from Effect-TS/effect (see tools/oxlint/effect/ATTRIBUTION.md).
+      // Upstream defines its test helpers inside `describe` blocks for locality.
+      // Holding vendored code to our stylistic rules would force local edits and
+      // break the documented `curl` resync path. Correctness/suspicious/perf
+      // categories stay ON here — only this style rule is relaxed.
+      "files": ["tools/oxlint/effect/**"],
+      "rules": {
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ]
+}

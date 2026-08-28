@@ -10,12 +10,17 @@
     "test": "vitest run",
     "format": "dprint fmt",
     "format:check": "dprint check",
+    "lint": "oxlint -f unix && dprint check",
+    "lint-fix": "oxlint --fix && dprint fmt",
     "verify:spec": "bash spec/scripts/verify-traceability.sh",
-    "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh"
+    "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh",
+    "verify:oxlint-plugin": "bash scripts/verify-oxlint-plugin.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",
+    "@oxlint/plugins": "1.80.0",
     "dprint": "0.56.1",
+    "oxlint": "1.80.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.0"
   }
