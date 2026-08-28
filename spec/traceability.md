@@ -4,26 +4,28 @@
 
 ```
 Behavior (BEH-EC-NNN)
-    → Source module (packages/*/src/*.ts)      [planned — no code yet]
-    → Test file (packages/*/test/*.test.ts)     [planned — no code yet]
+    → Source module (packages/*/src/*.ts)      [gherkin: built; vitest: planned]
+    → Test file (packages/*/test/*.test.ts)     [gherkin: built; vitest: planned]
     → Invariant (INV-EC-NNN)
     → Decision (ADR-EC-NNN)
     → Acceptance scenario (REQ-EC-NNN)          [planned — no .feature files yet]
 ```
 
 Sections §1–§6 are parsed by `spec/scripts/verify-traceability.sh`; column
-order is a contract. The **Source module** and **Test file** columns below
-name _planned_ locations — the verify script checks that every ID is traced
-here, not that the named file exists, since `packages/*` doesn't exist yet.
-See `spec/roadmap.md` for what's actually built.
+order is a contract. The **Source module** column below still names _planned_
+locations wherever it names `packages/vitest`, which has no source files yet —
+the verify script checks that every ID is traced here, not that the named file
+exists. `packages/gherkin/src` and `packages/gherkin/test` do exist, and §4's
+rows name real files. See `spec/roadmap.md` for what's actually built.
 
 ## §1 Behavior to source
 
-| Behavior file                                                                                | Range                      | Source module (planned)                                                                          |
-| -------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
-| [01 — Steps and World](behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, BEH-EC-013 | `packages/vitest/src/{loadFeature,describeFeature,Step,World}.ts`, `packages/vitest/src/Plan.ts` |
-| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                     |
-| [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                  |
+| Behavior file                                                                                | Range                      | Source module (planned)                                                                                                     |
+| -------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Steps and World](behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, BEH-EC-013 | `packages/gherkin/src/loadFeature.ts`, `packages/vitest/src/{describeFeature,Step,World}.ts`, `packages/vitest/src/Plan.ts` |
+| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                                                |
+| [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                             |
+| [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                               |
 
 ## §2 Invariant traceability
 
@@ -63,15 +65,28 @@ See `spec/roadmap.md` for what's actually built.
 
 ## §4 Test file map
 
-Empty — no test files exist yet. Each row will map a test file to the
-`BEH-EC-NNN`/`INV-EC-NNN` IDs it covers, following qadi's and hex-di's
-convention, once `packages/*/test/` exists.
+`packages/*/test/` now exists — the preamble's "since `packages/*` doesn't
+exist yet" caveat no longer applies to the rows below, which name real files on
+disk. It still applies to the **Source module** column above wherever that
+column names `packages/vitest`, which has no source files yet.
+
+| Test file                                    | Covers     | Description                                                                                  |
+| -------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| `packages/gherkin/test/Contracts.test.ts`    | BEH-EC-014 | Error and warning shape, including the no-truncation policy                                  |
+| `packages/gherkin/test/Correlate.test.ts`    | BEH-EC-001 | Substitution, Background stacking, tag inheritance, origin, keyword, and both scenario names |
+| `packages/gherkin/test/Parser.test.ts`       | BEH-EC-014 | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`  |
+| `packages/gherkin/test/Validate.test.ts`     | BEH-EC-014 | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards |
+| `packages/gherkin/test/dialect.test.ts`      | BEH-EC-001 | A non-English feature parses with no special handling                                        |
+| `packages/gherkin/test/loadFeature.test.ts`  | BEH-EC-001 | Synchronous, contributes zero tests, path and `?raw` parity                                  |
+| `packages/gherkin/test/upstream-pin.test.ts` | BEH-EC-014 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture so an upstream bump fails loudly |
 
 ## §5 Acceptance scenario traceability
 
-Empty — no `.feature` files exist in this library's own test suite yet. Each
-row will map a `@REQ-EC-NNN` tag to the `.feature` file carrying it and the
-behavior(s) it verifies, once the acceptance suite exists.
+Empty — no acceptance suite exists yet. The `.feature` files under
+`packages/gherkin/test/fixtures/` are parser fixtures, not acceptance
+scenarios: none carries a `@REQ-EC-NNN` tag, so nothing joins the chain here.
+Each row will map a `@REQ-EC-NNN` tag to the `.feature` file carrying it and
+the behavior(s) it verifies, once the acceptance suite exists.
 
 ## §6 Coverage targets
 

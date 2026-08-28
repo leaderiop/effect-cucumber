@@ -231,5 +231,4 @@ per Scenario — the default per-Scenario scope from
 
 ---
 
-_This is the last behavior file for now — see `spec/roadmap.md` for what's
-planned next._
+_Next: [04 — loadFeature parse and validation](./04-loadfeature-parse-and-validation.md)_

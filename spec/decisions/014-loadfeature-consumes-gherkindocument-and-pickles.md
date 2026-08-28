@@ -114,9 +114,61 @@ whole) rather than to restate a different conclusion.
 >
 > This is now `loadFeature`'s problem to catch, not silently pass through:
 > per [ADR-EC-019](019-fail-loudly-on-unmatched-or-ambiguous-steps.md)'s
-> "fail loudly" principle, `loadFeature` checks every Pickle step's text for
-> a leftover `<...>` token and fails with a specific, named error
-> ("Background step text still contains an unsubstituted placeholder — this
-> is a known `@cucumber/gherkin` limitation for Backgrounds nested under a
-> Scenario Outline, not a bug in your Background text") rather than letting
-> it surface as a baffling unmatched-step failure downstream.
+> "fail loudly" principle, `loadFeature` detects the surviving placeholder
+> and fails with a specific, named error, whose wording is prescribed here and
+> reproduced verbatim by `packages/gherkin/src/Validate.ts` — kept on one
+> unbroken line below so it stays greppable against the implementation:
+>
+>> Background step text still contains an unsubstituted placeholder — this is a known `@cucumber/gherkin` limitation for Backgrounds nested under a Scenario Outline, not a bug in your Background text.
+>
+> That is raised rather than letting the problem
+> surface as a baffling unmatched-step failure downstream. The detection
+> rule this note originally prescribed — scanning every Pickle step's text
+> for any leftover `<...>` token — is **superseded by the second correction
+> below**, which was verified wrong in both directions and is not what
+> shipped.
+
+---
+
+> **Correction (2026-08-28, Phase 2 implementation, verified against
+> `@cucumber/gherkin@42.0.1` and pinned by
+> `packages/gherkin/test/Validate.test.ts`):** the detection rule prescribed
+> above — "checks every Pickle step's text for a leftover `<...>` token" — is
+> the naive form. It is wrong in two directions, and neither is theoretical.
+>
+> **It has real false positives on valid Gherkin.** Three step texts were
+> verified to survive `compile()` unchanged while being perfectly legitimate:
+> `the assertion 2 < 3 holds`, `the html is <div>hello</div>`, and
+> `an email <a@b.com>`. A bare `<...>` scan rejects all three, so the naive
+> rule turns a correctness feature into a reason not to adopt the library.
+>
+> **It misses two carriers entirely.** A placeholder also survives
+> un-interpolated inside a Background step's **DataTable cell values** and its
+> **DocString content** under a Scenario Outline. Checking only `PickleStep.text`
+> leaves both of those silent — which is the exact failure mode this correction
+> exists to remove.
+>
+> What `packages/gherkin/src/Validate.ts` actually implements is two checks
+> over one scan, and the split is what removes the false-positive class:
+>
+> - **The exact check.** Within a pickle correlated to a **Scenario Outline**, a
+>   `<name>` whose name **is one of that Outline's own `Examples:` header
+>   columns** is an error with reason `UninterpolatedPlaceholder`. It scans step
+>   text, DocString content, and every DataTable cell value. It has zero false
+>   positives, because writing a column name inside an Outline is proof the
+>   author expected a substitution. It never runs on a plain-Scenario pickle,
+>   and that single exclusion is what makes the three examples above safe: a
+>   plain Scenario has no Examples columns, so it is never scanned.
+> - **The heuristic check.** A `<name>` found in the same three places that is
+>   **not** one of that Outline's columns is a **warning** with reason
+>   `UnknownPlaceholder`, and the message names the columns that do exist —
+>   the gap between what the author wrote and what the parser kept is the whole
+>   finding. It catches an Examples column silently dropped upstream
+>   ([cucumber/gherkin#22](https://github.com/cucumber/gherkin/issues/22), still
+>   open: omitting the trailing `|` from **both** the header and the body rows
+>   drops the last column with no error) and a typo'd placeholder name. It is a
+>   warning rather than an error precisely because legitimate angle-bracket text
+>   written inside an Outline reaches the same check.
+>
+> The prescribed error-message sentence quoted in the correction above is
+> unchanged and is reproduced verbatim by `Validate.ts` for the Background case.
