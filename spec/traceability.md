@@ -21,7 +21,7 @@ See `spec/roadmap.md` for what's actually built.
 
 | Behavior file | Range | Source module (planned) |
 | ------------- | ----- | ------------------------ |
-| [01 — Steps and World](behaviors/01-steps-and-world.md) | BEH-EC-001–004 | `packages/vitest/src/{loadFeature,describeFeature,Step,World}.ts` |
+| [01 — Steps and World](behaviors/01-steps-and-world.md) | BEH-EC-001–004, BEH-EC-013 | `packages/vitest/src/{loadFeature,describeFeature,Step,World}.ts`, `packages/vitest/src/Plan.ts` |
 | [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md) | BEH-EC-005–008 | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts` |
 | [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012 | `packages/vitest/src/{Rule,ScenarioOutline}.ts` |
 
@@ -56,6 +56,10 @@ See `spec/roadmap.md` for what's actually built.
 | [ADR-EC-014](decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md) | `loadFeature` consumes both the `GherkinDocument` and compiled Pickles | — |
 | [ADR-EC-015](decisions/015-effect-is-a-peer-dependency.md) | `effect` is a peer dependency; `gherkin` package has no `effect` dependency | — |
 | [ADR-EC-016](decisions/016-effect-tsgo-language-service-plugin.md) | `@effect/tsgo` wired as the `tsc` language-service plugin | [INV-EC-003](invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides) |
+| [ADR-EC-017](decisions/017-background-and-scenario-are-step-definition-containers.md) | `Background`/`Scenario` are step-definition containers | — |
+| [ADR-EC-018](decisions/018-shared-layer-testclock-isolation.md) | Shared Layer keeps per-Scenario `TestClock` isolation | — |
+| [ADR-EC-019](decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md) | Fail loudly on unmatched/ambiguous steps | — |
+| [ADR-EC-020](decisions/020-vitest-native-tags-for-skip-only.md) | Tags map to vitest's native tag system | — |
 
 ## §4 Test file map
 

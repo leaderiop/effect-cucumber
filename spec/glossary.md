@@ -16,12 +16,22 @@ See [BEH-EC-001](behaviors/01-steps-and-world.md).
 
 One example of a Feature's behavior: a sequence of Given/When/Then steps.
 Compiles to one `it.effect(scenario.name, ...)` call — one vitest test, not
-one test per step. See [BEH-EC-002](behaviors/01-steps-and-world.md).
+one test per step. A step-definition container: its callback receives
+`{ Given, When, Then, And, But }`, matching `Rule` and `ScenarioOutline`
+(the outer-scope closure form also works, but the dsl-parameter form is the
+default shown in every worked example — see
+[ADR-EC-017](decisions/017-background-and-scenario-are-step-definition-containers.md)).
+See [BEH-EC-002](behaviors/01-steps-and-world.md).
 
 ## Background
 
 Steps that run before every Scenario in a Feature (or Rule). Not a separate
 vitest hook — inlined as the first `yield*`s of every Scenario's `Effect.gen`.
+Also a step-definition container, restricted to `{ Given, And }` per real
+Gherkin grammar — a Background's literal step text is matched against a
+registered pattern exactly like any other step, it does not run
+unconditionally regardless of that text (see
+[ADR-EC-017](decisions/017-background-and-scenario-are-step-definition-containers.md)).
 See [BEH-EC-005](behaviors/02-shared-layers-and-tags.md).
 
 ## Rule
@@ -71,7 +81,10 @@ See [INV-EC-002](invariants.md#inv-ec-002-a-per-scenario-layer-is-fresh-every-sc
 The opt-in Layer scope: one instance built once and shared across every
 Scenario in a Feature, for expensive resources (a testcontainer, a real DB
 connection). Implemented by delegating to `@effect/vitest`'s own `layer(...)`
-helper rather than hand-rolled `beforeAll`/`afterAll` bookkeeping.
+helper rather than hand-rolled `beforeAll`/`afterAll` bookkeeping — with
+`excludeTestServices: true` so `TestClock`/`TestConsole` stay fresh per
+Scenario even though the caller's own Layer is built once (see
+[ADR-EC-018](decisions/018-shared-layer-testclock-isolation.md)).
 See [ADR-EC-006](decisions/006-two-layer-scopes-only.md).
 
 ## Fail-fast

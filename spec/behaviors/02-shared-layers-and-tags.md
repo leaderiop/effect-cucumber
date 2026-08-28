@@ -6,10 +6,10 @@ material, not a compiled example._
 
 ---
 
-## BEH-EC-005: Background is inlined, not a hook
+## BEH-EC-005: Background is inlined, not a hook, and is a step-definition container
 
 > **Invariant:** [INV-EC-001](../invariants.md#inv-ec-001-fail-fast-is-structural-not-bookkept)
-> **See:** [ADR-EC-004](../decisions/004-one-it-effect-per-scenario.md)
+> **See:** [ADR-EC-004](../decisions/004-one-it-effect-per-scenario.md), [ADR-EC-017](../decisions/017-background-and-scenario-are-step-definition-containers.md)
 
 ```
 REQUIREMENT: Background steps MUST run as the first yield*s of every
@@ -18,6 +18,14 @@ REQUIREMENT: Background steps MUST run as the first yield*s of every
              beforeEach — a Background failure MUST short-circuit the
              Scenario's own steps via the same Effect error channel a
              regular step failure uses.
+
+REQUIREMENT: Background's DSL callback MUST receive Given/And as a dsl
+             parameter (matching real Gherkin grammar, which permits only
+             Given/And inside a Background block). A Background step's
+             literal Gherkin text MUST be matched against a registered
+             Given/And pattern exactly like any other step — it MUST NOT be
+             possible to write a Background whose body runs regardless of
+             what its Gherkin text says.
 ```
 
 ## BEH-EC-006: Hooks are Effects, and `After` always runs
@@ -52,14 +60,22 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              once per Scenario.
 ```
 
-## BEH-EC-008: `@skip`/`@only` tags map to `it.effect.skip`/`.only`
+## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
+
+> **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md)
 
 ```
-REQUIREMENT: A Scenario tagged @skip MUST compile to it.effect.skip instead of
-             it.effect. A Scenario tagged @only MUST compile to it.effect.only.
-             A Scenario excluded via describeFeature's excludeTags option MUST
-             NOT result in any it.effect/.skip/.only call at all — vitest MUST
-             never see it, not even as a reported skip.
+REQUIREMENT: Every tag on a Scenario (including inherited Feature/Rule/
+             Examples tags) MUST be emitted as a native vitest tag on the
+             generated it.effect call. A Scenario tagged @skip MUST
+             additionally compile to it.effect.skip instead of it.effect.
+             A Scenario tagged @only MUST NOT compile to it.effect.only
+             (vitest fails CI on any committed .only) — @only is emitted as
+             a plain tag only; running just that Scenario is a caller-side
+             `vitest --tagsFilter '@only'` choice, not something the library
+             forces onto every run. excludeTags-style filtering MUST be
+             implemented as native vitest tag filtering (--tagsFilter), not
+             a describeFeature-time registration filter.
 ```
 
 ### Worked example
@@ -119,12 +135,18 @@ class World extends Context.Service<World, {
 describeFeature(
   feature,
   { shared: Database.layer, perScenario: World.layer },
-  ({ Background, Scenario, When, Then }) => {
-    Background(function* () {
-      yield* (yield* Database).clear
+  ({ Background, Scenario }) => {
+    // Background is a step-definition container (ADR-EC-017), restricted to
+    // Given/And like real Gherkin grammar — the registered pattern is
+    // matched against the literal "Given the database is empty" text from
+    // accounts.feature, exactly like any other step.
+    Background(({ Given }) => {
+      Given('the database is empty', function* () {
+        yield* (yield* Database).clear
+      })
     })
 
-    Scenario('Creating a user', () => {
+    Scenario('Creating a user', ({ When, Then }) => {
       When('I create a user named {string}', function* (name: string) {
         yield* (yield* Database).create(name)
       })
@@ -136,7 +158,7 @@ describeFeature(
 
     // No `.skip` here in code — the @skip tag in accounts.feature is what
     // routes this Scenario to `it.effect.skip`.
-    Scenario('Deleting a missing user', () => {
+    Scenario('Deleting a missing user', ({ When, Then }) => {
       When('I delete a user named {string}', function* (name: string) {
         const world = yield* World
         yield* (yield* Database).delete(name).pipe(

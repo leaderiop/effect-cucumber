@@ -60,16 +60,20 @@ REQUIREMENT [OPERATIONAL]: A value computed by one step and consumed by a
              lint error.
 ```
 
-## BEH-EC-012: `TestClock` composes transparently
+## BEH-EC-012: `TestClock` composes transparently, on both Layer scopes
 
-> **See:** [ADR-EC-004](../decisions/004-one-it-effect-per-scenario.md)
+> **See:** [ADR-EC-004](../decisions/004-one-it-effect-per-scenario.md), [ADR-EC-018](../decisions/018-shared-layer-testclock-isolation.md)
 
 ```
 REQUIREMENT: A step reading Clock.currentTimeMillis (or any Clock-derived
              value) inside a Scenario MUST observe @effect/vitest's simulated
              TestClock, starting at 0, with no test-specific code required in
              the service under test. A step MUST be able to advance it
-             deterministically via TestClock.adjust.
+             deterministically via TestClock.adjust. This MUST hold
+             identically whether the Feature uses the default per-Scenario
+             Layer or an opt-in `shared` Layer (ADR-EC-006) — one Scenario's
+             TestClock.adjust MUST NOT be observable by any other Scenario in
+             either case.
 ```
 
 ### Worked example
@@ -149,9 +153,14 @@ class DiscountRegistry extends Context.Service<DiscountRegistry, {
 }
 
 describeFeature(feature, World.layer, ({ Background, Rule }) => {
-  Background(function* (table) {
-    const rows = yield* Schema.decodeUnknown(Schema.Array(CartRow))(table.hashes())
-    yield* Ref.set((yield* World).subtotal, rows.reduce((sum, r) => sum + r.price, 0))
+  // Background is a step-definition container (ADR-EC-017) — the registered
+  // Given pattern is matched against "the cart contains:" from
+  // discounts.feature's literal Background text.
+  Background(({ Given }) => {
+    Given('the cart contains:', function* (table) {
+      const rows = yield* Schema.decodeUnknown(Schema.Array(CartRow))(table.hashes())
+      yield* Ref.set((yield* World).subtotal, rows.reduce((sum, r) => sum + r.price, 0))
+    })
   })
 
   Rule('Percentage discounts expire at midnight', DiscountRegistry.layer, ({ ScenarioOutline, Scenario }) => {
@@ -172,7 +181,10 @@ describeFeature(feature, World.layer, ({ Background, Rule }) => {
       })
     })
 
-    Scenario('Expired discount codes are rejected', () => {
+    // Scenario receives its own dsl object (ADR-EC-017) — this is the fix
+    // for a real spec bug: an earlier version of this example called Given
+    // here without it ever being in scope.
+    Scenario('Expired discount codes are rejected', ({ Given, When, Then }) => {
       Given('a discount code {string} worth {int}% expiring in {string}',
         function* (code: string, percent: number, expiresIn: string) {
           yield* (yield* DiscountRegistry).register(code, percent, expiresIn)

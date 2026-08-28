@@ -2,58 +2,73 @@
 
 ## Current state
 
-**Design-only. No code has been written yet.** Everything in `spec/` describes
-an intended contract, stress-tested against three worked examples (see
-`spec/behaviors/`) but not yet built or verified by a real test run. The
-repository's prior state (a single `DESIGN.md`) has been folded into this
-`spec/` directory and superseded by it — `git log` has the original if it's
-ever needed for context.
+**Spec + GSD planning done; no library source code exists yet.** Everything
+in `spec/` describes an intended contract, stress-tested against three worked
+examples (see `spec/behaviors/`) and against four rounds of GSD research
+(Stack, Features, Architecture, Pitfalls — see `.planning/research/`), which
+found and fixed real bugs in the spec itself (ADR-EC-014/007's corrections,
+ADR-EC-017's Background/Scenario fix) in addition to verifying assumptions
+against the actually-installed dependencies. `.planning/PROJECT.md` and
+`.planning/config.json` exist; `.planning/ROADMAP.md` is the next artifact,
+expected to closely match the 11-phase, bottom-up build order both
+Architecture and Pitfalls research independently converged on (see
+`.planning/research/SUMMARY.md` § Implications for Roadmap).
 
 | Gate | Status |
 | ---- | ------ |
-| Packages exist | No — `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are specified in `spec/overview.md`, not scaffolded |
-| `tsc -b` | Not wired |
+| Packages exist | Yes — `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are scaffolded (`pnpm install` succeeds, correctly linked), but contain **no source files** |
+| `tsc -b` | Wired (`tsconfig.base.json`/`tsconfig.json`/per-package configs), nothing to build yet |
+| `@effect/tsgo` (Effect-aware type checking) | Wired, gating the build (ADR-EC-016) |
 | Unit tests | None yet |
 | Acceptance suite (this library dogfooding itself) | None yet |
 | `bash spec/scripts/verify-traceability.sh` | Wired and passing (checks spec-to-spec consistency only) |
 | Doc-examples compile check | Not wired |
+| GSD project planning | `PROJECT.md`/`config.json` done; research done; roadmap not yet created |
 
 ## Blocking first release
 
-1. Scaffold the workspace monorepo (`package.json`, workspace config,
-   `packages/gherkin`, `packages/vitest`) — pnpm workspaces is the working
-   assumption, matching the Effect ecosystem's common convention, but hasn't
-   been confirmed.
-2. Implement `@effect-cucumber/gherkin` (parsing + step matching) in isolation
-   against real `.feature` fixtures — see [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md).
-   No Effect-specific logic, so it's the easier of the two packages to get
-   right first.
-3. Implement `@effect-cucumber/vitest` (`describeFeature`, the DSL, the
-   `it.effect`-based runner) against one hand-written `.feature` file, proving
-   out Background + Scenario + one Given/When/Then (BEH-EC-001–004) before
-   Rule/Outline/tags/hooks.
+See `.planning/research/SUMMARY.md` § Implications for Roadmap for the
+detailed, dependency-graph-verified 11-phase build order (Phase 0 tooling
+policy → Phase 1 `loadFeature` → Phase 2 parameter types → ... → Phase 9
+shared Layer → Phase 10 composition root + dogfooded acceptance suite) once
+`.planning/ROADMAP.md` formalizes it. High-level shape:
+
+1. Finish Phase 0 tooling/dependency policy (partially done: peer deps
+   fixed via ADR-EC-015, `@effect/tsgo` wired via ADR-EC-016; still open:
+   `publishConfig.exports` swap, pnpm catalogs, CI).
+2. Implement `@effect-cucumber/gherkin`'s parse→compile→correlate pipeline
+   (the riskiest phase — several silent-failure edge cases in
+   `@cucumber/gherkin`'s `compile()` must become loud errors here).
+3. Implement `@effect-cucumber/vitest`'s register→plan→emit pipeline against
+   one hand-written `.feature` file, proving out Background + Scenario + one
+   Given/When/Then (BEH-EC-001–004, BEH-EC-013) before Rule/Outline/tags/hooks.
 4. Wire the doc-examples compile check and the merge-gate table in
    `spec/process/definitions-of-done.md` for real, once there's an API to
    check examples against.
 
 ## Planned
 
+- **Reusable step definitions across Scenarios/Features** — a genuine
+  table-stakes gap found by GSD Features research (BEH-EC-012's own worked
+  example repeats an identical step verbatim). Deliberately deferred to a
+  later milestone: a shared step's `R` must reconcile against every
+  consuming Layer, a problem with no ecosystem precedent (every comparable
+  library's steps are untyped, so they never have to solve it). Ship a
+  working core first.
 - **An Examples column not referenced by any step's pattern** — the rare case
   where a Scenario Outline needs a raw example value that never appears
   inside a `Given`/`When`/`Then` string, so cucumber-expressions never gets a
   chance to coerce it. Needs a fallback — likely an optional typed `example`
   argument decoded via `Schema`, passed alongside the DSL object to
   `ScenarioOutline`'s callback.
-- **Custom, non-reserved tags** — `@skip`/`@only` are specified
-  ([BEH-EC-008](behaviors/02-shared-layers-and-tags.md)); arbitrary user tags
-  (e.g. `@slow`, `@wip`) and how `excludeTags`-style filtering surfaces in the
-  public API isn't designed yet.
-- **Retries / `it.flakyTest` at the Scenario level** — whether/how a Scenario
-  opts into `it.effect`'s retry behavior, and how that interacts with
-  [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md) (does a
-  retried Scenario rebuild its per-Scenario Layer fresh per attempt, matching
-  `it.effect`'s own retry semantics? — needs confirming against
-  `@effect/vitest`'s actual retry implementation once that's checked).
+- **Retries / `it.flakyTest` at the Scenario level** — GSD Pitfalls research
+  closed part of this: a retried Scenario **does** rebuild its per-Scenario
+  Layer fresh per attempt, but only when `Effect.provide` sits *inside* the
+  retried Effect — composition order is load-bearing, and getting it
+  backwards silently reintroduces the leak [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)
+  exists to prevent. Still deferred to a later milestone; this note exists so
+  the composition-order requirement isn't rediscovered from scratch when it's
+  picked up.
 - **A lint rule enforcing [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)** —
   flagging a `let`/`var` declared inside a `Scenario`/`Rule`/`Background`
   callback that a step function closes over. Currently a reviewed convention
@@ -61,7 +76,19 @@ ever needed for context.
 
 ## Under consideration
 
-None yet — undecided is a real state, kept here rather than omitted.
+- **Vendored `@effect/oxc` rules** (`tools/oxlint/effect/`, from GSD Stack
+  research) — 4 of Effect's own 5 unpublished oxlint rules, MIT-licensed,
+  with `no-unused-internal` deliberately excluded (its one rule requiring
+  `typescript <7.0.0`, incompatible with this project's TS 7). Currently
+  untracked, not yet formally adopted — decide during Phase 0 planning
+  whether to commit `tools/` and wire it into the lint config, or drop it.
+- **A scheduled canary CI job against a floating `effect@rc`** — GSD Stack
+  research's own prescription, not an ecosystem convention (no comparable
+  project does this). Optional, not a hard requirement for Phase 0.
+- **dprint's `semiColons: "asi"` (no-semicolon) house style** — Effect's own
+  convention, flagged by research as a real stylistic commitment worth an
+  explicit yes/no rather than silent inheritance when `dprint.json` is
+  copied over in Phase 0.
 
 ## Explicitly not planned
 

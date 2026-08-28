@@ -98,3 +98,25 @@ DSL) is what `spec/glossary.md`'s "Scenario Outline" entry and
 informally — those documents are corrected to attribute the mechanism
 accurately (to this decision, not "the Gherkin parser" as an undifferentiated
 whole) rather than to restate a different conclusion.
+
+---
+
+> **Correction (2026-08-28, GSD Pitfalls research, verified against
+> `@cucumber/gherkin@42.0.1`'s `compile.js` source):** the claim above that
+> `compile()` substitutes placeholders is **not universally true** — it has
+> one specific, undocumented exception. `compileScenarioOutline` pushes a
+> Scenario Outline's own `Background` steps with **empty `variableCells`**,
+> so a `<placeholder>` inside a *Background* step nested under a Scenario
+> Outline is never interpolated — it stays a literal, un-interpolated string
+> in every Examples row's Pickle. A step author who writes a Background step
+> referencing an Outline's Examples column would see a confusing "no step
+> matched `<code>`"-shaped failure that points at the wrong root cause.
+>
+> This is now `loadFeature`'s problem to catch, not silently pass through:
+> per [ADR-EC-019](019-fail-loudly-on-unmatched-or-ambiguous-steps.md)'s
+> "fail loudly" principle, `loadFeature` checks every Pickle step's text for
+> a leftover `<...>` token and fails with a specific, named error
+> ("Background step text still contains an unsubstituted placeholder — this
+> is a known `@cucumber/gherkin` limitation for Backgrounds nested under a
+> Scenario Outline, not a bug in your Background text") rather than letting
+> it surface as a baffling unmatched-step failure downstream.

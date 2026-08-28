@@ -61,7 +61,7 @@ keeps the table honest. Until then, the intended surface is described in
 | `loadFeature` | function | [BEH-EC-001](./behaviors/01-steps-and-world.md#beh-ec-001-loading-a-feature-file) |
 | `describeFeature` | function | [BEH-EC-002](./behaviors/01-steps-and-world.md#beh-ec-002-describefeature-takes-a-layer) |
 | `Given` / `When` / `Then` / `And` / `But` | DSL functions | [BEH-EC-003](./behaviors/01-steps-and-world.md#beh-ec-003-a-step-is-an-effect-returning-function) |
-| `Background` | DSL function | [BEH-EC-005](./behaviors/02-shared-layers-and-tags.md#beh-ec-005-background-is-inlined-not-a-hook) |
+| `Background` | DSL function | [BEH-EC-005](./behaviors/02-shared-layers-and-tags.md#beh-ec-005-background-is-inlined-not-a-hook-and-is-a-step-definition-container) |
 | `Rule` | DSL function | [BEH-EC-009](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-009-a-rule-can-extend-the-ambient-layer) |
 | `ScenarioOutline` | DSL function | [BEH-EC-010](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-010-scenario-outline-examples-are-typed-for-free) |
 | `Before` / `After` / `BeforeStep` / `AfterStep` / `BeforeAllScenarios` / `AfterAllScenarios` | hook functions | [BEH-EC-006](./behaviors/02-shared-layers-and-tags.md#beh-ec-006-hooks-are-effects-and-after-always-runs) |

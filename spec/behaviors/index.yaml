@@ -5,7 +5,7 @@ entries:
   - id: "BEH-EC-001"
     file: "01-steps-and-world.md"
     title: "Steps, World, and describeFeature"
-    id_range: "001-004"
+    id_range: "001-004, 013"
   - id: "BEH-EC-005"
     file: "02-shared-layers-and-tags.md"
     title: "Background, hooks, shared Layers, and tags"

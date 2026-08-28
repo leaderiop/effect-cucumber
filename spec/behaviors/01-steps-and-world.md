@@ -78,6 +78,21 @@ REQUIREMENT: A field of World MUST NOT be reachable by a step unless it
              untyped context bag allows.
 ```
 
+## BEH-EC-013: Fail loudly on an unmatched, unused, or ambiguous step
+
+> **See:** [ADR-EC-019](../decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md)
+
+```
+REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
+             patterns MUST fail the containing Scenario with an error naming
+             the unmatched step text and its source location. A Pickle step
+             matching more than one registered pattern MUST fail the same
+             way, naming every matching pattern — resolution MUST NOT
+             silently pick the first-registered match. A registered pattern
+             matching zero steps across the whole Feature MUST be reported
+             as a Feature-level warning, not a hard failure.
+```
+
 ### Worked example
 
 ```typescript
@@ -93,8 +108,12 @@ class World extends Context.Service<World, { apples: Ref.Ref<number> }>()('World
   }))
 }
 
-describeFeature(feature, World.layer, ({ Scenario, Given, When, Then }) => {
-  Scenario('Eating apples', () => {
+describeFeature(feature, World.layer, ({ Scenario }) => {
+  // Scenario receives its own dsl object (ADR-EC-017), consistent with
+  // ScenarioOutline and Rule — the outer-scope closure form also works
+  // (destructuring Given/When/Then from describeFeature's own dsl above),
+  // but the dsl-parameter form is shown here as the default.
+  Scenario('Eating apples', ({ Given, When, Then }) => {
     Given('I have {int} apples', function* (n: number) {
       const { apples } = yield* World
       yield* Ref.set(apples, n)
