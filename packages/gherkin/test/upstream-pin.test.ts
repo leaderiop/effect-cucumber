@@ -135,7 +135,8 @@ const pickleCases: ReadonlyArray<PickleCase> = [
   { file: "outline-two-examples-blocks.feature", row: "F24", count: 3, firstStepText: "1" },
   { file: "docstring-and-datatable.feature", row: "F25", count: 1, firstStepText: "a step with two arguments" },
   { file: "outline-distinct-row-names.feature", row: "F26", count: 2, firstStepText: "a step for a" },
-  { file: "outline-identical-row-names.feature", row: "F27", count: 3, firstStepText: "a step for 1" }
+  { file: "outline-identical-row-names.feature", row: "F27", count: 3, firstStepText: "a step for 1" },
+  { file: "empty-examples-among-multiple-blocks.feature", row: "F28", count: 1, firstStepText: "a 1" }
 ]
 
 const throwCases: ReadonlyArray<ThrowCase> = [
@@ -213,6 +214,21 @@ describe("upstream @cucumber/gherkin behavior", () => {
       const { document, pickles } = parseFixture("no-feature.feature")
       expect(document.feature === undefined).toBe(true)
       expect(pickles).toHaveLength(0)
+    })
+
+    it("empty-examples-among-multiple-blocks.feature compiles the populated block and drops the empty one, per block", () => {
+      // F1/F2 are usually total-scenario-level failures (the WHOLE Outline compiles to zero
+      // pickles). This fixture pins the narrower, easy-to-miss case this library's own
+      // EmptyExamples check has to detect too: ONE Examples: block among several can be empty
+      // while a SIBLING block on the same Outline compiles normally, with compile() giving no
+      // signal that anything was dropped — the second block simply contributes nothing, in
+      // silence, exactly like F1/F2 do for a whole Outline.
+      const { document, pickles } = parseFixture("empty-examples-among-multiple-blocks.feature")
+      const [scenario] = scenariosOf(featureOf(document).children)
+      expect(scenario?.examples).toHaveLength(2)
+      expect(scenario?.examples[1]?.tableBody).toHaveLength(0)
+      expect(pickles).toHaveLength(1)
+      expect(pickles[0]?.astNodeIds).toEqual([scenario?.id, scenario?.examples[0]?.tableBody[0]?.id])
     })
 
     it("duplicate-scenario-name.feature yields two identically named pickles with distinct astNodeIds", () => {

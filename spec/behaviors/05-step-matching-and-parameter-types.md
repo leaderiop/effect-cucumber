@@ -125,16 +125,21 @@ REQUIREMENT: A step matcher MUST evaluate a step text against EVERY registered
 
 ### Two decisions a reader will otherwise ask about
 
-**Why a store rather than a `Layer`.** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md)'s
-correction floats exposing custom-type registration as a `Context.Service` + `Layer`-provided
-service, and calls it the one place `Layer` genuinely earns its keep.
-[ADR-EC-015](../decisions/015-effect-is-a-peer-dependency.md) forbids `@effect-cucumber/gherkin`
-from declaring `effect` in any manifest field, and `pnpm verify:no-runner-dep` enforces that
-structurally over both the source tree and the manifest, so the option is simply unavailable in the
-package that owns `loadFeature`. What ships instead is a plain object: a process-wide default store
-plus a `createParameterTypeStore()` factory for a caller who needs isolation. The store being a
-plain value is also what leaves a future `@effect-cucumber/vitest` free to wrap one in a `Layer`
-without this package moving.
+**Why the store's data stays a plain object even though its delivery is now a `Layer`.**
+[ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md)'s correction floated
+exposing custom-type registration as a `Context.Service` + `Layer`-provided service, and called
+it "the one place `Layer` genuinely earns its keep" — but at the time
+[ADR-EC-015](../decisions/015-effect-is-a-peer-dependency.md) forbade `@effect-cucumber/gherkin`
+from declaring `effect` in any manifest field at all, ruling the option out entirely.
+[ADR-EC-021](../decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md) reversed
+that constraint, and [ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md)
+is what actually spends the newly-available option — but only on HOW a store reaches
+`loadFeature`/`parseFeature`, not on what a store IS. `createParameterTypeStore()` still returns a
+plain object (`ParameterTypeStoreShape`, `define`/`definitions`/`buildRegistry`, zero `Effect`
+ceremony); `ParameterTypeStore` is a `Context.Service` class that wraps one, giving
+`loadFeature`/`parseFeature` an ambient requirement the same way `FileSystem.FileSystem` already
+was, instead of a hand-passed argument. `defineParameterType`'s own module-scope calling
+convention is unaffected either way — it calls a plain method on a plain store, never an `Effect`.
 
 **Why a built-in name is rejected rather than shadowed.** Allowing a custom type to override
 `{int}` would make the meaning of `{int}` depend on which modules happened to be imported, in which
@@ -149,15 +154,23 @@ export interface ParameterTypeDefinition<T> {
   readonly name: string
   readonly regexp: string | RegExp | ReadonlyArray<string | RegExp>
   readonly transform: (...match: Array<string>) => T
-  readonly definedAt?: string
-  readonly useForSnippets?: boolean
-  readonly preferForRegexpMatch?: boolean
+  readonly definedAt: Option.Option<string>
+  readonly useForSnippets: Option.Option<boolean>
+  readonly preferForRegexpMatch: Option.Option<boolean>
 }
 
 export const defineParameterType: <T>(definition: ParameterTypeDefinition<T>) => void
-export const createParameterTypeStore: () => ParameterTypeStore
+export const createParameterTypeStore: () => ParameterTypeStoreShape
+export const defaultParameterTypeStore: ParameterTypeStoreShape
 export const buildParameterTypeRegistry: () => ParameterTypeRegistry
 export const builtInParameterTypeNames: ReadonlySet<string>
+
+export class ParameterTypeStore extends Context.Service<ParameterTypeStore, ParameterTypeStoreShape>()(
+  "@effect-cucumber/gherkin/ParameterTypeStore"
+) {
+  static readonly layerOf: (store: ParameterTypeStoreShape) => Layer.Layer<ParameterTypeStore>
+  static readonly Default: Layer.Layer<ParameterTypeStore>
+}
 
 export const compileExpression: (registry: ParameterTypeRegistry, pattern: string) => CucumberExpression
 export const createStepMatcher: <D>(
@@ -169,6 +182,16 @@ export interface ParsedFeature extends ParsedFeatureCore {
   readonly parameterTypes: ParameterTypeRegistry
 }
 ```
+
+`ParameterTypeDefinition`'s three optional-in-spirit fields are `Option<T>`, never `T | undefined`,
+per [ADR-EC-022](../decisions/022-option-replaces-undefined-in-gherkins-public-api.md) — a caller
+constructs every one of them explicitly as `Option.some(x)`/`Option.none()`. `ParameterTypeStoreShape`
+is `ReturnType<typeof createParameterTypeStore>`, a derived type rather than a hand-written
+interface; it is what both `createParameterTypeStore()` and `ParameterTypeStore` (the ambient
+`Context.Service`, [ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md))
+are typed over. `buildParameterTypeRegistry` builds specifically from `defaultParameterTypeStore` —
+a caller using a different store calls that store's own `.buildRegistry()` instead, or reaches it
+ambiently through `loadFeature`/`parseFeature`'s `ParameterTypeStore` requirement.
 
 `ParameterTypeRegistry` is re-exported by the package because `ParsedFeature` surfaces it;
 `CucumberExpression` is the cucumber-expressions library's own type and is reached through
@@ -193,20 +216,48 @@ and a built-in always wins over it — mirroring the runtime rejection above.
 
 ### Worked example
 
+`loadFeature` here is `@effect-cucumber/gherkin`'s own — `Effect`-returning, requiring
+`FileSystem.FileSystem | ParameterTypeStore` — never the distinct, `Promise`-returning
+`@effect-cucumber/vitest` wrapper [ADR-EC-024](../decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md)
+describes; see [BEH-EC-001](./01-steps-and-world.md)'s worked example for that one.
+
 ```typescript
-import { createStepMatcher, defineParameterType, loadFeature, type StepMatch } from "@effect-cucumber/gherkin"
+import {
+  createStepMatcher,
+  defineParameterType,
+  loadFeature,
+  ParameterTypeStore,
+  type StepMatch
+} from "@effect-cucumber/gherkin"
+import { NodeFileSystem } from "@effect/platform-node"
+import { Effect, Layer, Option } from "effect"
 
 // Module scope, and it touches no registry: this appends a record to the default store, which
-// every later loadFeature call replays into its own fresh registry.
+// every later loadFeature call replays into its own fresh registry. defineParameterType stays
+// plain and Effect-free by design (ADR-EC-023) even though ParameterTypeStore itself is now a
+// Context.Service — a step-definition author should never need Effect ceremony just to register
+// a custom type.
 defineParameterType({
   name: "money",
   regexp: "\\d+",
   // Synchronous, by requirement — the value is handed to the step body unwrapped.
   transform: (amount: string): number => Number(amount),
-  definedAt: "checkout.steps.ts"
+  definedAt: Option.some("checkout.steps.ts"),
+  useForSnippets: Option.none(),
+  preferForRegexpMatch: Option.none()
 })
 
-const feature = loadFeature("checkout.feature")
+// ParameterTypeStore.Default wraps the SAME defaultParameterTypeStore singleton the
+// defineParameterType call above just wrote into, so this loadFeature call sees that
+// registration — matching FileSystem.FileSystem, no Layer is baked in internally, so it must be
+// provided explicitly here. Layer.mergeAll, not chained .pipe(Effect.provide(a),
+// Effect.provide(b)) calls: @effect/tsgo's multipleEffectProvide diagnostic fails the build on
+// the chained form (ADR-EC-016).
+const feature = await Effect.runPromise(
+  loadFeature("checkout.feature").pipe(
+    Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default))
+  )
+)
 
 // The registry comes off the feature this matcher will be used against, never from a registry
 // built independently — an expression binds permanently to the registry it was compiled with.

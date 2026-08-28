@@ -84,7 +84,10 @@ import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Clock, Context, Duration, Effect, Layer, Option, Ref, Schema } from "effect"
 import { TestClock } from "effect/testing"
 
-const feature = loadFeature("./discounts.feature")
+// @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already wired to a
+// shared NodeFileSystem.layer and defaulting ParameterTypeStore — distinct from
+// @effect-cucumber/gherkin's own Effect-returning loadFeature (see BEH-EC-001).
+const feature = await loadFeature("./discounts.feature")
 // discounts.feature:
 //   Background:
 //     Given the cart contains:

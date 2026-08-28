@@ -104,12 +104,18 @@ the author sees has to be enough on its own.
 ### Signatures
 
 ```ts
-export interface LoadFeatureOptions {
-  readonly parameterTypes?: ParameterTypeStore
-}
+export const loadFeature: (
+  path: string
+) => Effect.Effect<
+  ParsedFeature,
+  LoadFeatureError | StepPatternError,
+  FileSystem.FileSystem | ParameterTypeStore
+>
 
-export const loadFeature: (path: string, options?: LoadFeatureOptions) => ParsedFeature
-export const parseFeature: (source: string, uri: string, options?: LoadFeatureOptions) => ParsedFeature
+export const parseFeature: (
+  source: string,
+  uri: string
+) => Effect.Effect<ParsedFeature, LoadFeatureError | StepPatternError, ParameterTypeStore>
 ```
 
 `parseFeature` is the same pipeline without the filesystem read, for text already in hand —
@@ -117,12 +123,20 @@ a Vite `.feature?raw` import, or an inline template literal. `uri` is supplied b
 caller because a string parse has no other source for it, and it is what every error and
 warning message names.
 
-The trailing options argument is optional, and so is its single member, so
-[BEH-EC-001](./01-steps-and-world.md)'s one-argument `loadFeature("x.feature")` call form is
-unchanged. Every call builds a **fresh** `ParameterTypeRegistry` from the resolved store and
-returns it on `ParsedFeature.parameterTypes`. The option exists because the default store is
-append-only for the life of the process — a definition made into it cannot be withdrawn — so a
-caller needing isolation supplies its own store instead of sharing that one.
+**Neither function takes an options argument.**
+[ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md) deleted
+the earlier `LoadFeatureOptions` second argument entirely: `ParameterTypeStore` moved from a
+hand-passed argument to an ambient requirement in the `R` channel, provided the same way
+`FileSystem.FileSystem` already was — via `Layer`/`Effect.provide`, never a function argument.
+`ParameterTypeStore.Default` supplies the built-ins-only store
+[BEH-EC-001](./01-steps-and-world.md)'s one-argument call form needs;
+`ParameterTypeStore.layerOf(store)` supplies any other one. There is no argument-level default
+left at this package's level — every caller provides `ParameterTypeStore` explicitly (though
+[ADR-EC-024](../decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md)
+is what keeps that invisible again at the `@effect-cucumber/vitest` call site — see BEH-EC-001).
+Every call builds a **fresh** `ParameterTypeRegistry` from the resolved store and returns it on
+`ParsedFeature.parameterTypes`. A caller needing isolation from the process-lifetime default
+store supplies its own store's `Layer` instead of sharing `ParameterTypeStore.Default`.
 [BEH-EC-015](./05-step-matching-and-parameter-types.md) is the full contract for the parameter
 type lifecycle. Nothing about it widens the reason set above: a rejected parameter type or an
 unusable step pattern raises `StepPatternError`, a separate class, precisely so that this
@@ -130,18 +144,30 @@ behavior's closed ten-member set stays true.
 
 ### Worked example
 
+`loadFeature`/`parseFeature`, `LoadFeatureError.line`, and `LoadFeatureWarning.line` are all
+`Effect`/`Option`-native as of
+[ADR-EC-021](../decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md) and
+[ADR-EC-022](../decisions/022-option-replaces-undefined-in-gherkins-public-api.md) —
+`loadFeature` returns `Effect<ParsedFeature, LoadFeatureError | StepPatternError,
+FileSystem.FileSystem | ParameterTypeStore>` per
+[ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md), and
+every optional field on the error/warning types is `Option<T>`, never `T | undefined`.
+
 ```typescript
-import { loadFeature, LoadFeatureError, type ParsedFeature } from "@effect-cucumber/gherkin"
+import { loadFeature, LoadFeatureError, ParameterTypeStore, type ParsedFeature } from "@effect-cucumber/gherkin"
+import { NodeFileSystem } from "@effect/platform-node"
+import { Effect, Layer, Option } from "effect"
 
 const explain = (err: LoadFeatureError): string => {
+  const line = Option.getOrElse(err.line, () => 0)
   switch (err.reason) {
     case "MissingFile":
       return `${err.uri} could not be read.`
     case "OutlineWithoutExamples":
     case "EmptyExamples":
-      return `${err.uri}:${err.line ?? 0} — the Outline needs an Examples: table with a body row.`
+      return `${err.uri}:${line} — the Outline needs an Examples: table with a body row.`
     case "UninterpolatedPlaceholder":
-      return `${err.uri}:${err.line ?? 0} — a placeholder survived substitution.`
+      return `${err.uri}:${line} — a placeholder survived substitution.`
     default:
       // Every other reason is already self-describing; the tag is the discriminator,
       // never the message text.
@@ -149,20 +175,25 @@ const explain = (err: LoadFeatureError): string => {
   }
 }
 
-const load = (path: string): ParsedFeature => {
-  try {
-    const feature = loadFeature(path)
-    for (const warning of feature.warnings) {
-      console.warn(`${warning.reason}: ${warning.message}`)
-    }
-    return feature
-  } catch (error) {
-    if (error instanceof LoadFeatureError) {
-      throw new Error(explain(error), { cause: error })
-    }
-    throw error
-  }
-}
+// `load` takes a parameter and returns an Effect, so it is `Effect.fn`-wrapped with a
+// generator body — never a plain function wrapping `.pipe(...)` or `Effect.gen` — matching
+// every entry point in `packages/gherkin/src/` (`readFeatureSource`, `parseFeature`,
+// `loadFeature` itself).
+const load = Effect.fn("load")(function*(path: string) {
+  const feature = yield* loadFeature(path).pipe(
+    Effect.catchTag("LoadFeatureError", (error) => Effect.fail(new Error(explain(error), { cause: error })))
+  )
+  yield* Effect.forEach(feature.warnings, (warning) => Effect.logWarning(`${warning.reason}: ${warning.message}`))
+  return feature
+})
+
+// A module-top-level caller (the vitest-collection-time pattern BEH-EC-001 documents) runs it
+// with a top-level `await`, providing both requirements as one merged Layer — chained
+// `.pipe(Effect.provide(a), Effect.provide(b))` calls fail the build under @effect/tsgo's
+// multipleEffectProvide diagnostic (ADR-EC-016), so Layer.mergeAll is required here, not optional:
+const feature = await Effect.runPromise(
+  load("x.feature").pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
+)
 ```
 
 ---

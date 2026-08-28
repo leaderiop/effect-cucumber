@@ -35,6 +35,7 @@
  * `pnpm lint` on a relative value-import whose basename is `index.*`.
  */
 import { IdGenerator } from "@cucumber/messages"
+import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { correlateFeature, type CorrelationResult } from "../src/Correlate.ts"
@@ -125,12 +126,51 @@ describe("validateFeature rejects every Group A structural row with its own reas
   })
 })
 
+describe("EmptyExamples fires per BLOCK, not only when every block on an Outline is empty", () => {
+  it("rejects an Outline whose second Examples: block is empty even though its first block has rows", () => {
+    // Before this check went per-block, `produced.length === 0` (the total pickle count across
+    // ALL of an Outline's Examples blocks) was the only signal — so a populated first block kept
+    // that total above zero and the second, genuinely empty block was silently dropped: no error,
+    // no warning, nothing. This fixture is the executable form of that fix.
+    const error = errorFromFixture("empty-examples-among-multiple-blocks.feature")
+    expect(error.reason).toBe("EmptyExamples")
+  })
+
+  it("locates the error at the EMPTY block's own line, not the Outline's declaration line", () => {
+    // fixtures/empty-examples-among-multiple-blocks.feature: the Outline is declared on line 3,
+    // its populated first Examples: block starts on line 6, and its empty second block — the one
+    // this error must name — starts on line 10.
+    const error = errorFromFixture("empty-examples-among-multiple-blocks.feature")
+    expect(error.line).toEqual(Option.some(10))
+  })
+
+  it("names which block, out of how many, in the message", () => {
+    const error = errorFromFixture("empty-examples-among-multiple-blocks.feature")
+    expect(error.message).toContain("Examples: block 2 of 2")
+  })
+})
+
+describe("validateFeature throws the first error in true document order, across error families", () => {
+  it("an earlier UninterpolatedPlaceholder outranks a later ZeroStepScenario in the same file", () => {
+    // Before the structural checks (Group A) and the placeholder scan (check alpha) were merged
+    // into one loop, they ran as two full, separate passes over every Scenario node — so EVERY
+    // Group A finding outranked EVERY alpha finding regardless of line number. This fixture pins
+    // the fix: fixtures/first-error-document-order.feature has a genuine UninterpolatedPlaceholder
+    // at line 4 (the feature Background's `<n>` step, never substituted per
+    // @cucumber/gherkin's own Outline-Background limitation) and a ZeroStepScenario at line 13 —
+    // strictly later. The correct first-in-document-order answer is the line-4 finding.
+    const error = errorFromFixture("first-error-document-order.feature")
+    expect(error.reason).toBe("UninterpolatedPlaceholder")
+    expect(error.line).toEqual(Option.some(4))
+  })
+})
+
 describe("every rejection is located and attributed", () => {
   it("carries the caller's uri and a numeric line, on every rejected fixture", () => {
     for (const name of rejectedFixtures) {
       const error = errorFromFixture(name)
       expect(error.uri).toBe(name)
-      expect(typeof error.line).toBe("number")
+      expect(Option.isSome(error.line) && typeof error.line.value === "number").toBe(true)
     }
   })
 })
@@ -143,7 +183,7 @@ describe("validateFeature enforces per-scope Scenario name uniqueness (F22)", ()
   it("names both occurrences and locates the error at the second one", () => {
     const error = errorFromFixture("duplicate-scenario-name.feature")
     // The fixture's two `Scenario: dup` lines are 3 and 6. The error is reported AT the second.
-    expect(error.line).toBe(6)
+    expect(error.line).toEqual(Option.some(6))
     expect(error.message).toMatch(/\b3\b/)
     expect(error.message).toMatch(/\b6\b/)
   })

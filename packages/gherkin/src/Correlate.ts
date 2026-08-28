@@ -44,6 +44,7 @@ import {
   type Step,
   StepKeywordType
 } from "@cucumber/messages"
+import * as Option from "effect/Option"
 import { LoadFeatureError } from "./Errors.ts"
 import type { ParsedFeatureCore, ParsedRule, ParsedScenario, ParsedStep, StepOwner } from "./Model.ts"
 
@@ -80,6 +81,20 @@ export interface AstScenarioInfo {
    * appears twice in one `tableHeader.cells`", which a `Set` would erase.
    */
   readonly examplesHeaders: ReadonlyArray<ReadonlyArray<string>>
+  /**
+   * One entry per `Examples:` block, in source order — that block's own `tableBody.length`.
+   *
+   * `[VERIFIED]` against `@cucumber/gherkin@42.0.1`: `compile()` contributes exactly one pickle
+   * per body row of a block and zero for a block whose `tableBody` is empty, whether because the
+   * block has no header row at all (F1) or a header row with no body rows (F2) — and it does this
+   * per block, independently of any sibling block on the same Outline. That makes a zero here the
+   * exact, per-block F1/F2 signature, readable straight off the AST with no need to cross-reference
+   * `Pickle.astNodeIds` at all: `byScenarioId` (this index's own pickle map) only ever keys on
+   * `astNodeIds[0]`, the shared Outline id, so it cannot distinguish which block a produced pickle
+   * came from and is the wrong tool for this specific question. `examplesHeaders.length ===
+   * examplesRowCounts.length === examplesCount` always holds.
+   */
+  readonly examplesRowCounts: ReadonlyArray<number>
 }
 
 /**
@@ -184,7 +199,9 @@ const featureOf = (document: GherkinDocument, uri: string): Feature => {
     throw new LoadFeatureError({
       reason: "NoFeature",
       uri,
-      message: `${uri} cannot be correlated: the parsed document declares no Feature:.`
+      line: Option.none(),
+      message: `${uri} cannot be correlated: the parsed document declares no Feature:.`,
+      cause: Option.none()
     })
   }
   return feature
@@ -199,6 +216,14 @@ const examplesHeadersOf = (scenario: Scenario): ReadonlyArray<ReadonlyArray<stri
   scenario.examples.map((block) =>
     block.tableHeader === undefined ? [] : block.tableHeader.cells.map((cell) => cell.value)
   )
+
+/**
+ * One entry per Examples block, in source order — that block's `tableBody.length`. See
+ * `AstScenarioInfo.examplesRowCounts`'s own doc comment for why this is the exact, purely
+ * AST-level per-block F1/F2 signature.
+ */
+const examplesRowCountsOf = (scenario: Scenario): ReadonlyArray<number> =>
+  scenario.examples.map((block) => block.tableBody.length)
 
 const recordSteps = (
   target: Map<string, AstStepInfo>,
@@ -241,7 +266,8 @@ const recordScenario = (acc: AstAccumulator, scenario: Scenario, ruleId: string 
     ruleId,
     location: scenario.location,
     examplesCount: scenario.examples.length,
-    examplesHeaders: headers
+    examplesHeaders: headers,
+    examplesRowCounts: examplesRowCountsOf(scenario)
   })
 }
 
@@ -367,10 +393,12 @@ const resolveStep = (
     throw new LoadFeatureError({
       reason: "ParseFailed",
       uri,
+      line: Option.none(),
       message: `Pickle step ${JSON.stringify(pickleStep.text)} in ${uri} references AST node `
         + `${sourceId === undefined ? "<none>" : sourceId}, which the parsed document does not `
         + `declare. The parser and the pickle compiler disagree about this file; they must have `
-        + `been given the same id generator and the same document.`
+        + `been given the same id generator and the same document.`,
+      cause: Option.none()
     })
   }
   return {
@@ -380,7 +408,7 @@ const resolveStep = (
     keywordType: info.step.keywordType ?? StepKeywordType.UNKNOWN,
     origin: info.owner,
     line: info.step.location.line,
-    argument: pickleStep.argument
+    argument: Option.fromUndefinedOr(pickleStep.argument)
   }
 }
 
@@ -429,7 +457,7 @@ export const correlateFeature = (
         // Scenario; for an Outline the pickle's value — the Examples BODY ROW — wins, which is
         // the whole point of reading it from the pickle.
         location: pickle.location ?? node.location,
-        ruleId: node.ruleId,
+        ruleId: Option.fromUndefinedOr(node.ruleId),
         pickle
       }
       allScenarios.push(scenario)

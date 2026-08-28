@@ -27,19 +27,20 @@ file in the repository for that pattern and fails `pnpm verify:spec` when the ta
 
 ## Group A — `compile()` produces silently zero or silently wrong output
 
-| Fixture                                          | Row | Reason tag                    | Verified upstream behavior                                                                  |
-| ------------------------------------------------ | --- | ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `empty-examples-no-header.feature`               | F1  | `EmptyExamples`               | `Examples:` with no header and no rows: 0 pickles, no error, the AST node is orphaned       |
-| `empty-examples-header-only.feature`             | F2  | `EmptyExamples`               | `Examples:` with a header and no body rows: 0 pickles, no error                             |
-| `outline-without-examples.feature`               | F3  | `OutlineWithoutExamples`      | No `Examples:` at all: 1 pickle whose step text stays the literal `a <x>`                   |
-| `scenario-keyword-with-examples.feature`         | F4  | `ScenarioKeywordWithExamples` | Plain `Scenario:` + `Examples:`: 2 pickles — `compile()` branches on `examples.length`      |
-| `zero-step-scenario.feature`                     | F5  | `ZeroStepScenario`            | The zero-step pickle has `steps: []`; its feature Background steps are dropped too          |
-| `zero-step-scenario-in-rule.feature`             | F6  | `ZeroStepScenario`            | Same inside a `Rule:` — the Rule Background is dropped as well                              |
-| `uninterpolated-placeholder-background.feature`  | F7  | `UninterpolatedPlaceholder`   | Background step text stays `a <name>` while the Scenario step interpolates to `I use alice` |
-| `uninterpolated-placeholder-in-argument.feature` | F8  | `UninterpolatedPlaceholder`   | The Background DataTable cell and DocString keep `<x>`; the Scenario's own cell becomes `1` |
-| `no-feature.feature`                             | F12 | `NoFeature`                   | Comment-only file parses fine; `document.feature` is `undefined` (not `null`); 0 pickles    |
-| `duplicate-scenario-name.feature`                | F22 | `DuplicateScenarioName`       | Legal Gherkin: 2 pickles, identical `name`, distinct `astNodeIds[0]`                        |
-| `duplicate-scenario-name-across-rules.feature`   | F22 | none — negative control       | Two `Rule:` scopes may each hold a `Scenario: happy path`; this file must stay legal        |
+| Fixture                                          | Row | Reason tag                    | Verified upstream behavior                                                                                                                                    |
+| ------------------------------------------------ | --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `empty-examples-no-header.feature`               | F1  | `EmptyExamples`               | `Examples:` with no header and no rows: 0 pickles, no error, the AST node is orphaned                                                                         |
+| `empty-examples-header-only.feature`             | F2  | `EmptyExamples`               | `Examples:` with a header and no body rows: 0 pickles, no error                                                                                               |
+| `outline-without-examples.feature`               | F3  | `OutlineWithoutExamples`      | No `Examples:` at all: 1 pickle whose step text stays the literal `a <x>`                                                                                     |
+| `scenario-keyword-with-examples.feature`         | F4  | `ScenarioKeywordWithExamples` | Plain `Scenario:` + `Examples:`: 2 pickles — `compile()` branches on `examples.length`                                                                        |
+| `zero-step-scenario.feature`                     | F5  | `ZeroStepScenario`            | The zero-step pickle has `steps: []`; its feature Background steps are dropped too                                                                            |
+| `zero-step-scenario-in-rule.feature`             | F6  | `ZeroStepScenario`            | Same inside a `Rule:` — the Rule Background is dropped as well                                                                                                |
+| `uninterpolated-placeholder-background.feature`  | F7  | `UninterpolatedPlaceholder`   | Background step text stays `a <name>` while the Scenario step interpolates to `I use alice`                                                                   |
+| `uninterpolated-placeholder-in-argument.feature` | F8  | `UninterpolatedPlaceholder`   | The Background DataTable cell and DocString keep `<x>`; the Scenario's own cell becomes `1`                                                                   |
+| `no-feature.feature`                             | F12 | `NoFeature`                   | Comment-only file parses fine; `document.feature` is `undefined` (not `null`); 0 pickles                                                                      |
+| `duplicate-scenario-name.feature`                | F22 | `DuplicateScenarioName`       | Legal Gherkin: 2 pickles, identical `name`, distinct `astNodeIds[0]`                                                                                          |
+| `duplicate-scenario-name-across-rules.feature`   | F22 | none — negative control       | Two `Rule:` scopes may each hold a `Scenario: happy path`; this file must stay legal                                                                          |
+| `empty-examples-among-multiple-blocks.feature`   | F28 | `EmptyExamples`               | One Outline, two Examples: blocks — block 1 has a row, block 2 is header-only: 1 pickle, block 2 contributes nothing, in silence, same as F1/F2 but per-block |
 
 ## Group B — parse-time throws that must be wrapped, not leaked
 
@@ -80,6 +81,15 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `outline-distinct-row-names.feature`  | F26 | Pickle names `outline a` / `outline b` differ from the un-interpolated AST name `outline <name>`                                     |
 | `outline-identical-row-names.feature` | F27 | 3 pickles with identical `name` and distinct `location.line` (8, 9, 10)                                                              |
 | `docstring-and-datatable.feature`     | F25 | One step carries both, with `argumentIndex` 1 (DocString) and 2 (DataTable) recording source order                                   |
+
+## `first-error-document-order.feature` has no F-row, on purpose
+
+Every other fixture in this corpus pins one distinct fact about `@cucumber/gherkin@42.0.1`'s own
+behavior. This one doesn't — it combines two ALREADY-pinned facts (F7's Background-placeholder
+survival and F5's zero-step pickle) into a single file, purely to exercise `validateFeature`'s own
+cross-check ordering: an `UninterpolatedPlaceholder` on an earlier line must outrank a
+`ZeroStepScenario` on a later line. There is nothing new here for `upstream-pin.test.ts` to pin —
+only `Validate.test.ts` reads this fixture.
 
 ## Row F16 has no fixture file, on purpose
 

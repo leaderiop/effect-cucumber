@@ -43,10 +43,10 @@ bespoke parser or another library's internals.
 Monorepo under the `@effect-cucumber` npm scope. One package per module, not
 subpath exports of a single package.
 
-| Package                    | Description                                                                                                                                                                                                                                | Status              |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
-| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). No Effect-specific logic.                                                                                                          | Not yet implemented |
-| `@effect-cucumber/vitest`  | `describeFeature`, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, hooks, the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and re-exports `loadFeature`. The package most consumers install directly. | Not yet implemented |
+| Package                    | Description                                                                                                                                                                                                                                                                        | Status                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). Effect-native (`effect` peer dep, v4 only — [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)); no concrete platform runtime dependency. | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
+| `@effect-cucumber/vitest`  | `describeFeature`, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, hooks, the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and re-exports `loadFeature`. The package most consumers install directly.                                         | Not yet implemented                                    |
 
 ## Public API surface
 

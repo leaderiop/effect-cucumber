@@ -42,6 +42,8 @@
  * would be both an `import/no-cycle` violation and an `effect/no-import-from-barrel-package`
  * error.
  */
+import * as Arr from "effect/Array"
+import * as Option from "effect/Option"
 import {
   type AstRuleInfo,
   type AstScenarioInfo,
@@ -91,32 +93,51 @@ const outlineWithoutExamples = (uri: string, node: AstScenarioInfo): LoadFeature
   new LoadFeatureError({
     reason: "OutlineWithoutExamples",
     uri,
-    line: node.location.line,
+    line: Option.some(node.location.line),
     message: `${at(uri, node.location.line)}OutlineWithoutExamples: ${describeNode(node)} is declared with an `
       + `Outline keyword but has no Examples: block. It still compiles — to a single scenario whose step text `
       + `keeps its literal <placeholders> un-substituted — so it runs and passes instead of failing. Add an `
-      + `Examples: table with a header row and at least one body row, or change the keyword to a plain scenario.`
+      + `Examples: table with a header row and at least one body row, or change the keyword to a plain scenario.`,
+    cause: Option.none()
   })
 
 /**
- * F1 and F2 — an Outline whose `Examples:` block yielded no pickles.
+ * F1 and F2 — one `Examples:` block, among possibly several on the same Outline, that yielded no
+ * pickles.
  *
  * `[VERIFIED]`: an `Examples:` with no header row at all (F1), or a header row with no body rows
- * (F2), produces ZERO pickles and no upstream error. The AST node is simply orphaned, which is
- * why `Correlate.ts` deliberately keeps a missing `byScenarioId` key as a legal state — that
- * absence is the only available evidence, and swallowing it would destroy the finding.
+ * (F2), produces ZERO pickles for THAT block and no upstream error — independently of whether a
+ * sibling block on the same Outline compiles normally. Detection is therefore per block
+ * (`node.examplesRowCounts`, an AST-level count — see its own doc comment), not
+ * `produced.length === 0`: that per-scenario total is zero only when EVERY block is empty, so an
+ * Outline with one populated block and one empty one used to compile clean and drop the empty
+ * block's absence in total silence — the exact bug this per-block check exists to close. When the
+ * node is genuinely orphaned (every block empty), `Correlate.ts` still keeps the missing
+ * `byScenarioId` key as a legal state; that absence remains the corroborating evidence, just no
+ * longer the only signal this check depends on.
  */
-const emptyExamples = (uri: string, node: AstScenarioInfo): LoadFeatureError =>
-  new LoadFeatureError({
+const emptyExamples = (
+  uri: string,
+  node: AstScenarioInfo,
+  blockIndex: number,
+  blockCount: number,
+  line: number
+): LoadFeatureError => {
+  const which = blockCount === 1 ? "Its Examples: block" : `Its Examples: block ${blockIndex + 1} of ${blockCount}`
+  const others = blockCount === 1
+    ? ""
+    : " — even though this Outline's other Examples: block(s) compile normally, so this file still passes overall"
+  return new LoadFeatureError({
     reason: "EmptyExamples",
     uri,
-    line: node.location.line,
-    message: `${at(uri, node.location.line)}EmptyExamples: ${describeNode(node)} declares `
-      + `${node.examplesCount} Examples: block(s) but compiled to zero scenarios, so it never runs and no test `
-      + `reports it as missing. An Examples: block with no header row, or a header row with no body rows, `
-      + `produces no scenarios and no error. Give every Examples: block a header row and at least one body row, `
-      + `or delete the empty block.`
+    line: Option.some(line),
+    message: `${at(uri, line)}EmptyExamples: ${describeNode(node)}: ${which} compiled to zero scenarios, so it `
+      + `never runs and no test reports it as missing${others}. An Examples: block with no header row, or a `
+      + `header row with no body rows, produces no scenarios and no error. Give every Examples: block a header `
+      + `row and at least one body row, or delete the empty block.`,
+    cause: Option.none()
   })
+}
 
 /**
  * F4 — a plain Scenario keyword carrying an `Examples:` table.
@@ -131,11 +152,12 @@ const scenarioKeywordWithExamples = (uri: string, node: AstScenarioInfo): LoadFe
   new LoadFeatureError({
     reason: "ScenarioKeywordWithExamples",
     uri,
-    line: node.location.line,
+    line: Option.some(node.location.line),
     message: `${at(uri, node.location.line)}ScenarioKeywordWithExamples: ${describeNode(node)} uses a plain `
       + `scenario keyword but carries ${node.examplesCount} Examples: block(s). The compiler branches on the `
       + `presence of Examples: and never on the keyword, so this silently compiles as an Outline, one scenario `
-      + `per body row. Change the keyword to the Outline form for this language, or remove the Examples: table.`
+      + `per body row. Change the keyword to the Outline form for this language, or remove the Examples: table.`,
+    cause: Option.none()
   })
 
 /**
@@ -164,15 +186,22 @@ const zeroStepScenario = (uri: string, node: AstScenarioInfo, line: number): Loa
     + `passes without asserting anything. Add at least one step, or delete the scenario.`
   const description = node.description.trim()
   if (description === "") {
-    return new LoadFeatureError({ reason: "ZeroStepScenario", uri, line, message: base })
+    return new LoadFeatureError({
+      reason: "ZeroStepScenario",
+      uri,
+      line: Option.some(line),
+      message: base,
+      cause: Option.none()
+    })
   }
   return new LoadFeatureError({
     reason: "ZeroStepScenario",
     uri,
-    line,
+    line: Option.some(line),
     message: `${base}\n\nThis scenario has a description. A mistyped step keyword written before any valid `
       + `step is silently absorbed into the description instead of being reported, so if you meant to write a `
-      + `step here, it is in the text below — check it for a misspelled keyword:\n${node.description}`
+      + `step here, it is in the text below — check it for a misspelled keyword:\n${node.description}`,
+    cause: Option.none()
   })
 }
 
@@ -238,12 +267,13 @@ const duplicateScenarioName = (
   return new LoadFeatureError({
     reason: "DuplicateScenarioName",
     uri,
-    line,
+    line: Option.some(line),
     message: `${at(uri, line)}DuplicateScenarioName: ${scope} contains two scenarios named `
       + `${JSON.stringify(node.name)} — the first on line ${first.location.line}, this one on line ${line}. `
       + `Scenario names are how a scenario is matched to its registered step definitions, so a repeated name `
       + `is ambiguous with no correct runtime resolution. Rename one of them. Names only have to be unique `
-      + `within a scope: two different Rule: blocks may each contain a scenario of the same name.`
+      + `within a scope: two different Rule: blocks may each contain a scenario of the same name.`,
+    cause: Option.none()
   })
 }
 
@@ -404,10 +434,11 @@ const uninterpolatedPlaceholder = (
   return new LoadFeatureError({
     reason: "UninterpolatedPlaceholder",
     uri,
-    line,
+    line: Option.some(line),
     message: `${at(uri, line)}UninterpolatedPlaceholder: <${leftover.name}> is an Examples column of `
       + `${describeNode(node)}, but it is still present, un-substituted, in ${leftover.site} of the step on `
-      + `line ${line}. ${explanation} That text reads, in full:\n${leftover.content}`
+      + `line ${line}. ${explanation} That text reads, in full:\n${leftover.content}`,
+    cause: Option.none()
   })
 }
 
@@ -625,10 +656,28 @@ const astDetailOf = (document: GherkinDocument): AstDetail => {
 export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFeatureWarning> => {
   const { feature, index } = result
   const uri = feature.uri
-  const warnings: Array<LoadFeatureWarning> = []
   const ruleNames = new Map(index.astRules.map((rule) => [rule.id, rule.name]))
   /** Populated in document order, so the retained entry is always the FIRST occurrence. */
   const seenByScope = new Map<string, AstScenarioInfo>()
+  const detail = astDetailOf(feature.document)
+
+  // Group A's structural checks (F1-F6, F22) AND check alpha (F7/F8, rows that also throw) are
+  // ONE loop over astScenarios — itself already in document order, Correlate.ts's own guarantee.
+  // `[VERIFIED, and previously NOT the case]`: this used to be two separate passes over the same
+  // nodes, structural checks first and the placeholder scan second. That shape makes EVERY finding
+  // in the first pass outrank EVERY finding in the second pass regardless of line number — a
+  // ZeroStepScenario on line 12 always won over an UninterpolatedPlaceholder on line 4, silently
+  // breaking this module's own documented "first error in document order" contract whenever both
+  // exist in one file. One loop, one node at a time, is what actually delivers that contract:
+  // every throwing check for node N — structural AND alpha — runs, and can throw, before node
+  // N+1's checks are even evaluated. (Alpha's own findings are always at-or-after the node's own
+  // declaration line, so this ordering is also correct WITHIN one node, not only across nodes.)
+  //
+  // Check beta (F9) is the one non-throwing finding produced inside this loop; it is collected
+  // into its own local array — `throw` and `push` are genuinely two branches of the SAME scan
+  // (alpha vs. beta on the same token), so an imperative loop stays the right shape here, not an
+  // `Array` combinator — so the concatenation below stays a single, flat expression.
+  const unknownPlaceholderWarnings: Array<LoadFeatureWarning> = []
 
   for (const node of index.astScenarios) {
     const produced = index.byScenarioId.get(node.id) ?? []
@@ -636,8 +685,19 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
 
     if (isOutline && node.examplesCount === 0) {
       throw outlineWithoutExamples(uri, node)
-    } else if (isOutline && produced.length === 0) {
-      throw emptyExamples(uri, node)
+    }
+
+    // Per BLOCK, not per scenario: `produced.length === 0` only ever catches an Outline whose
+    // Examples blocks are ALL empty. `examplesRowCounts` carries the same F1/F2 zero-rows
+    // signature per individual block, so one empty block among several siblings is caught too,
+    // instead of being silently absorbed by a sibling block's pickles keeping `produced.length`
+    // above zero. `findIndex`, not `some`: the FIRST empty block in source order is what gets
+    // named in the thrown error, for the same document-order determinism this whole loop exists
+    // to preserve.
+    const emptyBlockIndex = isOutline ? node.examplesRowCounts.findIndex((count) => count === 0) : -1
+    if (emptyBlockIndex !== -1) {
+      const blockLine = detail.examplesLines.get(node.id)?.[emptyBlockIndex] ?? node.location.line
+      throw emptyExamples(uri, node, emptyBlockIndex, node.examplesCount, blockLine)
     } else if (!isOutline && node.examplesCount > 0 && isScenarioKeyword(index.language, node.keyword)) {
       // `isScenarioKeyword` rather than the bare negative of `isOutlineKeyword`: a dialect may
       // carry keyword forms that are neither, and this error accuses the author of using the
@@ -658,71 +718,89 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
     } else {
       throw duplicateScenarioName(uri, node, first, scopeLabel(node.ruleId, ruleNames))
     }
-  }
 
-  // Checks alpha and beta — the leftover-placeholder scan (rows F7, F8 and F9). Check alpha is
-  // PARSE-03 itself.
-  //
-  // One scan, one regular expression, two verdicts. A token that names one of this Outline's own
-  // columns is an ERROR (alpha); any other token found in the same places is a WARNING (beta).
-  //
-  // Two restrictions are load-bearing, and dropping either one turns this from an exact check
-  // into a source of rejected-but-valid feature files (threat T-02-18).
-  //
-  // 1. Only Outline-correlated pickles are scanned. `[VERIFIED]`: `the assertion 2 < 3 holds`,
-  //    `the html is <div>hello</div>` and `an email <a@b.com>` all survive `compile()` unchanged
-  //    and are perfectly valid Gherkin. A plain Scenario has no Examples columns, so it is never
-  //    scanned, and that single exclusion removes the whole false-positive class.
-  // 2. Only a token naming one of THIS Outline's own columns is a hit. Inside an Outline, writing
-  //    a column name is proof the author expected a substitution, so a hit has no innocent
-  //    reading.
-  for (const node of index.astScenarios) {
+    // Check alpha and beta — the leftover-placeholder scan (rows F7, F8 and F9). Check alpha is
+    // PARSE-03 itself. One scan, one regular expression, two verdicts: a token naming one of THIS
+    // Outline's own Examples columns is an ERROR (alpha, throws); any other token found in the
+    // same places is a WARNING (beta, accumulated).
+    //
+    // Two restrictions are load-bearing, and dropping either one turns this from an exact check
+    // into a source of rejected-but-valid feature files (threat T-02-18).
+    //
+    // 1. Only Outline-correlated pickles are scanned. `[VERIFIED]`: `the assertion 2 < 3 holds`,
+    //    `the html is <div>hello</div>` and `an email <a@b.com>` all survive `compile()` unchanged
+    //    and are perfectly valid Gherkin. A plain Scenario has no Examples columns, so it is never
+    //    scanned, and that single exclusion removes the whole false-positive class.
+    // 2. Only a token naming one of THIS Outline's own columns is a hit. Inside an Outline,
+    //    writing a column name is proof the author expected a substitution, so a hit has no
+    //    innocent reading.
     const columns = index.exampleColumns.get(node.id)
-    if (columns === undefined || columns.size === 0 || !isOutlineKeyword(index.language, node.keyword)) {
-      continue
-    }
-    for (const pickle of index.byScenarioId.get(node.id) ?? []) {
-      for (const leftover of scanPlaceholders(pickle)) {
-        const info = astStepOf(leftover.step, index.byStepId)
-        if (columns.has(leftover.name)) {
-          throw uninterpolatedPlaceholder(uri, node, leftover, info)
+    if (columns !== undefined && columns.size > 0 && isOutline) {
+      for (const pickle of produced) {
+        for (const leftover of scanPlaceholders(pickle)) {
+          const info = astStepOf(leftover.step, index.byStepId)
+          if (columns.has(leftover.name)) {
+            throw uninterpolatedPlaceholder(uri, node, leftover, info)
+          }
+          unknownPlaceholderWarnings.push(unknownPlaceholder(uri, node, leftover, info, columns))
         }
-        warnings.push(unknownPlaceholder(uri, node, leftover, info, columns))
       }
     }
   }
 
-  // The remaining Group C findings (F11, F13, F14). None of these throws.
-  const detail = astDetailOf(feature.document)
+  // The remaining Group C findings (F11, F13, F14). None of these throws, which is exactly what
+  // makes them clean `Array` combinator shapes: every one is "zero or one finding per element",
+  // i.e. `Array.map` to `Option<LoadFeatureWarning>` then `Array.getSomes` to drop the `None`s —
+  // confirmed against the installed `effect@4.0.0-rc.112` to behave correctly. `Array.filterMap`
+  // would express this in one call instead of two, but is confirmed BROKEN in this exact build
+  // (silently returns `[]` regardless of input — reproduced in isolation before writing this),
+  // so `map` + `getSomes` is used throughout instead, not `filterMap`. `detail` was already
+  // computed above, before the main loop, since the per-block EmptyExamples check needs it too.
 
-  for (const node of index.astScenarios) {
+  const scenarioWarnings = Arr.flatMap(index.astScenarios, (node) => {
     const blockLines = detail.examplesLines.get(node.id) ?? []
-    for (const [blockIndex, header] of node.examplesHeaders.entries()) {
-      for (const column of duplicatedColumns(header)) {
-        warnings.push(duplicateExamplesColumn(uri, node, column, blockLines[blockIndex] ?? node.location.line))
-      }
-    }
-    if (node.description.trim() !== "") {
-      warnings.push(suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line))
-    }
-  }
+    const columnWarnings = Arr.flatMap(
+      [...node.examplesHeaders.entries()],
+      ([blockIndex, header]) =>
+        Arr.map(
+          duplicatedColumns(header),
+          (column) => duplicateExamplesColumn(uri, node, column, blockLines[blockIndex] ?? node.location.line)
+        )
+    )
+    const swallowedStepWarning = node.description.trim() === ""
+      ? []
+      : [suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line)]
+    return [...columnWarnings, ...swallowedStepWarning]
+  })
 
-  for (const rule of index.astRules) {
-    if (rule.scenarioIds.length === 0) {
-      warnings.push(emptyRule(uri, rule))
-    }
-  }
+  const emptyRuleWarnings = Arr.getSomes(
+    Arr.map(index.astRules, (rule) => rule.scenarioIds.length === 0 ? Option.some(emptyRule(uri, rule)) : Option.none())
+  )
 
-  for (const background of detail.backgrounds) {
-    if (background.description.trim() !== "") {
-      const label = describeBlock(background.keyword, background.name)
-      warnings.push(suspectedSwallowedStep(uri, label, background.description, background.line))
-    }
-  }
+  const backgroundWarnings = Arr.getSomes(
+    Arr.map(
+      detail.backgrounds,
+      (background) =>
+        background.description.trim() === ""
+          ? Option.none()
+          : Option.some(
+            suspectedSwallowedStep(
+              uri,
+              describeBlock(background.keyword, background.name),
+              background.description,
+              background.line
+            )
+          )
+    )
+  )
 
   // Deterministic document order, so a test can assert the array by position rather than by
   // searching it. `Array.prototype.sort` is stable, so two findings on one line keep the order
-  // they were found in.
-  warnings.sort((left, right) => (left.line ?? 0) - (right.line ?? 0))
+  // they were found in — `Array.sortBy`/`Order.combineAll` would be the `effect/Array` way to
+  // express this, but `Order.combineAll` is confirmed to throw in this exact build (reproduced
+  // in isolation), so the native, already-correct `.sort()` is kept rather than swapped for a
+  // broken replacement.
+  const warnings = [...unknownPlaceholderWarnings, ...scenarioWarnings, ...emptyRuleWarnings, ...backgroundWarnings]
+  warnings.sort((left, right) => Option.getOrElse(left.line, () => 0) - Option.getOrElse(right.line, () => 0))
   return warnings
 }

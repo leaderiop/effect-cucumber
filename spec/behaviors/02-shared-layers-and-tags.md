@@ -85,7 +85,10 @@ REQUIREMENT: Every tag on a Scenario (including inherited Feature/Rule/
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 
-const feature = loadFeature("./accounts.feature")
+// @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already wired to a
+// shared NodeFileSystem.layer and defaulting ParameterTypeStore — distinct from
+// @effect-cucumber/gherkin's own Effect-returning loadFeature (see BEH-EC-001).
+const feature = await loadFeature("./accounts.feature")
 // accounts.feature:
 //   Background:
 //     Given the database is empty
