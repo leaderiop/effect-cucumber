@@ -53,6 +53,7 @@ See `spec/roadmap.md` for what's actually built.
 | [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md) | Official cucumber parser packages | — |
 | [ADR-EC-012](decisions/012-effect-v4-beta.md) | Target Effect v4 (beta) | — |
 | [ADR-EC-013](decisions/013-effect-cucumber-npm-scope.md) | One package per module, `@effect-cucumber` scope | — |
+| [ADR-EC-014](decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md) | `loadFeature` consumes both the `GherkinDocument` and compiled Pickles | — |
 
 ## §4 Test file map
 

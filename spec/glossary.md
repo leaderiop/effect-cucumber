@@ -34,10 +34,12 @@ See [BEH-EC-009](behaviors/03-rules-outlines-and-testclock.md).
 ## Scenario Outline
 
 A Scenario templated over an `Examples` table. `<placeholder>` tokens are
-substituted into the step text by the Gherkin parser *before* step matching,
+substituted into step text by `@cucumber/gherkin`'s `compile()` step (not by
+parsing alone — see [ADR-EC-014](decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md)),
 so `{int}`/`{float}` in a step pattern already coerce the substituted example
-value — no separate typed "example row" mechanism is needed for the common
-case. See [BEH-EC-010](behaviors/03-rules-outlines-and-testclock.md).
+value by the time `loadFeature` hands it to the DSL — no separate typed
+"example row" mechanism is needed for the common case. See
+[BEH-EC-010](behaviors/03-rules-outlines-and-testclock.md).
 
 ## Step
 

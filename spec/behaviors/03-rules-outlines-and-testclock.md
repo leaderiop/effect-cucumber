@@ -29,12 +29,15 @@ REQUIREMENT: A service contributed by extraLayer MUST be usable by a step
 
 ## BEH-EC-010: Scenario Outline Examples are typed for free
 
-> **See:** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md)
+> **See:** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md), [ADR-EC-014](../decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md)
 
 `<placeholder>` tokens in a Scenario Outline are substituted into the step
-text by the Gherkin parser *before* cucumber-expression matching happens, so
-a pattern like `{int}%` or `{float}` already coerces the substituted example
-value — the same type-checking as any regular step.
+text by `@cucumber/gherkin`'s `compile()` step (correlated back to the
+Scenario Outline's structure by `loadFeature`, per ADR-EC-014 — not by
+`Parser.parse()` alone) before cucumber-expression matching happens, so by
+the time a step function runs, a pattern like `{int}%` or `{float}` already
+coerces the substituted example value — the same type-checking as any
+regular step.
 
 ```
 REQUIREMENT: A Scenario Outline row value referenced from inside a step's

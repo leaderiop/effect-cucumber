@@ -41,3 +41,6 @@ entries:
   - id: "ADR-EC-013"
     file: "013-effect-cucumber-npm-scope.md"
     title: "One package per module under the @effect-cucumber npm scope"
+  - id: "ADR-EC-014"
+    file: "014-loadfeature-consumes-gherkindocument-and-pickles.md"
+    title: "loadFeature consumes both the GherkinDocument and compiled Pickles"
