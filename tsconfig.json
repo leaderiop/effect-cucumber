@@ -1,0 +1,7 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/gherkin" },
+    { "path": "packages/vitest" }
+  ]
+}

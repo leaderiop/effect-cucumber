@@ -1,0 +1,16 @@
+{
+  "name": "effect-cucumber",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.26.1",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "verify:spec": "bash spec/scripts/verify-traceability.sh"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.0"
+  }
+}
