@@ -41,11 +41,16 @@
     }
   },
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "test": "vitest run"
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
     "@cucumber/cucumber-expressions": "^20.1.0"
+  },
+  "devDependencies": {
+    "vitest": "catalog:",
+    "@types/node": "catalog:"
   }
 }
