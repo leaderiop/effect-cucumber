@@ -17,7 +17,7 @@ composability with the rest of the Effect ecosystem.
 A step is `(...params: Params) => Effect<A, E, R>`. No `ctx` parameter.
 
 ```ts
-Given('I have {int} apples', function* (count: number) {
+Given("I have {int} apples", function*(count: number) {
   const world = yield* World
   yield* Ref.update(world.apples, () => count)
 })

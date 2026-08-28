@@ -38,7 +38,7 @@ generated `it.effect(...)` call — never memoized or reused across Scenarios,
 mirroring `@effect/vitest`'s own `it.effect` semantics.
 
 **Implication**: a `Given`/`When`/`Then` author can rely on a clean World for
-every Scenario without writing manual reset logic, *unless* that Scenario
+every Scenario without writing manual reset logic, _unless_ that Scenario
 opts into a `shared` Layer — in which case decision
 [ADR-EC-006](decisions/006-two-layer-scopes-only.md) makes the author
 responsible for resetting shared state themselves (e.g. in `Background`).

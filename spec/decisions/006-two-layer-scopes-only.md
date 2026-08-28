@@ -18,8 +18,8 @@ Exactly two Layer scopes exist:
 
 ```ts
 describeFeature(feature, {
-  shared: Database.layer,      // built once, via @effect/vitest's `layer(...)`
-  perScenario: World.layer,    // fresh per Scenario, merged with `shared`
+  shared: Database.layer, // built once, via @effect/vitest's `layer(...)`
+  perScenario: World.layer // fresh per Scenario, merged with `shared`
 }, define)
 ```
 

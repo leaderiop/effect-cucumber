@@ -106,7 +106,7 @@ whole) rather than to restate a different conclusion.
 > `compile()` substitutes placeholders is **not universally true** — it has
 > one specific, undocumented exception. `compileScenarioOutline` pushes a
 > Scenario Outline's own `Background` steps with **empty `variableCells`**,
-> so a `<placeholder>` inside a *Background* step nested under a Scenario
+> so a `<placeholder>` inside a _Background_ step nested under a Scenario
 > Outline is never interpolated — it stays a literal, un-interpolated string
 > in every Examples row's Pickle. A step author who writes a Background step
 > referencing an Outline's Examples column would see a confusing "no step

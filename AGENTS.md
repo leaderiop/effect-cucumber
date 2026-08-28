@@ -23,7 +23,7 @@ takes over in the normal direction — a code change that isn't reflected in
 `spec/` in the same commit is incomplete, not merely undocumented.
 
 Two gates are described in `spec/process/definitions-of-done.md` as **planned**,
-not yet wired: a script that extracts and type-checks every ` ```typescript `
+not yet wired: a script that extracts and type-checks every `` ```typescript ``
 fence under `spec/behaviors/` against the real API, and
 `spec/scripts/verify-traceability.sh`, which already exists and can be run
 today (`bash spec/scripts/verify-traceability.sh`) — it checks `spec/`'s own
@@ -35,12 +35,12 @@ no broken relative links) independent of whether any code exists.
 `spec/` uses three TypeScript fence languages, and the distinction is
 load-bearing:
 
-- ` ```typescript ` — a **runnable example**. Once `packages/*` exists, this is
+- `` ```typescript `` — a **runnable example**. Once `packages/*` exists, this is
   extracted and compiled against the real API by a doc-examples check; it must
   import what it uses.
-- ` ```tsx ` — a runnable example **containing JSX**. Unlikely to be needed here
+- `` ```tsx `` — a runnable example **containing JSX**. Unlikely to be needed here
   (this is a headless testing library), kept for parity with the convention.
-- ` ```ts ` — an **API signature listing or fragment**. Reference material,
+- `` ```ts `` — an **API signature listing or fragment**. Reference material,
   not compiled.
 
 Prefer `typescript` wherever an example can be made to compile once there's an
@@ -52,9 +52,9 @@ are written as `typescript` fences with a comment noting they're pre-implementat
 Submodule namespace imports, matching Effect's own convention:
 
 ```ts
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Context from "effect/Context";
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 ```
 
 ## 4. Say only what is true

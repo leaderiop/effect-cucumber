@@ -26,7 +26,7 @@ scope (`Rule`'s callback in that example only destructures
 `{ ScenarioOutline, Scenario }`). Cross-referencing every prior worked
 example surfaced that `Scenario`'s callback shape was never actually decided
 consistently: some examples rely on `Given`/`When`/`Then` being closed over
-from the *outer* `describeFeature` scope; `ScenarioOutline` receives them as
+from the _outer_ `describeFeature` scope; `ScenarioOutline` receives them as
 an explicit callback parameter; `spec/behaviors/03`'s broken example does
 neither.
 
@@ -39,16 +39,16 @@ Gherkin text, exactly like every other step in this library:
 
 ```ts
 Background(({ Given }) => {
-  Given('the database is empty', function* () {
+  Given("the database is empty", function*() {
     yield* (yield* Database).clear
   })
 })
 
-Scenario('Creating a user', ({ When, Then }) => {
-  When('I create a user named {string}', function* (name: string) {
+Scenario("Creating a user", ({ When, Then }) => {
+  When("I create a user named {string}", function*(name: string) {
     yield* (yield* Database).create(name)
   })
-  Then('the database has {int} user', function* (expected: number) {
+  Then("the database has {int} user", function*(expected: number) {
     expect(yield* (yield* Database).count).toBe(expected)
   })
 })
@@ -63,7 +63,7 @@ The closure-capture form (destructuring `Given`/`When`/`Then` from
 `describeFeature`'s or `Rule`'s outer dsl and using them directly inside a
 `Scenario`/`Background` body, as several earlier worked examples did) remains
 valid — nothing about the scope-stack architecture requires the dsl-parameter
-form — but it is no longer the *only* form shown, and every worked example in
+form — but it is no longer the _only_ form shown, and every worked example in
 `spec/behaviors/` is corrected to consistently register Background's actual
 step text rather than skip matching entirely.
 

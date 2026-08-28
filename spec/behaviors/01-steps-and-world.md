@@ -32,7 +32,7 @@ REQUIREMENT: loadFeature MUST parse Gherkin via @cucumber/gherkin
 export const describeFeature: <R, E>(
   feature: ParsedFeature,
   layer: Layer.Layer<R, E, never> | { shared: Layer.Layer<any, any, never>; perScenario: Layer.Layer<R, E, never> },
-  define: (dsl: FeatureDsl<R>) => void,
+  define: (dsl: FeatureDsl<R>) => void
 ) => void
 ```
 
@@ -52,7 +52,7 @@ type StepFn<Params extends unknown[], A, E, R> = (...params: Params) => Effect.E
 
 export const Given: <Params extends unknown[], A, E, R>(
   pattern: string,
-  fn: StepFn<Params, A, E, R> | ((...params: Params) => Generator<any, A, any>),
+  fn: StepFn<Params, A, E, R> | ((...params: Params) => Generator<any, A, any>)
 ) => void
 // When, Then, And, But share this signature.
 ```
@@ -97,15 +97,18 @@ REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
 
 ```typescript
 // Pre-implementation reference — not yet compiled against a real API.
-import { describeFeature, loadFeature } from '@effect-cucumber/vitest'
-import { Context, Effect, Layer, Ref } from 'effect'
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { Context, Effect, Layer, Ref } from "effect"
 
-const feature = loadFeature('./apples.feature')
+const feature = loadFeature("./apples.feature")
 
-class World extends Context.Service<World, { apples: Ref.Ref<number> }>()('World') {
-  static readonly layer = Layer.effect(this, Effect.gen(function* () {
-    return World.of({ apples: yield* Ref.make(0) })
-  }))
+class World extends Context.Service<World, { apples: Ref.Ref<number> }>()("World") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return World.of({ apples: yield* Ref.make(0) })
+    })
+  )
 }
 
 describeFeature(feature, World.layer, ({ Scenario }) => {
@@ -113,18 +116,18 @@ describeFeature(feature, World.layer, ({ Scenario }) => {
   // ScenarioOutline and Rule — the outer-scope closure form also works
   // (destructuring Given/When/Then from describeFeature's own dsl above),
   // but the dsl-parameter form is shown here as the default.
-  Scenario('Eating apples', ({ Given, When, Then }) => {
-    Given('I have {int} apples', function* (n: number) {
+  Scenario("Eating apples", ({ Given, When, Then }) => {
+    Given("I have {int} apples", function*(n: number) {
       const { apples } = yield* World
       yield* Ref.set(apples, n)
     })
 
-    When('I eat {int} apples', function* (n: number) {
+    When("I eat {int} apples", function*(n: number) {
       const { apples } = yield* World
       yield* Ref.update(apples, (a) => a - n)
     })
 
-    Then('I have {int} apples left', function* (expected: number) {
+    Then("I have {int} apples left", function*(expected: number) {
       const { apples } = yield* World
       const actual = yield* Ref.get(apples)
       expect(actual).toBe(expected)

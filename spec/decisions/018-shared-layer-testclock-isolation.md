@@ -18,7 +18,7 @@ reproduced directly: `@effect/vitest`'s `layer(L)(...)` builds
 `Layer.provideMerge(L, TestEnv)` once and memoizes it for the whole block —
 by design, since that memoization is the entire point of `shared` (see
 [ADR-EC-006](006-two-layer-scopes-only.md)). But it means `TestEnv`,
-including `TestClock`, is *also* built once and shared. One Scenario's
+including `TestClock`, is _also_ built once and shared. One Scenario's
 `TestClock.adjust("1 hour")` leaks into every subsequent Scenario in that
 Feature — Scenario execution order becomes semantically load-bearing, and a
 suite that passes run as a whole can fail under `-t` filtering (which changes
@@ -33,9 +33,9 @@ own fresh `TestEnv` explicitly:
 ```ts
 layer(sharedLayer, { excludeTestServices: true })((it) => {
   it.effect(scenarioName, () =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       yield* scenarioStepsEffect
-    }).pipe(Effect.provide(TestEnv)))  // fresh per Scenario, not from the memoized shared layer
+    }).pipe(Effect.provide(TestEnv))) // fresh per Scenario, not from the memoized shared layer
 })
 ```
 
@@ -48,7 +48,7 @@ behavior exactly.
 
 **Positive**:
 
-- `TestClock` composes transparently on *both* Layer scopes, not just the
+- `TestClock` composes transparently on _both_ Layer scopes, not just the
   default one — the guarantee in `spec/overview.md`/BEH-EC-012 becomes
   actually true rather than true-with-an-unstated-exception.
 - No loss of the `shared` Layer's core benefit — the expensive resource

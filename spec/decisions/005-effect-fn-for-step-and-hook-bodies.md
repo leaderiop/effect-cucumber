@@ -5,11 +5,11 @@
 
 ## Context
 
-When a step fails, the failure's stack trace/message should say *which*
+When a step fails, the failure's stack trace/message should say _which_
 Given/When/Then (or hook) failed. The initial design wrapped each step body
 with a manual `Effect.withSpan(stepText)` around an `Effect.gen(function* () {...})`.
 `Effect.fn(name)(function* (...args) {...})` already provides a named tracing
-span *and* improved stack traces, and its output shape —
+span _and_ improved stack traces, and its output shape —
 `(...params) => Effect<A, E, R>` — is exactly a step definition's shape, making
 the manual `withSpan` wrap redundant.
 
@@ -22,7 +22,7 @@ text for steps, the hook's own name (`"Before"`, `"After"`, ...) for hooks,
 since a hook has no per-call step text to use:
 
 ```ts
-Given('I have {int} apples', function* (n: number) {
+Given("I have {int} apples", function*(n: number) {
   const { apples } = yield* World
   yield* Ref.set(apples, n)
 })
@@ -48,7 +48,7 @@ accepts either form.
 
 **Negative**:
 
-- `BeforeStep`/`AfterStep` get one span per hook *definition*
+- `BeforeStep`/`AfterStep` get one span per hook _definition_
   (`"BeforeStep"`/`"AfterStep"`), not one per step invocation — the current
   step's text isn't automatically on the span; a hook author wanting that must
   call `Effect.annotateCurrentSpan({ step: stepText })` themselves inside the

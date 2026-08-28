@@ -21,23 +21,23 @@ exists, this table must be the literal, in-order list of commands a single
 CI cannot drift apart. Per `AGENTS.md` §4, don't mark a row "passing" here
 until it's true.
 
-| Step | Command (planned) | Enforces |
-| ---- | ------------------ | -------- |
-| 1 | `tsc -b` | Type-checks sources and tests |
-| 2 | lint | House style |
-| 3 | `vitest run` | Unit + `@effect/vitest` tests |
-| 4 | Cucumber acceptance suite | `@REQ-EC-NNN`-tagged `.feature` scenarios pass — this library dogfooding itself |
-| 5 | doc-examples check | Every ` ```typescript `/` ```tsx ` fence under `spec/` compiles against the real API |
-| 6 | `bash spec/scripts/verify-traceability.sh --strict` | Spec self-consistency |
-| 7 | coverage thresholds | See `spec/traceability.md` §6 |
+| Step | Command (planned)                                   | Enforces                                                                                 |
+| ---- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1    | `tsc -b`                                            | Type-checks sources and tests                                                            |
+| 2    | lint                                                | House style                                                                              |
+| 3    | `vitest run`                                        | Unit + `@effect/vitest` tests                                                            |
+| 4    | Cucumber acceptance suite                           | `@REQ-EC-NNN`-tagged `.feature` scenarios pass — this library dogfooding itself          |
+| 5    | doc-examples check                                  | Every `` ```typescript ``/`` ```tsx `` fence under `spec/` compiles against the real API |
+| 6    | `bash spec/scripts/verify-traceability.sh --strict` | Spec self-consistency                                                                    |
+| 7    | coverage thresholds                                 | See `spec/traceability.md` §6                                                            |
 
 ## Test pyramid (planned)
 
-| Level | Tool | Convention |
-| ----- | ---- | ---------- |
-| Unit | `@effect/vitest` (`it.effect`, `it.layer`) | `packages/*/test/*.test.ts` |
-| Type-level | a type-testing tool (tstyche or equivalent — not yet chosen) | `packages/*/test/*.test-d.ts` |
-| Acceptance | `@effect-cucumber/vitest` itself, dogfooded | `.feature` files tagged `@REQ-EC-NNN` |
+| Level      | Tool                                                         | Convention                            |
+| ---------- | ------------------------------------------------------------ | ------------------------------------- |
+| Unit       | `@effect/vitest` (`it.effect`, `it.layer`)                   | `packages/*/test/*.test.ts`           |
+| Type-level | a type-testing tool (tstyche or equivalent — not yet chosen) | `packages/*/test/*.test-d.ts`         |
+| Acceptance | `@effect-cucumber/vitest` itself, dogfooded                  | `.feature` files tagged `@REQ-EC-NNN` |
 
 ## What "done" means for a spec doc
 

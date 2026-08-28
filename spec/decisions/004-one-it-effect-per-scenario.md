@@ -19,9 +19,9 @@ Each Scenario compiles to exactly one `it.effect` call:
 
 ```ts
 it.effect(scenarioName, () =>
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     yield* backgroundStepsEffect
-    yield* scenarioStepsEffect   // sequential yield*
+    yield* scenarioStepsEffect // sequential yield*
   }).pipe(Effect.provide(layer)))
 ```
 

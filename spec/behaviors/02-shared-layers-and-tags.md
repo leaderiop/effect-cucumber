@@ -82,10 +82,10 @@ REQUIREMENT: Every tag on a Scenario (including inherited Feature/Rule/
 
 ```typescript
 // Pre-implementation reference — not yet compiled against a real API.
-import { describeFeature, loadFeature } from '@effect-cucumber/vitest'
-import { Context, Effect, Layer, Option, Ref, Schema } from 'effect'
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 
-const feature = loadFeature('./accounts.feature')
+const feature = loadFeature("./accounts.feature")
 // accounts.feature:
 //   Background:
 //     Given the database is empty
@@ -97,8 +97,8 @@ const feature = loadFeature('./accounts.feature')
 //     When I delete a user named "Ghost"
 //     Then the operation fails with "not found"
 
-class DatabaseError extends Schema.TaggedError<DatabaseError>()('DatabaseError', {
-  message: Schema.String,
+class DatabaseError extends Schema.TaggedError<DatabaseError>()("DatabaseError", {
+  message: Schema.String
 }) {}
 
 // Shared per-Feature: one in-memory "database" for every Scenario in this file
@@ -107,29 +107,40 @@ class Database extends Context.Service<Database, {
   readonly delete: (name: string) => Effect.Effect<void, DatabaseError>
   readonly count: Effect.Effect<number>
   readonly clear: Effect.Effect<void>
-}>()('Database') {
-  static readonly layer = Layer.effect(this, Effect.gen(function* () {
-    const users = yield* Ref.make<ReadonlySet<string>>(new Set())
-    return Database.of({
-      create: (name) => Ref.update(users, (s) => new Set([...s, name])),
-      delete: (name) => Effect.gen(function* () {
-        const current = yield* Ref.get(users)
-        if (!current.has(name)) return yield* new DatabaseError({ message: 'not found' })
-        yield* Ref.update(users, (s) => { const next = new Set(s); next.delete(name); return next })
-      }),
-      count: Effect.map(Ref.get(users), (s) => s.size),
-      clear: Ref.set(users, new Set()),
+}>()("Database") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      const users = yield* Ref.make<ReadonlySet<string>>(new Set())
+      return Database.of({
+        create: (name) => Ref.update(users, (s) => new Set([...s, name])),
+        delete: (name) =>
+          Effect.gen(function*() {
+            const current = yield* Ref.get(users)
+            if (!current.has(name)) return yield* new DatabaseError({ message: "not found" })
+            yield* Ref.update(users, (s) => {
+              const next = new Set(s)
+              next.delete(name)
+              return next
+            })
+          }),
+        count: Effect.map(Ref.get(users), (s) => s.size),
+        clear: Ref.set(users, new Set())
+      })
     })
-  }))
+  )
 }
 
 // Per-Scenario: fresh every Scenario, holds the last caught error for "Then it fails" steps
 class World extends Context.Service<World, {
   readonly lastError: Ref.Ref<Option.Option<DatabaseError>>
-}>()('World') {
-  static readonly layer = Layer.effect(this, Effect.gen(function* () {
-    return World.of({ lastError: yield* Ref.make(Option.none()) })
-  }))
+}>()("World") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return World.of({ lastError: yield* Ref.make(Option.none()) })
+    })
+  )
 }
 
 describeFeature(
@@ -141,41 +152,41 @@ describeFeature(
     // matched against the literal "Given the database is empty" text from
     // accounts.feature, exactly like any other step.
     Background(({ Given }) => {
-      Given('the database is empty', function* () {
+      Given("the database is empty", function*() {
         yield* (yield* Database).clear
       })
     })
 
-    Scenario('Creating a user', ({ When, Then }) => {
-      When('I create a user named {string}', function* (name: string) {
+    Scenario("Creating a user", ({ When, Then }) => {
+      When("I create a user named {string}", function*(name: string) {
         yield* (yield* Database).create(name)
       })
 
-      Then('the database has {int} user', function* (expected: number) {
+      Then("the database has {int} user", function*(expected: number) {
         expect(yield* (yield* Database).count).toBe(expected)
       })
     })
 
     // No `.skip` here in code — the @skip tag in accounts.feature is what
     // routes this Scenario to `it.effect.skip`.
-    Scenario('Deleting a missing user', ({ When, Then }) => {
-      When('I delete a user named {string}', function* (name: string) {
+    Scenario("Deleting a missing user", ({ When, Then }) => {
+      When("I delete a user named {string}", function*(name: string) {
         const world = yield* World
         yield* (yield* Database).delete(name).pipe(
-          Effect.catchTag('DatabaseError', (e) => Ref.set(world.lastError, Option.some(e))),
+          Effect.catchTag("DatabaseError", (e) => Ref.set(world.lastError, Option.some(e)))
         )
       })
 
-      Then('the operation fails with {string}', function* (message: string) {
+      Then("the operation fails with {string}", function*(message: string) {
         const error = yield* Ref.get((yield* World).lastError)
         expect(Option.isSome(error) && error.value.message).toBe(message)
       })
     })
-  },
+  }
 )
 ```
 
-`Database.clear` in Background running per-Scenario against a *shared* Layer
+`Database.clear` in Background running per-Scenario against a _shared_ Layer
 is exactly why `clear` exists on `Database` at all — without it, "Creating a
 user" would leak into "Deleting a missing user"'s count.
 

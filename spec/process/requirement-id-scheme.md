@@ -8,12 +8,12 @@ identifiers when multiple specs are open side by side (e.g. alongside
 
 ## ID families
 
-| Prefix | Meaning | Lives in |
-| ------ | ------- | -------- |
-| `BEH-EC-NNN` | Behavior — a testable contract | `spec/behaviors/*.md` |
-| `INV-EC-NNN` | Invariant — a property that holds for every execution | `spec/invariants.md` |
-| `ADR-EC-NNN` | Decision — the *why* behind a design choice | `spec/decisions/NNN-slug.md` |
-| `REQ-EC-NNN` | Acceptance requirement — a tag on a `.feature` file in the library's own test suite | `spec/traceability.md` §5 |
+| Prefix       | Meaning                                                                             | Lives in                     |
+| ------------ | ----------------------------------------------------------------------------------- | ---------------------------- |
+| `BEH-EC-NNN` | Behavior — a testable contract                                                      | `spec/behaviors/*.md`        |
+| `INV-EC-NNN` | Invariant — a property that holds for every execution                               | `spec/invariants.md`         |
+| `ADR-EC-NNN` | Decision — the _why_ behind a design choice                                         | `spec/decisions/NNN-slug.md` |
+| `REQ-EC-NNN` | Acceptance requirement — a tag on a `.feature` file in the library's own test suite | `spec/traceability.md` §5    |
 
 ## Rules
 

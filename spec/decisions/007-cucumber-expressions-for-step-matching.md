@@ -11,7 +11,7 @@ extracted (`{int}`, `{string}`, custom types via `defineParameterExpression`).
 semantics. Reimplementing a bespoke matcher would be pure risk for no benefit
 — this is a solved, standardized problem (see
 [ADR-EC-011](011-official-cucumber-parser-packages.md) for the related
-question of *which* package supplies it).
+question of _which_ package supplies it).
 
 ## Decision
 
@@ -24,7 +24,7 @@ pattern syntax is introduced.
 **Positive**:
 
 - Migrating an existing vitest-cucumber suite to this library is a rewrite of
-  step *bodies* into Effects — not a rewrite of feature files or step
+  step _bodies_ into Effects — not a rewrite of feature files or step
   patterns.
 - `Scenario Outline`/`Examples` values substituted into step text are already
   coerced to the right type by the pattern itself (`{int}`, `{float}`) — no
@@ -86,7 +86,7 @@ syntax.
 > "re-registered on every single call" — which is fine functionally, but the
 > original wording didn't say that, and a naive top-level
 > `defineParameterExpression`-style call (run once, module-load time) would
-> populate a registry that no longer exists by the time a *second*
+> populate a registry that no longer exists by the time a _second_
 > `loadFeature()` call needs one.
 >
 > The actual fix: custom parameter types are **data**, not a live registry.
@@ -95,7 +95,7 @@ syntax.
 > nothing touches a `ParameterTypeRegistry` at definition time. Each
 > `loadFeature()` call constructs a **fresh** `ParameterTypeRegistry`
 > (safely re-acquiring the 11 built-ins with no risk of a duplicate-name
-> throw, since nothing has been registered into *this* instance yet) and
+> throw, since nothing has been registered into _this_ instance yet) and
 > **replays** every recorded custom-type record into it via `new
 > ParameterType(...)` + `registry.defineParameterType(...)`. Definitions are
 > permanent, ordinary data — safe to add at any point before any

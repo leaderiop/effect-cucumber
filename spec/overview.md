@@ -43,10 +43,10 @@ bespoke parser or another library's internals.
 Monorepo under the `@effect-cucumber` npm scope. One package per module, not
 subpath exports of a single package.
 
-| Package | Description | Status |
-| ------- | ----------- | ------ |
-| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). No Effect-specific logic. | Not yet implemented |
-| `@effect-cucumber/vitest` | `describeFeature`, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, hooks, the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and re-exports `loadFeature`. The package most consumers install directly. | Not yet implemented |
+| Package                    | Description                                                                                                                                                                                                                                | Status              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- |
+| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). No Effect-specific logic.                                                                                                          | Not yet implemented |
+| `@effect-cucumber/vitest`  | `describeFeature`, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, hooks, the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and re-exports `loadFeature`. The package most consumers install directly. | Not yet implemented |
 
 ## Public API surface
 
@@ -56,18 +56,18 @@ Not yet implemented — there is no package to export from. Once
 keeps the table honest. Until then, the intended surface is described in
 `spec/behaviors/`:
 
-| Export (planned) | Kind | Behavior |
-| ----------------- | ---- | -------- |
-| `loadFeature` | function | [BEH-EC-001](./behaviors/01-steps-and-world.md#beh-ec-001-loading-a-feature-file) |
-| `describeFeature` | function | [BEH-EC-002](./behaviors/01-steps-and-world.md#beh-ec-002-describefeature-takes-a-layer) |
-| `Given` / `When` / `Then` / `And` / `But` | DSL functions | [BEH-EC-003](./behaviors/01-steps-and-world.md#beh-ec-003-a-step-is-an-effect-returning-function) |
-| `Background` | DSL function | [BEH-EC-005](./behaviors/02-shared-layers-and-tags.md#beh-ec-005-background-is-inlined-not-a-hook-and-is-a-step-definition-container) |
-| `Rule` | DSL function | [BEH-EC-009](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-009-a-rule-can-extend-the-ambient-layer) |
-| `ScenarioOutline` | DSL function | [BEH-EC-010](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-010-scenario-outline-examples-are-typed-for-free) |
-| `Before` / `After` / `BeforeStep` / `AfterStep` / `BeforeAllScenarios` / `AfterAllScenarios` | hook functions | [BEH-EC-006](./behaviors/02-shared-layers-and-tags.md#beh-ec-006-hooks-are-effects-and-after-always-runs) |
+| Export (planned)                                                                             | Kind           | Behavior                                                                                                                              |
+| -------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `loadFeature`                                                                                | function       | [BEH-EC-001](./behaviors/01-steps-and-world.md#beh-ec-001-loading-a-feature-file)                                                     |
+| `describeFeature`                                                                            | function       | [BEH-EC-002](./behaviors/01-steps-and-world.md#beh-ec-002-describefeature-takes-a-layer)                                              |
+| `Given` / `When` / `Then` / `And` / `But`                                                    | DSL functions  | [BEH-EC-003](./behaviors/01-steps-and-world.md#beh-ec-003-a-step-is-an-effect-returning-function)                                     |
+| `Background`                                                                                 | DSL function   | [BEH-EC-005](./behaviors/02-shared-layers-and-tags.md#beh-ec-005-background-is-inlined-not-a-hook-and-is-a-step-definition-container) |
+| `Rule`                                                                                       | DSL function   | [BEH-EC-009](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-009-a-rule-can-extend-the-ambient-layer)                           |
+| `ScenarioOutline`                                                                            | DSL function   | [BEH-EC-010](./behaviors/03-rules-outlines-and-testclock.md#beh-ec-010-scenario-outline-examples-are-typed-for-free)                  |
+| `Before` / `After` / `BeforeStep` / `AfterStep` / `BeforeAllScenarios` / `AfterAllScenarios` | hook functions | [BEH-EC-006](./behaviors/02-shared-layers-and-tags.md#beh-ec-006-hooks-are-effects-and-after-always-runs)                             |
 
 ### Not listed above
 
-| Item | Reason |
-| ---- | ------ |
+| Item                                     | Reason                                                                                                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@effect-cucumber/gherkin`'s own exports | That package's public surface (`loadFeature`'s implementation, the step-matcher) isn't finalized independently of `@effect-cucumber/vitest`'s needs yet — see `spec/roadmap.md` |

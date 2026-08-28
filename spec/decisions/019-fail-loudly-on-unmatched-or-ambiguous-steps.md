@@ -20,8 +20,8 @@ generation step outright on a missing step.
 This gap matters more here than in any comparable library: an unmatched step
 is exactly the "runtime failure discovered when the scenario runs" that
 `spec/overview.md` names as the reason this project exists — the `Layer`
-check (INV-EC-003) covers a step's *dependencies*, but nothing covered
-whether a step's *text* resolves to a registration at all. `Layer`-checking
+check (INV-EC-003) covers a step's _dependencies_, but nothing covered
+whether a step's _text_ resolves to a registration at all. `Layer`-checking
 step dependencies while silently ignoring an unmatched step's text would
 leave the project's own stated value proposition half-implemented.
 

@@ -19,10 +19,13 @@ other dependency:
 ```ts
 class World extends Context.Service<World, {
   readonly apples: Ref.Ref<number>
-}>()('World') {
-  static readonly layer = Layer.effect(this, Effect.gen(function* () {
-    return World.of({ apples: yield* Ref.make(0) })
-  }))
+}>()("World") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return World.of({ apples: yield* Ref.make(0) })
+    })
+  )
 }
 ```
 
@@ -49,8 +52,8 @@ same ambient Layer.
   `Context.Service` class plus a `Layer.effect` builder for even a
   single-field World.
 - Every field that needs to be read/written across steps must be a `Ref` (or
-  similar mutable cell), not a plain property, since the World's *service
-  object* is fixed once built.
+  similar mutable cell), not a plain property, since the World's _service
+  object_ is fixed once built.
 
 **Trade-off accepted**: the extra ceremony is a one-time cost per Feature file
 (one World declaration), paid once to get compiler-checked cross-step state for

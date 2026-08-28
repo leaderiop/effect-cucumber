@@ -14,16 +14,16 @@ expected to closely match the 11-phase, bottom-up build order both
 Architecture and Pitfalls research independently converged on (see
 `.planning/research/SUMMARY.md` § Implications for Roadmap).
 
-| Gate | Status |
-| ---- | ------ |
-| Packages exist | Yes — `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are scaffolded (`pnpm install` succeeds, correctly linked), but contain **no source files** |
-| `tsc -b` | Wired (`tsconfig.base.json`/`tsconfig.json`/per-package configs), nothing to build yet |
-| `@effect/tsgo` (Effect-aware type checking) | Wired, gating the build (ADR-EC-016) |
-| Unit tests | None yet |
-| Acceptance suite (this library dogfooding itself) | None yet |
-| `bash spec/scripts/verify-traceability.sh` | Wired and passing (checks spec-to-spec consistency only) |
-| Doc-examples compile check | Not wired |
-| GSD project planning | `PROJECT.md`/`config.json` done; research done; roadmap not yet created |
+| Gate                                              | Status                                                                                                                                                     |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Packages exist                                    | Yes — `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are scaffolded (`pnpm install` succeeds, correctly linked), but contain **no source files** |
+| `tsc -b`                                          | Wired (`tsconfig.base.json`/`tsconfig.json`/per-package configs), nothing to build yet                                                                     |
+| `@effect/tsgo` (Effect-aware type checking)       | Wired, gating the build (ADR-EC-016)                                                                                                                       |
+| Unit tests                                        | None yet                                                                                                                                                   |
+| Acceptance suite (this library dogfooding itself) | None yet                                                                                                                                                   |
+| `bash spec/scripts/verify-traceability.sh`        | Wired and passing (checks spec-to-spec consistency only)                                                                                                   |
+| Doc-examples compile check                        | Not wired                                                                                                                                                  |
+| GSD project planning                              | `PROJECT.md`/`config.json` done; research done; roadmap not yet created                                                                                    |
 
 ## Blocking first release
 
@@ -63,7 +63,7 @@ shared Layer → Phase 10 composition root + dogfooded acceptance suite) once
   `ScenarioOutline`'s callback.
 - **Retries / `it.flakyTest` at the Scenario level** — GSD Pitfalls research
   closed part of this: a retried Scenario **does** rebuild its per-Scenario
-  Layer fresh per attempt, but only when `Effect.provide` sits *inside* the
+  Layer fresh per attempt, but only when `Effect.provide` sits _inside_ the
   retried Effect — composition order is load-bearing, and getting it
   backwards silently reintroduces the leak [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)
   exists to prevent. Still deferred to a later milestone; this note exists so
@@ -92,11 +92,11 @@ shared Layer → Phase 10 composition root + dogfooded acceptance suite) once
 
 ## Explicitly not planned
 
-| Item | Why |
-| ---- | --- |
-| A bespoke Gherkin parser | [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md) — depend on official `@cucumber/gherkin` instead |
-| A bespoke step-matching syntax | [ADR-EC-007](decisions/007-cucumber-expressions-for-step-matching.md) — cucumber-expressions is reused verbatim |
-| A third "shared within a Rule" Layer scope | [ADR-EC-006](decisions/006-two-layer-scopes-only.md), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md) — promote to the Feature's `shared` Layer instead |
-| A custom cucumber HTML/report format | Not a goal for v1 — defer to vitest's own reporters |
-| A vitest plugin or custom test discovery mechanism | Not needed — a `.feature` file is plain data; the `.steps.ts` module is what vitest discovers, unmodified (see `spec/overview.md`) |
-| GxP/regulatory compliance tooling | Out of scope — this is a testing library, not a regulated domain, unlike some sibling projects that adopted this same spec-driven method |
+| Item                                               | Why                                                                                                                                                                          |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A bespoke Gherkin parser                           | [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md) — depend on official `@cucumber/gherkin` instead                                                            |
+| A bespoke step-matching syntax                     | [ADR-EC-007](decisions/007-cucumber-expressions-for-step-matching.md) — cucumber-expressions is reused verbatim                                                              |
+| A third "shared within a Rule" Layer scope         | [ADR-EC-006](decisions/006-two-layer-scopes-only.md), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md) — promote to the Feature's `shared` Layer instead |
+| A custom cucumber HTML/report format               | Not a goal for v1 — defer to vitest's own reporters                                                                                                                          |
+| A vitest plugin or custom test discovery mechanism | Not needed — a `.feature` file is plain data; the `.steps.ts` module is what vitest discovers, unmodified (see `spec/overview.md`)                                           |
+| GxP/regulatory compliance tooling                  | Out of scope — this is a testing library, not a regulated domain, unlike some sibling projects that adopted this same spec-driven method                                     |
