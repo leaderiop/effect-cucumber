@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 verified passed (4/4 must-haves) — ready to plan Phase 2
-last_updated: "2026-08-28T05:00:00.000Z"
-last_activity: 2026-08-28 — Phase 1 verification passed
+status: executing
+stopped_at: "Phase 1 verified passed (see .planning/phases/01-workspace-toolchain-and-dependency-policy/01-VERIFICATION.md). One outstanding manual step: install the pkg-pr-new GitHub App on leaderiop/effect-cucumber (https://github.com/apps/pkg-pr-new) — not blocking."
+last_updated: "2026-08-28T11:22:44.793Z"
+last_activity: 2026-08-28 -- Phase 2 planning complete
 progress:
   total_phases: 11
   completed_phases: 1
-  total_plans: 6
+  total_plans: 17
   completed_plans: 6
   percent: 9
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 
 Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy) — VERIFIED PASSED
 Plan: 6 of 6 in current phase (01-01 through 01-06 all complete)
-Status: Phase 1 complete and verified. Ready to plan Phase 2.
-Last activity: 2026-08-28 — Phase 1 verification passed (4/4 must-haves, see 01-VERIFICATION.md)
+Status: Ready to execute
+Last activity: 2026-08-28 -- Phase 2 planning complete
 
 **Current focus:** Phase 2 — `loadFeature` — Parse, Compile, Correlate
 
