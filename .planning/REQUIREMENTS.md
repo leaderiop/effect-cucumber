@@ -1,0 +1,111 @@
+# Requirements: effect-cucumber
+
+**Defined:** 2026-08-28
+**Core Value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step that needs a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure discovered when the Scenario runs.
+
+## v1 Requirements
+
+Each requirement traces to a specific behavior/decision in `spec/` — see the cited `BEH-EC-NNN`/`ADR-EC-NNN`. A requirement without a citation is not in scope; propose a spec change first.
+
+### Parsing (`@effect-cucumber/gherkin`)
+
+- [ ] **PARSE-01**: A `.feature` file can be loaded via `loadFeature`, which parses it via `@cucumber/gherkin` and has no observable effect on the test run by itself (BEH-EC-001)
+- [ ] **PARSE-02**: `loadFeature` correlates the raw `GherkinDocument` structure with `compile()`'s Pickle output, so a step's text arrives already placeholder-substituted, its tags already inherited, and Background steps already stacked ahead of it (ADR-EC-014)
+- [ ] **PARSE-03**: A Background step with a leftover un-interpolated `<placeholder>` (the known `@cucumber/gherkin` limitation for a Background nested under a Scenario Outline) fails with a specific, named error rather than a confusing downstream "unmatched step" (ADR-EC-014 correction)
+
+### Step matching
+
+- [ ] **MATCH-01**: Step patterns use cucumber-expressions syntax (`{int}`, `{float}`, `{string}`, `{word}`, custom types) (ADR-EC-007)
+- [ ] **MATCH-02**: A custom parameter type is defined once as data and replayed into a fresh `ParameterTypeRegistry` on every `loadFeature` call, with no duplicate-registration failure across repeated calls (ADR-EC-007 correction)
+- [ ] **MATCH-03**: A Pickle step matching zero registered patterns fails the containing Scenario, naming the unmatched step text and its source location (ADR-EC-019, BEH-EC-013)
+- [ ] **MATCH-04**: A Pickle step matching more than one registered pattern fails the same way, naming every matching pattern rather than silently picking the first registered (ADR-EC-019, BEH-EC-013)
+- [ ] **MATCH-05**: A registered pattern matching zero steps across the whole Feature is reported as a Feature-level warning, not a hard failure (ADR-EC-019, BEH-EC-013)
+
+### Registration DSL (`@effect-cucumber/vitest`)
+
+- [ ] **DSL-01**: `describeFeature` takes a Layer (or `{ shared, perScenario }`); a step whose Effect requires a service the Layer doesn't provide fails to compile (ADR-EC-003), backed by `@effect/tsgo`'s `missingLayerContext`/`missingEffectContext` diagnostics failing the build (ADR-EC-016)
+- [ ] **DSL-02**: A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`/`And`/`But` accept a bare generator function, auto-wrapped with `Effect.fn(stepText)` internally (ADR-EC-001, ADR-EC-005)
+- [ ] **DSL-03**: `World` is a typed `Context.Service`; a field is unreachable by a step unless it appears in World's declared type (ADR-EC-002)
+- [ ] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
+- [ ] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
+- [ ] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
+- [ ] **DSL-07**: Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios`) accept a bare generator function, auto-wrapped with `Effect.fn(name)` (ADR-EC-005)
+
+### Execution semantics
+
+- [ ] **RUN-01**: Each Scenario compiles to exactly one `it.effect` call; Background and Scenario steps run as sequential `yield*`s inside one `Effect.gen`, short-circuiting on the first failure (ADR-EC-004, INV-EC-001)
+- [ ] **RUN-02**: A Scenario's `After` hook runs whether every step succeeded or one failed, via `Effect.ensuring` (ADR-EC-005, INV-EC-004)
+- [ ] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
+- [ ] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
+- [ ] **RUN-05**: Every tag on a Scenario is emitted as a native vitest tag; `@skip` additionally routes to `it.effect.skip`; `@only` is never routed to `it.effect.only` (which fails CI) — running just one Scenario locally is a `--tagsFilter` choice (ADR-EC-020, BEH-EC-008)
+- [ ] **RUN-06**: Cross-step scenario state (a running total, a caught error) lives in a `Ref` obtained from `World`, demonstrated consistently in every worked example — not yet automatable, but the convention is load-bearing given retries reuse the same registered step closures (ADR-EC-009, INV-EC-006)
+
+## v2 Requirements
+
+Deferred to a future milestone. Tracked but not in the current roadmap.
+
+### Reusability
+
+- **REUSE-01**: A step definition can be shared and reused across multiple Scenarios/Features without being re-registered verbatim in each one — genuinely harder here than in any comparable library, since a shared step's `R` must reconcile against every consuming Layer, with no ecosystem precedent to copy (Gap 2, GSD Features research)
+
+### Advanced Outline/tag/retry support
+
+- **OUTLINE-01**: A `ScenarioOutline` Examples column not referenced by any step's pattern is available to the step body as a typed value, decoded via `Schema`
+- **RETRY-01**: A Scenario can opt into `it.effect`'s retry behavior; a retried Scenario rebuilds its per-Scenario Layer fresh per attempt provided `Effect.provide` composition order is correct (composition-order requirement already confirmed by GSD Pitfalls research, implementation deferred)
+
+### Tooling
+
+- **LINT-01**: A lint rule flags a `let`/`var` declared inside a `Scenario`/`Rule`/`Background` callback that a step function closes over, automating the RUN-06 convention
+
+## Out of Scope
+
+Explicitly excluded. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| Publishing to npm | This milestone's destination is "working and tested," not "published" |
+| A bespoke Gherkin parser | Depends on official `@cucumber/gherkin` instead (ADR-EC-011) |
+| A bespoke step-matching syntax | cucumber-expressions is reused verbatim (ADR-EC-007) |
+| A third "shared within a Rule" Layer scope | Promote to the Feature's `shared` Layer instead (ADR-EC-006, ADR-EC-010) |
+| A custom cucumber HTML/report format | Defer to vitest's own reporters |
+| A vitest plugin or custom test discovery mechanism | A `.feature` file is plain data; the `.steps.ts` module is what vitest discovers, unmodified |
+| GxP/regulatory compliance tooling | Not a regulated domain |
+| Step-stub codegen from `.feature` files | A naive version emits `Effect<void, never, never>`, which type-checks against any Layer and actively undercuts the type-safety value proposition (GSD Features research) |
+| Scenario-level parallelism inside one feature file | Not requested by any behavior; adds real complexity to fail-fast/World semantics |
+
+## Traceability
+
+Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| PARSE-01 | TBD | Pending |
+| PARSE-02 | TBD | Pending |
+| PARSE-03 | TBD | Pending |
+| MATCH-01 | TBD | Pending |
+| MATCH-02 | TBD | Pending |
+| MATCH-03 | TBD | Pending |
+| MATCH-04 | TBD | Pending |
+| MATCH-05 | TBD | Pending |
+| DSL-01 | TBD | Pending |
+| DSL-02 | TBD | Pending |
+| DSL-03 | TBD | Pending |
+| DSL-04 | TBD | Pending |
+| DSL-05 | TBD | Pending |
+| DSL-06 | TBD | Pending |
+| DSL-07 | TBD | Pending |
+| RUN-01 | TBD | Pending |
+| RUN-02 | TBD | Pending |
+| RUN-03 | TBD | Pending |
+| RUN-04 | TBD | Pending |
+| RUN-05 | TBD | Pending |
+| RUN-06 | TBD | Pending |
+
+**Coverage:**
+- v1 requirements: 21 total
+- Mapped to phases: 0 (pending roadmap creation)
+- Unmapped: 21 ⚠️ (expected — roadmap not yet created)
+
+---
+*Requirements defined: 2026-08-28*
+*Last updated: 2026-08-28 after initial definition, informed by GSD Stack/Features/Architecture/Pitfalls research*
