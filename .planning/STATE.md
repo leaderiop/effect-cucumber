@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: "Completed 01-02-PLAN.md — `pnpm verify:tsgo-gate` proves ADR-EC-016's gate is enforced"
+last_updated: "2026-08-28T04:14:18.373Z"
+last_activity: 2026-08-28 — Completed 01-02-PLAN.md (tsgo Layer diagnostics gate)
+progress:
+  total_phases: 11
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 2
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -10,29 +26,38 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy)
-Plan: 1 of 6 in current phase
+Plan: 2 of 6 in current phase (01-01 and 01-02 complete; 01-03 is next)
 Status: In progress
-Last activity: 2026-08-28 — Completed 01-01-PLAN.md (TypeScript build foundation)
+Last activity: 2026-08-28 — Completed 01-02-PLAN.md (tsgo Layer diagnostics gate)
 
-Phase 1 progress: [█░░░░░░░░░] 17% (1/6 plans)
-Overall progress:  [░░░░░░░░░░] ~2% (1 of ~66 plans; only phase 1 is planned in detail)
+Phase 1 progress: [███░░░░░░░] 33% (2/6 plans)
+Overall progress:  [░░░░░░░░░░] ~3% (2 of ~66 plans; only phase 1 is planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: ~5m
-- Total execution time: ~5m
+
+- Total plans completed: 2
+- Average duration: ~9m
+- Total execution time: ~17m
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 1/6 | ~5m | ~5m |
+| 1 | 2/6 | ~17m | ~9m |
+
+**Per-plan detail:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 01-01 | ~5m | 3 | 5 |
+| 01-02 | ~12m | 2 | 8 |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (~5m)
-- Trend: — (insufficient data)
+
+- Last 5 plans: 01-01 (~5m), 01-02 (~12m)
+- Trend: — (insufficient data; 01-02 ran longer due to mutation-testing the gate script)
 
 *Updated after each plan completion*
 
@@ -50,6 +75,9 @@ Recent decisions affecting current work:
 - [01-01]: The `@effect/language-service` plugin block keeps both `ignoreEffectWarningsInTscExitCode` and `ignoreEffectErrorsInTscExitCode` at `false`, deliberately diverging from STACK.md §5.3 (which suggests warnings-ignored). Effect warnings failing `tsc` is the gate plan 01-02 exists to prove — do not relax.
 - [01-01]: `${configDir}`-relative `rootDir`/`outDir` live in `tsconfig.base.json`; package tsconfigs carry no path duplication. Verified expanding per-package, not per-base-file.
 - [01-01]: `types: []` inherited workspace-wide. Packages opt into ambient types (e.g. `["node"]` for vitest in Phase 5) only when actually needed.
+- [01-02]: **A diagnostics gate is verified by EXIT CODE, never by grepping compiler output.** With `ignoreEffectErrorsInTscExitCode: true`, `tsc` still prints every `effect(...)` diagnostic verbatim and exits 0 — output is byte-identical to an enforced gate. A grep-based version of `verify-tsgo-gate.sh` was built, passed, and was proven vacuous by mutation testing. Do not "simplify" it back.
+- [01-02]: The gate proof rides on `floating-effect.ts` compiled in isolation (`tsconfig.floating.json`), because it is valid TypeScript — its non-zero exit can only come from the Effect layer. `missing-layer-context.ts` cannot serve this role: it unavoidably also emits a plain `TS2375`.
+- [01-02]: tsgo gate fixtures must live under a directory literally named `src`. `@effect/tsgo`'s default per-file override scopes `floatingEffect: "error"` to `src/**/*.ts`; move the files and the probe silently stops firing.
 
 ### Pending Todos
 
@@ -82,8 +110,15 @@ New since 01-01 (not blockers, constraints to respect):
 - Both packages' `src/index.ts` are placeholders that say so in their doc comments. Phase 2 replaces gherkin's, Phase 5 replaces vitest's. The `packageName` exports are not public API.
 - `tools/` (vendored Effect oxlint rules) is still untracked — belongs to the lint plan, not yet committed.
 
+New since 01-02 (not blockers, constraints to respect):
+
+- `pnpm verify:tsgo-gate` guards `tsconfig.base.json`'s plugin block **behaviorally**. Any future plan that relaxes `ignoreEffectErrorsInTscExitCode` will fail it with a message naming the flag. That is the intended outcome, not a bug to route around.
+- **01-05 (CI) should add `pnpm verify:tsgo-gate` to the merge gate.** It is fast (three small `tsc` invocations) and is the only thing standing between the project and a silently-advisory type system.
+- Gap, not covered: `ignoreEffectWarningsInTscExitCode` has no behavioral test. Both gate probes are error-severity, so that flag does not govern them. Closing it needs a warning-severity probe. Only worth doing if that flag is ever contested.
+- `packages/vitest/test/` is outside the solution build (`include: ["src"]`) and its configs are `noEmit`. Phase 5's real test infrastructure will need to decide whether to keep that separation.
+
 ## Session Continuity
 
-Last session: 2026-08-28
-Stopped at: Completed 01-01-PLAN.md — `tsc -b` compiles both packages clean from cold
+Last session: 2026-08-28T04:14:18.367Z
+Stopped at: Completed 01-02-PLAN.md — `pnpm verify:tsgo-gate` proves ADR-EC-016's gate is enforced
 Resume file: None
