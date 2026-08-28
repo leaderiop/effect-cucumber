@@ -173,6 +173,10 @@ None. This plan adds no network endpoint, auth path, file-access pattern, or sch
 - Row F16 (missing file) still needs its `MissingFile` coverage in whichever plan owns `Source.ts`; by design it has no fixture and is exercised by passing a nonexistent path.
 - Row F16 aside, all of F1-F27 are represented on disk and asserted.
 
+## Self-Check: PASSED
+
+All claimed artifacts verified on disk (28 `.feature` fixtures, `fixtures/README.md`, `upstream-pin.test.ts`, this summary) and all four claimed commits verified present in `git log`.
+
 ---
 
 *Phase: 02-loadfeature-parse-compile-correlate*
