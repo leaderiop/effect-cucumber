@@ -185,6 +185,10 @@ The rest of Phase 4 can now build the `DataTable` wrapper against asserted facts
 - **PARSE-04 is still Pending in REQUIREMENTS.md, deliberately**, and `packages/gherkin/README.md` still names `DataTable` as the one specified-but-unbuilt piece. The plan that ships `DataTable.ts` owns both.
 - **A new test file needs a `spec/traceability.md` §4 row in the same commit.** This plan added no test file (it extended an existing one), so §4 is untouched and still accurate.
 
+## Self-Check: PASSED
+
+All eight claimed files exist on disk (`ls` on each exact path). All three commit hashes exist in `git log`: `fd0f3fe` (Task 1), `af9ba98` (Task 2), `10fc537` (this summary). Working tree clean apart from the ignored `node_modules`/build output.
+
 ---
 *Phase: 04-datatable-docstring*
 *Completed: 2026-08-28*
