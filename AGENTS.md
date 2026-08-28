@@ -78,3 +78,13 @@ See `spec/process/requirement-id-scheme.md`. Short version: every spec artifact
 gets a permanent ID with the `EC` infix (`BEH-EC-NNN`, `INV-EC-NNN`,
 `ADR-EC-NNN`, `REQ-EC-NNN`). IDs are allocated contiguously, never renumbered,
 and never reused — a withdrawn item is marked "Withdrawn" and keeps its number.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`leaderiop/effect-cucumber`), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context. Domain vocabulary and decisions live in the existing `spec/` (`spec/overview.md`, `spec/glossary.md`, `spec/decisions/`) rather than a separate `CONTEXT.md`/`docs/adr/`. See `docs/agents/domain.md`.
