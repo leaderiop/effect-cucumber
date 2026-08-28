@@ -66,9 +66,24 @@ Open decisions to close in this phase: dprint `semiColons: "asi"` (explicit yes/
 
 **Spec amendment**: already done — see the correction blockquote in `spec/decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md` (spec-contradicting finding #2, first half). No open blocker here.
 
-**Plans**: TBD — set by `/gsd:plan-phase 2`
+**Plans**: 11 plans (8 waves — a mostly-sequential module DAG with three parallel pairs)
 
-**Research flag**: **Needs `/gsd:research-phase`** — highest density of verified library defects and unresolved spec ambiguities. PITFALLS.md's "Looks Done But Isn't" checklist should become this phase's fixture list directly.
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0 toolchain: `vitest` + `@types/node` as catalog devDeps, `types: ["node"]`, regenerated lockfile (blocking package-legitimacy checkpoint)
+- [ ] 02-02-PLAN.md — Contracts: `Errors.ts` (10 error reasons, 4 warning reasons, no-truncation policy) and `Model.ts` (`ParsedFeature`)
+- [ ] 02-03-PLAN.md — The fixture corpus (F1–F27, ~28 `.feature` files) plus `upstream-pin.test.ts` pinning `@cucumber/gherkin@42`'s verified behavior
+- [ ] 02-04-PLAN.md — `Source.ts` / `Parser.ts` / `Pickles.ts`: every upstream throw wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`
+- [ ] 02-05-PLAN.md — `Correlate.ts`: one AST walk, both indices, the join, and the F21 row-by-row PARSE-02 assertions
+- [ ] 02-06-PLAN.md — Correlation closeout: F23 id independence, F24 multi-Examples tags, F25 dual arguments, F26/F27 scenario names and locations
+- [ ] 02-07-PLAN.md — `Validate.ts` structural checks (F1–F6) and per-scope duplicate Scenario name rejection (F22)
+- [ ] 02-08-PLAN.md — `Validate.ts` column-aware placeholder scan (F7/F8 error, F9 warning) and the four Group C warnings
+- [ ] 02-09-PLAN.md — `loadFeature.ts` + the real barrel, the PARSE-01 behavioral proof, and the `# language: fr` dialect test
+- [ ] 02-10-PLAN.md — Gates: `verify:no-runner-dep` (PARSE-01 structural proof) and `typecheck:test` (D7), both wired into `check.yml`
+- [ ] 02-11-PLAN.md — Spec: BEH-EC-014, traceability §1 correction + real §4 test map, ADR-EC-014 correction amendment, status docs
+
+Decisions locked at planning time (no CONTEXT.md; surfaced directly to the developer): duplicate Scenario names are **rejected**, scoped **per-scope** (Feature or single Rule); Group C heuristic detections are **warnings**, carried on `ParsedFeature.warnings`; error messages carry **full content, never truncated** (developer override of the researcher's truncate-by-default recommendation).
+
+**Research flag**: **Needs `/gsd:research-phase`** — highest density of verified library defects and unresolved spec ambiguities. PITFALLS.md's "Looks Done But Isn't" checklist should become this phase's fixture list directly. *(Done — see `02-RESEARCH.md`, `02-PATTERNS.md`, `02-VALIDATION.md`.)*
 
 ### Phase 3: Parameter Types and Step Matching
 **Goal**: Step text resolves to typed arguments via cucumber-expressions, with a registry lifecycle that survives repeated `loadFeature` calls and a matcher that never silently picks a winner.
@@ -232,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 0/TBD | Not started | - |
+| 2. `loadFeature` — Parse, Compile, Correlate | 0/11 | Planned | - |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
