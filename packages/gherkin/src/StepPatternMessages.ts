@@ -10,6 +10,7 @@
  *
  * Local imports: `./Errors.ts` only.
  */
+import * as Option from "effect/Option"
 import { StepPatternError, type StepPatternErrorReason } from "./Errors.ts"
 
 /** Name a parameter type the way a step pattern would spell it. */
@@ -19,6 +20,13 @@ export const describeParameterTypeName = (name: string): string =>
 /**
  * Raise a `StepPatternError` shaped `<reason>: <what happened, then what to do>`, matching the
  * message convention `Validate.ts` established for `LoadFeatureError`.
+ *
+ * This function's own arguments stay plain, omittable `T | undefined` — `raiseStepPatternError`
+ * is not exported from `index.ts`, so it is an internal convenience for `ParameterTypes.ts` and
+ * `StepMatcher.ts`, not part of the public surface `Errors.ts`'s `Option<T>` scope covers. The
+ * conversion to `Option` happens right here, once, at construction — `Errors.ts`'s
+ * `StepPatternError` requires it: `parameterTypeName`/`pattern`/`cause` are `Option<T>` fields
+ * whose constructor key cannot be omitted (see `Errors.ts`'s doc comment).
  */
 export const raiseStepPatternError = (args: {
   reason: StepPatternErrorReason
@@ -29,9 +37,9 @@ export const raiseStepPatternError = (args: {
 }): never => {
   throw new StepPatternError({
     reason: args.reason,
-    ...(args.parameterTypeName === undefined ? {} : { parameterTypeName: args.parameterTypeName }),
-    ...(args.pattern === undefined ? {} : { pattern: args.pattern }),
+    parameterTypeName: Option.fromUndefinedOr(args.parameterTypeName),
+    pattern: Option.fromUndefinedOr(args.pattern),
     message: `${args.reason}: ${args.sentences.join(" ")}`,
-    ...(args.cause === undefined ? {} : { cause: args.cause })
+    cause: Option.fromUndefinedOr(args.cause)
   })
 }

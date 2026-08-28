@@ -38,3 +38,13 @@ Pin an exact v4 beta version rather than a version range.
 mean a migration to v4 shapes later, for every consumer of this library, at
 exactly the moment Effect's own ecosystem is making the same move — betting on
 v4 now avoids that churn, accepting beta-instability risk in its place.
+
+---
+
+> **Amendment (2026-08-28, following [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md)):**
+> this ADR's v4-only commitment originally governed `@effect-cucumber/vitest`
+> alone, the only package that depended on `effect` at the time. ADR-EC-021
+> extends `effect`/`@effect/platform` peer dependencies to
+> `@effect-cucumber/gherkin` too, pinned to the same v4 range this ADR
+> establishes — no separate version policy for `gherkin`. Every consequence
+> and trade-off above now applies to both packages equally.

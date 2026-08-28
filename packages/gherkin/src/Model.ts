@@ -31,6 +31,7 @@ import type {
   PickleStepArgument,
   StepKeywordType
 } from "@cucumber/messages"
+import type * as Option from "effect/Option"
 import type { LoadFeatureWarning } from "./Errors.ts"
 
 /**
@@ -71,7 +72,7 @@ export interface ParsedStep {
    * deliberately NOT wrapped in a table-accessor helper: that accessor API is Phase 4's
    * deliverable (PARSE-04), and building it here would only create a merge conflict.
    */
-  readonly argument: PickleStepArgument | undefined
+  readonly argument: Option.Option<PickleStepArgument>
 }
 
 /**
@@ -108,8 +109,8 @@ export interface ParsedScenario {
    * own location otherwise. Do not look up `astNodeIds.at(-1)` in a row-id map.
    */
   readonly location: Location
-  /** The enclosing AST `Rule.id`, or `undefined` at feature level. */
-  readonly ruleId: string | undefined
+  /** The enclosing AST `Rule.id`, or `Option.none()` at feature level. */
+  readonly ruleId: Option.Option<string>
   /** The raw pickle, kept as an escape hatch. */
   readonly pickle: Pickle
 }

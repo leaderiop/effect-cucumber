@@ -12,10 +12,11 @@
  * basename is `index.*`.
  */
 import { IdGenerator } from "@cucumber/messages"
+import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { correlateFeature, type CorrelationResult, isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
-import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
+import type { ParsedScenario, ParsedStep, PickleStepArgument } from "../src/Model.ts"
 import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
 
@@ -125,7 +126,7 @@ describe("correlateFeature on correlation-full.feature (F21)", () => {
     const { feature } = correlateFixture("correlation-full.feature")
     const rule = feature.rules[0]
     expect(rule).toBeDefined()
-    expect(scenarioAt(feature.allScenarios, 0).ruleId).toBe(rule?.id)
+    expect(scenarioAt(feature.allScenarios, 0).ruleId).toEqual(Option.fromUndefinedOr(rule?.id))
     expect(rule?.name).toBe("a rule")
   })
 
@@ -191,7 +192,7 @@ describe("step origin comes from the AST index, not from a node-id count", () =>
 
     expect(noSteps.name).toBe("no steps")
     expect(noSteps.steps).toHaveLength(0)
-    expect(noSteps.ruleId).toBeUndefined()
+    expect(noSteps.ruleId).toEqual(Option.none())
   })
 })
 
@@ -353,26 +354,35 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
   const onlyStep = (): ParsedStep =>
     stepAt(scenarioAt(correlateFixture("docstring-and-datatable.feature").feature.allScenarios, 0), 0)
 
+  /**
+   * `argument` is `Option<PickleStepArgument>` now, not `PickleStepArgument | undefined`
+   * (see `Model.ts`). Every test in this block expects the argument to be PRESENT — that is
+   * the whole point of the F25 fixture — so `Option.getOrThrow` is correct here: an absent
+   * argument means the fixture or the correlation broke, and this should fail loudly rather
+   * than silently produce `undefined` property accesses that pass for the wrong reason.
+   */
+  const argumentOf = (): PickleStepArgument => Option.getOrThrow(onlyStep().argument)
+
   it("F25: survives correlation with BOTH arguments intact on one step", () => {
     // Real `@cucumber/gherkin@42` capability: a single step may carry a DocString AND a
     // DataTable, with `argumentIndex` recording their source order. Every pre-v42 example uses
     // an `if (docString) ... else if (dataTable)` shape, which silently drops the second one.
-    const argument = onlyStep().argument
-    expect(argument).toBeDefined()
-    expect(argument?.docString).toBeDefined()
-    expect(argument?.dataTable).toBeDefined()
+    expect(Option.isSome(onlyStep().argument)).toBe(true)
+    const argument = argumentOf()
+    expect(argument.docString).toBeDefined()
+    expect(argument.dataTable).toBeDefined()
   })
 
   it("F25: preserves the source order of the two arguments via argumentIndex", () => {
-    const argument = onlyStep().argument
-    expect(argument?.docString?.argumentIndex).toBe(1)
-    expect(argument?.dataTable?.argumentIndex).toBe(2)
+    const argument = argumentOf()
+    expect(argument.docString?.argumentIndex).toBe(1)
+    expect(argument.dataTable?.argumentIndex).toBe(2)
   })
 
   it("F25: passes the DocString content and DataTable rows through unmodified", () => {
-    const argument = onlyStep().argument
-    expect(argument?.docString?.content).toBe("the docstring content")
-    expect(argument?.dataTable?.rows.map((row) => row.cells.map((cell) => cell.value))).toEqual([
+    const argument = argumentOf()
+    expect(argument.docString?.content).toBe("the docstring content")
+    expect(argument.dataTable?.rows.map((row) => row.cells.map((cell) => cell.value))).toEqual([
       ["a", "b"],
       ["1", "2"]
     ])
@@ -382,15 +392,15 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
     // The executable guard for the Phase 4 scope boundary. `@effect-cucumber/gherkin`'s
     // `DataTable` wrapper — `.hashes()`, `.raw()`, `.rowsHash()` — and the calling convention
     // for a step carrying both arguments are PARSE-04's deliverable (ADR-EC-008). THIS phase
-    // must pass the argument through unwrapped.
+    // must pass the argument through unwrapped (inside the `Option`, but otherwise raw).
     //
     // Phase 4 owns that decision. A wrapper added here would not conflict at merge time; it
     // would quietly ship a second, competing DataTable API. Asserting the ABSENCE of the
     // methods turns that into a named test failure the moment someone "helpfully" adds one.
-    const argument = onlyStep().argument
+    const argument = argumentOf()
     for (const method of ["hashes", "raw", "rowsHash"]) {
       expect(argument).not.toHaveProperty(method)
-      expect(argument?.dataTable).not.toHaveProperty(method)
+      expect(argument.dataTable).not.toHaveProperty(method)
     }
   })
 })

@@ -165,3 +165,22 @@ syntax.
 >
 > [BEH-EC-015](../behaviors/05-step-matching-and-parameter-types.md) is the
 > normative behavior for all of the above.
+
+---
+
+> **Correction (2026-08-28, following [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md)):**
+> the Phase 3 correction immediately above states that a `Layer`-provided
+> registry is "unreachable from the package that owns `loadFeature` — not a
+> weaker option, an impossible one," because ADR-EC-015 forbade
+> `@effect-cucumber/gherkin` from declaring `effect` in any manifest field.
+> ADR-EC-021 supersedes ADR-EC-015 on exactly that point: `gherkin` now takes
+> `effect` as a peer dependency, so a `Context.Service`/`Layer`-provided
+> `ParameterTypeRegistry` is reachable from this package again.
+>
+> **This correction removes the constraint; it does not decide the
+> migration.** The `ParameterTypeStore` plain-object design that shipped
+> under the constraint continues to function correctly and is not obsoleted
+> merely by the constraint's removal — whether to actually migrate it to a
+> `Layer`-provided service (gaining scoped, per-suite parameter types instead
+> of one process-wide store) is an open implementation question left for
+> whoever plans the next phase of work on this package, not resolved here.

@@ -18,6 +18,7 @@
  */
 import { compile } from "@cucumber/gherkin"
 import type { GherkinDocument, IdGenerator, Pickle } from "@cucumber/messages"
+import * as Option from "effect/Option"
 import { LoadFeatureError } from "./Errors.ts"
 
 /**
@@ -37,8 +38,9 @@ export const compilePickles = (
     throw new LoadFeatureError({
       reason: "ParseFailed",
       uri,
+      line: Option.none(),
       message: `Failed to compile pickles for ${uri}: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-      cause: thrown
+      cause: Option.some(thrown)
     })
   }
 }

@@ -13,14 +13,54 @@ A `.feature` file is parsed into data by `loadFeature`; it is never executed
 by vitest directly.
 
 ```ts
-export const loadFeature: (path: string) => ParsedFeature
+export const loadFeature: (
+  path: string
+) => Effect.Effect<
+  ParsedFeature,
+  LoadFeatureError | StepPatternError,
+  FileSystem.FileSystem | ParameterTypeStore
+>
 ```
+
+> **[ADR-EC-021](../decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)**
+> supersedes the plain-synchronous `(path: string) => ParsedFeature` signature this behavior
+> previously specified, reading through `effect`'s own `FileSystem` service rather than
+> `node:fs` directly. A caller must `Effect.provide` a concrete `FileSystem` Layer —
+> `@effect/platform-node`'s `NodeFileSystem.layer` for this package's own tests — before
+> running the result. `Effect.runSync` does **not** recover the old synchronous, throwing call
+> shape here: the real `NodeFileSystem` implementation suspends internally (confirmed by
+> reproduction against the real package, not assumed), so `Effect.runSync(loadFeature(path))`
+> throws `AsyncFiberError` regardless of the underlying file's success or failure. A
+> module-top-level caller — the pattern the REQUIREMENT below is written around — uses a
+> top-level `await Effect.runPromise(...)` instead; see
+> `packages/gherkin/src/loadFeature.ts`'s and `Source.ts`'s doc comments for the full trade-off
+> and `packages/gherkin/test/loadFeature.test.ts` for the executable proof. `parseFeature`
+> (source text in hand, no filesystem touched) requires only `ParameterTypeStore` and is still
+> `Effect.runSync`-safe.
+>
+> **[ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md)**
+> further amends this signature: the old `options?: LoadFeatureOptions` second argument is
+> gone — `ParameterTypeStore` moved from a hand-passed argument to an ambient requirement in
+> the `R` channel, provided via `Layer` (`ParameterTypeStore.Default` for the built-ins-only
+> case, `ParameterTypeStore.layerOf(store)` for a custom one) exactly like `FileSystem.FileSystem`
+> already was. There is no argument-level default left at the `@effect-cucumber/gherkin` level —
+> every caller of `loadFeature`/`parseFeature` provides `ParameterTypeStore` explicitly.
+>
+> **[ADR-EC-024](../decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md)**
+> is what keeps a Feature file's call site simple despite the above: `@effect-cucumber/vitest`'s
+> own re-exported `loadFeature` (used by the worked example below, distinct from
+> `@effect-cucumber/gherkin`'s `loadFeature` shown in the signature above) wraps a
+> module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, takes an optional
+> `parameterTypes` argument defaulting to `ParameterTypeStore.Default`, and returns
+> `Promise<ParsedFeature>` rather than an `Effect` — the one place in this library where a
+> Promise-returning surface is deliberate, since `describeFeature` needs an already-resolved
+> value at Feature-file top level, not a deferred program.
 
 ```
 REQUIREMENT: loadFeature MUST parse Gherkin via @cucumber/gherkin
              (ADR-EC-011). It MUST NOT execute or register any vitest test —
-             a call to loadFeature alone must have no observable effect on
-             the test run.
+             a call to Effect.runPromise(loadFeature(...)) alone must have no
+             observable effect on the test run.
 ```
 
 ## BEH-EC-002: `describeFeature` takes a Layer
@@ -100,7 +140,10 @@ REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Ref } from "effect"
 
-const feature = loadFeature("./apples.feature")
+// @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already
+// wired to a shared NodeFileSystem.layer and defaulting ParameterTypeStore —
+// distinct from @effect-cucumber/gherkin's own Effect-returning loadFeature.
+const feature = await loadFeature("./apples.feature")
 
 class World extends Context.Service<World, { apples: Ref.Ref<number> }>()("World") {
   static readonly layer = Layer.effect(

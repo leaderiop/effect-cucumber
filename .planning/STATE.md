@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 03 complete (6/6) — ready to discuss Phase 4
-last_updated: 2026-08-28T15:59:39.332Z
+status: planning
+stopped_at: context exhaustion at 75% (2026-08-28)
+last_updated: "2026-08-28T17:47:17.371Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 11
@@ -276,6 +276,6 @@ New since 03-06 (not blockers, constraints to respect):
 
 ## Session Continuity
 
-Last session: 2026-08-28T15:46:03.645Z
-Stopped at: Phase 03 COMPLETE (6/6). 03-06 reconciled `spec/` with what Phase 3 built — BEH-EC-015 written and registered, BEH-EC-014's `Signatures` block corrected, ADR-EC-007's third correction appended (55 additions, 0 deletions), `spec/traceability.md` §1 and §4 refreshed from disk, `spec/roadmap.md` and `packages/gherkin/README.md` made true. `verify:spec` PASS 7 / FAIL 0 / SKIP 1; `lint`, `build`, `test` (337), `typecheck:test`, `verify:pack`, `verify:no-runner-dep`, `circular` all green. Next: phase verification.
+Last session: 2026-08-28T17:47:17.367Z
+Stopped at: context exhaustion at 75% (2026-08-28)
 Resume file: None

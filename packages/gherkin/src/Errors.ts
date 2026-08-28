@@ -1,23 +1,51 @@
 /**
  * The typed failure surface of `@effect-cucumber/gherkin`.
  *
- * `LoadFeatureError` is the only class this package throws. `LoadFeatureWarning` is its
- * non-fatal counterpart: pure data, carried on `ParsedFeature.warnings`, never thrown.
- * Both discriminate on a `reason` string-literal tag, one tag per row of the phase's
- * fixture table, so a caller asserts `err.reason` and never pattern-matches message text.
+ * `LoadFeatureError` is the only class this package throws (outside an `Effect`) or fails
+ * with (inside one). `LoadFeatureWarning` is its non-fatal counterpart: pure data, carried
+ * on `ParsedFeature.warnings`, never thrown or failed with. Both discriminate on a `reason`
+ * string-literal tag, one tag per row of the phase's fixture table, so a caller asserts
+ * `err.reason` and never pattern-matches message text.
  *
- * This module imports nothing local: it is a leaf of the package's module DAG.
+ * This module imports nothing local except `effect`: it is a leaf of the package's module
+ * DAG.
  *
  * Two non-obvious decisions are recorded here, because neither is visible from the code.
  *
- * (a) These are plain classes extending `Error`, NOT Effect's tagged-error constructor.
- *     ADR-EC-015 forbids `@effect-cucumber/gherkin` from declaring `effect` in any manifest
- *     field, so Effect's data constructors are simply unreachable from this package.
- *     ARCHITECTURE.md's note that Effect's tagged error "is fine for those classes" is
- *     superseded here. The `_tag` property below is a plain string literal with no Effect
- *     import and no Effect coupling of any kind; it exists so that
- *     `@effect-cucumber/vitest` can map this class into an error channel in Phase 6 without
- *     a shape change.
+ * (a) These are `Schema.TaggedError` classes, not plain `Error` subclasses. ADR-EC-015 used
+ *     to forbid `@effect-cucumber/gherkin` from declaring `effect` in any manifest field;
+ *     [ADR-EC-021](../../../spec/decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)
+ *     supersedes that and makes `effect` a real peer dependency, so Effect's tagged-error
+ *     constructor is reachable here now. `Schema.TaggedError` auto-derives `.name` and
+ *     `._tag` from the tag string passed to it — verified against the actually-installed
+ *     `effect@4.0.0-rc.112` before writing this, not assumed from documentation.
+ *
+ *     Two real incompatibilities with this exact rc build were found and worked around
+ *     while migrating, both confirmed by isolated reproduction against the installed
+ *     package, not guessed:
+ *       - `Schema.Defect` (bare or `Schema.optional`-wrapped) throws
+ *         `Cannot read properties of undefined (reading 'encoding')` inside `SchemaAST.js`
+ *         at construction time. `Schema.optional(Schema.Unknown)` is used for `cause`
+ *         instead — functionally equivalent for this package's purposes (an opaque,
+ *         unvalidated upstream error), and confirmed to preserve referential equality
+ *         (`err.cause === upstream`).
+ *       - `Schema.Literal(...)` (the variadic multi-argument form) throws a schema
+ *         validation error when used as a `Schema.TaggedError` field — even though the
+ *         exact same union works standalone via `Schema.decodeUnknownSync`. `Schema.Literals`
+ *         (the array-argument, plural form) does not have this problem and is used for
+ *         every `reason` field below.
+ *
+ *     Every optional field below is `Schema.OptionFromUndefinedOr`, not `Schema.optional` —
+ *     `line`, `cause`, `parameterTypeName`, `pattern` are all `Option<T>`, not `T | undefined`
+ *     (the [Effect-feature-adoption report](../../../.planning/research/effect-feature-adoption-report.md)'s
+ *     recommendation, extended to the public API surface). This has a real, confirmed cost:
+ *     `Schema.OptionFromUndefinedOr` is a transformation (Encoded `T | undefined` → Type
+ *     `Option<T>`), and a `Schema.TaggedError` constructor validates against the Type side,
+ *     not the Encoded side — so every constructor call must pass an actual `Option.some(x)`
+ *     or `Option.none()` directly. Omitting the key entirely fails construction outright
+ *     (confirmed by reproduction), which rules out the "just don't pass it" ergonomic
+ *     `T | undefined` gave for free. No custom constructor can paper over this: see the next
+ *     paragraph.
  *
  * (b) Error messages carry FULL content. DataTable cell values and DocString bodies are
  *     reproduced verbatim, never truncated and never elided. This is a locked developer
@@ -46,14 +74,16 @@
  *     different failure entirely: a perfectly valid pattern that resolves to zero, or to
  *     many, registered step definitions. Do not merge the two.
  *
- * `this.name` is assigned explicitly in the constructor. `@cucumber/gherkin`'s own error
- * classes do not do this, so their `.name` reports the useless string `"Error"` and
- * `instanceof` is the only reliable discriminator upstream. `@cucumber/cucumber-expressions`
- * repeats the same mistake — its `CucumberExpressionError` and `UndefinedParameterTypeError`
- * both report `.name === "Error"`, and neither is exported from that package's barrel at
- * all. That mistake is not repeated here, and the assignment is pinned by a test on both
- * classes.
+ * `.name` is derived automatically by `Schema.TaggedError` from the tag string, matching
+ * `@cucumber/gherkin`'s own error classes' failure to do this at all — their `.name` reports
+ * the useless string `"Error"` and `instanceof` is the only reliable discriminator upstream.
+ * `@cucumber/cucumber-expressions` repeats the same mistake — its `CucumberExpressionError`
+ * and `UndefinedParameterTypeError` both report `.name === "Error"`, and neither is exported
+ * from that package's barrel at all. That mistake is not repeated here, and the derived name
+ * is pinned by a test on both classes.
  */
+import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
 
 /**
  * Why a `LoadFeatureError` was raised. One member per Group A / Group B row of the phase
@@ -74,32 +104,33 @@ export type LoadFeatureErrorReason =
 /**
  * A fatal problem found while loading a feature file.
  *
- * Fields are declared and assigned in the constructor body: parameter properties
- * (`constructor(readonly reason: string)`) are `TS1294` under `erasableSyntaxOnly`.
- *
- * Note the asymmetry the `exactOptionalPropertyTypes` compiler flag forces. The constructor
- * argument declares `line?: number` so a call site may omit it; the field is
- * `number | undefined` so every instance always answers the question.
+ * `line` and `cause` are `Option<number>`/`Option<unknown>`, not `T | undefined` — every
+ * constructor call passes `Option.some(x)` or `Option.none()` explicitly (see this module's
+ * doc comment (a) for why omitting the key is not an option). No custom constructor:
+ * `@effect/tsgo`'s `overriddenSchemaConstructor` diagnostic rejects any constructor override
+ * on a `Schema.TaggedError` subclass outright (confirmed by trying one and reading the
+ * diagnostic, not assumed) — Schema-decoded reconstruction bypasses a custom constructor
+ * entirely, so an override silently stops applying the moment anything decodes this shape
+ * instead of calling `new` directly.
  */
-export class LoadFeatureError extends Error {
-  readonly _tag = "LoadFeatureError"
-  readonly reason: LoadFeatureErrorReason
-  readonly uri: string
-  readonly line: number | undefined
-  constructor(args: {
-    reason: LoadFeatureErrorReason
-    uri: string
-    line?: number
-    message: string
-    cause?: unknown
-  }) {
-    super(args.message, args.cause === undefined ? undefined : { cause: args.cause })
-    this.name = "LoadFeatureError"
-    this.reason = args.reason
-    this.uri = args.uri
-    this.line = args.line
-  }
-}
+export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("LoadFeatureError", {
+  reason: Schema.Literals([
+    "MissingFile",
+    "ParseFailed",
+    "UnknownDialect",
+    "NoFeature",
+    "OutlineWithoutExamples",
+    "EmptyExamples",
+    "ZeroStepScenario",
+    "UninterpolatedPlaceholder",
+    "ScenarioKeywordWithExamples",
+    "DuplicateScenarioName"
+  ]),
+  uri: Schema.String,
+  line: Schema.OptionFromUndefinedOr(Schema.Number),
+  message: Schema.String,
+  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+}) {}
 
 /**
  * Why a `StepPatternError` was raised. Every member names a failure that
@@ -155,37 +186,34 @@ export type StepPatternErrorReason =
 /**
  * A fatal problem with a custom parameter type, or with a step pattern compiled against one.
  *
- * Shaped exactly like `LoadFeatureError` — same `_tag`/`reason` discrimination, same
- * explicit `name` assignment, same `exactOptionalPropertyTypes` asymmetry (constructor
- * arguments are optional, fields are `T | undefined` so every instance always answers the
- * question) — and for the same reasons, recorded at the top of this module.
+ * Shaped like `LoadFeatureError` — same `_tag`/`reason` discrimination (derived, not
+ * assigned), same "no custom constructor" reasoning, same `Option<T>` fields for the same
+ * reason (see `LoadFeatureError`'s doc comment and this module's doc comment (a)). Every
+ * constructor call in this package — `StepPatternMessages.ts#raiseStepPatternError` and
+ * `test/Contracts.test.ts`'s direct constructions alike — passes `parameterTypeName`,
+ * `pattern`, and `cause` as explicit `Option.some(x)`/`Option.none()` values.
  *
  * Both locators are optional because neither is always knowable: a definition-time failure
  * has a `parameterTypeName` and no pattern, while a malformed pattern has a `pattern` and
  * possibly no parameter type at all.
- *
- * Fields are declared and assigned in the constructor body: parameter properties are
- * `TS1294` under `erasableSyntaxOnly`.
  */
-export class StepPatternError extends Error {
-  readonly _tag = "StepPatternError"
-  readonly reason: StepPatternErrorReason
-  readonly parameterTypeName: string | undefined
-  readonly pattern: string | undefined
-  constructor(args: {
-    reason: StepPatternErrorReason
-    parameterTypeName?: string
-    pattern?: string
-    message: string
-    cause?: unknown
-  }) {
-    super(args.message, args.cause === undefined ? undefined : { cause: args.cause })
-    this.name = "StepPatternError"
-    this.reason = args.reason
-    this.parameterTypeName = args.parameterTypeName
-    this.pattern = args.pattern
-  }
-}
+export class StepPatternError extends Schema.TaggedError<StepPatternError>()("StepPatternError", {
+  reason: Schema.Literals([
+    "BuiltInParameterTypeName",
+    "DuplicateParameterTypeName",
+    "IllegalParameterTypeName",
+    "InvalidParameterTypeRegexp",
+    "InvalidParameterTypeDefinition",
+    "UndefinedParameterType",
+    "InvalidStepPattern",
+    "AsyncParameterTransform",
+    "ParameterTransformFailed"
+  ]),
+  parameterTypeName: Schema.OptionFromUndefinedOr(Schema.String),
+  pattern: Schema.OptionFromUndefinedOr(Schema.String),
+  message: Schema.String,
+  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+}) {}
 
 /**
  * Why a `LoadFeatureWarning` was emitted. One member per Group C row of the phase fixture
@@ -210,20 +238,26 @@ export type LoadFeatureWarningReason =
 /**
  * A non-fatal finding. Plain data, deliberately NOT an `Error` subclass, and never thrown:
  * Group C findings are surfaced through `ParsedFeature.warnings` by locked decision.
+ *
+ * `line` is `Option<number>`, not `number | undefined` — no `Schema`/`Schema.TaggedError`
+ * involved here (this is a plain interface, not a class), so there is no constructor-key
+ * requirement the way `LoadFeatureError`/`StepPatternError` have; `makeWarning` below still
+ * accepts a plain optional `line?: number` argument and does the `Option` wrapping itself.
  */
 export interface LoadFeatureWarning {
   readonly _tag: "LoadFeatureWarning"
   readonly reason: LoadFeatureWarningReason
   readonly uri: string
-  readonly line: number | undefined
+  readonly line: Option.Option<number>
   readonly message: string
 }
 
 /**
- * Build a `LoadFeatureWarning`, normalising an omitted `line` to `undefined`.
+ * Build a `LoadFeatureWarning`, normalising an omitted `line` to `Option.none()`.
  *
- * The factory exists so call sites are not forced to write `line: undefined` by hand, which
- * `exactOptionalPropertyTypes` would otherwise require to satisfy the interface.
+ * The factory exists so call sites are not forced to write `Option.none()` by hand for every
+ * warning that has no line — `line?: number` stays a plain, omittable argument, and this is
+ * the one place that converts it to the field's `Option<number>` type.
  */
 export const makeWarning = (args: {
   reason: LoadFeatureWarningReason
@@ -234,6 +268,6 @@ export const makeWarning = (args: {
   _tag: "LoadFeatureWarning",
   reason: args.reason,
   uri: args.uri,
-  line: args.line,
+  line: Option.fromUndefinedOr(args.line),
   message: args.message
 })

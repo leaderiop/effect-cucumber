@@ -7,11 +7,18 @@
  * rather than a prose claim, and it survives any rewording of the messages. The single
  * exception is the collapsed-consequence count, which IS the behavior under test there.
  *
+ * `readFeatureSource` requires `FileSystem.FileSystem` as of the real `@effect/platform-node`
+ * migration, so every helper that touches it is async now and provides `NodeFileSystem.layer` —
+ * see `captureError`/`parseFixture` below.
+ *
  * Imports are direct module paths. `effect/no-import-from-barrel-package` flags any relative
  * value-import whose basename is `index.*`, so nothing here reaches through the barrel.
  */
 import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import { IdGenerator } from "@cucumber/messages"
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it, vi } from "vitest"
 import { LoadFeatureError } from "../src/Errors.ts"
@@ -21,17 +28,21 @@ import { readFeatureSource } from "../src/Source.ts"
 
 const fixturePath = (name: string): string => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
 
+/** `readFeatureSource` provided its concrete FileSystem, run to a Promise. */
+const readSource = (path: string) =>
+  Effect.runPromise(readFeatureSource(path).pipe(Effect.provide(NodeFileSystem.layer)))
+
 /**
- * Run `call`, require that it threw a `LoadFeatureError`, and hand the error back so the test
- * can interrogate `.reason`, `.uri`, `.line` and `.cause`.
+ * Run `call`, require that it rejected with a `LoadFeatureError`, and hand the error back so the
+ * test can interrogate `.reason`, `.uri`, `.line` and `.cause`.
  *
  * Re-throwing anything that is NOT a `LoadFeatureError` is deliberate: a leaked Node `ENOENT`
  * or a raw `CompositeParserException` must fail the test loudly rather than be swallowed by a
  * catch-all.
  */
-const captureError = (call: () => unknown): LoadFeatureError => {
+const captureError = async (call: () => unknown): Promise<LoadFeatureError> => {
   try {
-    call()
+    await call()
   } catch (thrown) {
     if (thrown instanceof LoadFeatureError) {
       return thrown
@@ -42,60 +53,64 @@ const captureError = (call: () => unknown): LoadFeatureError => {
 }
 
 /** Group B fixtures are always driven through the same read-then-parse pipeline. */
-const parseFixture = (name: string): unknown =>
-  parseDocument(readFeatureSource(fixturePath(name)), name, IdGenerator.uuid())
+const parseFixture = async (name: string): Promise<unknown> =>
+  parseDocument(await readSource(fixturePath(name)), name, IdGenerator.uuid())
 
-const failureOf = (name: string): LoadFeatureError => captureError(() => parseFixture(name))
+const failureOf = (name: string): Promise<LoadFeatureError> => captureError(() => parseFixture(name))
 
 describe("readFeatureSource", () => {
-  it("F16 wraps a missing file as MissingFile naming the path and the ENOENT cause", () => {
+  it("F16 wraps a missing file as MissingFile naming the path and the ENOENT cause", async () => {
     const missing = fixturePath("this-fixture-does-not-exist.feature")
-    const error = captureError(() => readFeatureSource(missing))
+    const error = await captureError(() => readSource(missing))
 
     expect(error.reason).toBe("MissingFile")
     expect(error.uri).toBe(missing)
-    expect(error.line).toBe(undefined)
+    expect(error.line).toEqual(Option.none())
     expect(error.message).toContain(missing)
-    expect((error.cause as { readonly code?: unknown }).code).toBe("ENOENT")
+    // `.cause` is `Option<PlatformError>` now, not the raw Node error directly: the real
+    // ENOENT details live one level deeper, at `.cause.cause` — confirmed by reproduction
+    // against the real `NodeFileSystem`, not assumed.
+    const platformError = Option.getOrThrow(error.cause) as { readonly cause?: { readonly code?: unknown } }
+    expect(platformError.cause?.code).toBe("ENOENT")
   })
 })
 
 describe("parseDocument", () => {
-  it("F17 reports the first error's line for a misplaced tag and collapses the cascade", () => {
-    const error = failureOf("parse-failed-misplaced-tag.feature")
+  it("F17 reports the first error's line for a misplaced tag and collapses the cascade", async () => {
+    const error = await failureOf("parse-failed-misplaced-tag.feature")
 
     expect(error.reason).toBe("ParseFailed")
     // The line comes from the FIRST collected error. Reading the composite's own `.location`
-    // would give `undefined` here, which is the bug this assertion exists to catch.
-    expect(typeof error.line).toBe("number")
-    expect(error.line).toBe(4)
+    // would give `Option.none()` here, which is the bug this assertion exists to catch.
+    expect(Option.isSome(error.line)).toBe(true)
+    expect(error.line).toEqual(Option.some(4))
     expect(error.message).toMatch(/2 further parse error\(s\) followed from this one/)
   })
 
-  it("F18 gives an unknown dialect its own reason, distinct from a generic parse failure", () => {
-    const error = failureOf("unknown-dialect.feature")
+  it("F18 gives an unknown dialect its own reason, distinct from a generic parse failure", async () => {
+    const error = await failureOf("unknown-dialect.feature")
 
     expect(error.reason).toBe("UnknownDialect")
     expect(error.reason).not.toBe("ParseFailed")
-    expect(error.line).toBe(1)
-    expect(error.cause instanceof Errors.CompositeParserException).toBe(true)
+    expect(error.line).toEqual(Option.some(1))
+    expect(Option.isSome(error.cause) && error.cause.value instanceof Errors.CompositeParserException).toBe(true)
   })
 
-  it("F10 wraps an inconsistent DataTable cell count as ParseFailed", () => {
-    const error = failureOf("parse-failed-inconsistent-cells.feature")
+  it("F10 wraps an inconsistent DataTable cell count as ParseFailed", async () => {
+    const error = await failureOf("parse-failed-inconsistent-cells.feature")
 
     expect(error.reason).toBe("ParseFailed")
-    expect(error.line).toBe(8)
+    expect(error.line).toEqual(Option.some(8))
   })
 
-  it("F15 wraps a typo'd step keyword written after a valid step as ParseFailed", () => {
-    const error = failureOf("parse-failed-typo-keyword-after-step.feature")
+  it("F15 wraps a typo'd step keyword written after a valid step as ParseFailed", async () => {
+    const error = await failureOf("parse-failed-typo-keyword-after-step.feature")
 
     expect(error.reason).toBe("ParseFailed")
-    expect(error.line).toBe(5)
+    expect(error.line).toEqual(Option.some(5))
   })
 
-  it("F20 wraps a feature-level Background placed after a Rule as ParseFailed", () => {
+  it("F20 wraps a feature-level Background placed after a Rule as ParseFailed", async () => {
     // This fixture pins the REFUTATION of PITFALLS.md Pitfall 30. Pitfall 30 claims Gherkin
     // permits a feature-level `Background:` after a `Rule:` with silently different semantics,
     // and recommends a walk-time AST check. Verified false: the grammar
@@ -103,21 +118,21 @@ describe("parseDocument", () => {
     // parser throws. That walk-time check is therefore dead work and is deliberately not
     // implemented anywhere in this phase; this test is what guards the assumption if upstream
     // ever relaxes the grammar.
-    const error = failureOf("parse-failed-background-after-rule.feature")
+    const error = await failureOf("parse-failed-background-after-rule.feature")
 
     expect(error.reason).toBe("ParseFailed")
-    expect(error.line).toBe(8)
+    expect(error.line).toEqual(Option.some(8))
   })
 
-  it("F12 reports a comment-only file as NoFeature rather than parsing it to nothing", () => {
-    const error = failureOf("no-feature.feature")
+  it("F12 reports a comment-only file as NoFeature rather than parsing it to nothing", async () => {
+    const error = await failureOf("no-feature.feature")
 
     expect(error.reason).toBe("NoFeature")
-    expect(error.line).toBe(undefined)
-    expect(error.cause).toBe(undefined)
+    expect(error.line).toEqual(Option.none())
+    expect(error.cause).toEqual(Option.none())
   })
 
-  it("no raw gherkin or Node exception escapes for any Group B fixture", () => {
+  it("no raw gherkin or Node exception escapes for any Group B fixture", async () => {
     const fixtures = [
       "parse-failed-misplaced-tag.feature",
       "unknown-dialect.feature",
@@ -126,7 +141,9 @@ describe("parseDocument", () => {
       "parse-failed-background-after-rule.feature",
       "no-feature.feature"
     ]
-    const reasons = fixtures.map((name) => failureOf(name).reason)
+    // Independent fixtures — safe (and faster) to run concurrently rather than sequentially.
+    const errors = await Promise.all(fixtures.map((name) => failureOf(name)))
+    const reasons = errors.map((error) => error.reason)
 
     expect(reasons).toEqual([
       "ParseFailed",
@@ -138,12 +155,12 @@ describe("parseDocument", () => {
     ])
   })
 
-  it("F21 positive control: a well-formed feature parses and compiles to at least one pickle", () => {
+  it("F21 positive control: a well-formed feature parses and compiles to at least one pickle", async () => {
     // Without this, a `parseDocument` that rejected every input would pass every other test in
     // this file.
     const newId = IdGenerator.uuid()
     const uri = "correlation-full.feature"
-    const document = parseDocument(readFeatureSource(fixturePath(uri)), uri, newId)
+    const document = parseDocument(await readSource(fixturePath(uri)), uri, newId)
 
     expect(document.feature?.name).toBe("correlation across every nesting level")
 
@@ -152,15 +169,16 @@ describe("parseDocument", () => {
     expect(pickles[0]?.steps.length).toBeGreaterThan(0)
   })
 
-  it("tolerates a bare parse exception that carries no errors array (Pitfall P5)", () => {
+  it("tolerates a bare parse exception that carries no errors array (Pitfall P5)", async () => {
     // Build the genuinely bare shape the way upstream produces it: with `stopAtFirstError`
     // enabled the parser throws an `UnexpectedTokenException` directly instead of collecting
     // into a `CompositeParserException`, so `.errors` is never populated.
-    const bare = ((): unknown => {
+    const source = await readSource(fixturePath("parse-failed-misplaced-tag.feature"))
+    const bare: unknown = ((): unknown => {
       const parser = new GherkinParser(new AstBuilder(IdGenerator.uuid()), new GherkinClassicTokenMatcher())
       parser.stopAtFirstError = true
       try {
-        parser.parse(readFeatureSource(fixturePath("parse-failed-misplaced-tag.feature")))
+        parser.parse(source)
       } catch (thrown) {
         return thrown
       }
@@ -179,13 +197,13 @@ describe("parseDocument", () => {
       throw bare
     })
     try {
-      const error = captureError(() => parseDocument("Feature: unused\n", "bare.feature", IdGenerator.uuid()))
+      const error = await captureError(() => parseDocument("Feature: unused\n", "bare.feature", IdGenerator.uuid()))
 
       expect(error.reason).toBe("ParseFailed")
       expect(error.uri).toBe("bare.feature")
       // The bare shape carries its own `.location`, unlike the composite.
-      expect(error.line).toBe(bareLine)
-      expect(error.cause).toBe(bare)
+      expect(error.line).toEqual(Option.fromUndefinedOr(bareLine))
+      expect(Option.isSome(error.cause) && error.cause.value).toBe(bare)
     } finally {
       spy.mockRestore()
     }

@@ -1,3 +1,4 @@
+import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { LoadFeatureError, makeWarning, StepPatternError, type StepPatternErrorReason } from "../src/Errors.ts"
 
@@ -24,8 +25,9 @@ describe("LoadFeatureError", () => {
     new LoadFeatureError({
       reason: "EmptyExamples",
       uri: "features/checkout.feature",
-      line: 12,
-      message: verboseTableMessage
+      line: Option.some(12),
+      message: verboseTableMessage,
+      cause: Option.none()
     })
 
   it("is an instance of Error", () => {
@@ -57,7 +59,9 @@ describe("LoadFeatureError", () => {
     const err = new LoadFeatureError({
       reason: "DuplicateScenarioName",
       uri: "features/dup.feature",
-      message: "two Scenarios named \"checkout\" at lines 4 and 11"
+      line: Option.none(),
+      message: "two Scenarios named \"checkout\" at lines 4 and 11",
+      cause: Option.none()
     })
     expect(err.reason).toBe("DuplicateScenarioName")
   })
@@ -66,19 +70,23 @@ describe("LoadFeatureError", () => {
     expect(makeError().uri).toBe("features/checkout.feature")
   })
 
-  it("exposes line as the supplied number", () => {
-    expect(makeError().line).toBe(12)
+  it("exposes line as Option.some(the supplied number)", () => {
+    expect(makeError().line).toEqual(Option.some(12))
   })
 
-  it("exposes line as undefined when the constructor argument is omitted", () => {
-    // The exactOptionalPropertyTypes asymmetry: the argument is `line?: number` while the
-    // field is `number | undefined`. That must hold at runtime, not only in the type.
+  it("exposes line as Option.none() when the constructor argument is Option.none()", () => {
+    // `line`/`cause` are `Option<T>`, not `T | undefined`: the constructor KEY is always
+    // required (a `Schema.TaggedError` constraint, not an ergonomic choice — see Errors.ts's
+    // doc comment), so there is no "omitted argument" case left to distinguish from an
+    // explicit `Option.none()`. Both read identically, which is the point.
     const err = new LoadFeatureError({
       reason: "MissingFile",
       uri: "features/absent.feature",
-      message: "no such file"
+      line: Option.none(),
+      message: "no such file",
+      cause: Option.none()
     })
-    expect(err.line).toBeUndefined()
+    expect(err.line).toEqual(Option.none())
   })
 
   it("reproduces a long multi-line message verbatim, with no truncation", () => {
@@ -98,20 +106,20 @@ describe("LoadFeatureError", () => {
     expect(message.endsWith("...")).toBe(false)
   })
 
-  it("exposes cause as the supplied value", () => {
+  it("exposes cause as Option.some(the supplied value), preserving reference equality", () => {
     const upstream = new Error("(1:1): expected: #EOF, got 'Feture: x'")
     const err = new LoadFeatureError({
       reason: "ParseFailed",
       uri: "features/typo.feature",
-      line: 1,
+      line: Option.some(1),
       message: "the parser rejected this file",
-      cause: upstream
+      cause: Option.some(upstream)
     })
-    expect(err.cause).toBe(upstream)
+    expect(Option.isSome(err.cause) && err.cause.value).toBe(upstream)
   })
 
-  it("exposes cause as undefined when the constructor argument is omitted", () => {
-    expect(makeError().cause).toBeUndefined()
+  it("exposes cause as Option.none() when the constructor argument is Option.none()", () => {
+    expect(makeError().cause).toEqual(Option.none())
   })
 })
 
@@ -140,17 +148,20 @@ describe("makeWarning", () => {
     expect(warning.message).toBe("<b> is not one of the Examples columns of this Outline: a")
   })
 
-  it("round-trips the warning line when supplied", () => {
-    expect(warning.line).toBe(9)
+  it("round-trips the warning line as Option.some(9)", () => {
+    expect(warning.line).toEqual(Option.some(9))
   })
 
-  it("normalises an omitted warning line to undefined", () => {
+  it("normalises an omitted warning line to Option.none()", () => {
+    // `makeWarning`'s own `line?: number` argument stays plain and omittable (it is not a
+    // Schema-constrained class, see Errors.ts) — it is the one place that converts to the
+    // field's `Option<number>` type.
     const noLine = makeWarning({
       reason: "EmptyRule",
       uri: "features/empty-rule.feature",
       message: "this Rule contains no Scenarios and produced no pickles"
     })
-    expect(noLine.line).toBeUndefined()
+    expect(noLine.line).toEqual(Option.none())
   })
 
   it("is not an Error instance, because Group C findings never throw", () => {
@@ -191,9 +202,10 @@ describe("StepPatternError", () => {
   const makeError = () =>
     new StepPatternError({
       reason: "InvalidStepPattern",
-      parameterTypeName: "money",
-      pattern: "the customer {word} pays {money}",
-      message: verbosePatternMessage
+      parameterTypeName: Option.some("money"),
+      pattern: Option.some("the customer {word} pays {money}"),
+      message: verbosePatternMessage,
+      cause: Option.none()
     })
 
   it("is an Error instance, unlike a LoadFeatureWarning", () => {
@@ -221,49 +233,58 @@ describe("StepPatternError", () => {
 
   for (const reason of allReasons) {
     it(`round-trips the ${reason} reason tag given to the constructor`, () => {
-      const err = new StepPatternError({ reason, message: `raised for ${reason}` })
+      const err = new StepPatternError({
+        reason,
+        parameterTypeName: Option.none(),
+        pattern: Option.none(),
+        message: `raised for ${reason}`,
+        cause: Option.none()
+      })
       expect(err.reason).toBe(reason)
     })
   }
 
-  it("round-trips the parameterTypeName when it is supplied", () => {
-    expect(makeError().parameterTypeName).toBe("money")
+  it("round-trips the parameterTypeName as Option.some(...) when it is supplied", () => {
+    expect(makeError().parameterTypeName).toEqual(Option.some("money"))
   })
 
-  it("round-trips the step pattern when it is supplied", () => {
-    expect(makeError().pattern).toBe("the customer {word} pays {money}")
+  it("round-trips the step pattern as Option.some(...) when it is supplied", () => {
+    expect(makeError().pattern).toEqual(Option.some("the customer {word} pays {money}"))
   })
 
-  it("exposes parameterTypeName and pattern as undefined when both arguments are omitted", () => {
-    // The exactOptionalPropertyTypes asymmetry: the constructor arguments are optional while
-    // the fields are `string | undefined`, so both properties must EXIST on every instance and
-    // answer the question rather than being absent.
+  it("exposes parameterTypeName and pattern as Option.none() when both are Option.none()", () => {
+    // The constructor KEY is always required now (a `Schema.TaggedError` constraint — see
+    // Errors.ts's doc comment), so both properties always exist on every instance; the `in`
+    // check below is now guaranteed by the type system too, but stays as a runtime pin.
     const err = new StepPatternError({
       reason: "InvalidParameterTypeDefinition",
-      message: "the upstream ParameterType constructor rejected this definition"
+      parameterTypeName: Option.none(),
+      pattern: Option.none(),
+      message: "the upstream ParameterType constructor rejected this definition",
+      cause: Option.none()
     })
 
-    expect(err.parameterTypeName).toBeUndefined()
-    expect(err.pattern).toBeUndefined()
+    expect(err.parameterTypeName).toEqual(Option.none())
+    expect(err.pattern).toEqual(Option.none())
     expect("parameterTypeName" in err).toBe(true)
     expect("pattern" in err).toBe(true)
   })
 
-  it("forwards the cause when a wrapped upstream error is supplied", () => {
+  it("forwards the cause as Option.some(...), preserving reference equality", () => {
     const upstream = new Error("This Cucumber Expression has a problem at column 7")
     const err = new StepPatternError({
       reason: "UndefinedParameterType",
-      parameterTypeName: "money",
-      pattern: "I pay {money}",
+      parameterTypeName: Option.some("money"),
+      pattern: Option.some("I pay {money}"),
       message: "no parameter type named money is registered",
-      cause: upstream
+      cause: Option.some(upstream)
     })
 
-    expect(err.cause).toBe(upstream)
+    expect(Option.isSome(err.cause) && err.cause.value).toBe(upstream)
   })
 
-  it("leaves the cause undefined when no upstream error is supplied", () => {
-    expect(makeError().cause).toBeUndefined()
+  it("leaves the cause as Option.none() when no upstream error is supplied", () => {
+    expect(makeError().cause).toEqual(Option.none())
   })
 
   it("reproduces a long multi-line step pattern message verbatim, with no truncation", () => {

@@ -1,6 +1,6 @@
 # ADR-EC-015: `effect` is a peer dependency of `@effect-cucumber/vitest`; `@effect-cucumber/gherkin` has no `effect` dependency at all
 
-> **Status:** Accepted
+> **Status:** Superseded by [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md) — `@effect-cucumber/gherkin`'s "no `effect` dependency at all" clause no longer holds; the peer-dependency mechanism for `@effect-cucumber/vitest` described below is unaffected and still applies.
 > **Date:** 2026-08-28
 > **Context:** resolves an open question from GSD Stack research and an independently-confirmed live defect from GSD Pitfalls research, both run against the scaffolded workspace from [ADR-EC-013](013-effect-cucumber-npm-scope.md)
 

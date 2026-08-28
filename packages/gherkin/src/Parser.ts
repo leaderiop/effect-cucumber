@@ -41,12 +41,13 @@
  */
 import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import type { GherkinDocument, IdGenerator } from "@cucumber/messages"
+import * as Option from "effect/Option"
 import { LoadFeatureError, type LoadFeatureErrorReason } from "./Errors.ts"
 
 /**
- * `exactOptionalPropertyTypes` makes `line: undefined` and an omitted `line` different types,
- * so the two constructor calls cannot be collapsed with a spread. One helper beats repeating
- * the ternary at every throw site.
+ * `line`/`cause` are `Option<T>` fields now (see `Errors.ts`), always required and never
+ * ambiguous the way `exactOptionalPropertyTypes`'s `T | undefined` asymmetry was — no ternary
+ * needed here any more, `Option.fromUndefinedOr` handles both cases uniformly.
  */
 const loadFeatureError = (args: {
   reason: LoadFeatureErrorReason
@@ -55,15 +56,13 @@ const loadFeatureError = (args: {
   message: string
   cause: unknown
 }): LoadFeatureError =>
-  args.line === undefined
-    ? new LoadFeatureError({ reason: args.reason, uri: args.uri, message: args.message, cause: args.cause })
-    : new LoadFeatureError({
-      reason: args.reason,
-      uri: args.uri,
-      line: args.line,
-      message: args.message,
-      cause: args.cause
-    })
+  new LoadFeatureError({
+    reason: args.reason,
+    uri: args.uri,
+    line: Option.fromUndefinedOr(args.line),
+    message: args.message,
+    cause: Option.fromUndefinedOr(args.cause)
+  })
 
 /**
  * Flatten a caught parse failure into the list of concrete errors it stands for.
@@ -160,8 +159,10 @@ export const parseDocument = (source: string, uri: string, newId: IdGenerator.Ne
     throw new LoadFeatureError({
       reason: "NoFeature",
       uri,
+      line: Option.none(),
       message: `${uri} parsed cleanly but declares no Feature:. A file with only comments or `
-        + `whitespace is valid Gherkin and contributes no scenarios.`
+        + `whitespace is valid Gherkin and contributes no scenarios.`,
+      cause: Option.none()
     })
   }
   return document

@@ -36,3 +36,25 @@ unscoped `effect-cucumber` package with subpath exports.
 `@effect-cucumber/gherkin`'s independent usefulness and testability, especially
 since it has no Effect-specific logic and is the easier of the two to get
 right in isolation (see `spec/roadmap.md`'s suggested build order).
+
+---
+
+> **Amendment (2026-08-28, following [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md)):**
+> the first Positive consequence above — "`@effect-cucumber/gherkin` is
+> independently installable and testable with no Effect-specific logic in its
+> dependency tree, useful even to something that isn't
+> `@effect-cucumber/vitest`" — no longer holds as written. `gherkin` now takes
+> `effect`/`@effect/platform` as peer dependencies and its internals become
+> Effect-native; it has Effect-specific logic in its dependency tree.
+>
+> The package split itself is **not** superseded — `gherkin` and `vitest`
+> remain separate packages. What changes is _why_ the split is worth keeping:
+> this project serves Effect users exclusively (established during the
+> ADR-EC-021 design session), so "useful to something that isn't
+> `@effect-cucumber/vitest`" was never actually a goal being pursued — it now
+> reads as "useful to any Effect program that isn't
+> `@effect-cucumber/vitest`," which is a real but narrower value than
+> originally stated. The split's second Positive consequence (room for future
+> packages under the scope without renegotiating naming) and the parsing/
+> runner concerns remaining logically separate are unaffected and continue to
+> justify keeping two packages.

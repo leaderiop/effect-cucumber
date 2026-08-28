@@ -18,11 +18,30 @@
  * `../src/index.ts`: `effect/no-import-from-barrel-package` runs with
  * `checkRelativeIndexImports: true`.
  */
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import { isOutlineKeyword } from "../src/Correlate.ts"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
+import { ParameterTypeStore } from "../src/ParameterTypes.ts"
+
+/**
+ * `loadFeature` requires `FileSystem.FileSystem | ParameterTypeStore` as of ADR-EC-023 — real
+ * `NodeFileSystem` isn't `Effect.runSync`-safe (suspends), so `load` provides both Layers and
+ * runs via `Effect.runPromise`. `parseFeature` only requires `ParameterTypeStore`, and
+ * `Layer.succeed`-backed services ARE `runSync`-safe (confirmed by reproduction), so `parse`
+ * still uses `Effect.runSync`. Neither test in this file cares about custom parameter types, so
+ * both always provide `ParameterTypeStore.Default`.
+ */
+const load = (path: string) =>
+  Effect.runPromise(
+    loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
+  )
+const parse = (source: string, uri: string) =>
+  Effect.runSync(parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default)))
 
 const frenchPath = fileURLToPath(new URL("./fixtures/dialect-fr.feature", import.meta.url))
 
@@ -43,45 +62,50 @@ const stepAt = (scenario: ParsedScenario, at: number): ParsedStep => {
 }
 
 describe("loadFeature on dialect-fr.feature (F19)", () => {
-  it("loads a French feature file without throwing", () => {
-    expect(() => loadFeature(frenchPath)).not.toThrow()
+  it("loads a French feature file without throwing", async () => {
+    await expect(load(frenchPath)).resolves.not.toThrow()
   })
 
-  it("reports the declared language and the localised Feature keyword", () => {
-    const feature = loadFeature(frenchPath)
+  it("reports the declared language and the localised Feature keyword", async () => {
+    const feature = await load(frenchPath)
     expect(feature.language).toBe("fr")
     expect(feature.keyword).toBe("Fonctionnalité")
     expect(feature.name).toBe("un fichier écrit en français")
   })
 
-  it("correlates the single Scenario with its localised keyword", () => {
-    const scenario = scenarioAt(loadFeature(frenchPath).allScenarios, 0)
-    expect(loadFeature(frenchPath).allScenarios).toHaveLength(1)
+  it("correlates the single Scenario with its localised keyword", async () => {
+    const feature = await load(frenchPath)
+    const scenario = scenarioAt(feature.allScenarios, 0)
+    expect(feature.allScenarios).toHaveLength(1)
     expect(scenario.keyword).toBe("Scénario")
     expect(scenario.name).toBe("un scénario simple")
   })
 
-  it("puts the Contexte step first, recognised as a feature background step", () => {
-    const step = stepAt(scenarioAt(loadFeature(frenchPath).allScenarios, 0), 0)
+  it("puts the Contexte step first, recognised as a feature background step", async () => {
+    const feature = await load(frenchPath)
+    const step = stepAt(scenarioAt(feature.allScenarios, 0), 0)
     expect(step.origin).toBe("feature-background")
     expect(step.text).toBe("le contexte est prêt")
   })
 
-  it("trims the trailing space off the localised step keyword", () => {
+  it("trims the trailing space off the localised step keyword", async () => {
     // The raw AST keyword is `"Etant donné que "`. `toBe`, not `toContain`: the assertion is
     // about the trailing space, so a substring match would pass on the untrimmed value.
-    expect(stepAt(scenarioAt(loadFeature(frenchPath).allScenarios, 0), 0).keyword).toBe("Etant donné que")
+    const feature = await load(frenchPath)
+    expect(stepAt(scenarioAt(feature.allScenarios, 0), 0).keyword).toBe("Etant donné que")
   })
 
-  it("keeps run order, with the Scenario's own step after the background one", () => {
-    const scenario = scenarioAt(loadFeature(frenchPath).allScenarios, 0)
+  it("keeps run order, with the Scenario's own step after the background one", async () => {
+    const feature = await load(frenchPath)
+    const scenario = scenarioAt(feature.allScenarios, 0)
     expect(scenario.steps).toHaveLength(2)
     expect(stepAt(scenario, 1).origin).toBe("scenario")
     expect(stepAt(scenario, 1).text).toBe("le scénario démarre")
   })
 
-  it("produces no warnings for a legitimate non-English file", () => {
-    expect(loadFeature(frenchPath).warnings).toEqual([])
+  it("produces no warnings for a legitimate non-English file", async () => {
+    const feature = await load(frenchPath)
+    expect(feature.warnings).toEqual([])
   })
 })
 
@@ -110,7 +134,7 @@ describe("Outline detection is dialect-independent", () => {
   })
 
   it("compiles one scenario per Exemples row without raising a keyword mismatch", () => {
-    const feature = parseFeature(frenchOutline, "inline-fr-outline.feature")
+    const feature = parse(frenchOutline, "inline-fr-outline.feature")
     expect(feature.allScenarios).toHaveLength(2)
     expect(scenarioAt(feature.allScenarios, 0).name).toBe("utiliser marteau")
     expect(scenarioAt(feature.allScenarios, 1).name).toBe("utiliser tournevis")
@@ -120,8 +144,8 @@ describe("Outline detection is dialect-independent", () => {
   it("does not mistake the French Outline for a plain Scenario with Examples", () => {
     // A hardcoded English keyword list would classify `Plan du scénario` as a plain Scenario and
     // throw `ScenarioKeywordWithExamples` here; the dialect lookup is what makes it pass.
-    expect(() => parseFeature(frenchOutline, "inline-fr-outline.feature")).not.toThrow()
-    expect(scenarioAt(parseFeature(frenchOutline, "inline-fr-outline.feature").allScenarios, 0).keyword)
+    expect(() => parse(frenchOutline, "inline-fr-outline.feature")).not.toThrow()
+    expect(scenarioAt(parse(frenchOutline, "inline-fr-outline.feature").allScenarios, 0).keyword)
       .toBe("Plan du scénario")
   })
 })

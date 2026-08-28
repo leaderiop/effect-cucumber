@@ -19,6 +19,7 @@
  * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
  * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
  */
+import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
 import {
@@ -68,7 +69,14 @@ const flaggedRegexps: ReadonlyArray<{ readonly flag: string; readonly regexp: Re
 describe("a custom parameter type is data, not a registration", () => {
   it("records a definition without ever constructing a registry", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     // ADR-EC-007's second correction, verbatim: "nothing touches a ParameterTypeRegistry at
     // definition time". The observable form of that clause is this — the recorded definitions are
@@ -80,7 +88,14 @@ describe("a custom parameter type is data, not a registration", () => {
 
   it("replays a recorded definition into the registry it builds", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     const registry = store.buildRegistry()
     expect(registry.lookupByTypeName("money")).toBeDefined()
@@ -94,7 +109,14 @@ describe("a custom parameter type is data, not a registration", () => {
     // what a later buildRegistry() replays.
     const store = createParameterTypeStore()
     const patterns = [/\d+/]
-    store.define({ name: "money", regexp: patterns, transform: amount })
+    store.define({
+      name: "money",
+      regexp: patterns,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     patterns.push(/[A-Z]+/)
 
@@ -107,7 +129,10 @@ describe("a custom parameter type is data, not a registration", () => {
     store.define({
       name: "money",
       regexp: /\d+/,
-      transform: (...match: Array<string>) => ({ amount: Number(match[0]), currency: "EUR" })
+      transform: (...match: Array<string>) => ({ amount: Number(match[0]), currency: "EUR" }),
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
     })
 
     const parameterType = store.buildRegistry().lookupByTypeName("money")
@@ -119,7 +144,14 @@ describe("a custom parameter type is data, not a registration", () => {
 
   it("returns a different registry instance from every buildRegistry call", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     const first = store.buildRegistry()
     const second = store.buildRegistry()
@@ -134,8 +166,22 @@ describe("a custom parameter type is data, not a registration", () => {
     // with upstream's duplicate-name throw (Pitfall 14, reproduced across three
     // cypress-cucumber-preprocessor issues).
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
-    store.define({ name: "planet", regexp: /[a-z]+/, transform: (...match: Array<string>) => match[0] ?? "" })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    store.define({
+      name: "planet",
+      regexp: /[a-z]+/,
+      transform: (...match: Array<string>) => match[0] ?? "",
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     let built = 0
     let last = store.buildRegistry()
@@ -172,10 +218,19 @@ describe("a name the registry already provides is rejected at definition time", 
     it(`rejects ${describeBuiltIn(builtInName)} because a fresh registry already provides it`, () => {
       const store = createParameterTypeStore()
 
-      const error = rejectedBy(() => store.define({ name: builtInName, regexp: /\d+/, transform: amount }))
+      const error = rejectedBy(() =>
+        store.define({
+          name: builtInName,
+          regexp: /\d+/,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        })
+      )
 
       expect(error.reason).toBe("BuiltInParameterTypeName")
-      expect(error.parameterTypeName).toBe(builtInName)
+      expect(error.parameterTypeName).toEqual(Option.some(builtInName))
       // The message names the offending name — for the anonymous type, by the word that
       // identifies it, since its name is the empty string and would match anything.
       expect(error.message).toContain(builtInName === "" ? "anonymous" : builtInName)
@@ -188,7 +243,18 @@ describe("a name the registry already provides is rejected at definition time", 
     // empty afterwards, and no buildRegistry call was needed to surface the failure.
     const store = createParameterTypeStore()
 
-    expect(rejectedBy(() => store.define({ name: "int", regexp: /\d+/, transform: amount })).reason)
+    expect(
+      rejectedBy(() =>
+        store.define({
+          name: "int",
+          regexp: /\d+/,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        })
+      ).reason
+    )
       .toBe("BuiltInParameterTypeName")
     expect(store.definitions()).toHaveLength(0)
   })
@@ -197,10 +263,24 @@ describe("a name the registry already provides is rejected at definition time", 
 describe("a name defined twice in one store is rejected at definition time", () => {
   it("names both definition sites when each definition recorded one", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount, definedAt: "steps/money.ts:3" })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.some("steps/money.ts:3"),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     const error = rejectedBy(() =>
-      store.define({ name: "money", regexp: /\d+/, transform: amount, definedAt: "steps/other.ts:9" })
+      store.define({
+        name: "money",
+        regexp: /\d+/,
+        transform: amount,
+        definedAt: Option.some("steps/other.ts:9"),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
     )
 
     expect(error.reason).toBe("DuplicateParameterTypeName")
@@ -212,12 +292,28 @@ describe("a name defined twice in one store is rejected at definition time", () 
 
   it("still names the parameter type when neither definition recorded a site", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
-    const error = rejectedBy(() => store.define({ name: "money", regexp: /\d+/, transform: amount }))
+    const error = rejectedBy(() =>
+      store.define({
+        name: "money",
+        regexp: /\d+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
 
     expect(error.reason).toBe("DuplicateParameterTypeName")
-    expect(error.parameterTypeName).toBe("money")
+    expect(error.parameterTypeName).toEqual(Option.some("money"))
     expect(error.message).toContain("money")
     expect(error.message).toContain("an unrecorded location")
   })
@@ -226,9 +322,25 @@ describe("a name defined twice in one store is rejected at definition time", () 
     // `??` treats only `undefined`/`null` as missing; an explicit `""` would slip past it and
     // leave a dangling "at ," in the message. Assert the placeholder, not merely its absence.
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount, definedAt: "" })
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.some(""),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
-    const error = rejectedBy(() => store.define({ name: "money", regexp: /\d+/, transform: amount }))
+    const error = rejectedBy(() =>
+      store.define({
+        name: "money",
+        regexp: /\d+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
 
     expect(error.message).not.toContain("at ,")
     expect(error.message).toContain("an unrecorded location")
@@ -236,8 +348,24 @@ describe("a name defined twice in one store is rejected at definition time", () 
 
   it("records only the first of two definitions sharing a name", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "money", regexp: /\d+/, transform: amount })
-    rejectedBy(() => store.define({ name: "money", regexp: /[a-z]+/, transform: amount }))
+    store.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    rejectedBy(() =>
+      store.define({
+        name: "money",
+        regexp: /[a-z]+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
 
     expect(store.definitions()).toHaveLength(1)
   })
@@ -247,10 +375,19 @@ describe("a malformed definition is rejected at definition time", () => {
   it("rejects a name carrying a character the upstream predicate refuses", () => {
     const store = createParameterTypeStore()
 
-    const error = rejectedBy(() => store.define({ name: "pla(net)", regexp: /[a-z]+/, transform: amount }))
+    const error = rejectedBy(() =>
+      store.define({
+        name: "pla(net)",
+        regexp: /[a-z]+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
 
     expect(error.reason).toBe("IllegalParameterTypeName")
-    expect(error.parameterTypeName).toBe("pla(net)")
+    expect(error.parameterTypeName).toEqual(Option.some("pla(net)"))
   })
 
   it("accepts a name containing a slash, which upstream's own message wrongly calls illegal", () => {
@@ -259,7 +396,14 @@ describe("a malformed definition is rejected at definition time", () => {
     // library asks the predicate, so `a/b` is accepted — and a rewrite that matched on that
     // message instead would fail exactly here.
     const store = createParameterTypeStore()
-    store.define({ name: "a/b", regexp: /[a-z]+/, transform: amount })
+    store.define({
+      name: "a/b",
+      regexp: /[a-z]+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     expect(store.buildRegistry().lookupByTypeName("a/b")).toBeDefined()
   })
@@ -268,7 +412,16 @@ describe("a malformed definition is rejected at definition time", () => {
     it(`rejects a regexp carrying the ${flag} flag`, () => {
       const store = createParameterTypeStore()
 
-      const error = rejectedBy(() => store.define({ name: "flagged", regexp, transform: amount }))
+      const error = rejectedBy(() =>
+        store.define({
+          name: "flagged",
+          regexp,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        })
+      )
 
       expect(error.reason).toBe("InvalidParameterTypeRegexp")
       expect(error.message).toContain(flag)
@@ -278,9 +431,30 @@ describe("a malformed definition is rejected at definition time", () => {
 
   it("accepts a flagless RegExp and a plain string regexp source", () => {
     const store = createParameterTypeStore()
-    store.define({ name: "flagless", regexp: /\d+/, transform: amount })
-    store.define({ name: "fromSource", regexp: "\\d+", transform: amount })
-    store.define({ name: "fromList", regexp: [/\d+/, "[a-z]+"], transform: amount })
+    store.define({
+      name: "flagless",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    store.define({
+      name: "fromSource",
+      regexp: "\\d+",
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    store.define({
+      name: "fromList",
+      regexp: [/\d+/, "[a-z]+"],
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     const registry = store.buildRegistry()
     expect(registry.lookupByTypeName("flagless")).toBeDefined()
@@ -294,9 +468,30 @@ describe("stores share no state", () => {
     const first = createParameterTypeStore()
     const second = createParameterTypeStore()
 
-    first.define({ name: "money", regexp: /\d+/, transform: amount })
-    second.define({ name: "money", regexp: /\d+/, transform: amount })
-    first.define({ name: "planet", regexp: /[a-z]+/, transform: amount })
+    first.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    second.define({
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
+    first.define({
+      name: "planet",
+      regexp: /[a-z]+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    })
 
     expect(first.buildRegistry().lookupByTypeName("planet")).toBeDefined()
     expect(second.buildRegistry().lookupByTypeName("planet")).toBeUndefined()
@@ -311,7 +506,9 @@ describe("stores share no state", () => {
       name: "moneyDefaultStoreProbe",
       regexp: /\d+/,
       transform: amount,
-      definedAt: "packages/gherkin/test/ParameterTypes.test.ts"
+      definedAt: Option.some("packages/gherkin/test/ParameterTypes.test.ts"),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
     })
 
     expect(buildParameterTypeRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeDefined()

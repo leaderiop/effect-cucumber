@@ -6,6 +6,17 @@ packages:
 catalog:
   effect: 4.0.0-rc.112
   "@effect/vitest": 4.0.0-rc.112
+  # `FileSystem`/`Path` are core-`effect` service interfaces as of v4, not
+  # `@effect/platform` exports — `@effect/platform` (the aggregate package)
+  # genuinely has no v4-compatible release, but the PER-RUNTIME packages do,
+  # independently versioned and kept current with the v4 rc train. Verified
+  # by direct install: `@effect/platform-node@4.0.0-rc.112` installs cleanly
+  # against this exact `effect` version and its `NodeFileSystem.layer` reads
+  # real files via `Effect.runPromise`. Only a devDependency here — gherkin's
+  # own test suite needs a concrete Layer to run against; the shipped package
+  # depends on neither this nor any other concrete platform implementation
+  # (enforced by scripts/verify-no-runner-dep.sh).
+  "@effect/platform-node": 4.0.0-rc.112
   vitest: ^4.1.0
   typescript: ^7.0.2
   "@types/node": ^26.4.0

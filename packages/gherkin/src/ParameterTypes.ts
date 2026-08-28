@@ -65,6 +65,9 @@
  * directory.
  */
 import { ParameterType, ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
+import * as Context from "effect/Context"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /**
@@ -72,6 +75,14 @@ import { describeParameterTypeName as describeName, raiseStepPatternError as fai
  *
  * `T` is the type the transform produces, and therefore the type a step body receives for this
  * parameter. `StepArgs`' `Custom` type parameter is the compile-time counterpart.
+ *
+ * `definedAt`, `useForSnippets`, `preferForRegexpMatch` are `Option<T>`, not TS-optional
+ * `T | undefined` — every construction of this interface (this package's own call sites,
+ * `test/ParameterTypeLifecycle.test.ts`'s, and any external caller's) must supply all three
+ * explicitly as `Option.some(x)`/`Option.none()`. Unlike `Errors.ts`'s classes this is a plain
+ * interface, not a `Schema.TaggedError`, so nothing structurally forces this — it is a
+ * consistency choice, matching the same "full `Option`, no `undefined`" scope applied to the
+ * rest of this package's public surface.
  */
 export interface ParameterTypeDefinition<T> {
   /** The name written between braces in a step pattern: `money` is used as `{money}`. */
@@ -94,11 +105,11 @@ export interface ParameterTypeDefinition<T> {
    * verbatim in the `DuplicateParameterTypeName` message, which names BOTH sites so the caller
    * does not have to search for the other one.
    */
-  readonly definedAt?: string
-  /** Passed straight through to upstream at replay time. Upstream defaults it to `true`. */
-  readonly useForSnippets?: boolean
-  /** Passed straight through to upstream at replay time. Upstream defaults it to `false`. */
-  readonly preferForRegexpMatch?: boolean
+  readonly definedAt: Option.Option<string>
+  /** Passed straight through to upstream at replay time (unwrapped there). Upstream defaults it to `true`. */
+  readonly useForSnippets: Option.Option<boolean>
+  /** Passed straight through to upstream at replay time (unwrapped there). Upstream defaults it to `false`. */
+  readonly preferForRegexpMatch: Option.Option<boolean>
 }
 
 /**
@@ -148,9 +159,12 @@ const illegalNameCharacters = "[ ] ( ) $ . | ? * +"
 /** The fallback used when a definition recorded no `definedAt` — including an explicit `""`. */
 const unrecordedLocation = "an unrecorded location"
 
-/** `value`, or `unrecordedLocation` when it is `undefined` or an explicit empty string. */
-const locationOf = (value: string | undefined): string =>
-  value === undefined || value === "" ? unrecordedLocation : value
+/** `value`, or `unrecordedLocation` when it is `Option.none()` or an explicit empty string. */
+const locationOf = (value: Option.Option<string>): string =>
+  Option.match(value, {
+    onNone: () => unrecordedLocation,
+    onSome: (site) => site === "" ? unrecordedLocation : site
+  })
 
 /** The built-in set, rendered for a message, so the caller needs no docs lookup. */
 const listBuiltInNames = (): string =>
@@ -177,43 +191,37 @@ const toUpstreamParameterType = (definition: ParameterTypeDefinition<unknown>): 
     toRegexpList(definition.regexp),
     null,
     definition.transform,
-    definition.useForSnippets,
-    definition.preferForRegexpMatch,
+    // Upstream's own constructor is plain JS and expects `boolean | undefined`, not an
+    // `Option` — this is the boundary where this package's Option-typed public surface meets
+    // a library that has no notion of Option, so unwrapping here is expected, not a leak.
+    Option.getOrUndefined(definition.useForSnippets),
+    Option.getOrUndefined(definition.preferForRegexpMatch),
     false
   )
 
 /**
- * An append-only collection of custom parameter type definitions, plus the replay that turns them
- * into a registry.
+ * A new, empty store sharing no state with any other store — including
+ * `defaultParameterTypeStore`.
  *
- * There is no `remove` and no `clear`, on purpose: a definition that could be withdrawn would
- * reintroduce exactly the cross-call state (a) exists to eliminate. A caller wanting a different
- * set of definitions creates a different store.
+ * An append-only collection of custom parameter type definitions, plus the replay that turns
+ * them into a registry. There is no `remove` and no `clear`, on purpose: a definition that could
+ * be withdrawn would reintroduce exactly the cross-call state (a) exists to eliminate. A caller
+ * wanting a different set of definitions creates a different store.
+ *
+ * The returned shape — `ParameterTypeStoreShape`, defined right below as
+ * `ReturnType<typeof createParameterTypeStore>` rather than a hand-written interface, so the two
+ * can never drift apart — has zero `Effect` ceremony, exactly as before this module's
+ * `ParameterTypeStore` `Context.Service` class was added: that class is what lets
+ * `loadFeature`/`parseFeature` receive a store as an ambient dependency instead of a function
+ * argument, but the store itself is unchanged, plain data with plain methods.
  */
-export interface ParameterTypeStore {
+export const createParameterTypeStore = () => {
+  const records: Array<ParameterTypeDefinition<unknown>> = []
+
   /**
    * Record a custom parameter type. Touches no registry. Throws a `StepPatternError` — with the
    * caller's own `define` call at the top of the stack — if the definition is rejected.
    */
-  readonly define: <T>(definition: ParameterTypeDefinition<T>) => void
-  /** Every recorded definition, in definition order. The returned array is a copy. */
-  readonly definitions: () => ReadonlyArray<ParameterTypeDefinition<unknown>>
-  /**
-   * A FRESH registry, carrying the built-ins plus every recorded definition replayed into it.
-   *
-   * Safely callable an unbounded number of times, and never memoized. Two calls return two
-   * different instances; that is the property MATCH-02 rests on.
-   */
-  readonly buildRegistry: () => ParameterTypeRegistry
-}
-
-/**
- * A new, empty store sharing no state with any other store — including
- * `defaultParameterTypeStore`.
- */
-export const createParameterTypeStore = (): ParameterTypeStore => {
-  const records: Array<ParameterTypeDefinition<unknown>> = []
-
   const define = <T>(definition: ParameterTypeDefinition<T>): void => {
     const { name } = definition
 
@@ -310,8 +318,15 @@ export const createParameterTypeStore = (): ParameterTypeStore => {
     records.push(record)
   }
 
+  /** Every recorded definition, in definition order. The returned array is a copy. */
   const definitions = (): ReadonlyArray<ParameterTypeDefinition<unknown>> => [...records]
 
+  /**
+   * A FRESH registry, carrying the built-ins plus every recorded definition replayed into it.
+   *
+   * Safely callable an unbounded number of times, and never memoized. Two calls return two
+   * different instances; that is the property MATCH-02 rests on.
+   */
   const buildRegistry = (): ParameterTypeRegistry => {
     const registry = new ParameterTypeRegistry()
     for (const record of records) {
@@ -349,19 +364,30 @@ export const createParameterTypeStore = (): ParameterTypeStore => {
 }
 
 /**
+ * The shape `createParameterTypeStore()` returns, derived rather than hand-written so the two
+ * can never drift apart. This is what the `ParameterTypeStore` `Context.Service` class below is
+ * parameterised over — `createParameterTypeStore()`'s own return value is unaffected either way,
+ * it is still called with zero `Effect` ceremony, exactly as it always has been.
+ */
+export type ParameterTypeStoreShape = ReturnType<typeof createParameterTypeStore>
+
+/**
  * The process-wide store, and the one a caller gets by default.
  *
  * Append-only for the life of the process by design — see (b) in the module doc comment. A test
  * that needs isolation uses `createParameterTypeStore()` instead; a definition added here cannot
  * be withdrawn.
  */
-export const defaultParameterTypeStore: ParameterTypeStore = createParameterTypeStore()
+export const defaultParameterTypeStore: ParameterTypeStoreShape = createParameterTypeStore()
 
 /**
  * Record a custom parameter type in the default store.
  *
  * This is the call a `.steps.ts` module makes at module scope. It touches no registry, so calling
- * it before, between or after any number of `loadFeature` calls is equally correct.
+ * it before, between or after any number of `loadFeature` calls is equally correct. Deliberately
+ * plain and `Effect`-free, even though `ParameterTypeStore` below is a real `Context.Service` now
+ * — a step-definition author declaring a custom parameter type should never need to reach for
+ * `Effect.gen`/`Effect.provide` just to register one.
  */
 export const defineParameterType = <T>(definition: ParameterTypeDefinition<T>): void =>
   defaultParameterTypeStore.define(definition)
@@ -370,3 +396,31 @@ export const defineParameterType = <T>(definition: ParameterTypeDefinition<T>): 
  * Build a fresh registry from the default store. Called once per `loadFeature`, never memoized.
  */
 export const buildParameterTypeRegistry = (): ParameterTypeRegistry => defaultParameterTypeStore.buildRegistry()
+
+/**
+ * The `ParameterTypeStore` shape delivered as an ambient `Effect` dependency, replacing the
+ * `LoadFeatureOptions.parameterTypes` argument this package used to take.
+ * [ADR-EC-023](../../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md)
+ * is the decision record — read it before changing anything here, especially the reasoning
+ * behind there being NO internal default baked into `parseFeature`/`loadFeature` themselves.
+ *
+ * `Context.Service<ParameterTypeStore, ParameterTypeStoreShape>()(...)`, matching the pattern
+ * ADR-EC-002 already established for `World` in the (not yet built) `@effect-cucumber/vitest`
+ * DSL: the Tag class IS the public name, its Shape is the plain interface above, and `.of(...)`
+ * lifts a plain shape value into the branded Service value `yield*` resolves to.
+ */
+export class ParameterTypeStore
+  extends Context.Service<ParameterTypeStore, ParameterTypeStoreShape>()("@effect-cucumber/gherkin/ParameterTypeStore")
+{
+  /** Wrap any `ParameterTypeStoreShape` — `createParameterTypeStore()`'s or a hand-built one — as a provide-able Layer. */
+  static readonly layerOf = (store: ParameterTypeStoreShape): Layer.Layer<ParameterTypeStore> =>
+    Layer.succeed(ParameterTypeStore, ParameterTypeStore.of(store))
+
+  /**
+   * Wraps `defaultParameterTypeStore` — the SAME singleton `defineParameterType` writes into —
+   * so a `.steps.ts` module's module-scope `defineParameterType` calls are visible to any
+   * `loadFeature`/`parseFeature` call this Layer is provided to, exactly matching today's
+   * behavior. Not provided automatically: see the class doc comment and ADR-EC-023.
+   */
+  static readonly Default: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.layerOf(defaultParameterTypeStore)
+}

@@ -42,3 +42,17 @@ The root `package.json`'s `prepare` script runs `effect-tsgo patch`, matching `e
 - `@effect/tsgo` targets a specific, narrow TypeScript version range (`7.0.2`, `7.1.0-dev.*` per its own compatibility table) — a routine `typescript` bump could silently lose plugin compatibility until `@effect/tsgo` catches up.
 
 **Trade-off accepted**: failing the build on an Effect-specific diagnostic is exactly the strictness this library's core value proposition calls for — the "second, independent enforcement mechanism" framing in `spec/invariants.md`'s `INV-EC-003` entry should be updated to name this plugin, not left describing structural typing as the only mechanism.
+
+---
+
+> **Amendment (2026-08-28, following [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md)):**
+> the Positive consequence above claiming `duplicatePackage` "now has nothing
+> to catch in this repo's own manifests, since the risky pattern no longer
+> exists here" was true only while ADR-EC-015 kept `effect` out of
+> `@effect-cucumber/gherkin` entirely. ADR-EC-021 supersedes that: `gherkin`
+> now declares `effect`/`@effect/platform` as peer dependencies too, which
+> means the duplicate-install failure mode `duplicatePackage` exists to catch
+> is live again in `gherkin`'s own manifest, not just `vitest`'s. No wiring
+> change is needed — the plugin was already configured to scan the whole
+> workspace — this amendment only corrects the claim that there was nothing
+> left for it to check.

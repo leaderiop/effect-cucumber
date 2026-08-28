@@ -38,8 +38,11 @@ shared Layer → Phase 10 composition root + dogfooded acceptance suite) once
 `.planning/ROADMAP.md` formalizes it. High-level shape:
 
 1. Finish Phase 0 tooling/dependency policy (partially done: peer deps
-   fixed via ADR-EC-015, `@effect/tsgo` wired via ADR-EC-016; still open:
-   `publishConfig.exports` swap, pnpm catalogs, CI).
+   fixed via ADR-EC-015, extended to `@effect-cucumber/gherkin` via
+   ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; still open:
+   `publishConfig.exports` swap, pnpm catalogs, CI, and ADR-EC-021's
+   Follow-up items — the actual `Source.ts`/`loadFeature.ts`/`Errors.ts`
+   rewrite, `BEH-EC-001` update, and `ParameterTypeStore`-as-Layer decision).
 2. Implement `@effect-cucumber/gherkin`'s parse→compile→correlate pipeline
    (the riskiest phase — several silent-failure edge cases in
    `@cucumber/gherkin`'s `compile()` must become loud errors here).

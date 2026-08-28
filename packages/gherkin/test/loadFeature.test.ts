@@ -14,24 +14,55 @@
  * exactly one file. `loadFeature` ran during module evaluation and contributed none of them.
  * Moving the call inside an `it` deletes the only evidence this file exists to produce.
  *
+ * ## Top-level `await`, not `Effect.runSync`
+ *
+ * This section previously kept `Effect.runSync` working at module top level, because the
+ * interim (pre-`FileSystem`) implementation wrapped a genuinely synchronous
+ * `node:fs.readFileSync`. Adopting the real `@effect/platform-node` `NodeFileSystem` ends
+ * that: `NodeFileSystem.readFileString` suspends internally, and `Effect.runSync` on it throws
+ * `AsyncFiberError` — reproduced directly against the real package, not assumed (see
+ * `Source.ts`'s and `loadFeature.ts`'s doc comments). `topLevelFeature` below is therefore
+ * `await Effect.runPromise(loadFeature(fixturePath).pipe(Effect.provide(NodeFileSystem.layer)))`
+ * — genuine top-level `await`, which ESM (and vitest's module loader) supports natively: the
+ * import of this file waits for the top-level `await` to settle before vitest proceeds to
+ * collect the `describe`/`it` calls below, which is what keeps this file's core guarantee
+ * (`loadFeature` alone registers no tests) intact under the new signature. A rejection here
+ * still surfaces as a vitest COLLECTION error for the whole file, not a single failing test —
+ * same failure shape as the old `Effect.runSync` throw, just reached through a rejected
+ * promise instead of a synchronous throw.
+ *
  * ## Imports
  *
  * `../src/loadFeature.ts` directly, never `../src/index.ts`:
  * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and fails
  * `pnpm lint` on a relative value-import whose basename is `index.*`.
  */
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedFeature } from "../src/Model.ts"
+import { ParameterTypeStore } from "../src/ParameterTypes.ts"
 import rawFixture from "./fixtures/correlation-full.feature?raw"
 
 const fixtureUrl = new URL("./fixtures/correlation-full.feature", import.meta.url)
 const fixturePath = fileURLToPath(fixtureUrl)
 
+/**
+ * Every test in this file provides the same concrete `FileSystem` and the default
+ * `ParameterTypeStore` this way — see the module doc comment and ADR-EC-023. Nothing in this
+ * file cares about custom parameter types, so `ParameterTypeStore.Default` always suffices.
+ */
+const load = (path: string) =>
+  Effect.runPromise(
+    loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
+  )
+
 // The load-bearing line. Module top level, zero indentation, above every describe.
-const topLevelFeature = loadFeature(fixturePath)
+const topLevelFeature = await load(fixturePath)
 
 /**
  * Everything about a `ParsedFeature` that is stable across two calls.
@@ -82,9 +113,31 @@ describe("loadFeature at module top level", () => {
   })
 })
 
-describe("loadFeature is synchronous", () => {
-  it("returns a plain object, not a thenable", () => {
+describe("loadFeature returns an Effect requiring FileSystem", () => {
+  it("loadFeature itself is not a thenable — it is an unresolved Effect, not a Promise", () => {
+    // `result` here is NOT a ParsedFeature: it is the Effect returned by `loadFeature`,
+    // deliberately not run and not provided a FileSystem. Effects are lazy descriptions, never
+    // thenables — this holds regardless of what the Effect requires.
     const result = loadFeature(fixturePath)
+    expect(result).not.toHaveProperty("then")
+    expect(result).not.toBeInstanceOf(Promise)
+  })
+
+  it("Effect.runSync throws AsyncFiberError — the real NodeFileSystem suspends internally", () => {
+    // This is the confirmed trade-off documented in Source.ts/loadFeature.ts: adopting the
+    // real, maintained `@effect/platform-node` implementation instead of a hand-rolled
+    // sync-only workaround costs the `Effect.runSync` recovery path. This test exists so a
+    // future attempt to bring `runSync` back (e.g. swapping in a different Layer) is forced to
+    // notice and update this file, not silently regress it.
+    expect(() =>
+      Effect.runSync(
+        loadFeature(fixturePath).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
+      )
+    ).toThrowError(/asynchronous Effect was executed with Effect\.runSync/)
+  })
+
+  it("Effect.runPromise(loadFeature(...).pipe(Effect.provide(...))) returns a plain object", async () => {
+    const result = await load(fixturePath)
     expect(typeof result).toBe("object")
     expect(result).not.toHaveProperty("then")
     expect(result).not.toBeInstanceOf(Promise)
@@ -93,7 +146,13 @@ describe("loadFeature is synchronous", () => {
 
 describe("source-form parity", () => {
   it("readFileSync + parseFeature agrees with loadFeature on the same file", () => {
-    const fromDisk = parseFeature(readFileSync(fixtureUrl, "utf8"), fixturePath)
+    // parseFeature takes source text directly — no FileSystem requirement, only
+    // ParameterTypeStore, and Layer.succeed-backed services are confirmed Effect.runSync-safe,
+    // so Effect.runSync still works here exactly as before; only the FileSystem-touching
+    // loadFeature lost it.
+    const fromDisk = Effect.runSync(
+      parseFeature(readFileSync(fixtureUrl, "utf8"), fixturePath).pipe(Effect.provide(ParameterTypeStore.Default))
+    )
     expect(shapeOf(fromDisk)).toEqual(shapeOf(topLevelFeature))
   })
 
@@ -102,11 +161,14 @@ describe("source-form parity", () => {
   })
 
   it("parseFeature over the ?raw string agrees with loadFeature over the path", () => {
-    expect(shapeOf(parseFeature(rawFixture, fixturePath))).toEqual(shapeOf(topLevelFeature))
+    const fromRaw = Effect.runSync(
+      parseFeature(rawFixture, fixturePath).pipe(Effect.provide(ParameterTypeStore.Default))
+    )
+    expect(shapeOf(fromRaw)).toEqual(shapeOf(topLevelFeature))
   })
 
-  it("gives the same content but different node ids on a second call", () => {
-    const second = loadFeature(fixturePath)
+  it("gives the same content but different node ids on a second call", async () => {
+    const second = await load(fixturePath)
     expect(shapeOf(second)).toEqual(shapeOf(topLevelFeature))
     const firstId = topLevelFeature.allScenarios[0]?.id
     const secondId = second.allScenarios[0]?.id

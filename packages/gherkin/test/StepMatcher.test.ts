@@ -27,9 +27,10 @@
  * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
  * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
  */
+import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
-import { createParameterTypeStore, type ParameterTypeStore } from "../src/ParameterTypes.ts"
+import { createParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import type { StepArgs } from "../src/StepArgs.ts"
 import { compileExpression, createStepMatcher, type StepMatch, type StepPatternEntry } from "../src/StepMatcher.ts"
 
@@ -37,7 +38,7 @@ import { compileExpression, createStepMatcher, type StepMatch, type StepPatternE
 const builtInRegistry = () => createParameterTypeStore().buildRegistry()
 
 /** A store plus the registry built from it, for the tests that need a custom parameter type. */
-const storeWith = (define: (store: ParameterTypeStore) => void): ParameterTypeStore => {
+const storeWith = (define: (store: ParameterTypeStoreShape) => void): ParameterTypeStoreShape => {
   const store = createParameterTypeStore()
   define(store)
   return store
@@ -141,7 +142,10 @@ describe("StepMatcher coerces built-in parameter types at runtime (MATCH-01)", (
       target.define({
         name: "money",
         regexp: /\d+/,
-        transform: (...match: Array<string>) => ({ amount: Number(match[0]), currency: "EUR" })
+        transform: (...match: Array<string>) => ({ amount: Number(match[0]), currency: "EUR" }),
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
       })
     )
     const { args } = matcherOver(store.buildRegistry(), [{ pattern: "I pay {money}", definition: "pay" }])
@@ -301,8 +305,8 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
     })
 
     expect(error.reason).toBe("UndefinedParameterType")
-    expect(error.parameterTypeName).toBe("money")
-    expect(error.pattern).toBe(pattern)
+    expect(error.parameterTypeName).toEqual(Option.some("money"))
+    expect(error.pattern).toEqual(Option.some(pattern))
     expect(error.message).toContain("money")
     expect(error.message).toContain(pattern)
   })
@@ -314,7 +318,7 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
     })
 
     expect(error.reason).toBe("InvalidStepPattern")
-    expect(error.pattern).toBe(pattern)
+    expect(error.pattern).toEqual(Option.some(pattern))
   })
 
   it("raises the same failure again on a second match, rather than reporting no match", () => {
@@ -342,7 +346,10 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
         regexp: /\d+/,
         transform: (async (...match: Array<string>) => Number(match[0])) as unknown as (
           ...match: Array<string>
-        ) => number
+        ) => number,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
       })
     )
     const error = rejectedBy(() => {
@@ -350,8 +357,8 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
     })
 
     expect(error.reason).toBe("AsyncParameterTransform")
-    expect(error.parameterTypeName).toBe("later")
-    expect(error.pattern).toBe("v {later}")
+    expect(error.parameterTypeName).toEqual(Option.some("later"))
+    expect(error.pattern).toEqual(Option.some("v {later}"))
   })
 
   it("raises ParameterTransformFailed quoting the raw matched text in full when a transform throws", () => {
@@ -362,7 +369,10 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
         regexp: /\S+/,
         transform: (): number => {
           throw new Error("transform blew up")
-        }
+        },
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
       })
     )
     const error = rejectedBy(() => {
@@ -370,7 +380,7 @@ describe("StepMatcher converts every upstream and transform failure into a StepP
     })
 
     expect(error.reason).toBe("ParameterTransformFailed")
-    expect(error.parameterTypeName).toBe("boom")
+    expect(error.parameterTypeName).toEqual(Option.some("boom"))
     expect(error.message).toContain(rawText)
     // The locked no-truncation decision, asserted rather than assumed.
     expect(error.message).not.toContain("…")

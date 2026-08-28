@@ -1,7 +1,7 @@
 {
   "name": "@effect-cucumber/gherkin",
   "version": "0.0.0",
-  "description": "Gherkin feature-file parsing for effect-cucumber. Parsing only — no Effect dependency.",
+  "description": "Gherkin feature-file parsing for effect-cucumber. Effect-native; effect is a peer dependency only (ADR-EC-021), never bundled. Uses core effect's FileSystem/Path service interfaces; depends on no concrete platform implementation.",
   "keywords": [
     "gherkin",
     "cucumber",
@@ -49,7 +49,12 @@
     "@cucumber/messages": "^34.2.1",
     "@cucumber/cucumber-expressions": "^20.1.0"
   },
+  "peerDependencies": {
+    "effect": "catalog:peer"
+  },
   "devDependencies": {
+    "effect": "catalog:",
+    "@effect/platform-node": "catalog:",
     "vitest": "catalog:",
     "@types/node": "catalog:"
   }
