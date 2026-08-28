@@ -48,6 +48,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # `pnpm build` is `tsc -b`, and every package project is `include: ["src"]`,
+      # so it never looks at a test file. vitest transpiles tests without
+      # type-checking them. Without this step a file under packages/gherkin/test/
+      # can contain type errors that CI never catches — Decision D7.
+      - run: pnpm typecheck:test
       # ADR-EC-016: @effect/tsgo's missingLayerContext / missingEffectContext
       # diagnostics are a build gate, not advisory. This step is what enforces
       # that; it must stay a required check, never an allowed failure.
@@ -87,4 +92,11 @@ jobs:
       # verify-pack.sh builds each package itself, so no separate `pnpm build`.
       - run: pnpm verify:pack
       - run: pnpm circular
+      # `pnpm test` exiting 0 does NOT prove @effect-cucumber/gherkin cannot
+      # reach a test runner — a green suite is equally consistent with src/
+      # having quietly grown a vitest import. This is PARSE-01's structural
+      # proof (a loadFeature that cannot reach a runner cannot register a test)
+      # and ADR-EC-015's mechanical guard against effect appearing in a
+      # consumer-facing dependency field. See scripts/verify-no-runner-dep.sh.
+      - run: pnpm verify:no-runner-dep
       - run: pnpm verify:spec

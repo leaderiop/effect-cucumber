@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Check-but-do-not-emit, and stay outside the solution build: `tsc -b`
+    // covers packages/gherkin/tsconfig.json's `include: ["src"]` only, so
+    // test files are transpiled-not-checked by vitest. This config is run
+    // explicitly by `pnpm typecheck:test`, never by `tsc -b`, and is NOT in
+    // the root tsconfig.json `references` array.
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    // The base sets `${configDir}/src`, which would reject every file under test/.
+    "rootDir": "${configDir}",
+    // The base sets `types: []`; the test files use node:fs, node:url,
+    // import.meta.url and URL.
+    "types": ["node"],
+    // The base sets "force", which makes EVERY file a module — that would turn
+    // test/feature-raw.d.ts's `declare module "*.feature?raw"` into a module
+    // AUGMENTATION of a non-existent module rather than an ambient declaration,
+    // and the `?raw` fixture import in loadFeature.test.ts would stop
+    // resolving. Do not "clean up" this override.
+    "moduleDetection": "auto"
+  },
+  // src is included too, so the tests type-check against the real source rather
+  // than against emitted declarations.
+  "include": ["src", "test"]
+}
