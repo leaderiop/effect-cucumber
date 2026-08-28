@@ -182,7 +182,7 @@ Plans:
 
 **Wave 3** *(blocked on 04-01, 04-02, 04-03)*
 
-- [ ] 04-04-PLAN.md — `StepArguments.ts`, the required `ParsedStep.stepArguments` field populated in `Correlate.ts`, and the Phase 4 barrel exports
+- [x] 04-04-PLAN.md — `StepArguments.ts`, the required `ParsedStep.stepArguments` field populated in `Correlate.ts`, and the Phase 4 barrel exports
 
 **Wave 4** *(blocked on 04-04)*
 
@@ -339,7 +339,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
-| 4. DataTable / DocString | 3/5 | In Progress|  |
+| 4. DataTable / DocString | 4/5 | In Progress|  |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
