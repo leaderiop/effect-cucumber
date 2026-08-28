@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A force-push supersedes the run it replaced; queueing the old one wastes
+# minutes and reports a result nobody is waiting for.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # `pnpm lint` is `oxlint -f unix && dprint check` — this single job covers
+  # both the lint gate (including the vendored Effect rules) and the format
+  # gate of Phase 1 success criterion 3.
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      # `pnpm lint` exiting 0 does NOT prove the vendored effect/* rules loaded:
+      # an unresolvable jsPlugins specifier produces the same silent, clean,
+      # exit-0 run as a correctly wired one. Without this step the lint gate can
+      # decay into a no-op while CI stays green. See scripts/verify-oxlint-plugin.sh.
+      - run: pnpm verify:oxlint-plugin
+
+  types:
+    name: Types and tsgo gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # ADR-EC-016: @effect/tsgo's missingLayerContext / missingEffectContext
+      # diagnostics are a build gate, not advisory. This step is what enforces
+      # that; it must stay a required check, never an allowed failure.
+      - run: pnpm verify:tsgo-gate
+
+  test:
+    name: Test (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 is Active LTS and the primary target. 22 is kept for compatibility
+        # breadth: a testing library gets installed into whatever runtime the
+        # consumer already has, not one we get to choose.
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  package:
+    name: Packaging and structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # verify-pack.sh builds each package itself, so no separate `pnpm build`.
+      - run: pnpm verify:pack
+      - run: pnpm circular
+      - run: pnpm verify:spec
