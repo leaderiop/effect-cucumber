@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 1 verified passed (see .planning/phases/01-workspace-toolchain-and-dependency-policy/01-VERIFICATION.md). One outstanding manual step: install the pkg-pr-new GitHub App on leaderiop/effect-cucumber (https://github.com/apps/pkg-pr-new) — not blocking."
-last_updated: "2026-08-28T11:28:06.259Z"
+status: ready_to_plan
+stopped_at: Phase 02 complete (11/11) — ready to discuss Phase 3
+last_updated: 2026-08-28T13:24:55.314Z
 last_activity: 2026-08-28 -- Phase 2 execution started
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 17
-  completed_plans: 6
+  completed_plans: 17
   percent: 9
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 2 — loadFeature — Parse, Compile, Correlate
+**Current focus:** Phase 3 — parameter types and step matching
 
 ## Current Position
 
-Phase: 2 (loadFeature — Parse, Compile, Correlate) — EXECUTING
-Plan: 1 of 11
-Status: Executing Phase 2
-Last activity: 2026-08-28 -- Phase 2 execution started
+Phase: 3
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-28
 
 **Current focus:** Phase 2 — `loadFeature` — Parse, Compile, Correlate
 
@@ -39,7 +39,7 @@ Overall progress:  [█░░░░░░░░░] ~9% (6 of ~66 plans; only ph
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 17
 - Average duration: ~10m
 - Total execution time: ~60m
 
@@ -48,6 +48,7 @@ Overall progress:  [█░░░░░░░░░] ~9% (6 of ~66 plans; only ph
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
+| 02 | 11 | - | - |
 
 **Per-plan detail:**
 
