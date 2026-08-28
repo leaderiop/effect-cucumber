@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { LoadFeatureError, makeWarning } from "../src/Errors.ts"
+import { LoadFeatureError, makeWarning, StepPatternError, type StepPatternErrorReason } from "../src/Errors.ts"
 
 // Imported directly from ../src/Errors.ts, never through ../src/index.ts:
 // `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and
@@ -42,8 +42,9 @@ describe("LoadFeatureError", () => {
   })
 
   it("carries the _tag discriminator for the Phase 6 error channel", () => {
-    // Destructured rather than read as `err._tag`: `no-underscore-dangle` is error-level in
-    // this repo for dotted member access, and allows object destructuring.
+    // Destructured rather than read by dotted member access off the error:
+    // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
+    // object destructuring.
     const { _tag } = makeError()
     expect(_tag).toBe("LoadFeatureError")
   })
@@ -154,5 +155,126 @@ describe("makeWarning", () => {
 
   it("is not an Error instance, because Group C findings never throw", () => {
     expect(warning).not.toBeInstanceOf(Error)
+  })
+})
+
+describe("StepPatternError", () => {
+  // Every member of StepPatternErrorReason, listed here rather than derived, so that adding a
+  // reason to the union without a test is a visible omission rather than an invisible one.
+  const allReasons: ReadonlyArray<StepPatternErrorReason> = [
+    "BuiltInParameterTypeName",
+    "DuplicateParameterTypeName",
+    "IllegalParameterTypeName",
+    "InvalidParameterTypeRegexp",
+    "InvalidParameterTypeDefinition",
+    "UndefinedParameterType",
+    "InvalidStepPattern",
+    "AsyncParameterTransform",
+    "ParameterTransformFailed"
+  ]
+
+  // A step pattern long enough that any hypothetical truncation would be visible, carrying the
+  // things a truncating formatter eats first: embedded newlines, cucumber-expression braces,
+  // and an alternation. The no-truncation policy of Errors.ts note (b) extends to this class,
+  // and this is its executable form.
+  const verbosePatternMessage = [
+    "InvalidStepPattern: this step pattern is not a valid cucumber-expression.",
+    "",
+    "  the customer {word} pays {money} for {int} apple(s)/pear(s) on {date} at the counter",
+    "  and then receives a receipt numbered {biginteger} with the cashier's note {string}",
+    "  and the register reconciles to {bigdecimal} before the next customer is served",
+    "",
+    "Every character of the pattern above is reproduced verbatim, by decision: no shortening",
+    "of any kind, so the pattern can be copied straight back into the step definition."
+  ].join("\n")
+
+  const makeError = () =>
+    new StepPatternError({
+      reason: "InvalidStepPattern",
+      parameterTypeName: "money",
+      pattern: "the customer {word} pays {money}",
+      message: verbosePatternMessage
+    })
+
+  it("is an Error instance, unlike a LoadFeatureWarning", () => {
+    expect(makeError()).toBeInstanceOf(Error)
+  })
+
+  it("is an instance of StepPatternError", () => {
+    expect(makeError()).toBeInstanceOf(StepPatternError)
+  })
+
+  it("reports name as the literal StepPatternError, not the inherited Error", () => {
+    // @cucumber/cucumber-expressions' own error classes never set this, so their .name is
+    // "Error" and they are not exported from its barrel either. Deleting the explicit
+    // assignment in the constructor must fail exactly here.
+    expect(makeError().name).toBe("StepPatternError")
+  })
+
+  it("carries the StepPatternError _tag discriminator for the Phase 6 error channel", () => {
+    // Destructured rather than read by dotted member access off the error:
+    // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
+    // object destructuring.
+    const { _tag } = makeError()
+    expect(_tag).toBe("StepPatternError")
+  })
+
+  for (const reason of allReasons) {
+    it(`round-trips the ${reason} reason tag given to the constructor`, () => {
+      const err = new StepPatternError({ reason, message: `raised for ${reason}` })
+      expect(err.reason).toBe(reason)
+    })
+  }
+
+  it("round-trips the parameterTypeName when it is supplied", () => {
+    expect(makeError().parameterTypeName).toBe("money")
+  })
+
+  it("round-trips the step pattern when it is supplied", () => {
+    expect(makeError().pattern).toBe("the customer {word} pays {money}")
+  })
+
+  it("exposes parameterTypeName and pattern as undefined when both arguments are omitted", () => {
+    // The exactOptionalPropertyTypes asymmetry: the constructor arguments are optional while
+    // the fields are `string | undefined`, so both properties must EXIST on every instance and
+    // answer the question rather than being absent.
+    const err = new StepPatternError({
+      reason: "InvalidParameterTypeDefinition",
+      message: "the upstream ParameterType constructor rejected this definition"
+    })
+
+    expect(err.parameterTypeName).toBeUndefined()
+    expect(err.pattern).toBeUndefined()
+    expect("parameterTypeName" in err).toBe(true)
+    expect("pattern" in err).toBe(true)
+  })
+
+  it("forwards the cause when a wrapped upstream error is supplied", () => {
+    const upstream = new Error("This Cucumber Expression has a problem at column 7")
+    const err = new StepPatternError({
+      reason: "UndefinedParameterType",
+      parameterTypeName: "money",
+      pattern: "I pay {money}",
+      message: "no parameter type named money is registered",
+      cause: upstream
+    })
+
+    expect(err.cause).toBe(upstream)
+  })
+
+  it("leaves the cause undefined when no upstream error is supplied", () => {
+    expect(makeError().cause).toBeUndefined()
+  })
+
+  it("reproduces a long multi-line step pattern message verbatim, with no truncation", () => {
+    expect(verbosePatternMessage.length).toBeGreaterThanOrEqual(400)
+    expect(makeError().message).toBe(verbosePatternMessage)
+    expect(makeError().message.includes("...")).toBe(false)
+  })
+
+  it("adds no ellipsis or elision marker to a long step pattern message", () => {
+    const message = makeError().message
+    expect(message.includes("…")).toBe(false)
+    expect(message.split("\n")).toHaveLength(8)
   })
 })
