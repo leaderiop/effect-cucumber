@@ -291,3 +291,5 @@ const resolve = (text: string): StepMatch<string> => {
 ---
 
 _Previous: [04 — loadFeature parse and validation](./04-loadfeature-parse-and-validation.md)_
+
+_Next: [06 — DataTable and DocString arguments](./06-datatable-and-docstring-arguments.md)_

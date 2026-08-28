@@ -127,16 +127,95 @@ assert_manifest() {
       }
     }
 
-    // ADR-EC-015: parsing only.
+    // ADR-EC-021 (which supersedes ADR-EC-015 in its own title): gherkin IS
+    // Effect-native now. What matters is no longer WHETHER effect appears, but
+    // WHICH FIELD it appears in -- the same peer-vs-hard-dependency distinction
+    // scripts/verify-no-runner-dep.sh already enforces over the SOURCE
+    // manifest, asserted here over the artifact a consumer actually installs.
+    //
+    //   effect / @effect/platform  -- REQUIRED as a peer (effect) and correct
+    //     as a devDependency, FORBIDDEN in dependencies / optionalDependencies
+    //     / bundledDependencies. A second copy installed for the consumer is
+    //     the duplicate-package hazard that breaks Context.Service identity,
+    //     which is the concern ADR-EC-015 raised and ADR-EC-021 keeps, handled
+    //     by the peer range rather than by abstinence. @effect/platform itself
+    //     is deliberately NOT required: no v4-compatible release exists (see
+    //     ADR-EC-021 Correction 2), so it is permitted-in-peer, never demanded.
+    //
+    //   vitest / @effect/vitest / @effect/platform-{node,bun,deno}  -- a test
+    //     runner or a CONCRETE platform implementation. Legitimate in
+    //     devDependencies (gherkin runs its own tests against them, and a
+    //     devDependency is never installed by a consumer), forbidden in every
+    //     other field. Whichever runner package consumes gherkin owns these.
     if (name === "@effect-cucumber/gherkin") {
-      const found = depFields.filter((f) => m[f] !== undefined && "effect" in m[f])
-      if (found.length > 0) {
+      const field = (f) => (m[f] === undefined ? {} : m[f])
+      const bundledRaw = m.bundledDependencies === undefined ? m.bundleDependencies : m.bundledDependencies
+      const bundled = Array.isArray(bundledRaw) ? bundledRaw : []
+      const has = (f, dep) => Object.prototype.hasOwnProperty.call(field(f), dep)
+
+      // Positive assertion. Without it a manifest that simply DROPPED effect
+      // would sail through the two negative assertions below by declaring
+      // nothing at all -- and would ship a package whose imports resolve
+      // against whatever copy of effect the consumer happens to have, or none.
+      if (!has("peerDependencies", "effect")) {
         fails.push(
-          "@effect-cucumber/gherkin declares effect in " + found.join(", ") +
-          " -- ADR-EC-015: this package parses feature files and must never depend on effect."
+          "peerDependencies.effect is missing from the packed manifest -- ADR-EC-021 requires effect as a PEER " +
+          "dependency of this package. Without it a consumer gets no version constraint at all on the copy of " +
+          "effect that gherkin resolves against."
         )
       } else {
-        ok.push("no effect key in any dependency field  (ADR-EC-015)")
+        ok.push("peerDependencies.effect = " + field("peerDependencies").effect + "  (required by ADR-EC-021)")
+      }
+
+      // The package runs its own test suite against effect, so it must also be
+      // able to build and test standalone. devDependencies do not reach a
+      // consumer, so this costs the shipped package nothing.
+      if (!has("devDependencies", "effect")) {
+        fails.push(
+          "devDependencies.effect is missing from the packed manifest -- gherkin builds and tests against effect, " +
+          "and a peerDependency alone does not install it for this repository."
+        )
+      } else {
+        ok.push("devDependencies.effect = " + field("devDependencies").effect + "  (correct under ADR-EC-021)")
+      }
+
+      // Negative assertion 1: nothing peer-only may be installed by default or
+      // bundled. optionalDependencies installs for a consumer exactly like
+      // dependencies does, so it is checked, not assumed harmless.
+      const hardened = []
+      for (const dep of ["effect", "@effect/platform"]) {
+        for (const f of ["dependencies", "optionalDependencies"]) {
+          if (has(f, dep)) hardened.push(f + "." + dep + " = " + JSON.stringify(field(f)[dep]))
+        }
+        if (bundled.includes(dep)) hardened.push("bundledDependencies includes " + JSON.stringify(dep))
+      }
+      if (hardened.length > 0) {
+        fails.push(
+          "effect / @effect/platform must be a PEER dependency only, never installed by default or bundled, but " +
+          "the packed manifest declares " + hardened.join(", ") + ". A consumer would get a second copy of effect, " +
+          "breaking Context.Service identity across the two (ADR-EC-021, and the original concern of ADR-EC-015)."
+        )
+      } else {
+        ok.push("effect / @effect/platform appear in no consumer-installed field  (ADR-EC-021)")
+      }
+
+      // Negative assertion 2: a runner or a concrete platform implementation
+      // may live in devDependencies and nowhere else.
+      const leaked = []
+      for (const dep of ["vitest", "@effect/vitest", "@effect/platform-node", "@effect/platform-bun", "@effect/platform-deno"]) {
+        for (const f of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+          if (has(f, dep)) leaked.push(f + "." + dep + " = " + JSON.stringify(field(f)[dep]))
+        }
+        if (bundled.includes(dep)) leaked.push("bundledDependencies includes " + JSON.stringify(dep))
+      }
+      if (leaked.length > 0) {
+        fails.push(
+          "the packed manifest declares " + leaked.join(", ") + " outside devDependencies -- gherkin must stay " +
+          "runtime-agnostic and runner-agnostic (ADR-EC-021). A concrete platform implementation and a test " +
+          "runner are the concern of whichever runner package consumes this one."
+        )
+      } else {
+        ok.push("no test runner and no concrete @effect/platform-* outside devDependencies  (ADR-EC-021)")
       }
     }
 

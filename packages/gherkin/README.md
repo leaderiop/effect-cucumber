@@ -4,16 +4,23 @@
 [effect-cucumber](https://github.com/leaderiop/effect-cucumber), wrapping the official
 [`@cucumber/gherkin`](https://www.npmjs.com/package/@cucumber/gherkin) and
 [`@cucumber/cucumber-expressions`](https://www.npmjs.com/package/@cucumber/cucumber-expressions) packages rather than
-reimplementing them. No Effect-specific logic lives here — this is a plain parsing library, and it declares no
-dependency on the Effect ecosystem in any field.
+reimplementing them. It is Effect-native: `effect` is a **peer** dependency, never bundled and never a hard dependency
+([ADR-EC-021](../../spec/decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)), and the package reaches
+`FileSystem`/`Path` through core `effect`'s own service interfaces, so it depends on no concrete platform implementation
+and no test runner — whichever runner package consumes it supplies those.
 
 Most consumers should install [`@effect-cucumber/vitest`](../vitest) instead, which re-exports `loadFeature` from this
 package.
 
 ## Status
 
-**Nothing is published to npm yet.** The parse pipeline has shipped: `loadFeature(path, options?)` and
-`parseFeature(source, uri, options?)` return a `ParsedFeature`, and the `ParsedFeature` contract — correlated
+**Nothing is published to npm yet.** The parse pipeline has shipped. `loadFeature(path)` returns
+`Effect<ParsedFeature, LoadFeatureError | StepPatternError, FileSystem.FileSystem | ParameterTypeStore>` and
+`parseFeature(source, uri)` returns `Effect<ParsedFeature, LoadFeatureError | StepPatternError, ParameterTypeStore>` —
+`Effect`-returning since [ADR-EC-021](../../spec/decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md),
+with the former `options?` argument replaced by an ambient `ParameterTypeStore` service since
+[ADR-EC-023](../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md), so a caller provides
+both requirements as Layers rather than passing either one. The `ParsedFeature` contract — correlated
 scenarios, steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surface — is real. Custom parameter
 types and step matching have shipped too: `defineParameterType` records a type as plain data at module scope,
 every parse replays the recorded definitions into a fresh registry handed back on

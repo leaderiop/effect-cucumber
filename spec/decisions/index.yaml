@@ -74,3 +74,6 @@ entries:
   - id: "ADR-EC-024"
     file: "024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md"
     title: "@effect-cucumber/vitest owns one module-scoped ManagedRuntime for collection-time loadFeature"
+  - id: "ADR-EC-025"
+    file: "025-datatable-wrapper-accessor-contract.md"
+    title: "The DataTable wrapper's accessors fail loudly, and both step arguments arrive in source order"

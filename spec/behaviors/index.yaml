@@ -22,3 +22,7 @@ entries:
     file: "05-step-matching-and-parameter-types.md"
     title: "Step matching and parameter types"
     id_range: "015"
+  - id: "BEH-EC-016"
+    file: "06-datatable-and-docstring-arguments.md"
+    title: "DataTable and DocString arguments"
+    id_range: "016"

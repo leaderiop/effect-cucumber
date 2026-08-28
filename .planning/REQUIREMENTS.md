@@ -115,4 +115,4 @@ enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-28 after roadmap creation — PARSE-04 added, traceability populated*
+*Last updated: 2026-08-28 after Phase 4 (DataTable / DocString) — PARSE-04 marked Complete in plan 04-04 and confirmed here by plan 04-05's spec reconciliation, which added ADR-EC-025 and BEH-EC-016 as its spec backing. No other requirement's status changed.*

@@ -60,3 +60,31 @@ time with a structured error instead of a confusing downstream failure.
 >
 > Full primary-source findings: [`research/gherkin-parsed-shape.md`](https://github.com/leaderiop/effect-cucumber/blob/research/gherkin-parsed-shape/research/gherkin-parsed-shape.md)
 > (branch `research/gherkin-parsed-shape`, not merged to `main`).
+
+---
+
+> **Correction (2026-08-28, Phase 4 implementation, pinned by
+> `packages/gherkin/test/DataTable.test.ts` and `packages/gherkin/test/schema-issue-pin.test.ts`):**
+> the `ts` fence in the Decision section above shows
+> `Schema.decodeUnknown(Schema.Array(User))(table.hashes())`. Two things about that line are now
+> stale. It is a `ts` fence — reference material, never compiled (AGENTS.md §2), which is exactly why
+> the drift went unnoticed — so it is marked here rather than rewritten, and nothing above this line
+> is deleted.
+>
+> **`Schema.decodeUnknown` is effect v3's name.** On `effect@4.0.0-rc.112` the `Effect`-returning
+> form is `Schema.decodeUnknownEffect`. (This package could not name either one when the fence was
+> written: `effect` only became reachable from `@effect-cucumber/gherkin` under
+> [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md).)
+>
+> **`table.hashes()` is no longer a plain value.** It returns
+> `Effect<ReadonlyArray<Record<string, string>>, DataTableError>` under
+> [ADR-EC-025](025-datatable-wrapper-accessor-contract.md) — a duplicate header column is a real
+> failure this library refuses to resolve by letting the last cell win — so passing it straight into
+> a decoder is a type error; a step body writes `yield* table.hashes()`. The ergonomic path a step
+> body actually uses is `decodeHashes(User)(table)`, which wraps the row schema in `Schema.Array`
+> itself and, because it owns that wrapping, can name the offending ROW and COLUMN on failure rather
+> than an array index into a value the step author never constructed.
+>
+> **The Decision itself is unchanged and fully implemented.** Data tables and doc strings decode
+> through `Schema`; ADR-EC-025 records the shape the wrapper this correction's predecessor called for
+> actually took.
