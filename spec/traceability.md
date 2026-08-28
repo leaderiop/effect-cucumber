@@ -27,6 +27,7 @@ rows name real files. See `spec/roadmap.md` for what's actually built.
 | [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                             |
 | [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                               |
 | [05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015                 | `packages/gherkin/src/{ParameterTypes,StepMatcher,StepArgs,Errors}.ts`                                                      |
+| [06 — DataTable and DocString arguments](behaviors/06-datatable-and-docstring-arguments.md)  | BEH-EC-016                 | `packages/gherkin/src/{DataTable,StepArguments,Errors,Model,Correlate}.ts`                                                  |
 
 ## §2 Invariant traceability
 
@@ -67,6 +68,7 @@ rows name real files. See `spec/roadmap.md` for what's actually built.
 | [ADR-EC-022](decisions/022-option-replaces-undefined-in-gherkins-public-api.md)             | `Option<T>` replaces `T \| undefined` throughout gherkin's public API                                      | —                                                                                                      |
 | [ADR-EC-023](decisions/023-parametertypestore-becomes-an-ambient-context-service.md)        | `ParameterTypeStore` becomes an ambient `Context.Service`, replacing `LoadFeatureOptions`                  | —                                                                                                      |
 | [ADR-EC-024](decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md) | `@effect-cucumber/vitest` owns one module-scoped `ManagedRuntime` for collection-time `loadFeature`        | —                                                                                                      |
+| [ADR-EC-025](decisions/025-datatable-wrapper-accessor-contract.md)                          | The DataTable wrapper's accessors fail loudly, and both step arguments arrive in source order              | —                                                                                                      |
 
 ## §4 Test file map
 
@@ -83,23 +85,23 @@ claim is actually asserted. It is listed here so the claim is traceable; it is n
 to be "fixed" by renaming it to `.test.ts`, which would break `pnpm test` with "No test suite
 found".
 
-| Test file                                              | Covers     | Description                                                                                                                     |
-| ------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/gherkin/test/Contracts.test.ts`              | BEH-EC-014 | Error and warning shape, including the no-truncation policy                                                                     |
-| `packages/gherkin/test/Correlate.test.ts`              | BEH-EC-001 | Substitution, Background stacking, tag inheritance, origin, keyword, and both scenario names                                    |
-| `packages/gherkin/test/DataTable.test.ts`              | BEH-EC-014 | `raw()`/`hashes()`/`rowsHash()` semantics, `decodeHashes`, and the `__proto__` header-cell guard                                |
-| `packages/gherkin/test/ParameterTypeLifecycle.test.ts` | BEH-EC-015 | A custom parameter type resolving across two `loadFeature` calls in one process                                                 |
-| `packages/gherkin/test/ParameterTypes.test.ts`         | BEH-EC-015 | One test per definition-time rejection, repeated builds, and store isolation                                                    |
-| `packages/gherkin/test/Parser.test.ts`                 | BEH-EC-014 | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`                                     |
-| `packages/gherkin/test/StepArguments.test.ts`          | BEH-EC-014 | `stepArgumentsOf`'s wrapping and its `argumentIndex` ordering rule, on synthetic literals only                                  |
-| `packages/gherkin/test/StepMatcher.test.ts`            | BEH-EC-015 | Runtime coercion, match-every-pattern, and memoization identity per (registry, pattern)                                         |
-| `packages/gherkin/test/Validate.test.ts`               | BEH-EC-014 | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards                                    |
-| `packages/gherkin/test/dialect.test.ts`                | BEH-EC-001 | A non-English feature parses with no special handling                                                                           |
-| `packages/gherkin/test/expressions-pin.test.ts`        | BEH-EC-015 | Pins `@cucumber/cucumber-expressions@20.1.0`'s verified behavior; imports nothing from `../src`                                 |
-| `packages/gherkin/test/loadFeature.test.ts`            | BEH-EC-001 | Synchronous, contributes zero tests, path and `?raw` parity                                                                     |
-| `packages/gherkin/test/schema-issue-pin.test.ts`       | BEH-EC-014 | Pins `effect@4.0.0-rc.112`'s `SchemaError` issue tree, which `decodeHashes`' locator walk reads; imports nothing from `../src`  |
-| `packages/gherkin/test/upstream-pin.test.ts`           | BEH-EC-014 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture so an upstream bump fails loudly                                    |
-| `packages/gherkin/test/StepArgs.types.ts`              | BEH-EC-015 | **Type-check, not a suite** — compiled by `pnpm typecheck:test`, never collected by vitest; asserts MATCH-01's type-level claim |
+| Test file                                              | Covers                 | Description                                                                                                                                               |
+| ------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/gherkin/test/Contracts.test.ts`              | BEH-EC-014             | Error and warning shape, including the no-truncation policy                                                                                               |
+| `packages/gherkin/test/Correlate.test.ts`              | BEH-EC-001, BEH-EC-016 | Substitution, Background stacking, tag inheritance, origin, keyword, both scenario names, and `stepArguments` end to end                                  |
+| `packages/gherkin/test/DataTable.test.ts`              | BEH-EC-016             | Accessor semantics, both roadmap edge cases, the loud-failure paths, the `__proto__` guard, and `decodeHashes`' located error                             |
+| `packages/gherkin/test/ParameterTypeLifecycle.test.ts` | BEH-EC-015             | A custom parameter type resolving across two `loadFeature` calls in one process                                                                           |
+| `packages/gherkin/test/ParameterTypes.test.ts`         | BEH-EC-015             | One test per definition-time rejection, repeated builds, and store isolation                                                                              |
+| `packages/gherkin/test/Parser.test.ts`                 | BEH-EC-014             | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`                                                               |
+| `packages/gherkin/test/StepArguments.test.ts`          | BEH-EC-016             | The source-order rule asserted on synthetic `PickleStepArgument` values, independent of any fixture                                                       |
+| `packages/gherkin/test/StepMatcher.test.ts`            | BEH-EC-015             | Runtime coercion, match-every-pattern, and memoization identity per (registry, pattern)                                                                   |
+| `packages/gherkin/test/Validate.test.ts`               | BEH-EC-014             | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards                                                              |
+| `packages/gherkin/test/dialect.test.ts`                | BEH-EC-001             | A non-English feature parses with no special handling                                                                                                     |
+| `packages/gherkin/test/expressions-pin.test.ts`        | BEH-EC-015             | Pins `@cucumber/cucumber-expressions@20.1.0`'s verified behavior; imports nothing from `../src`                                                           |
+| `packages/gherkin/test/loadFeature.test.ts`            | BEH-EC-001             | Synchronous, contributes zero tests, path and `?raw` parity                                                                                               |
+| `packages/gherkin/test/schema-issue-pin.test.ts`       | BEH-EC-016             | Pins `effect@4.0.0-rc.112`'s `SchemaError` issue-tree shape, which `decodeHashes` reads; imports nothing from `../src`                                    |
+| `packages/gherkin/test/upstream-pin.test.ts`           | BEH-EC-014, BEH-EC-016 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture — including the `argumentIndex` and `PickleTableRow` facts — so an upstream bump fails loudly |
+| `packages/gherkin/test/StepArgs.types.ts`              | BEH-EC-015             | **Type-check, not a suite** — compiled by `pnpm typecheck:test`, never collected by vitest; asserts MATCH-01's type-level claim                           |
 
 ## §5 Acceptance scenario traceability
 
