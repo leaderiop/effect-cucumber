@@ -168,6 +168,81 @@ const zeroStepScenario = (uri: string, node: AstScenarioInfo, line: number): Loa
 const lineOf = (pickle: Pickle, node: AstScenarioInfo): number => pickle.location?.line ?? node.location.line
 
 /**
+ * The uniqueness key for the duplicate-name check: the pair `(scope, un-interpolated name)`.
+ *
+ * The scope half is the enclosing `Rule.id`, or the sentinel `<feature>` for a Scenario written
+ * at feature level. `Rule` ids are generator-produced and contain no NUL, so a NUL separator makes
+ * the encoding of the pair unambiguous for every possible Scenario name.
+ *
+ * The name half is the AST node's OWN un-interpolated name (`outline <name>`), never a compiled
+ * scenario name. An Outline's rows legitimately produce many interpolated names from one node, so
+ * comparing those would report false collisions on any Outline with repeating rows — fixture
+ * `outline-identical-row-names.feature` pins exactly that shape as legal. Keying on the AST node
+ * also makes double-counting impossible: an Outline appears once in `astScenarios` however many
+ * pickles it yields.
+ */
+const uniquenessKey = (node: AstScenarioInfo): string => `${node.ruleId ?? "<feature>"}\u0000${node.name}`
+
+/**
+ * F22 — two Scenarios sharing one un-interpolated name inside one scope.
+ *
+ * **Why this is checked at all.** `[VERIFIED]`: two Scenarios named `dup` in one Feature parse
+ * fine and compile to two scenarios with identical names and distinct `astNodeIds`. Nothing
+ * upstream objects. But the roadmap's success criterion 4 and ARCHITECTURE.md's Open Question 4
+ * both match a Scenario to its registered step definitions BY the un-interpolated name, and
+ * neither noticed that names are not unique. Phase 6 would join `ParsedFeature` against the
+ * registry by that name and hit a genuine ambiguity with no good runtime answer. Rejecting it
+ * here turns a Phase-6 design hole into an authoring-time error — this project's stated core value
+ * applied to one more axis, at the cost of one `Map`.
+ *
+ * **LOCKED DECISION 1 — severity: REJECT.** A Feature containing two Scenarios with the same
+ * un-interpolated name in the same scope is rejected with a `LoadFeatureError`. Not a warning, not
+ * an automatic rename, not a positional fallback. (Research Assumption A1, decided.)
+ *
+ * **LOCKED DECISION 2 — scope: PER-SCOPE.** Uniqueness holds within one scope only: feature level,
+ * or within one `Rule:`. Two different Rules may each legally contain a `Scenario: happy path`,
+ * and fixture `duplicate-scenario-name-across-rules.feature` is the executable proof that they
+ * still may. Whole-Feature uniqueness is explicitly rejected as too strict. The per-scope choice
+ * mirrors Phase 6's per-scope scope-chain resolution (ARCHITECTURE.md Pattern 5), so the two
+ * layers agree on what a scope is. (Research Assumption A6, decided.)
+ *
+ * Both decisions are locked developer decisions, not recommendations. Do not relax either one
+ * without changing the fixtures that pin them.
+ */
+const duplicateScenarioName = (
+  uri: string,
+  node: AstScenarioInfo,
+  first: AstScenarioInfo,
+  scope: string
+): LoadFeatureError => {
+  const line = node.location.line
+  return new LoadFeatureError({
+    reason: "DuplicateScenarioName",
+    uri,
+    line,
+    message: `${at(uri, line)}DuplicateScenarioName: ${scope} contains two scenarios named `
+      + `${JSON.stringify(node.name)} — the first on line ${first.location.line}, this one on line ${line}. `
+      + `Scenario names are how a scenario is matched to its registered step definitions, so a repeated name `
+      + `is ambiguous with no correct runtime resolution. Rename one of them. Names only have to be unique `
+      + `within a scope: two different Rule: blocks may each contain a scenario of the same name.`
+  })
+}
+
+/**
+ * How to name a scope in an error message: the enclosing `Rule:`, or the Feature itself.
+ */
+const scopeLabel = (
+  ruleId: string | undefined,
+  ruleNames: ReadonlyMap<string, string>
+): string => {
+  if (ruleId === undefined) {
+    return "the Feature"
+  }
+  const name = ruleNames.get(ruleId)
+  return name === undefined || name === "" ? "a Rule:" : `Rule: ${JSON.stringify(name)}`
+}
+
+/**
  * Validate one correlated feature.
  *
  * Throws a `LoadFeatureError` on the first problem in document order; returns the accumulated
@@ -177,6 +252,9 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
   const { feature, index } = result
   const uri = feature.uri
   const warnings: Array<LoadFeatureWarning> = []
+  const ruleNames = new Map(index.astRules.map((rule) => [rule.id, rule.name]))
+  /** Populated in document order, so the retained entry is always the FIRST occurrence. */
+  const seenByScope = new Map<string, AstScenarioInfo>()
 
   for (const node of index.astScenarios) {
     const produced = index.byScenarioId.get(node.id) ?? []
@@ -197,6 +275,14 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
       if (pickle.steps.length === 0) {
         throw zeroStepScenario(uri, node, lineOf(pickle, node))
       }
+    }
+
+    const key = uniquenessKey(node)
+    const first = seenByScope.get(key)
+    if (first === undefined) {
+      seenByScope.set(key, node)
+    } else {
+      throw duplicateScenarioName(uri, node, first, scopeLabel(node.ruleId, ruleNames))
     }
   }
 
