@@ -12,10 +12,14 @@ package.
 
 ## Status
 
-**Nothing is published to npm yet.** The parse pipeline has shipped: `loadFeature(path)` and
-`parseFeature(source, uri)` return a `ParsedFeature`, and the `ParsedFeature` contract — correlated scenarios,
-steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surface — is real. Step matching, parameter
-types, and the `DataTable` wrapper are specified but not built yet. See
+**Nothing is published to npm yet.** The parse pipeline has shipped: `loadFeature(path, options?)` and
+`parseFeature(source, uri, options?)` return a `ParsedFeature`, and the `ParsedFeature` contract — correlated
+scenarios, steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surface — is real. Custom parameter
+types and step matching have shipped too: `defineParameterType` records a type as plain data at module scope,
+every parse replays the recorded definitions into a fresh registry handed back on
+`ParsedFeature.parameterTypes`, and `createStepMatcher` matches a step text against every registered pattern
+with its arguments already coerced. The `DataTable` wrapper — this package's own `.hashes()`-style accessor
+over a step's data table — does **not** ship yet; it is a later phase's deliverable. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
 
 ## Install

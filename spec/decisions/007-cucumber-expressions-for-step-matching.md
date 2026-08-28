@@ -110,3 +110,58 @@ syntax.
 > chooses to expose custom-type registration as a Layer-provided service
 > rather than an ambient global list — an implementation detail left open for
 > Phase 2 of the roadmap, not decided here.
+>
+> **[Superseded in place by the correction below (Phase 3 implementation): the
+> `Layer`-provided-service option floated in the paragraph immediately above was
+> never actually open to this package. Everything else in this correction shipped
+> as written.]**
+
+---
+
+> **Correction (2026-08-28, Phase 3 implementation, verified against
+> `@cucumber/cucumber-expressions@20.1.0` and pinned by
+> `packages/gherkin/test/ParameterTypes.test.ts`,
+> `packages/gherkin/test/StepMatcher.test.ts` and
+> `packages/gherkin/test/ParameterTypeLifecycle.test.ts`):** the correction above
+> closes by leaving one question open — whether custom-type registration is
+> exposed as a `Context.Service` + `Layer` rather than an ambient list, "an
+> implementation detail left open for Phase 2 of the roadmap". That choice is now
+> made, and it was **forced rather than preferred**.
+>
+> [ADR-EC-015](015-effect-is-a-peer-dependency.md) forbids
+> `@effect-cucumber/gherkin` from declaring `effect` in **any** manifest field,
+> and `pnpm verify:no-runner-dep` enforces that structurally, scanning both the
+> source tree and the consumer-facing manifest fields. A `Layer`-provided registry
+> is therefore unreachable from the package that owns `loadFeature` — not a
+> weaker option, an impossible one. The sentence proposing it is marked superseded
+> in place above rather than deleted, because what was believed, and when, is part
+> of the record.
+>
+> **What shipped instead** is a `ParameterTypeStore`: a plain object holding an
+> append-only array of `{ name, regexp, transform }` records, with a process-wide
+> `defaultParameterTypeStore` and a `createParameterTypeStore()` factory for a
+> caller needing isolation. `loadFeature` and `parseFeature` accept an optional
+> trailing options argument carrying a store override, and each call builds a
+> **fresh** `ParameterTypeRegistry` and replays every record into it. The store
+> being a plain value is also what leaves a future `@effect-cucumber/vitest` free
+> to wrap one in a `Layer` without this package having to move.
+>
+> **Two rejections this decision did not name**, both raised at **declaration**
+> time rather than at replay or match time, so the error points at the caller's
+> own call instead of at a frame several modules away inside `loadFeature`: a name
+> colliding with one of the registry's pre-registered built-ins, and a name
+> already recorded in the same store (the message names both definition sites).
+> Both raise `StepPatternError`, a class kept deliberately separate from
+> `LoadFeatureError` so that
+> [BEH-EC-014](../behaviors/04-loadfeature-parse-and-validation.md)'s closed
+> ten-member reason set stays true.
+>
+> **One constraint this decision did not anticipate:** a parameter transform must
+> be **synchronous**. `Argument.getValue` returns a transform's result unwrapped,
+> so an async transform hands a step body a `Promise` where its declared parameter
+> type says otherwise. The declared `transform` type omits upstream's
+> `PromiseLike` half, and `StepMatcher` guards the `any`-cast escape route at
+> runtime.
+>
+> [BEH-EC-015](../behaviors/05-step-matching-and-parameter-types.md) is the
+> normative behavior for all of the above.

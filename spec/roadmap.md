@@ -2,12 +2,14 @@
 
 ## Current state
 
-**`@effect-cucumber/gherkin`'s parse pipeline has shipped;
+**`@effect-cucumber/gherkin`'s parse pipeline and step matcher have shipped;
 `@effect-cucumber/vitest` is still scaffolding.** `loadFeature`/`parseFeature`
 and the `ParsedFeature` contract are built and tested
-([04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md));
-everything the runner needs — `describeFeature`, step matching, hooks, tags,
-Layer scoping — is still an intended contract only, stress-tested against
+([04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)),
+as are custom parameter types and step matching
+([05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md));
+everything else the runner needs — `describeFeature`, hooks, tags, Layer
+scoping — is still an intended contract only, stress-tested against
 three worked examples (see `spec/behaviors/`) and against four rounds of GSD
 research (Stack, Features, Architecture, Pitfalls — see `.planning/research/`),
 which found and fixed real bugs in the spec itself (ADR-EC-014/007's
@@ -16,16 +18,16 @@ assumptions against the actually-installed dependencies. `.planning/ROADMAP.md`
 formalizes the 11-phase, bottom-up build order both Architecture and Pitfalls
 research independently converged on, and is the authority on per-phase status.
 
-| Gate                                              | Status                                                                                                                                                                                                                                   |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface); `@effect-cucumber/vitest` is still a placeholder barrel |
-| `tsc -b`                                          | Wired (`tsconfig.base.json`/`tsconfig.json`/per-package configs) and building `packages/gherkin` for real                                                                                                                                |
-| `@effect/tsgo` (Effect-aware type checking)       | Wired, gating the build (ADR-EC-016)                                                                                                                                                                                                     |
-| Unit tests                                        | Yes for `packages/gherkin` — seven `test/*.test.ts` files over a `.feature` fixture set, mapped in [`spec/traceability.md`](traceability.md) §4. None for `packages/vitest`                                                              |
-| Acceptance suite (this library dogfooding itself) | None yet                                                                                                                                                                                                                                 |
-| `bash spec/scripts/verify-traceability.sh`        | Wired and passing (checks spec-to-spec consistency only)                                                                                                                                                                                 |
-| Doc-examples compile check                        | Not wired                                                                                                                                                                                                                                |
-| GSD project planning                              | `PROJECT.md`/`config.json`/`ROADMAP.md` all done under `.planning/`; research done. See `.planning/ROADMAP.md` for per-phase status                                                                                                      |
+| Gate                                              | Status                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface, custom parameter types as data, and the step matcher); `@effect-cucumber/vitest` is still a placeholder barrel |
+| `tsc -b`                                          | Wired (`tsconfig.base.json`/`tsconfig.json`/per-package configs) and building `packages/gherkin` for real                                                                                                                                                                                      |
+| `@effect/tsgo` (Effect-aware type checking)       | Wired, gating the build (ADR-EC-016)                                                                                                                                                                                                                                                           |
+| Unit tests                                        | Yes for `packages/gherkin` — eleven `test/*.test.ts` files over a `.feature` fixture set, plus one type-check-only `.types.ts` file compiled by `pnpm typecheck:test`, all mapped in [`spec/traceability.md`](traceability.md) §4. None for `packages/vitest`                                  |
+| Acceptance suite (this library dogfooding itself) | None yet                                                                                                                                                                                                                                                                                       |
+| `bash spec/scripts/verify-traceability.sh`        | Wired and passing (checks spec-to-spec consistency only)                                                                                                                                                                                                                                       |
+| Doc-examples compile check                        | Not wired                                                                                                                                                                                                                                                                                      |
+| GSD project planning                              | `PROJECT.md`/`config.json`/`ROADMAP.md` all done under `.planning/`; research done. See `.planning/ROADMAP.md` for per-phase status                                                                                                                                                            |
 
 ## Blocking first release
 
