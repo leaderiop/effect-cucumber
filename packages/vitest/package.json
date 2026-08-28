@@ -19,13 +19,13 @@
     "@effect-cucumber/gherkin": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.112",
-    "@effect/vitest": "^4.0.0-rc.112",
-    "vitest": "^4.1.0"
+    "effect": "catalog:peer",
+    "@effect/vitest": "catalog:peer",
+    "vitest": "catalog:peer"
   },
   "devDependencies": {
-    "effect": "4.0.0-rc.112",
-    "@effect/vitest": "4.0.0-rc.112",
-    "vitest": "^4.1.0"
+    "effect": "catalog:",
+    "@effect/vitest": "catalog:",
+    "vitest": "catalog:"
   }
 }

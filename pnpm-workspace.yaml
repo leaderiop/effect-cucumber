@@ -1,2 +1,23 @@
 packages:
   - "packages/*"
+
+# Exact pins — devDependencies only. This is the single bump point for an
+# Effect rc upgrade (ADR-EC-012).
+catalog:
+  effect: 4.0.0-rc.112
+  "@effect/vitest": 4.0.0-rc.112
+  vitest: ^4.1.0
+  typescript: ^7.0.2
+  "@types/node": ^26.4.0
+
+# Ranges — peerDependencies only. `catalog:` expands verbatim at pack time
+# (PITFALLS Pitfall 20), so an exact pin here would publish an exact peer
+# range and strand every consumer sitting on a different rc.
+catalogs:
+  peer:
+    effect: ^4.0.0-rc.112
+    "@effect/vitest": ^4.0.0-rc.112
+    # Copied verbatim from @effect/vitest@4.0.0-rc.112's own published peer
+    # range. vitest 5 exists as a prerelease and is NOT supported — do not
+    # widen this.
+    vitest: ">=4.1.0 <5.0.0"

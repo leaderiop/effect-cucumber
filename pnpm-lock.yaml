@@ -4,6 +4,21 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@effect/vitest':
+      specifier: 4.0.0-rc.112
+      version: 4.0.0-rc.112
+    effect:
+      specifier: 4.0.0-rc.112
+      version: 4.0.0-rc.112
+    typescript:
+      specifier: ^7.0.2
+      version: 7.0.2
+    vitest:
+      specifier: ^4.1.0
+      version: 4.1.11
+
 importers:
 
   .:
@@ -21,10 +36,10 @@ importers:
         specifier: 1.80.0
         version: 1.80.0
       typescript:
-        specifier: ^7.0.2
+        specifier: 'catalog:'
         version: 7.0.2
       vitest:
-        specifier: ^4.1.0
+        specifier: 'catalog:'
         version: 4.1.11(vite@8.2.2)
 
   packages/gherkin:
@@ -46,13 +61,13 @@ importers:
         version: link:../gherkin
     devDependencies:
       '@effect/vitest':
-        specifier: 4.0.0-rc.112
+        specifier: 'catalog:'
         version: 4.0.0-rc.112(effect@4.0.0-rc.112)(vitest@4.1.11(vite@8.2.2))
       effect:
-        specifier: 4.0.0-rc.112
+        specifier: 'catalog:'
         version: 4.0.0-rc.112
       vitest:
-        specifier: ^4.1.0
+        specifier: 'catalog:'
         version: 4.1.11(vite@8.2.2)
 
 packages:
