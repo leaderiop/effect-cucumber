@@ -1,7 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // `lib` is ES2023 while `target` stays ES2022, and the split is deliberate. ES2023 added no new
+    // SYNTAX, so there is nothing extra to emit — it added library methods, `Array.prototype.toSorted`
+    // among them, which `packages/gherkin/src/StepArguments.ts` uses in place of the mutating
+    // in-place alternative that oxlint's `unicorn(no-array-sort)` rejects. Every one of those methods
+    // is present from Node 20, which is already this package's declared floor
+    // (`packages/gherkin/package.json`'s `engines.node`), so this widens what may be TYPED, not what
+    // must be RUN: the supported runtime range is unchanged.
+    "lib": ["ES2023"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
