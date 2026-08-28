@@ -104,7 +104,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 02-09-PLAN.md — `loadFeature.ts` + the real barrel, the PARSE-01 behavioral proof, and the `# language: fr` dialect test
+- [x] 02-09-PLAN.md — `loadFeature.ts` + the real barrel, the PARSE-01 behavioral proof, and the `# language: fr` dialect test
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
@@ -295,7 +295,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 8/11 | In Progress|  |
+| 2. `loadFeature` — Parse, Compile, Correlate | 9/11 | In Progress|  |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
