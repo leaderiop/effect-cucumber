@@ -14,3 +14,7 @@ entries:
     file: "03-rules-outlines-and-testclock.md"
     title: "Rules, Scenario Outlines, and TestClock"
     id_range: "009-012"
+  - id: "BEH-EC-014"
+    file: "04-loadfeature-parse-and-validation.md"
+    title: "loadFeature parse and validation"
+    id_range: "014"
