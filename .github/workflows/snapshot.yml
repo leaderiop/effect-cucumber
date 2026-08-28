@@ -1,0 +1,33 @@
+name: Snapshot
+
+# With zero published versions, a per-PR preview install is the only way anyone
+# — including us — can try a branch without touching the registry.
+#
+# This workflow must NEVER be added to a branch-protection required-checks set.
+# A preview publish failing (most likely because the pkg-pr-new GitHub App is
+# not installed on the repository yet) must not be able to block a merge.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  # Lets pkg-pr-new attest the build via OIDC. No npm token and no repository
+  # secret are required; the workflow uses the default GITHUB_TOKEN.
+  id-token: write
+
+jobs:
+  snapshot:
+    name: Publish preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm snapshot

@@ -13,6 +13,7 @@
     "lint": "oxlint -f unix && dprint check",
     "lint-fix": "oxlint --fix && dprint fmt",
     "circular": "madge --circular --extensions ts packages/*/src",
+    "snapshot": "pkg-pr-new publish --pnpm ./packages/*",
     "verify:pack": "bash scripts/verify-pack.sh",
     "verify:spec": "bash spec/scripts/verify-traceability.sh",
     "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh",
@@ -24,6 +25,7 @@
     "dprint": "0.56.1",
     "madge": "8.0.0",
     "oxlint": "1.80.0",
+    "pkg-pr-new": "0.0.88",
     "publint": "0.3.24",
     "typescript": "catalog:",
     "vitest": "catalog:"
