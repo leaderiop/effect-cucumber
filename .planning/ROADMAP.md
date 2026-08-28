@@ -39,7 +39,15 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A probe file containing a deliberate `missingLayerContext` (or `missingEffectContext`) diagnostic makes `tsc -b` exit non-zero — proving ADR-EC-016's gate is enforced, not advisory.
   3. `oxlint` (including the vendored `@effect/oxc` rules) and `dprint --check` both run clean over the repo, and CI runs build + lint + format + test on Node 22 and 24.
   4. `pnpm pack` on each package yields an ESM-only tarball with the `publishConfig.exports` shape applied, an `effect` peer *range* (not the catalog's exact rc pin — Pitfall 20), and a README install line carrying `@rc` explicitly (Pitfall 19).
-**Plans**: TBD — set by `/gsd:plan-phase 1`
+**Plans**: 6 plans (6 waves, sequential — every plan shares config surface with the one before it)
+
+Plans:
+- [ ] 01-01-PLAN.md — Fix `tsconfig.base.json` (TS 7 removed `esModuleInterop`) and add placeholder entry points so the cold composite build emits declarations
+- [ ] 01-02-PLAN.md — Prove ADR-EC-016's tsgo gate with a `missingLayerContext` / `floatingEffect` fixture and `pnpm verify:tsgo-gate`
+- [ ] 01-03-PLAN.md — Adopt Effect's dprint config (ASI), wire oxlint with the vendored Effect rules, and track `tools/` in git
+- [ ] 01-04-PLAN.md — Two-catalog dependency policy (pins for dev, ranges for peers) and publishable ESM-only manifests
+- [ ] 01-05-PLAN.md — `pnpm verify:pack` tarball assertions (Pitfall 20 guard, publint) and `@rc`-carrying README install lines
+- [ ] 01-06-PLAN.md — CI: `check.yml` merge gate with a Node 22/24 test matrix, plus `snapshot.yml` pkg-pr-new previews
 
 Open decisions to close in this phase: dprint `semiColons: "asi"` (explicit yes/no), pnpm 11.x bump, whether to adopt `publint`/`madge`/`pkg-pr-new`, and whether the weekly `effect@rc` canary CI job is in or out (research's own prescription, no ecosystem precedent — optional).
 
