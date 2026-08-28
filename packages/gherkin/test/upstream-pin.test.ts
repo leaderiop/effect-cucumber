@@ -17,6 +17,10 @@ import {
   type GherkinDocument,
   IdGenerator,
   type Pickle,
+  type PickleDocString,
+  type PickleStepArgument,
+  type PickleTable,
+  type PickleTableRow,
   type Scenario
 } from "@cucumber/messages"
 import { readFileSync } from "node:fs"
@@ -30,13 +34,18 @@ interface Parsed {
 const readFixture = (name: string): string => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8")
 
 /** Pattern 1: ONE id generator per call, shared by `AstBuilder` and by `compile`. */
-const parseWith = (name: string, newId: IdGenerator.NewId): Parsed => {
+const parseSourceWith = (source: string, uri: string, newId: IdGenerator.NewId): Parsed => {
   const parser = new Parser(new AstBuilder(newId), new GherkinClassicTokenMatcher())
-  const document = parser.parse(readFixture(name))
-  return { document, pickles: compile(document, name, newId) }
+  const document = parser.parse(source)
+  return { document, pickles: compile(document, uri, newId) }
 }
 
+const parseWith = (name: string, newId: IdGenerator.NewId): Parsed => parseSourceWith(readFixture(name), name, newId)
+
 const parseFixture = (name: string): Parsed => parseWith(name, IdGenerator.uuid())
+
+/** The same one-generator-per-call rule, for a source that is deliberately not a file in `./fixtures`. */
+const parseSource = (source: string, uri: string): Parsed => parseSourceWith(source, uri, IdGenerator.uuid())
 
 const failureOf = (name: string): unknown => {
   try {
@@ -96,6 +105,46 @@ const nodeIdsOf = (parsed: Parsed): Array<string> => {
 }
 
 /**
+ * The Group E readers. Each reads ONE fact off a named fixture so an `it` below asserts rather
+ * than re-derives the parse, and each throws by name rather than returning `undefined`, so a
+ * shape that stops existing upstream fails with a sentence instead of an `expected undefined`.
+ */
+const argumentOf = (name: string): PickleStepArgument => {
+  const argument = parseFixture(name).pickles[0]?.steps[0]?.argument
+  if (argument === undefined) {
+    throw new Error(`expected ${name}'s first pickle step to carry an argument`)
+  }
+  return argument
+}
+
+const tableOf = (argument: PickleStepArgument): PickleTable => {
+  const dataTable = argument.dataTable
+  if (dataTable === undefined) {
+    throw new Error("expected the step argument to carry a dataTable")
+  }
+  return dataTable
+}
+
+const docStringOf = (argument: PickleStepArgument): PickleDocString => {
+  const docString = argument.docString
+  if (docString === undefined) {
+    throw new Error("expected the step argument to carry a docString")
+  }
+  return docString
+}
+
+const firstRowOf = (table: PickleTable): PickleTableRow => {
+  const row = table.rows[0]
+  if (row === undefined) {
+    throw new Error("expected the dataTable to carry at least one row")
+  }
+  return row
+}
+
+const valuesOf = (table: PickleTable): Array<Array<string>> =>
+  table.rows.map((row) => row.cells.map((cell) => cell.value))
+
+/**
  * `firstStepText` is `undefined` where the first pickle has no first step — either because the
  * fixture compiles to zero pickles at all, or because the pickle is one of the zero-step rows.
  * It is asserted unconditionally so no branch ever hides an `expect` from the runner.
@@ -136,7 +185,17 @@ const pickleCases: ReadonlyArray<PickleCase> = [
   { file: "docstring-and-datatable.feature", row: "F25", count: 1, firstStepText: "a step with two arguments" },
   { file: "outline-distinct-row-names.feature", row: "F26", count: 2, firstStepText: "a step for a" },
   { file: "outline-identical-row-names.feature", row: "F27", count: 3, firstStepText: "a step for 1" },
-  { file: "empty-examples-among-multiple-blocks.feature", row: "F28", count: 1, firstStepText: "a 1" }
+  { file: "empty-examples-among-multiple-blocks.feature", row: "F28", count: 1, firstStepText: "a 1" },
+  { file: "datatable-single-column.feature", row: "F29", count: 1, firstStepText: "a single column table" },
+  { file: "datatable-header-only.feature", row: "F30", count: 1, firstStepText: "a header only table" },
+  { file: "datatable-two-column.feature", row: "F31", count: 1, firstStepText: "a two column table" },
+  { file: "datatable-duplicate-header.feature", row: "F32", count: 1, firstStepText: "a duplicate header table" },
+  {
+    file: "datatable-before-docstring.feature",
+    row: "F33",
+    count: 1,
+    firstStepText: "a step with two arguments reversed"
+  }
 ]
 
 const throwCases: ReadonlyArray<ThrowCase> = [
@@ -412,6 +471,82 @@ describe("upstream @cucumber/gherkin behavior", () => {
       expect(step?.argument?.docString?.content).toBe("the docstring content")
       expect(step?.argument?.dataTable?.rows).toHaveLength(2)
       expect(step?.argument?.dataTable?.rows[1]?.cells.map((cell) => cell.value)).toEqual(["1", "2"])
+    })
+  })
+
+  describe("DataTable and DocString argument shapes", () => {
+    it("F25 docstring-and-datatable.feature records source order as docString 1, dataTable 2", () => {
+      const argument = argumentOf("docstring-and-datatable.feature")
+      expect(docStringOf(argument).argumentIndex).toBe(1)
+      expect(tableOf(argument).argumentIndex).toBe(2)
+    })
+
+    it("F33 datatable-before-docstring.feature records the reverse source order as dataTable 1, docString 2", () => {
+      const argument = argumentOf("datatable-before-docstring.feature")
+      expect(tableOf(argument).argumentIndex).toBe(1)
+      expect(docStringOf(argument).argumentIndex).toBe(2)
+      expect(docStringOf(argument).content).toBe("the docstring content")
+      expect(valuesOf(tableOf(argument))[1]).toEqual(["1", "2"])
+    })
+
+    // An ordering rule that branches on key presence sees `true` for EVERY step and silently does
+    // nothing — the key is always written, only its value goes `undefined`.
+    it("a step carrying only a DataTable still has an argumentIndex key, holding undefined", () => {
+      const argument = argumentOf("datatable-single-column.feature")
+      expect(tableOf(argument).argumentIndex).toBeUndefined()
+      expect(argument.docString).toBeUndefined()
+      expect(Object.hasOwn(tableOf(argument), "argumentIndex")).toBe(true)
+    })
+
+    it("a step carrying only a DocString has an undefined argumentIndex value and keeps its mediaType", () => {
+      const source = [
+        "Feature: an inline docstring-only step",
+        "",
+        "  Scenario: only a docstring",
+        "    Given a docstring carrying a media type",
+        "      \"\"\"text/plain",
+        "      the docstring content",
+        "      \"\"\"",
+        ""
+      ].join("\n")
+      const argument = parseSource(source, "inline-docstring-only.feature").pickles[0]?.steps[0]?.argument
+      if (argument === undefined) {
+        throw new Error("expected the inline docstring-only step to carry an argument")
+      }
+      expect(argument.dataTable).toBeUndefined()
+      expect(docStringOf(argument).argumentIndex).toBeUndefined()
+      expect(Object.hasOwn(docStringOf(argument), "argumentIndex")).toBe(true)
+      expect(docStringOf(argument).content).toBe("the docstring content")
+      expect(docStringOf(argument).mediaType).toBe("text/plain")
+    })
+
+    it("F29 single-column and F30 header-only tables both parse with the documented row counts", () => {
+      expect(valuesOf(tableOf(argumentOf("datatable-single-column.feature")))).toEqual([["name"], ["alice"]])
+      expect(valuesOf(tableOf(argumentOf("datatable-header-only.feature")))).toEqual([["name"]])
+    })
+
+    it("F31 two-column table yields two cells on every row", () => {
+      const table = tableOf(argumentOf("datatable-two-column.feature"))
+      expect(valuesOf(table)).toEqual([["name", "alice"], ["role", "admin"]])
+      expect(table.rows.flatMap((row) => row.cells.map((cell) => cell.value))).toEqual([
+        "name",
+        "alice",
+        "role",
+        "admin"
+      ])
+    })
+
+    it("F32 duplicate header cells are legal Gherkin and reach the pickle unchanged", () => {
+      expect(valuesOf(tableOf(argumentOf("datatable-duplicate-header.feature")))).toEqual([
+        ["name", "name"],
+        ["alice", "bob"]
+      ])
+    })
+
+    it("a PickleTableRow carries no location", () => {
+      // Why Phase 4's decode errors cannot name a source line per row. If a `@cucumber/messages`
+      // minor ever adds one, this is where we find out that they can start carrying it.
+      expect(Object.keys(firstRowOf(tableOf(argumentOf("datatable-two-column.feature"))))).toEqual(["cells"])
     })
   })
 })
