@@ -205,7 +205,36 @@ Plans:
 
 **Spec amendment**: already done — see `spec/decisions/017-background-and-scenario-are-step-definition-containers.md` (`Scenario` now takes the same `(dsl) => void` form as `ScenarioOutline`/`Rule`, ambient-destructure form still valid); `spec/behaviors/03`'s worked example is corrected (spec-contradicting finding #1). No open blocker here.
 
-**Plans**: TBD — set by `/gsd:plan-phase 5`
+**Plans**: 6 plans (6 waves, sequential — each plan's verification surface is created by the one before it)
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Wave 0 blockers: scope the tsgo-gate negative config to one file (Pitfall 1), extend `typecheck:test` to `packages/vitest`, and land `Registry.ts` plus DSL-04's per-instance isolation test
+
+**Wave 2** *(blocked on 05-01)*
+
+- [ ] 05-02-PLAN.md — `Dsl.ts` (`StepRegistrar`/`ScenarioDsl`/`BackgroundDsl`/`FeatureDsl`, generator branch first, `ROut | Scope.Scope` at the registrar boundary) and `Step.ts`'s `isGeneratorFn`-guarded `Effect.fn(stepText)` auto-wrap, with DSL-02's runtime proof
+
+**Wave 3** *(blocked on 05-02)*
+
+- [ ] 05-03-PLAN.md — `describeFeature.ts`'s two overloads with the plain-Layer form declared LAST, D-03/D-04 layer normalization, the real `@effect-cucumber/vitest` barrel, and the retired Phase-1 placeholder contract
+
+**Wave 4** *(blocked on 05-03)*
+
+- [ ] 05-04-PLAN.md — DSL-01's proof: the satisfied/starved fixture pair and gate assertions 5 and 6, asserting `effect(missingEffectContext)` by name with the union-order mutation recorded
+
+**Wave 5** *(blocked on 05-04)*
+
+- [ ] 05-05-PLAN.md — DSL-03's `TS2339` fixture, the `effect(missingLayerContext)` Layer-argument fixture that proves the overload order, the supplementary stacked-directive `@ts-expect-error` fixture, and gate assertions 7-9
+
+**Wave 6** *(blocked on 05-05)*
+
+- [ ] 05-06-PLAN.md — Spec: BEH-EC-002 and BEH-EC-003 signature corrections (both published forms were reproduced as vacuous/erasing), INV-EC-003's `any`-free amendment and de-planning, traceability §1/§2/§4, both status documents, and DSL-01..04 marked Complete
+
+Decisions locked before planning (`05-CONTEXT.md`): the DSL-01 proof extends Phase 1's `packages/vitest/test/tsgo-gate/` isolated-tsconfig-per-case pattern rather than inventing a parallel location (D-01/D-02); `perScenario` is a **required** key on the object Layer form, callers write `Layer.empty` (D-03); `shared` and `perScenario` may name the same service and `perScenario` wins (D-04); the `Effect.fn(stepText)` auto-wrap carries the bare step text only — argument-value span attributes are deferred (D-05).
+
+Resolved by research, not re-opened at planning time: two `describeFeature` **overloads** rather than a conditional type, with the plain-Layer form declared LAST; `Scope.Scope` on the step registrar's parameter only (`ROut | Scope.Scope`), never on `FeatureDsl`.
 
 **Research flag**: Skip — exact type signatures to use and avoid are documented; risk is disciplined execution, not unknowns.
 
@@ -340,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
-| 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
+| 5. `describeFeature` Type Surface | 0/6 | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
