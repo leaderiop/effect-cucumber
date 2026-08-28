@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md — Fix `tsconfig.base.json` (TS 7 removed `esModuleInterop`) and add placeholder entry points so the cold composite build emits declarations
 - [x] 01-02-PLAN.md — Prove ADR-EC-016's tsgo gate with a `missingLayerContext` / `floatingEffect` fixture and `pnpm verify:tsgo-gate`
-- [ ] 01-03-PLAN.md — Adopt Effect's dprint config (ASI), wire oxlint with the vendored Effect rules, and track `tools/` in git
+- [x] 01-03-PLAN.md — Adopt Effect's dprint config (ASI), wire oxlint with the vendored Effect rules, and track `tools/` in git
 - [ ] 01-04-PLAN.md — Two-catalog dependency policy (pins for dev, ranges for peers) and publishable ESM-only manifests
 - [ ] 01-05-PLAN.md — `pnpm verify:pack` tarball assertions (Pitfall 20 guard, publint) and `@rc`-carrying README install lines
 - [ ] 01-06-PLAN.md — CI: `check.yml` merge gate with a Node 22/24 test matrix, plus `snapshot.yml` pkg-pr-new previews
@@ -231,7 +231,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Workspace, Toolchain, Dependency Policy | 2/6 | In Progress|  |
+| 1. Workspace, Toolchain, Dependency Policy | 3/6 | In Progress|  |
 | 2. `loadFeature` — Parse, Compile, Correlate | 0/TBD | Not started | - |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
