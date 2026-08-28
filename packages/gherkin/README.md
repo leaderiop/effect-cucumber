@@ -12,8 +12,10 @@ package.
 
 ## Status
 
-**Nothing is published to npm yet, and no library code has shipped.** This package is scaffolding; the pipeline
-described in [`spec/`](../../spec) is an intended contract, not a shipped one. See
+**Nothing is published to npm yet.** The parse pipeline has shipped: `loadFeature(path)` and
+`parseFeature(source, uri)` return a `ParsedFeature`, and the `ParsedFeature` contract — correlated scenarios,
+steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surface — is real. Step matching, parameter
+types, and the `DataTable` wrapper are specified but not built yet. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
 
 ## Install
