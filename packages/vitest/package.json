@@ -1,14 +1,45 @@
 {
   "name": "@effect-cucumber/vitest",
   "version": "0.0.0",
-  "private": true,
+  "description": "Effect-native Gherkin/Cucumber runner for vitest.",
+  "keywords": [
+    "effect",
+    "effect-ts",
+    "vitest",
+    "cucumber",
+    "gherkin",
+    "bdd",
+    "testing"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/leaderiop/effect-cucumber#readme",
+  "bugs": {
+    "url": "https://github.com/leaderiop/effect-cucumber/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leaderiop/effect-cucumber.git",
+    "directory": "packages/vitest"
+  },
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "./package.json": "./package.json",
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./dist/index.js"
     }
   },
   "scripts": {
@@ -16,7 +47,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect-cucumber/gherkin": "workspace:*"
+    "@effect-cucumber/gherkin": "workspace:^"
   },
   "peerDependencies": {
     "effect": "catalog:peer",

@@ -1,14 +1,43 @@
 {
   "name": "@effect-cucumber/gherkin",
   "version": "0.0.0",
-  "private": true,
+  "description": "Gherkin feature-file parsing for effect-cucumber. Parsing only — no Effect dependency.",
+  "keywords": [
+    "gherkin",
+    "cucumber",
+    "bdd",
+    "parser",
+    "feature-file"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/leaderiop/effect-cucumber#readme",
+  "bugs": {
+    "url": "https://github.com/leaderiop/effect-cucumber/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leaderiop/effect-cucumber.git",
+    "directory": "packages/gherkin"
+  },
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "./package.json": "./package.json",
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src/**/*.ts",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json",
+      ".": "./dist/index.js"
     }
   },
   "scripts": {
