@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Workspace, Toolchain, and Dependency Policy** - The repo builds/lints/formats/type-checks under the Effect v4 convention, and a Layer type error genuinely fails the build (completed 2026-08-28)
 - [x] **Phase 2: `loadFeature` — Parse, Compile, Correlate** - A `.feature` file becomes a correlated `ParsedFeature`; every known silent-wrong `compile()` output becomes a loud typed error (completed 2026-08-28)
-- [ ] **Phase 3: Parameter Types and Step Matching** - cucumber-expression coercion works, custom types replay into a fresh registry per call, and matching considers every registered pattern
+- [x] **Phase 3: Parameter Types and Step Matching** - cucumber-expression coercion works, custom types replay into a fresh registry per call, and matching considers every registered pattern (completed 2026-08-28)
 - [ ] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema`
 - [ ] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first
 - [ ] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly
@@ -151,7 +151,7 @@ Plans:
 
 **Wave 5** *(blocked on 03-05)*
 
-- [ ] 03-06-PLAN.md — Spec: BEH-EC-015, ADR-EC-007's third correction closing the store-versus-`Layer` question, BEH-EC-014's corrected signature listing, traceability §1/§4, and both status documents
+- [x] 03-06-PLAN.md — Spec: BEH-EC-015, ADR-EC-007's third correction closing the store-versus-`Layer` question, BEH-EC-014's corrected signature listing, traceability §1/§4, and both status documents
 
 Decisions locked at planning time (no CONTEXT.md; surfaced directly to the developer): parameter-type and step-pattern failures get their **own** error class, `StepPatternError`, rather than new `LoadFeatureError` reason tags, because BEH-EC-014 closes that union at exactly ten members; a custom parameter type transform **must be synchronous**, enforced at the type level and guarded at runtime (Pitfall 25); the built-in name set is **derived** from a real `ParameterTypeRegistry`, never hardcoded; `loadFeature`/`parseFeature` gain an **optional** trailing options argument carrying a `ParameterTypeStore` override, so BEH-EC-001's call form is unchanged while tests stay hermetic against the append-only default store; ADR-EC-007's `Layer`-provided-registry option is **closed as unavailable** — ADR-EC-015 forbids `effect` in this package and `verify:no-runner-dep` enforces it.
 
@@ -320,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 5/6 | In Progress|  |
+| 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |

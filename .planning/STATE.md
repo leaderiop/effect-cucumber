@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Phase 03 plan 05 complete (5/6). `ParsedFeature.parameterTypes` + `LoadFeatureOptions` + the real `index.ts` barrel + `test/ParameterTypeLifecycle.test.ts` landed; 337 tests passing (329 before), the required mutation recorded and the tree restored clean, all gates green. MATCH-01 and MATCH-02 marked Complete. Next: 03-06 (spec/ADR reconciliation — BEH-EC-014 signatures, ADR-EC-007 implementation note)."
-last_updated: "2026-08-28T17:38:00.000Z"
-last_activity: 2026-08-28 -- 03-05 complete (per-call registry lifecycle + the real gherkin barrel)
+status: verifying
+stopped_at: "Phase 03 COMPLETE (6/6). 03-06 reconciled `spec/` with what Phase 3 built: BEH-EC-015 written and registered in `spec/behaviors/index.yaml`, BEH-EC-014's `Signatures` block corrected to `(path, options?)`, ADR-EC-007's third correction closing the `Layer`-versus-store question against ADR-EC-015 (55 additions, 0 deletions), `spec/traceability.md` §1 + §4 refreshed from disk, and both status documents made true. All gates green; 337 tests unchanged (documentation-only plan). Next: phase verification."
+last_updated: "2026-08-28T15:46:07.148Z"
+last_activity: 2026-08-28
 progress:
   total_phases: 11
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 23
-  completed_plans: 22
-  percent: 18
+  completed_plans: 23
+  percent: 27
 ---
 
 # Project State
@@ -25,25 +25,25 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 
 ## Current Position
 
-Phase: 03 (parameter-types-and-step-matching) — EXECUTING
+Phase: 03 (parameter-types-and-step-matching) — COMPLETE
 Plan: 6 of 6
-Status: Ready to execute (03-06 is the last plan of the phase)
+Status: Phase complete — ready for verification
 Last activity: 2026-08-28
 
-**Current focus:** Phase 3 — parameter types and step matching
+**Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
 Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [████████░░] 83% (5/6 plans)
-Overall progress:  [████░░░░░░] ~41% (22 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Phase 3 progress: [██████████] 100% (6/6 plans)
+Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: ~10m
-- Total execution time: ~109m
+- Total execution time: ~117m
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Overall progress:  [████░░░░░░] ~41% (22 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 5/6 | ~49m | ~10m |
+| 03 | 6/6 | ~57m | ~10m |
 
 **Per-plan detail:**
 
@@ -68,15 +68,17 @@ Overall progress:  [████░░░░░░] ~41% (22 of 23 planned plans
 | 03-03 | ~6m | 2 | 2 |
 | 03-04 | ~9m | 2 | 2 |
 | 03-05 | ~14m | 3 | 4 |
+| 03-06 | ~8m | 3 | 7 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m), 03-04 (~9m), 03-05 (~14m)
-- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so every later plan verified its assumptions by reading an assertion instead of re-running the dependency. 03-04 cost slightly more than its two neighbours only because it is the first Phase 3 plan whose source has real control flow to get wrong rather than data to record. 03-05 is the phase's most expensive plan and should be: it is the only one that touches three source files, adds a required field to an already-consumed public contract, and has to run the full gate set (including `verify:pack`) twice — once for the wiring and once for the mutation proof.
+- Last 6 plans: 03-01 (~13m), 03-02 (~7m), 03-03 (~6m), 03-04 (~9m), 03-05 (~14m), 03-06 (~8m)
+- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so every later plan verified its assumptions by reading an assertion instead of re-running the dependency. 03-04 cost slightly more than its two neighbours only because it is the first Phase 3 plan whose source has real control flow to get wrong rather than data to record. 03-05 is the phase's most expensive plan and should be: it is the only one that touches three source files, adds a required field to an already-consumed public contract, and has to run the full gate set (including `verify:pack`) twice — once for the wiring and once for the mutation proof. 03-06 is documentation only and cost ~8m — a spec-reconciliation plan is cheap when the source it describes already carries the reasoning in its module doc comments, which is exactly what 03-03 note (c) and 03-04 note (a) were written for.
 
 *Updated after each plan completion*
 | Phase 03 P04 | 9m | 2 tasks | 2 files |
 | Phase 03 P05 | 14m | 3 tasks | 4 files |
+| Phase 03 P06 | 8m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -134,6 +136,11 @@ Recent decisions affecting current work:
 - [03-05]: parseFeature builds ONE fresh registry per invocation, eagerly, from options?.parameterTypes ?? defaultParameterTypeStore. Never memoized at module scope, never cached per store, never lazy. Mutation-proven: a module-scope registry fails the reference-inequality test plus three others.
 - [03-05]: LoadFeatureOptions exists for hermeticity, not configurability — the default store is append-only for the life of the process, so a test needing a custom parameter type supplies its own store. ParameterTypeLifecycle.test.ts's defineParameterType( count is 0, by acceptance criterion.
 - [03-05]: The gherkin barrel is now real public API and still a SINGLE barrel — no subpath export, both exports key sets asserted at '.,./package.json' and packages/gherkin/package.json byte-identical. Tests still import ../src/*.ts directly; checkRelativeIndexImports is unaffected by the barrel existing.
+- [03-06]: BEH-EC-015 states the match-every-pattern RULE but defers the zero/many VERDICT to BEH-EC-013 — the verdict needs the Scenario and its source location, which the matcher layer does not have. Duplicating it would create two places to keep in sync.
+- [03-06]: ADR-EC-007's `Layer`-provided-service option is recorded as FORCED closed by ADR-EC-015 plus `pnpm verify:no-runner-dep`, not chosen against on preference. A future reader must not reopen it as a design debate. `git diff` on that ADR is 55 additions and 0 deletions — the superseded sentence is marked in place, never rewritten (ADR-EC-014's precedent).
+- [03-06]: spec/traceability.md §4 is enumerated FROM DISK and includes one deliberate non-suite row, `StepArgs.types.ts`, with a sentence above the table saying why. Do not "fix" it by renaming the file to `.test.ts` — that breaks `pnpm test` with "No test suite found".
+- [03-06]: No `REQ-EC-` row was added to traceability §5. The `.feature` files under `packages/gherkin/test/fixtures/` are parser fixtures, not acceptance scenarios; a `REQ-EC-` row there turns verify-traceability check 4's clean SKIP into a claim the repo cannot back. A `grep -c 'REQ-EC-[0-9]' spec/traceability.md` of 0 is the guard.
+- [03-06]: A `typescript` fence in `spec/behaviors/` imports ONLY from a package barrel and imports everything it uses — the planned doc-examples check compiles it against the real API. A `ts` fence is reference material but must still be syntactically valid TypeScript, or `dprint` cannot format it and `pnpm lint` fails.
 
 ### Pending Todos
 
@@ -256,8 +263,19 @@ New since 03-05 (not blockers, constraints to respect):
 - **03-06 still owes ADR-EC-007 an implementation note** closing its `Layer`-provided-service option against ADR-EC-015; note (c) of `ParameterTypes.ts`'s module doc comment is the source text.
 - Repo test count is now **337 across 14 files** (329 before this plan).
 
+New since 03-06 (not blockers, constraints to respect):
+
+- **Both debts Phase 3 was carrying are now paid.** BEH-EC-014's `Signatures` block declares the real `(path, options?)` / `(source, uri, options?)` API, and ADR-EC-007 carries a third dated correction closing its `Layer`-versus-store question against ADR-EC-015. Neither is owed to a later plan.
+- **`BEH-EC-016` is the next free behavior id.** BEH-EC-015 is the highest allocated. Ids are contiguous, never renumbered, never reused (AGENTS.md §6).
+- **A new behavior file MUST be registered in `spec/behaviors/index.yaml` in the SAME commit**, or `verify-traceability.sh` check 1 fails in the disk→index direction. It also needs `_Previous:_`/`_Next:_` footers: `spec/behaviors/05-step-matching-and-parameter-types.md` currently has no `_Next:_`, and whichever file becomes 06 owns adding it.
+- **`spec/traceability.md` §4 is enumerated from disk.** A plan that adds a test file adds its row in the same commit. The reusable guard is 03-06's `node -e` cross-check, which reads `packages/gherkin/test/*.test.ts` and fails naming any file absent from the document.
+- **`packages/gherkin/README.md`'s Status section now names `DataTable` as the one specified-but-unbuilt piece.** The plan that ships it (Phase 4, PARSE-04, ADR-EC-008) owns removing that sentence, or the README goes stale in the other direction. AGENTS.md §4 makes that a defect, not a nit.
+- **The `LoadFeatureError` reason set is still closed at exactly ten members** and BEH-EC-014 still says "drawn from exactly this set". `StepPatternError` remains the separate channel for parameter-type and step-pattern failures, and 03-06's third ADR correction now records why in `spec/` as well as in `Errors.ts` note (d).
+- **`ls packages/gherkin/test/*.test.ts` returns 11, but `pnpm test` reports 14 files.** The extra three are the vendored oxlint rule tests under `tools/oxlint/effect/test/`, outside `packages/*` and outside §4's stated scope. The two numbers are not a contradiction — do not "fix" §4 by adding `tools/` rows.
+- Repo test count is unchanged at **337 across 14 files** — 03-06 is documentation only.
+
 ## Session Continuity
 
-Last session: 2026-08-28T17:38:00.000Z
-Stopped at: Phase 03 plan 05 complete (5/6). `ParsedFeature.parameterTypes`, `LoadFeatureOptions`, the real `index.ts` barrel and `test/ParameterTypeLifecycle.test.ts` landed; 337 tests passing, the required mutation recorded and the tree restored clean, all gates green (`build`, `lint`, `circular`, `typecheck:test`, `verify:no-runner-dep`, `verify:pack`). MATCH-01 and MATCH-02 marked Complete. Next: 03-06 (spec/ADR reconciliation — BEH-EC-014's `Signatures` block, ADR-EC-007's implementation note).
+Last session: 2026-08-28T15:46:03.645Z
+Stopped at: Phase 03 COMPLETE (6/6). 03-06 reconciled `spec/` with what Phase 3 built — BEH-EC-015 written and registered, BEH-EC-014's `Signatures` block corrected, ADR-EC-007's third correction appended (55 additions, 0 deletions), `spec/traceability.md` §1 and §4 refreshed from disk, `spec/roadmap.md` and `packages/gherkin/README.md` made true. `verify:spec` PASS 7 / FAIL 0 / SKIP 1; `lint`, `build`, `test` (337), `typecheck:test`, `verify:pack`, `verify:no-runner-dep`, `circular` all green. Next: phase verification.
 Resume file: None
