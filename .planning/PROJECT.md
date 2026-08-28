@@ -20,23 +20,23 @@ authoring time, never a runtime failure discovered when the Scenario runs.
 
 ### Validated
 
-(None yet — no code has shipped. Design was validated through three worked
-examples, a wayfinder research pass verifying every third-party API
-assumption against the real installed packages, and a four-dimension GSD
-research pass (Stack/Features/Architecture/Pitfalls) that found and fixed
-three real bugs in the spec itself — all before any code was written. See
-`spec/roadmap.md` § Current state.)
+- [x] `loadFeature` parses `.feature` files, correlating the raw
+      `GherkinDocument` (structure) with `compile()`'s `Pickle[]` output
+      (substituted step text, inherited tags, stacked Background steps),
+      failing loudly on the known exception (an un-interpolated placeholder
+      in a Background nested under a Scenario Outline) — ADR-EC-014.
+      Validated in Phase 2 (`loadFeature` — Parse, Compile, Correlate):
+      shipped as `@effect-cucumber/gherkin`'s public API
+      (`loadFeature`/`parseFeature`), with every verified silent-failure mode
+      of `compile()` (27 fixture rows) surfacing as a named, located
+      `LoadFeatureError` or `LoadFeatureWarning` instead of a false-green
+      test. 211 tests passing; full `check.yml` gate green.
 
 ### Active
 
 Derived from `spec/behaviors/` (BEH-EC-001 through BEH-EC-013). Each maps to
 one or more ADRs in `spec/decisions/` for full rationale.
 
-- [ ] `loadFeature` parses `.feature` files, correlating the raw
-      `GherkinDocument` (structure) with `compile()`'s `Pickle[]` output
-      (substituted step text, inherited tags, stacked Background steps),
-      failing loudly on the known exception (an un-interpolated placeholder
-      in a Background nested under a Scenario Outline) — ADR-EC-014
 - [ ] `describeFeature` takes a Layer; a step's Effect can only use services
       that Layer provides — ADR-EC-003, backed by `@effect/tsgo`'s
       `missingLayerContext`/`missingEffectContext` diagnostics — ADR-EC-016
@@ -126,7 +126,10 @@ one or more ADRs in `spec/decisions/` for full rationale.
   that contradicted a stated core-value requirement (ADR-EC-018).
 - The pnpm workspace exists (`packages/gherkin`, `packages/vitest`, both
   correctly linked, dependencies installed, `@effect/tsgo` wired and
-  verified working) but has **no source files yet**.
+  verified working). `packages/gherkin` now has real source
+  (`Source`/`Parser`/`Pickles`/`Correlate`/`Validate`/`loadFeature`, shipped
+  in Phase 2) and no longer has "no source files yet" — `packages/vitest`
+  still does.
 - `effect` and `@effect/vitest` are `peerDependencies` of
   `@effect-cucumber/vitest` (ADR-EC-015), not hard dependencies — avoids a
   verified duplicate-package risk to `Context.Service` identity.
@@ -168,4 +171,4 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
 
 ---
-*Last updated: 2026-08-28 after GSD research (Stack/Features/Architecture/Pitfalls) and spec corrections*
+*Last updated: 2026-08-28 after Phase 2 (loadFeature — Parse, Compile, Correlate) completion*
