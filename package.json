@@ -13,7 +13,7 @@
     "lint": "oxlint -f unix && dprint check",
     "lint-fix": "oxlint --fix && dprint fmt",
     "circular": "madge --circular --extensions ts packages/*/src",
-    "typecheck:test": "tsc --noEmit -p packages/gherkin/tsconfig.test.json",
+    "typecheck:test": "tsc --noEmit -p packages/gherkin/tsconfig.test.json && tsc --noEmit -p packages/vitest/tsconfig.test.json",
     "snapshot": "pkg-pr-new publish --pnpm ./packages/*",
     "verify:pack": "bash scripts/verify-pack.sh",
     "verify:spec": "bash spec/scripts/verify-traceability.sh",
