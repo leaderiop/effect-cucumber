@@ -22,10 +22,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-FIXTURE="packages/vitest/test/tsgo-gate"
-NEG_CONFIG="$FIXTURE/tsconfig.json"
-OK_CONFIG="$FIXTURE/tsconfig.ok.json"
-FLOATING_CONFIG="$FIXTURE/tsconfig.floating.json"
+# Spelled out in full rather than composed from a $FIXTURE variable, so these
+# paths are greppable for traceability checks.
+NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.json"
+OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.ok.json"
+FLOATING_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.floating.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
