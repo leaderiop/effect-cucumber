@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-04-PLAN.md — two-catalog version policy + publishable ESM-only manifests"
-last_updated: "2026-08-28T04:33:01.400Z"
+stopped_at: Completed 01-05-PLAN.md — packed-tarball verification (verify:pack, circular) + @rc install docs
+last_updated: "2026-08-28T04:44:12.317Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -26,26 +26,26 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy)
-Plan: 5 of 6 in current phase (01-01, 01-02, 01-03, 01-04 complete; 01-05 is next)
+Plan: 6 of 6 in current phase (01-01, 01-02, 01-03, 01-04, 01-05 complete; 01-06 is next)
 Status: Ready to execute
 Last activity: 2026-08-28
 
-Phase 1 progress: [███████░░░] 67% (4/6 plans)
-Overall progress:  [█░░░░░░░░░] ~6% (4 of ~66 plans; only phase 1 is planned in detail)
+Phase 1 progress: [████████░░] 83% (5/6 plans)
+Overall progress:  [█░░░░░░░░░] ~8% (5 of ~66 plans; only phase 1 is planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: ~11m
-- Total execution time: ~43m
+- Total execution time: ~57m
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 4/6 | ~43m | ~11m |
+| 1 | 5/6 | ~57m | ~11m |
 
 **Per-plan detail:**
 
@@ -55,11 +55,12 @@ Overall progress:  [█░░░░░░░░░] ~6% (4 of ~66 plans; only ph
 | 01-02 | ~12m | 2 | 8 |
 | 01-03 | ~18m | 2 | 16 |
 | 01-04 | ~8m | 2 | 5 |
+| 01-05 | ~14m | 2 | 9 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m)
-- Trend: 01-02 and 01-03 spent most of their time mutation-testing a gate script rather than writing the config it guards; 01-04 was faster because the equivalent proof (unpacking a `pnpm pack` tarball) is a single command rather than a script that has to be written and then attacked. That is the intended cost profile for this phase.
+- Last 5 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m), 01-05 (~14m)
+- Trend: 01-02, 01-03 and 01-05 each spent most of their time mutation-testing a gate script rather than writing the thing it guards; 01-04 was the outlier because its equivalent proof (unpacking a `pnpm pack` tarball) was a single command rather than a script that has to be written and then attacked. 01-05 turned that one-off command into the standing gate, which is why it costs script-writing time again. That is the intended cost profile for this phase.
 
 *Updated after each plan completion*
 
@@ -87,6 +88,11 @@ Recent decisions affecting current work:
 - [Phase 01]: Peer ranges and dev pins live in **separate pnpm catalogs** — the default `catalog:` holds exact rc pins for `devDependencies`, the named `catalogs.peer` holds ranges for `peerDependencies`. `catalog:` expands verbatim at pack time, so a pinned catalog behind a peerDependency would publish an exact peer range and strand consumers on a different rc (Pitfall 20). An Effect rc bump is now a two-line edit in `pnpm-workspace.yaml`.
 - [Phase 01]: Dev-time `exports` point at `./src/index.ts`; `publishConfig.exports` swaps them to `./dist/index.js` at pack time. No build step is needed for in-repo development, and no prepack script exists. Verified with `tsc -b --force` and `--traceResolution` — the feared TS6307 under composite project references did not occur.
 - [Phase 01]: **`pnpm install` does not validate named-catalog references.** A `catalog:typo` in a `peerDependency` exits 0 on install, lint and build, and only fails at `pnpm pack` (`ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`). Peer deps leave no trace in `pnpm-lock.yaml` at all. Packaging claims must be proven by unpacking the tarball, never by reading the source manifest.
+- [Phase 01]: Pitfall 20 now has an **executable** guard: `pnpm verify:pack` unpacks both tarballs and fails by name if `peerDependencies.effect` or `peerDependencies["@effect/vitest"]` is a bare exact version. Mutation-tested by pinning the `peer` catalog to `4.0.0-rc.112` — `pnpm install`, `pnpm lint` and `pnpm build` all still exited 0 while `verify:pack` exited 1. Do not delete this gate, and do not rewrite any of its assertions to read `packages/*/package.json` — the source manifest reads `catalog:peer` in both the passing and the failing case, so such an assertion is vacuous.
+- [Phase 01]: npm ships `README.md` in the tarball regardless of the `files` array (verified by unpacking, not assumed) — so no manifest change was needed to publish the three READMEs. `verify:pack` asserts the README's presence anyway, so a divergence in pnpm's packing fails loudly instead of publishing a blank npm page.
+- [Phase 01]: Every published install instruction that pulls in Effect carries `effect@rc` and `@effect/vitest@rc` explicitly (root `README.md`, `packages/vitest/README.md`), because npm's `latest` tag for both still points at the v3 line (Pitfall 19). `packages/gherkin/README.md` names neither — that package declares no `effect` dependency (ADR-EC-015). Nothing checks the tag advice automatically; revisit all three READMEs when `effect@4.0.0` ships stable.
+- [Phase 01]: `pnpm circular` (madge) covers **intra-package** cycles only — madge's resolver cannot follow the cross-package bare import through an `exports` map, and `madge --ts-config` crashes on TypeScript 7. Cross-package cycles are covered instead by `tsc -b`, which rejects circular project references.
+- [Phase 01]: `repository.url` uses the full `git+https://` form in both packages, so publint's output is completely silent. A check carrying one permanently-ignored suggestion trains people to ignore the next one.
 
 ### Pending Todos
 
@@ -147,6 +153,6 @@ New since 01-04 (not blockers, constraints to respect):
 
 ## Session Continuity
 
-Last session: 2026-08-28T04:32:41.120Z
-Stopped at: Completed 01-04-PLAN.md — two-catalog version policy + publishable ESM-only manifests
+Last session: 2026-08-28T04:43:55.522Z
+Stopped at: Completed 01-05-PLAN.md — packed-tarball verification (verify:pack, circular) + @rc install docs
 Resume file: None

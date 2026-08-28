@@ -34,3 +34,30 @@ group (STACK §5.7) versions both packages in lockstep anyway.
 No action needed; recorded so nobody "fixes" `workspace:^` back to `workspace:*`
 (which packs as a bare `0.0.0`, strictly worse) on the strength of the packed
 output looking pinned.
+
+---
+
+## `madge` cannot follow cross-package imports (found during 01-05, Task 1)
+
+`pnpm circular` reports `Skipped 1 file` — run it with `--warning` and the
+skipped file is named: `@effect-cucumber/gherkin`, the bare specifier
+`packages/vitest/src/index.ts` imports. madge's resolver (`filing-cabinet`)
+does not follow an `exports` map, so it cannot see through the workspace link
+and treats the import as an unresolvable external.
+
+Consequence: `pnpm circular` covers **intra-package** cycles only. A cycle
+*between* `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` would be
+invisible to it.
+
+Not fixed in 01-05, for two reasons. First, the cross-package case is already
+covered elsewhere: `tsc -b` rejects circular project references outright, so
+`pnpm build` is the gate for that direction, and the dependency is
+architecturally one-way anyway (gherkin is the leaf — ADR-EC-015). Second, the
+obvious lever does not work: `madge --ts-config tsconfig.base.json` crashes with
+`TypeError: Cannot read properties of undefined (reading 'readFile')` on
+madge 8.0.0, which declares `typescript@^5.4.4` as a peer while this repo is on
+7.0.2 (pnpm warns about the unmet peer at install time).
+
+**Suggested owner:** revisit when madge supports TS 7, or drop madge for a
+resolver that honours `exports` if intra-package coverage ever stops being
+enough.
