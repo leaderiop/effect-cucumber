@@ -2,8 +2,12 @@
  * The `ParsedFeature` contract: the one shape that crosses the package boundary out of
  * `@effect-cucumber/gherkin` and into `@effect-cucumber/vitest`.
  *
- * Types only. There are no runtime values in this module, and its single local import is
- * `./Errors.ts`, which makes this the second leaf of the package's module DAG.
+ * Types only. There are no runtime values in this module. Its local imports are `./Errors.ts` and
+ * `./StepArguments.ts`, both type-only — the second joined in Phase 4, when `ParsedStep` gained
+ * `stepArguments` and the contract started surfacing a first-party wrapper type rather than only
+ * third-party ones. Neither import can cycle back: `StepArguments.ts` reaches `./DataTable.ts` and
+ * `./Errors.ts` and nothing else, and nothing under `src/` imports this module for a runtime value,
+ * because it has none to give.
  *
  * The design rule behind every field: ADR-EC-014 says `loadFeature` CORRELATES the raw
  * `GherkinDocument` with `compile()`'s pickles, it does not re-derive them. Placeholder
@@ -19,6 +23,12 @@
  * `package.json` for them: a single barrel avoids having to maintain `exports` and
  * `publishConfig.exports` in lockstep.
  *
+ * Only THIRD-PARTY types are re-exported there. `StepArgument` — surfaced by `ParsedStep`'s
+ * `stepArguments` — is first-party and is deliberately absent from that block: `index.ts` publishes
+ * it from `./StepArguments.ts`, the module that declares it, so every type this package owns has
+ * exactly ONE export path and a consumer's import can never disagree with another's about where a
+ * type lives.
+ *
  * Both third-party imports reach the package BARREL, never a deep path into a published build
  * directory — the same rule `ParameterTypes.ts` and `StepMatcher.ts` follow.
  */
@@ -33,6 +43,7 @@ import type {
 } from "@cucumber/messages"
 import type * as Option from "effect/Option"
 import type { LoadFeatureWarning } from "./Errors.ts"
+import type { StepArgument } from "./StepArguments.ts"
 
 /**
  * Which container a step was written in, recovered by the AST walk.
@@ -68,11 +79,35 @@ export interface ParsedStep {
   /** From the AST step location. `PickleStep` carries no location at all. */
   readonly line: number
   /**
-   * A step's DocString or table argument, passed through raw and unwrapped. It is
-   * deliberately NOT wrapped in a table-accessor helper: that accessor API is Phase 4's
-   * deliverable (PARSE-04), and building it here would only create a merge conflict.
+   * A step's DocString or table argument, passed through RAW and unwrapped, exactly as
+   * `compile()` produced it.
+   *
+   * Kept for the same reason `ParsedFeatureCore.document` and `.pickles` are kept: a consumer
+   * who needs something the wrapper does not expose should never have to re-parse anything to
+   * get at it. `stepArguments` below is the wrapped, ordered form most consumers actually want.
+   *
+   * Neither field is derived from the other at READ time. Both are produced once, in the same
+   * place — `Correlate.ts`'s `resolveStep` — from the same `PickleStep`, so reading one can
+   * never disagree with reading the other, and no consumer is ever tempted to rebuild a
+   * `DataTable` from the raw side. `test/Correlate.test.ts` asserts that this field carries no
+   * `hashes`/`raw`/`rowsHash` property, which is what keeps the raw field raw.
    */
   readonly argument: Option.Option<PickleStepArgument>
+  /**
+   * The step's arguments WRAPPED and ordered: a `DocString` for a doc string, a `DataTable` — with
+   * `raw()`, `hashes()` and `rowsHash()` on it — for a table, in the source order
+   * `@cucumber/gherkin` recorded on `argumentIndex`. Empty for a step that carries no argument.
+   *
+   * REQUIRED, not optional, for the reason `ParsedFeature.parameterTypes` is required: an optional
+   * field lets a later consumer forget the wrapper exists and fall back to re-deriving one from
+   * `argument`, which is the exact duplication this field was added to remove.
+   *
+   * Named `stepArguments` rather than `arguments` on purpose. `arguments` differs from `argument`
+   * directly above it by a single character, and a reader skimming a diff — or an autocomplete
+   * list — cannot reliably tell the two apart. The `step` prefix is redundant on a `ParsedStep`,
+   * and that redundancy is the whole point of it.
+   */
+  readonly stepArguments: ReadonlyArray<StepArgument>
 }
 
 /**

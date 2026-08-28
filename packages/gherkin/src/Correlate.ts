@@ -29,9 +29,9 @@
  * This module performs NO validation. Every silently-zero and silently-wrong case is detected
  * in `Validate.ts`, over the correlated result. That separation is what lets a failing fixture
  * tell you whether correlation or validation broke; inlining the checks here destroys the
- * signal. Its only local imports are `./Model.ts` and `./Errors.ts` — importing `./index.ts`
- * would be both an `import/no-cycle` violation and an `effect/no-import-from-barrel-package`
- * error.
+ * signal. Its only local imports are `./Model.ts`, `./Errors.ts` and `./StepArguments.ts` —
+ * importing `./index.ts` would be both an `import/no-cycle` violation and an
+ * `effect/no-import-from-barrel-package` error.
  */
 import { type Dialect, dialects } from "@cucumber/gherkin"
 import {
@@ -47,6 +47,7 @@ import {
 import * as Option from "effect/Option"
 import { LoadFeatureError } from "./Errors.ts"
 import type { ParsedFeatureCore, ParsedRule, ParsedScenario, ParsedStep, StepOwner } from "./Model.ts"
+import { stepArgumentsOf } from "./StepArguments.ts"
 
 /**
  * One AST step, indexed by its own node id, carrying everything the matching `PickleStep`
@@ -377,6 +378,11 @@ export const buildAstIndex = (
  *   on the AST node, so an absent value normalises to `Unknown` rather than being asserted away.
  * - `line` exists nowhere on a `PickleStep`; the AST location is the only source.
  *
+ * The pickle's raw `argument` is ALSO wrapped here, once, into `stepArguments` — this is the
+ * package's only construction site for a `DataTable`, which is what guarantees that a consumer
+ * never builds one and that every wrapper carries this step's own `uri` and line for the error
+ * messages it will raise later.
+ *
  * A missed lookup throws rather than defaulting (threat T-02-13): a pickle step referencing an
  * AST node no walk produced means parse and compile disagree about the same document, and a
  * fabricated keyword or origin would bury that. Per the package's full-content policy the step
@@ -408,7 +414,8 @@ const resolveStep = (
     keywordType: info.step.keywordType ?? StepKeywordType.UNKNOWN,
     origin: info.owner,
     line: info.step.location.line,
-    argument: Option.fromUndefinedOr(pickleStep.argument)
+    argument: Option.fromUndefinedOr(pickleStep.argument),
+    stepArguments: stepArgumentsOf(pickleStep.argument, uri, info.step.location.line)
   }
 }
 
