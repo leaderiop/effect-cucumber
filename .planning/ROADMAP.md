@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 > **Note on numbering:** research/SUMMARY.md numbers these Phase 0-10. This roadmap numbers them 1-11 (GSD phases start at 1). The mapping is a straight `+1` shift: research Phase 0 = Phase 1 here, research Phase 10 = Phase 11 here. Content is unchanged.
 
 - [x] **Phase 1: Workspace, Toolchain, and Dependency Policy** - The repo builds/lints/formats/type-checks under the Effect v4 convention, and a Layer type error genuinely fails the build (completed 2026-08-28)
-- [ ] **Phase 2: `loadFeature` — Parse, Compile, Correlate** - A `.feature` file becomes a correlated `ParsedFeature`; every known silent-wrong `compile()` output becomes a loud typed error
+- [x] **Phase 2: `loadFeature` — Parse, Compile, Correlate** - A `.feature` file becomes a correlated `ParsedFeature`; every known silent-wrong `compile()` output becomes a loud typed error (completed 2026-08-28)
 - [ ] **Phase 3: Parameter Types and Step Matching** - cucumber-expression coercion works, custom types replay into a fresh registry per call, and matching considers every registered pattern
 - [ ] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema`
 - [ ] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first
@@ -108,8 +108,8 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 02-10-PLAN.md — Gates: `verify:no-runner-dep` (PARSE-01 structural proof) and `typecheck:test` (D7), both wired into `check.yml`
-- [ ] 02-11-PLAN.md — Spec: BEH-EC-014, traceability §1 correction + real §4 test map, ADR-EC-014 correction amendment, status docs
+- [x] 02-10-PLAN.md — Gates: `verify:no-runner-dep` (PARSE-01 structural proof) and `typecheck:test` (D7), both wired into `check.yml`
+- [x] 02-11-PLAN.md — Spec: BEH-EC-014, traceability §1 correction + real §4 test map, ADR-EC-014 correction amendment, status docs
 
 Decisions locked at planning time (no CONTEXT.md; surfaced directly to the developer): duplicate Scenario names are **rejected**, scoped **per-scope** (Feature or single Rule); Group C heuristic detections are **warnings**, carried on `ParsedFeature.warnings`; error messages carry **full content, never truncated** (developer override of the researcher's truncate-by-default recommendation).
 
@@ -295,7 +295,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 9/11 | In Progress|  |
+| 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
