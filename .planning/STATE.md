@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: "Phase 03 COMPLETE (6/6). 03-06 reconciled `spec/` with what Phase 3 built: BEH-EC-015 written and registered in `spec/behaviors/index.yaml`, BEH-EC-014's `Signatures` block corrected to `(path, options?)`, ADR-EC-007's third correction closing the `Layer`-versus-store question against ADR-EC-015 (55 additions, 0 deletions), `spec/traceability.md` §1 + §4 refreshed from disk, and both status documents made true. All gates green; 337 tests unchanged (documentation-only plan). Next: phase verification."
-last_updated: "2026-08-28T15:46:07.148Z"
+status: ready_to_plan
+stopped_at: Phase 03 complete (6/6) — ready to discuss Phase 4
+last_updated: 2026-08-28T15:59:39.332Z
 last_activity: 2026-08-28
 progress:
   total_phases: 11
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 03 — parameter-types-and-step-matching
+**Current focus:** Phase 4 — datatable / docstring
 
 ## Current Position
 
-Phase: 03 (parameter-types-and-step-matching) — COMPLETE
-Plan: 6 of 6
-Status: Phase complete — ready for verification
+Phase: 4
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-08-28
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
@@ -41,7 +41,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 
 **Velocity:**
 
-- Total plans completed: 23
+- Total plans completed: 29
 - Average duration: ~10m
 - Total execution time: ~117m
 
@@ -51,7 +51,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 6/6 | ~57m | ~10m |
+| 03 | 6 | - | - |
 
 **Per-plan detail:**
 
