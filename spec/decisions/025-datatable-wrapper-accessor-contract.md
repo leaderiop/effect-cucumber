@@ -161,3 +161,6 @@ and each is held by a named pin test:
   `record[key] = value` loop rewrites the record's prototype and leaves no own property behind at
   all — so the column silently disappears. This is why every record keyed by `.feature` content is
   built with `Object.fromEntries`: `packages/gherkin/test/DataTable.test.ts`.
+
+[BEH-EC-016](../behaviors/06-datatable-and-docstring-arguments.md) is the normative behavior for all
+three decisions above.
