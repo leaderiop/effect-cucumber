@@ -194,3 +194,105 @@ describe("step origin comes from the AST index, not from a node-id count", () =>
     expect(noSteps.ruleId).toBeUndefined()
   })
 })
+
+describe("one Outline with two Examples blocks (F24)", () => {
+  const scenarios = (): ReadonlyArray<ParsedScenario> =>
+    correlateFixture("outline-two-examples-blocks.feature").feature.allScenarios
+
+  it("F24: yields one scenario per row across both blocks, not one per block", () => {
+    // Two rows in the first block, one in the second. A correlation that emitted one scenario
+    // per `Examples:` node rather than per body row would give 2 here.
+    expect(scenarios()).toHaveLength(3)
+  })
+
+  it("F24: gives all three rows the same astId, which is why byScenarioId is one-to-many", () => {
+    // Every Examples row of one Outline shares `astNodeIds[0]` — the AST Scenario node. This is
+    // the structural reason `AstIndex.byScenarioId` maps an id to an ARRAY of pickles; a
+    // one-to-one map would silently drop every row but one.
+    const astIds = scenarios().map((scenario) => scenario.astId)
+    expect(new Set(astIds).size).toBe(1)
+    expect(scenarios().every((scenario) => scenario.keyword === "Scenario Outline")).toBe(true)
+  })
+
+  it("F24: lands each Examples block's tag only on that block's own rows", () => {
+    // Whole-array `toEqual`, so the examples-block tag is pinned as the LAST entry in
+    // `compile()`'s flattening order rather than merely present somewhere in the list.
+    const [first, second, third] = scenarios()
+    expect(first?.tags).toEqual(["@blockone"])
+    expect(second?.tags).toEqual(["@blockone"])
+    expect(third?.tags).toEqual(["@blocktwo"])
+  })
+
+  it("F24: never leaks one block's tag onto the other block's rows", () => {
+    // The negative half of the assertion above. A correlation that unioned every Examples tag
+    // onto every row would still pass a `toContain("@blockone")` check on all three.
+    const [first, second, third] = scenarios()
+    expect(first?.tags).not.toContain("@blocktwo")
+    expect(second?.tags).not.toContain("@blocktwo")
+    expect(third?.tags).not.toContain("@blockone")
+  })
+
+  it("F24: locates each row at its own Examples body line, both blocks included", () => {
+    expect(scenarios().map((scenario) => scenario.location.line)).toEqual([9, 10, 15])
+  })
+})
+
+describe("an Outline whose row names all differ (F26)", () => {
+  const scenarios = (): ReadonlyArray<ParsedScenario> =>
+    correlateFixture("outline-distinct-row-names.feature").feature.allScenarios
+
+  it("F26: yields one scenario per Examples row", () => {
+    expect(scenarios()).toHaveLength(2)
+  })
+
+  it("F26: interpolates each row's name from its own Examples cell", () => {
+    expect(scenarios().map((scenario) => scenario.name)).toEqual(["outline a", "outline b"])
+    expect(scenarios()[0]?.name).not.toBe(scenarios()[1]?.name)
+  })
+
+  it("F26: exposes the single un-interpolated astName on BOTH rows", () => {
+    // Roadmap success criterion 4, and ARCHITECTURE.md Open Question 4: a Scenario is matched to
+    // its registered definition by the UN-INTERPOLATED name, because that is the only string the
+    // author actually typed in the `.steps.ts` file. Phase 6 consumes this. If correlation ever
+    // stopped carrying `astName` — or "helpfully" set it to the interpolated value — every
+    // Outline row would fail to find its definition, and nothing else in this suite would say so.
+    //
+    // Asserted with `toBe` on the exact literal, angle brackets included: a `toContain("outline")`
+    // would pass just as happily on the interpolated `"outline a"`.
+    for (const scenario of scenarios()) {
+      expect(scenario.astName).toBe("outline <name>")
+    }
+    expect(new Set(scenarios().map((scenario) => scenario.astName)).size).toBe(1)
+  })
+
+  it("F26: keeps astName and name distinct on every row", () => {
+    for (const scenario of scenarios()) {
+      expect(scenario.astName).not.toBe(scenario.name)
+    }
+  })
+})
+
+describe("an Outline whose row names are all identical (F27)", () => {
+  const scenarios = (): ReadonlyArray<ParsedScenario> =>
+    correlateFixture("outline-identical-row-names.feature").feature.allScenarios
+
+  it("F27: yields one scenario per row even though the title references no column", () => {
+    expect(scenarios()).toHaveLength(3)
+  })
+
+  it("F27: leaves all three names identical, because interpolation has nothing to substitute", () => {
+    const names = scenarios().map((scenario) => scenario.name)
+    expect(names).toEqual(["same title", "same title", "same title"])
+    expect(new Set(names).size).toBe(1)
+  })
+
+  it("F27: gives each row a distinct location.line, the raw material for a unique title", () => {
+    // This phase deliberately does NOT invent a test title. Exposing a per-row `location` is
+    // this phase's job; deciding how to turn "same title" x3 into three unique, `-t`-filterable
+    // vitest titles is Phase 6's (Pitfalls 21/23, Gap 4). Appending a row index or a line number
+    // here would put the title format in two places at once, and Phase 6 would inherit a format
+    // it never chose.
+    const lines = scenarios().map((scenario) => scenario.location.line)
+    expect(new Set(lines).size).toBe(3)
+  })
+})
