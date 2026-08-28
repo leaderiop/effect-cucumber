@@ -296,3 +296,101 @@ describe("an Outline whose row names are all identical (F27)", () => {
     expect(new Set(lines).size).toBe(3)
   })
 })
+
+/**
+ * Every node id reachable from one correlated feature: each scenario's pickle id and the AST
+ * Scenario id it was compiled from, plus every step id. Deliberately NOT deduplicated — the
+ * whole point of F23 is to compare this array's length against the size of a `Set` built from
+ * it, and pre-deduplicating here would make the assertion vacuously true.
+ */
+const allNodeIds = (result: CorrelationResult): ReadonlyArray<string> =>
+  result.feature.allScenarios.flatMap((scenario) => [
+    scenario.id,
+    scenario.astId,
+    ...scenario.steps.map((step) => step.id)
+  ])
+
+describe("two Features correlated in one process share no node ids (F23)", () => {
+  it("F23: collects a duplicate-free union of node ids across two separate features", () => {
+    // The regression pin for decision D3, `IdGenerator.uuid()`.
+    //
+    // The pinned failure is verified, not hypothetical: with `IdGenerator.incrementing()`, two
+    // DIFFERENT Features each parsed with its own fresh generator both give their first Scenario
+    // the id "1" and their first Pickle the id "3". Nothing throws — the collision only surfaces
+    // downstream, as a cross-file map keyed on a node id whose entries silently overwrite each
+    // other. A regression to `incrementing()` fails HERE, by name, instead.
+    //
+    // D3's other consequence, recorded so a future memoization pass does not trip on it: because
+    // the ids are UUIDs, two `loadFeature` calls on IDENTICAL source produce DIFFERENT node ids.
+    // Node ids must therefore never be persisted, cached as keys, or compared across calls.
+    const a = correlateFixture("id-collision-a.feature")
+    const b = correlateFixture("id-collision-b.feature")
+
+    const ids = [...allNodeIds(a), ...allNodeIds(b)]
+    expect(ids.length).toBeGreaterThan(0)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it("F23: keeps the two features' scenario ids disjoint, not merely internally unique", () => {
+    // The narrower half. A per-file uniqueness check would pass even if BOTH files numbered
+    // their scenarios from "1"; this compares the two sets against each other.
+    const idsOfA = new Set(allNodeIds(correlateFixture("id-collision-a.feature")))
+    const overlap = allNodeIds(correlateFixture("id-collision-b.feature")).filter((id) => idsOfA.has(id))
+    expect(overlap).toEqual([])
+  })
+
+  it("F23: gives different ids to two correlations of the SAME source, per D3", () => {
+    // Records the cost of `uuid()` as an executable fact rather than a comment. This is the
+    // property that makes "never persist or compare node ids across calls" a rule.
+    const first = allNodeIds(correlateFixture("id-collision-a.feature"))
+    const second = allNodeIds(correlateFixture("id-collision-a.feature"))
+    expect(second).toHaveLength(first.length)
+    expect(second).not.toEqual(first)
+  })
+})
+
+describe("a step carrying both a DocString and a DataTable (F25)", () => {
+  const onlyStep = (): ParsedStep =>
+    stepAt(scenarioAt(correlateFixture("docstring-and-datatable.feature").feature.allScenarios, 0), 0)
+
+  it("F25: survives correlation with BOTH arguments intact on one step", () => {
+    // Real `@cucumber/gherkin@42` capability: a single step may carry a DocString AND a
+    // DataTable, with `argumentIndex` recording their source order. Every pre-v42 example uses
+    // an `if (docString) ... else if (dataTable)` shape, which silently drops the second one.
+    const argument = onlyStep().argument
+    expect(argument).toBeDefined()
+    expect(argument?.docString).toBeDefined()
+    expect(argument?.dataTable).toBeDefined()
+  })
+
+  it("F25: preserves the source order of the two arguments via argumentIndex", () => {
+    const argument = onlyStep().argument
+    expect(argument?.docString?.argumentIndex).toBe(1)
+    expect(argument?.dataTable?.argumentIndex).toBe(2)
+  })
+
+  it("F25: passes the DocString content and DataTable rows through unmodified", () => {
+    const argument = onlyStep().argument
+    expect(argument?.docString?.content).toBe("the docstring content")
+    expect(argument?.dataTable?.rows.map((row) => row.cells.map((cell) => cell.value))).toEqual([
+      ["a", "b"],
+      ["1", "2"]
+    ])
+  })
+
+  it("F25: leaves the argument a RAW PickleStepArgument, with no wrapper methods on it", () => {
+    // The executable guard for the Phase 4 scope boundary. `@effect-cucumber/gherkin`'s
+    // `DataTable` wrapper — `.hashes()`, `.raw()`, `.rowsHash()` — and the calling convention
+    // for a step carrying both arguments are PARSE-04's deliverable (ADR-EC-008). THIS phase
+    // must pass the argument through unwrapped.
+    //
+    // Phase 4 owns that decision. A wrapper added here would not conflict at merge time; it
+    // would quietly ship a second, competing DataTable API. Asserting the ABSENCE of the
+    // methods turns that into a named test failure the moment someone "helpfully" adds one.
+    const argument = onlyStep().argument
+    for (const method of ["hashes", "raw", "rowsHash"]) {
+      expect(argument).not.toHaveProperty(method)
+      expect(argument?.dataTable).not.toHaveProperty(method)
+    }
+  })
+})
