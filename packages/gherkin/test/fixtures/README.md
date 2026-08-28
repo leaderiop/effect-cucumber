@@ -82,6 +82,23 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `outline-identical-row-names.feature` | F27 | 3 pickles with identical `name` and distinct `location.line` (8, 9, 10)                                                              |
 | `docstring-and-datatable.feature`     | F25 | One step carries both, with `argumentIndex` 1 (DocString) and 2 (DataTable) recording source order                                   |
 
+## Group E — DataTable and DocString argument shapes (PARSE-04)
+
+| Fixture                              | Row | Reason tag           | Verified upstream behavior                                                                                                                                |
+| ------------------------------------ | --- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `datatable-single-column.feature`    | F29 | none — shape fixture | 1 pickle; `dataTable.rows` has length 2 and every row exactly 1 cell; the `argumentIndex` KEY IS PRESENT and its VALUE is `undefined` — one argument only |
+| `datatable-header-only.feature`      | F30 | none — shape fixture | A header row with no body rows parses cleanly; `dataTable.rows` has length 1; `argumentIndex` key present, value `undefined`                              |
+| `datatable-two-column.feature`       | F31 | none — shape fixture | The `rowsHash()` shape, key column then value column: `rows` has length 2, every row 2 cells; `argumentIndex` key present, value `undefined`              |
+| `datatable-duplicate-header.feature` | F32 | none — shape fixture | Legal Gherkin — the parser does NOT object to a repeated header cell; header cells are `["name", "name"]`, body row `["alice", "bob"]`                    |
+| `datatable-before-docstring.feature` | F33 | none — shape fixture | One step carries both, with `argumentIndex` 2 (DocString) and 1 (DataTable) — the exact inverse of F25, proving the index records source order            |
+
+`compile()` assigns a NUMBER to `argumentIndex` only when a step carries both arguments. When a step carries just a
+DocString or just a DataTable, `compile()` still writes the `argumentIndex` key — it passes `undefined` into the
+unconditional `pickleDocString()` / `pickleTable()` object literals — so the KEY IS ALWAYS PRESENT and only its VALUE is
+`undefined`. An ordering rule must therefore read the VALUE and supply a fallback for `undefined`; it must never branch
+on `"argumentIndex" in argument` or `Object.hasOwn(...)`, which is `true` in every case and would therefore discriminate
+nothing. F29/F30/F31 are the fixtures that make a missing `undefined`-value fallback fail.
+
 ## `first-error-document-order.feature` has no F-row, on purpose
 
 Every other fixture in this corpus pins one distinct fact about `@cucumber/gherkin@42.0.1`'s own
