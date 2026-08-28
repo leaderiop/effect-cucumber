@@ -129,7 +129,31 @@ Decisions locked at planning time (no CONTEXT.md; surfaced directly to the devel
 
 **Spec amendment**: already done — see the second correction blockquote in `spec/decisions/007-cucumber-expressions-for-step-matching.md` (spec-contradicting finding #2, second half). No open blocker here.
 
-**Plans**: TBD — set by `/gsd:plan-phase 3`
+**Plans**: 6 plans (5 waves — one parallel pair in wave 1, then a sequential module DAG)
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — `StepPatternError` (nine reason tags, a class separate from `LoadFeatureError` so BEH-EC-014's ten-tag set stays closed) plus `expressions-pin.test.ts`, the verified-behaviour pin for `@cucumber/cucumber-expressions@20.1.0`
+- [ ] 03-02-PLAN.md — `StepArgs.ts`: the type-level coercion map (`{int}` → `number`, all eleven built-ins verified) and the `@ts-expect-error` type test that is MATCH-01's type-test half
+
+**Wave 2** *(blocked on 03-01)*
+
+- [ ] 03-03-PLAN.md — `ParameterTypes.ts`: custom types as data, fresh-registry-per-call replay, and declaration-time rejection of built-in names, duplicates, illegal names and flagged regexps
+
+**Wave 3** *(blocked on 03-02 and 03-03)*
+
+- [ ] 03-04-PLAN.md — `StepMatcher.ts`: match every registered pattern, `(registry, pattern)`-keyed memoization in a registry-keyed `WeakMap`, and the thenable / throwing-transform guards
+
+**Wave 4** *(blocked on 03-03 and 03-04)*
+
+- [ ] 03-05-PLAN.md — Wiring: `ParsedFeature.parameterTypes`, a fresh registry per `loadFeature` call with an optional store override, the real barrel, and the two-`loadFeature`-calls MATCH-02 proof
+
+**Wave 5** *(blocked on 03-05)*
+
+- [ ] 03-06-PLAN.md — Spec: BEH-EC-015, ADR-EC-007's third correction closing the store-versus-`Layer` question, BEH-EC-014's corrected signature listing, traceability §1/§4, and both status documents
+
+Decisions locked at planning time (no CONTEXT.md; surfaced directly to the developer): parameter-type and step-pattern failures get their **own** error class, `StepPatternError`, rather than new `LoadFeatureError` reason tags, because BEH-EC-014 closes that union at exactly ten members; a custom parameter type transform **must be synchronous**, enforced at the type level and guarded at runtime (Pitfall 25); the built-in name set is **derived** from a real `ParameterTypeRegistry`, never hardcoded; `loadFeature`/`parseFeature` gain an **optional** trailing options argument carrying a `ParameterTypeStore` override, so BEH-EC-001's call form is unchanged while tests stay hermetic against the append-only default store; ADR-EC-007's `Layer`-provided-registry option is **closed as unavailable** — ADR-EC-015 forbids `effect` in this package and `verify:no-runner-dep` enforces it.
 
 **Research flag**: Skip — the fresh-registry-per-call / data-driven-custom-types pattern is already fully specified by research. The spec amendment is a decision, not research.
 
@@ -296,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
+| 3. Parameter Types and Step Matching | 0/6 | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
