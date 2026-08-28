@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Phase 1 verified passed (see .planning/phases/01-workspace-toolchain-and-dependency-policy/01-VERIFICATION.md). One outstanding manual step: install the pkg-pr-new GitHub App on leaderiop/effect-cucumber (https://github.com/apps/pkg-pr-new) — not blocking."
-last_updated: "2026-08-28T11:22:44.793Z"
-last_activity: 2026-08-28 -- Phase 2 planning complete
+last_updated: "2026-08-28T11:28:06.259Z"
+last_activity: 2026-08-28 -- Phase 2 execution started
 progress:
   total_phases: 11
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 1 — Workspace, Toolchain, and Dependency Policy
+**Current focus:** Phase 2 — loadFeature — Parse, Compile, Correlate
 
 ## Current Position
 
-Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy) — VERIFIED PASSED
-Plan: 6 of 6 in current phase (01-01 through 01-06 all complete)
-Status: Ready to execute
-Last activity: 2026-08-28 -- Phase 2 planning complete
+Phase: 2 (loadFeature — Parse, Compile, Correlate) — EXECUTING
+Plan: 1 of 11
+Status: Executing Phase 2
+Last activity: 2026-08-28 -- Phase 2 execution started
 
 **Current focus:** Phase 2 — `loadFeature` — Parse, Compile, Correlate
 
