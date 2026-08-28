@@ -95,8 +95,8 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 02-06-PLAN.md — Correlation closeout: F23 id independence, F24 multi-Examples tags, F25 dual arguments, F26/F27 scenario names and locations
-- [ ] 02-07-PLAN.md — `Validate.ts` structural checks (F1–F6) and per-scope duplicate Scenario name rejection (F22)
+- [x] 02-06-PLAN.md — Correlation closeout: F23 id independence, F24 multi-Examples tags, F25 dual arguments, F26/F27 scenario names and locations
+- [x] 02-07-PLAN.md — `Validate.ts` structural checks (F1–F6) and per-scope duplicate Scenario name rejection (F22)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -295,7 +295,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 5/11 | In Progress|  |
+| 2. `loadFeature` — Parse, Compile, Correlate | 7/11 | In Progress|  |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
