@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: context exhaustion at 75% (2026-08-28)
-last_updated: "2026-08-28T21:04:56.359Z"
-last_activity: 2026-08-28 -- Phase 4 planning complete
+last_updated: "2026-08-28T21:08:39.749Z"
+last_activity: 2026-08-28 -- Phase 4 execution started
 progress:
   total_phases: 11
   completed_phases: 3
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 4 — datatable / docstring
+**Current focus:** Phase 4 — DataTable / DocString
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-28 -- Phase 4 planning complete
+Phase: 4 (DataTable / DocString) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 4
+Last activity: 2026-08-28 -- Phase 4 execution started
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
