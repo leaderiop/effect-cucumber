@@ -82,8 +82,8 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Contracts: `Errors.ts` (10 error reasons, 4 warning reasons, no-truncation policy) and `Model.ts` (`ParsedFeature`)
-- [ ] 02-03-PLAN.md — The fixture corpus (F1–F27, ~28 `.feature` files) plus `upstream-pin.test.ts` pinning `@cucumber/gherkin@42`'s verified behavior
+- [x] 02-02-PLAN.md — Contracts: `Errors.ts` (10 error reasons, 4 warning reasons, no-truncation policy) and `Model.ts` (`ParsedFeature`)
+- [x] 02-03-PLAN.md — The fixture corpus (F1–F27, ~28 `.feature` files) plus `upstream-pin.test.ts` pinning `@cucumber/gherkin@42`'s verified behavior
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -295,7 +295,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 1/11 | In Progress|  |
+| 2. `loadFeature` — Parse, Compile, Correlate | 3/11 | In Progress|  |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
