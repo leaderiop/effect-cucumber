@@ -274,13 +274,20 @@ describe("upstream @cucumber/gherkin behavior", () => {
       const thrown = failureOf("unknown-dialect.feature")
       expect((thrown as Error).name).toBe("Error")
       expect(collectedErrors(thrown)[0]?.name).toBe("Error")
-      expect(Object.keys(Errors).toSorted()).toEqual([
-        "AstBuilderException",
-        "CompositeParserException",
-        "GherkinException",
-        "NoSuchLanguageException",
-        "ParserException"
-      ])
+      // A Set rather than a sorted array. Sorting was only ever a way to make the comparison
+      // order-independent, and neither sorting spelling is available here: `.toSorted()` is
+      // ES2023 while tsconfig.base.json's `lib` is ES2022, and `.sort()` is rejected by
+      // oxlint's unicorn(no-array-sort). `Object.keys` returns unique keys, so set equality
+      // asserts exactly the same thing.
+      expect(new Set(Object.keys(Errors))).toEqual(
+        new Set([
+          "AstBuilderException",
+          "CompositeParserException",
+          "GherkinException",
+          "NoSuchLanguageException",
+          "ParserException"
+        ])
+      )
     })
   })
 
@@ -378,7 +385,9 @@ describe("upstream @cucumber/gherkin behavior", () => {
     it("outline-identical-row-names.feature yields identical names on three distinct lines", () => {
       const { pickles } = parseFixture("outline-identical-row-names.feature")
       expect(pickles.map((pickle) => pickle.name)).toEqual(["same title", "same title", "same title"])
-      expect(pickles.map((pickle) => pickle.location.line)).toEqual([8, 9, 10])
+      // `location` is optional on upstream's Pickle type; `?.` keeps the assertion strict —
+      // a missing location yields undefined, which does not equal 8, 9 or 10.
+      expect(pickles.map((pickle) => pickle.location?.line)).toEqual([8, 9, 10])
     })
 
     it("docstring-and-datatable.feature carries both arguments on one step, in source order", () => {
