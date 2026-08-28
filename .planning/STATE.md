@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-08-28T23:23:23.777Z"
-last_activity: 2026-08-28 -- Phase 05 planning complete
+last_updated: "2026-08-28T23:26:10.267Z"
+last_activity: 2026-08-28 -- Phase 05 execution started
 progress:
   total_phases: 11
   completed_phases: 4
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 5 — `describefeature` type surface
+**Current focus:** Phase 05 — describefeature-type-surface
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-28 -- Phase 05 planning complete
+Phase: 05 (describefeature-type-surface) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 05
+Last activity: 2026-08-28 -- Phase 05 execution started
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 

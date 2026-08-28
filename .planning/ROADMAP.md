@@ -210,7 +210,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Wave 0 blockers: scope the tsgo-gate negative config to one file (Pitfall 1), extend `typecheck:test` to `packages/vitest`, and land `Registry.ts` plus DSL-04's per-instance isolation test
+- [x] 05-01-PLAN.md — Wave 0 blockers: scope the tsgo-gate negative config to one file (Pitfall 1), extend `typecheck:test` to `packages/vitest`, and land `Registry.ts` plus DSL-04's per-instance isolation test
 
 **Wave 2** *(blocked on 05-01)*
 
@@ -369,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
-| 5. `describeFeature` Type Surface | 0/6 | Not started | - |
+| 5. `describeFeature` Type Surface | 1/6 | In Progress|  |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
