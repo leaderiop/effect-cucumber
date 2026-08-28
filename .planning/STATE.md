@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 03 plan 01 complete (1/6) — StepPatternError and the cucumber-expressions upstream pin landed. Next: 03-02."
-last_updated: "2026-08-28T14:51:51.702Z"
-last_activity: 2026-08-28 -- 03-01 complete (StepPatternError + expressions pin)
+stopped_at: "Phase 03 plan 02 complete (2/6). `StepArgs<P>` + its `@ts-expect-error` type test landed; 273 tests passing (unchanged by design), all gates green. Next: 03-03."
+last_updated: "2026-08-28T15:02:16.757Z"
+last_activity: 2026-08-28 -- 03-02 complete (StepArgs + MATCH-01 type test)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 23
-  completed_plans: 18
+  completed_plans: 19
   percent: 18
 ---
 
@@ -26,24 +26,24 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 03 (parameter-types-and-step-matching) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
-Last activity: 2026-08-28 -- 03-01 complete (StepPatternError + expressions pin)
+Last activity: 2026-08-28
 
 **Current focus:** Phase 3 — parameter types and step matching
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
 Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [██░░░░░░░░] 17% (1/6 plans)
-Overall progress:  [███░░░░░░░] ~27% (18 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Phase 3 progress: [███░░░░░░░] 33% (2/6 plans)
+Overall progress:  [████░░░░░░] ~35% (19 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 18
+- Total plans completed: 19
 - Average duration: ~10m
-- Total execution time: ~73m
+- Total execution time: ~80m
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Overall progress:  [███░░░░░░░] ~27% (18 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 1/6 | ~13m | ~13m |
+| 03 | 2/6 | ~20m | ~10m |
 
 **Per-plan detail:**
 
@@ -64,10 +64,11 @@ Overall progress:  [███░░░░░░░] ~27% (18 of 23 planned plans
 | 01-05 | ~14m | 2 | 9 |
 | 01-06 | ~3m | 2 | 4 |
 | 03-01 | ~13m | 3 | 3 |
+| 03-02 | ~7m | 2 | 2 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m)
+- Last 6 plans: 01-03 (~18m), 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m)
 - Trend: 01-02, 01-03 and 01-05 each spent most of their time mutation-testing a gate script rather than writing the thing it guards; 01-04 was the outlier because its equivalent proof (unpacking a `pnpm pack` tarball) was a single command rather than a script that has to be written and then attacked. 01-05 turned that one-off command into the standing gate, which is why it costs script-writing time again. 01-06 is the payoff and the cheapest plan in the phase: because every gate was already a root script proven by mutation, wiring them into CI was assembly, not design.
 
 *Updated after each plan completion*
@@ -110,6 +111,11 @@ Recent decisions affecting current work:
 - [03-01]: oxlint's vitest(require-to-throw-message) is error-level, so a bare expect(...).toThrow() fails lint. Upstream throws are asserted via a local thrownBy(action) helper returning the thrown value plus instanceof Error, so upstream prose never becomes a contract. Do not simplify these back to toThrow().
 - [03-01]: The eleven built-in parameter type names are pinned as a Set read off a real ParameterTypeRegistry in test/expressions-pin.test.ts. ParameterTypes.ts must DERIVE its built-in set from a live registry, never hardcode one.
 - [03-01]: StepPatternError is deliberately NOT exported from packages/gherkin/src/index.ts yet. The plan that first raises it (03-02/03-03) owns adding the export. The name StepMatchError is reserved for Phase 6 (MATCH-03/04, ADR-EC-019).
+- [03-02]: `StepArgs` recurses on BRACE PAIRS, never per character — a per-character template-literal walk hits TS2589 on a realistic step pattern. Note (c) in the module doc records the prohibition.
+- [03-02]: An unregistered `{name}` resolves to `unknown`, not a compile error — a custom parameter type is runtime data and its transform's return type is unrecoverable from a string literal. The `Custom` type parameter is the escape hatch, and built-ins beat it, mirroring the runtime rejection of a shadowing `defineParameterType`.
+- [03-02]: `StepArgs`' `Custom` default is `Record<never, never>`. `Record<string, never>` would be silently wrong — its `keyof` is `string`, so every name would hit the custom branch and resolve to `never`, killing both the `unknown` fallback and built-in precedence.
+- [03-02]: **"The emitted JS is byte-empty" is not a portable acceptance criterion** under workspace-wide `moduleDetection: "force"` — `tsc` emits a bare `export {}` for every file and preserves a module doc comment that is not attached to an elided import. Assert "zero statements after stripping comments and the module marker" instead. (`dist/Model.js` looks empty only by accident.)
+- [03-02]: A compile-time-only claim goes in a **`.types.ts`** file: `packages/gherkin/tsconfig.test.json` compiles it under `pnpm typecheck:test` (a required CI step) while vitest's include glob ignores it. Renaming one to `.test.ts` breaks `pnpm test` with "No test suite found".
 
 ### Pending Todos
 
@@ -189,8 +195,15 @@ New since 03-01 (not blockers, constraints to respect):
 - **`StepPatternError` is not yet in `packages/gherkin/src/index.ts`.** The plan that first raises it owns adding `export { StepPatternError }` and `export type { StepPatternErrorReason }` beside the existing `LoadFeatureError` export.
 - Repo test count is now **273** across 11 files (211 before this phase).
 
+New since 03-02 (not blockers, constraints to respect):
+
+- **`packages/gherkin/src/StepArgs.ts` and `test/expressions-pin.test.ts` are a matched pair.** `BuiltInParameterTypeMap` declares the eleven built-ins' TypeScript types; the pin asserts the same eleven against the real package. A `^20.1.0` bump that moves one must move the other in the same commit, or the type system starts asserting something the runtime does not do.
+- **`StepArgs` and `BuiltInParameterTypeMap` are not exported from `packages/gherkin/src/index.ts`.** Nothing reachable by a consumer uses them yet; Phase 5's `Given`/`When`/`Then` signatures are their first real caller. The plan that makes them reachable owns the export — same convention as `StepPatternError` from 03-01. Import them by direct relative path (`../src/StepArgs.ts`), never through the barrel.
+- **MATCH-01 is still Pending in REQUIREMENTS.md after 03-02, deliberately.** This plan shipped the type-level half only; roadmap success criterion 1 also asks for the runtime assertion, which is 03-04's. Same precedent as 03-01 and as PARSE-01..03 at 02-09.
+- Repo test count is **unchanged at 273 across 11 files** — `test/StepArgs.types.ts` is compiled by `pnpm typecheck:test` and never collected by vitest, which is the point of its suffix.
+
 ## Session Continuity
 
-Last session: 2026-08-28T16:57:00.000Z
-Stopped at: Phase 03 plan 01 complete (1/6). `StepPatternError` + `test/expressions-pin.test.ts` landed; 273 tests passing, all gates green. Next: 03-02.
+Last session: 2026-08-28T15:03:00.000Z
+Stopped at: Phase 03 plan 02 complete (2/6). `src/StepArgs.ts` + `test/StepArgs.types.ts` landed; 273 tests passing (unchanged on purpose — the type test is compiled, never collected), all gates green. Next: 03-03.
 Resume file: None
