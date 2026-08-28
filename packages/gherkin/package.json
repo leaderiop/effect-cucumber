@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/leaderiop/effect-cucumber.git",
+    "url": "git+https://github.com/leaderiop/effect-cucumber.git",
     "directory": "packages/gherkin"
   },
   "type": "module",

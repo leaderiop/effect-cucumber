@@ -12,6 +12,8 @@
     "format:check": "dprint check",
     "lint": "oxlint -f unix && dprint check",
     "lint-fix": "oxlint --fix && dprint fmt",
+    "circular": "madge --circular --extensions ts packages/*/src",
+    "verify:pack": "bash scripts/verify-pack.sh",
     "verify:spec": "bash spec/scripts/verify-traceability.sh",
     "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh",
     "verify:oxlint-plugin": "bash scripts/verify-oxlint-plugin.sh"
@@ -20,7 +22,9 @@
     "@effect/tsgo": "^0.38.0",
     "@oxlint/plugins": "1.80.0",
     "dprint": "0.56.1",
+    "madge": "8.0.0",
     "oxlint": "1.80.0",
+    "publint": "0.3.24",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
