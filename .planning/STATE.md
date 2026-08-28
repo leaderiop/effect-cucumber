@@ -10,28 +10,29 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-08-28 — Roadmap created (11 phases, 22/22 requirements mapped)
+Plan: 1 of 6 in current phase
+Status: In progress
+Last activity: 2026-08-28 — Completed 01-01-PLAN.md (TypeScript build foundation)
 
-Progress: [░░░░░░░░░░] 0%
+Phase 1 progress: [█░░░░░░░░░] 17% (1/6 plans)
+Overall progress:  [░░░░░░░░░░] ~2% (1 of ~66 plans; only phase 1 is planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 1
+- Average duration: ~5m
+- Total execution time: ~5m
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 | 1/6 | ~5m | ~5m |
 
 **Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 01-01 (~5m)
+- Trend: — (insufficient data)
 
 *Updated after each plan completion*
 
@@ -46,6 +47,9 @@ Recent decisions affecting current work:
 - [Roadmap]: PARSE-04 (DataTable wrapper) added to REQUIREMENTS.md — it was an active requirement in PROJECT.md with no REQ-ID. Assigned to Phase 4, per research's detailed breakdown (not its executive-summary mention of Phase 1).
 - [Roadmap]: MATCH-03/04/05 (drift detection) assigned to Phase 6, where the resolved plan exists — Phase 3 builds the match-all-patterns mechanism they rely on.
 - [Pre-roadmap]: `effect` is a peerDependency; `@effect/tsgo` gates the build (ADR-EC-015/016 — already applied to the repo).
+- [01-01]: The `@effect/language-service` plugin block keeps both `ignoreEffectWarningsInTscExitCode` and `ignoreEffectErrorsInTscExitCode` at `false`, deliberately diverging from STACK.md §5.3 (which suggests warnings-ignored). Effect warnings failing `tsc` is the gate plan 01-02 exists to prove — do not relax.
+- [01-01]: `${configDir}`-relative `rootDir`/`outDir` live in `tsconfig.base.json`; package tsconfigs carry no path duplication. Verified expanding per-package, not per-base-file.
+- [01-01]: `types: []` inherited workspace-wide. Packages opt into ambient types (e.g. `["node"]` for vitest in Phase 5) only when actually needed.
 
 ### Pending Todos
 
@@ -72,8 +76,14 @@ Deferred, do not silently drop: **REUSE-01** (reusable step definitions) — use
 
 Open toolchain decisions to close in Phase 1: dprint `semiColons: "asi"`, pnpm 11.x bump, `publint`/`madge`/`pkg-pr-new` adoption, weekly `effect@rc` canary CI job.
 
+New since 01-01 (not blockers, constraints to respect):
+
+- `erasableSyntaxOnly` + `verbatimModuleSyntax` are on workspace-wide. No enums, no parameter properties, no `namespace` blocks; type-only imports must be marked `import type` or inline `type`. Constrains all Phase 2+ source.
+- Both packages' `src/index.ts` are placeholders that say so in their doc comments. Phase 2 replaces gherkin's, Phase 5 replaces vitest's. The `packageName` exports are not public API.
+- `tools/` (vendored Effect oxlint rules) is still untracked — belongs to the lint plan, not yet committed.
+
 ## Session Continuity
 
 Last session: 2026-08-28
-Stopped at: ROADMAP.md and STATE.md written; REQUIREMENTS.md traceability populated (22/22)
+Stopped at: Completed 01-01-PLAN.md — `tsc -b` compiles both packages clean from cold
 Resume file: None
