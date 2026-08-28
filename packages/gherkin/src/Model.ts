@@ -11,12 +11,18 @@
  * walk exists only to recover what a pickle structurally cannot carry: step keyword, step
  * origin, step line, Rule membership, and the un-interpolated Scenario name.
  *
- * The `@cucumber/messages` types this contract surfaces are re-exported at the bottom of
- * the file. `document` and `pickles` are deliberately kept as escape hatches, which exposes
- * those types either way; re-exporting them means a consumer is never forced to declare
- * `@cucumber/messages` itself. No subpath export is added to `package.json` for them: a
- * single barrel avoids having to maintain `exports` and `publishConfig.exports` in lockstep.
+ * The third-party types this contract surfaces are re-exported at the bottom of the file.
+ * `document` and `pickles` are deliberately kept as escape hatches, which exposes the
+ * `@cucumber/messages` types either way, and `parameterTypes` exposes
+ * `@cucumber/cucumber-expressions`' `ParameterTypeRegistry`; re-exporting them means a consumer
+ * is never forced to declare either package itself. No subpath export is added to
+ * `package.json` for them: a single barrel avoids having to maintain `exports` and
+ * `publishConfig.exports` in lockstep.
+ *
+ * Both third-party imports reach the package BARREL, never a deep path into a published build
+ * directory — the same rule `ParameterTypes.ts` and `StepMatcher.ts` follow.
  */
+import type { ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
 import type {
   GherkinDocument,
   Location,
@@ -155,9 +161,36 @@ export interface ParsedFeatureCore {
  * `Validate.ts` produces the warnings; `loadFeature.ts` joins them. Phase 6 already needs a
  * Feature-level warning channel for MATCH-05, so this is one carrier built now rather than
  * two carriers built later.
+ *
+ * `parameterTypes` joins at the same seam and for the same reason: `Correlate.ts` knows nothing
+ * about parameter types, so the field belongs here and not on the core.
  */
 export interface ParsedFeature extends ParsedFeatureCore {
   readonly warnings: ReadonlyArray<LoadFeatureWarning>
+  /**
+   * A FRESH `ParameterTypeRegistry`, built for THIS call and never shared with another
+   * `ParsedFeature`.
+   *
+   * It already carries the eleven built-in parameter types plus every custom parameter type
+   * recorded in the store at the moment the call ran — ADR-EC-007's second correction, which
+   * makes custom types permanent data replayed into a per-call registry rather than a live
+   * registry anyone holds on to. This is the value a consumer hands to `createStepMatcher`.
+   *
+   * The consequence a reader will otherwise trip on: because it is per-call, two `ParsedFeature`
+   * values from two `loadFeature` calls hold two DIFFERENT registry objects, and a
+   * `CucumberExpression` compiled against one must never be reused against the other. That is
+   * exactly why the compilation cache in `StepMatcher.ts` is keyed on the registry INSTANCE and
+   * not on the pattern string alone.
+   */
+  readonly parameterTypes: ParameterTypeRegistry
 }
 
-export type { GherkinDocument, Location, Pickle, PickleStep, PickleStepArgument, StepKeywordType }
+export type {
+  GherkinDocument,
+  Location,
+  ParameterTypeRegistry,
+  Pickle,
+  PickleStep,
+  PickleStepArgument,
+  StepKeywordType
+}

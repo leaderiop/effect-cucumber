@@ -56,6 +56,7 @@
 import { IdGenerator } from "@cucumber/messages"
 import { correlateFeature } from "./Correlate.ts"
 import type { ParsedFeature } from "./Model.ts"
+import { buildParameterTypeRegistry } from "./ParameterTypes.ts"
 import { parseDocument } from "./Parser.ts"
 import { compilePickles } from "./Pickles.ts"
 import { readFeatureSource } from "./Source.ts"
@@ -77,7 +78,11 @@ export const parseFeature = (source: string, uri: string): ParsedFeature => {
   const document = parseDocument(source, uri, newId)
   const pickles = compilePickles(document, uri, newId)
   const correlated = correlateFeature(document, pickles, uri)
-  return { ...correlated.feature, warnings: validateFeature(correlated) }
+  return {
+    ...correlated.feature,
+    warnings: validateFeature(correlated),
+    parameterTypes: buildParameterTypeRegistry()
+  }
 }
 
 /**
