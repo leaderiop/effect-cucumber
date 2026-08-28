@@ -87,6 +87,21 @@ describe("a custom parameter type is data, not a registration", () => {
     expect(registry.lookupByTypeName("nope")).toBeUndefined()
   })
 
+  it("is immune to the caller mutating the regexp array after define() returns", () => {
+    // `define` must copy a caller-supplied regexp array, not alias it: a definition is
+    // documented as "permanent, ordinary data" (module doc comment (a)), so a mutation the
+    // caller makes to their own array after define() returns must never retroactively change
+    // what a later buildRegistry() replays.
+    const store = createParameterTypeStore()
+    const patterns = [/\d+/]
+    store.define({ name: "money", regexp: patterns, transform: amount })
+
+    patterns.push(/[A-Z]+/)
+
+    const parameterType = store.buildRegistry().lookupByTypeName("money")
+    expect(parameterType?.regexpStrings).toEqual(["\\d+"])
+  })
+
   it("replays the recorded transform itself, so it survives the record and replay round trip", () => {
     const store = createParameterTypeStore()
     store.define({
@@ -204,6 +219,18 @@ describe("a name defined twice in one store is rejected at definition time", () 
     expect(error.reason).toBe("DuplicateParameterTypeName")
     expect(error.parameterTypeName).toBe("money")
     expect(error.message).toContain("money")
+    expect(error.message).toContain("an unrecorded location")
+  })
+
+  it("falls back to the same placeholder for an explicit empty-string definedAt", () => {
+    // `??` treats only `undefined`/`null` as missing; an explicit `""` would slip past it and
+    // leave a dangling "at ," in the message. Assert the placeholder, not merely its absence.
+    const store = createParameterTypeStore()
+    store.define({ name: "money", regexp: /\d+/, transform: amount, definedAt: "" })
+
+    const error = rejectedBy(() => store.define({ name: "money", regexp: /\d+/, transform: amount }))
+
+    expect(error.message).not.toContain("at ,")
     expect(error.message).toContain("an unrecorded location")
   })
 

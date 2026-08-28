@@ -60,11 +60,12 @@
  * definition and its source location in there. Nothing here ever inspects it, which is how a
  * package forbidden by ADR-EC-015 from depending on `effect` still serves Phase 6.
  *
- * Local imports: `./Errors.ts` only. Third-party: the `@cucumber/cucumber-expressions` barrel,
- * never a deep path into that package's published build directory.
+ * Local imports: `./Errors.ts` and `./StepPatternMessages.ts` only. Third-party: the
+ * `@cucumber/cucumber-expressions` barrel, never a deep path into that package's published build
+ * directory.
  */
 import { type Argument, CucumberExpression, type ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
-import { StepPatternError, type StepPatternErrorReason } from "./Errors.ts"
+import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /**
  * The compilation cache: registry instance → (pattern string → compiled expression).
@@ -82,29 +83,6 @@ import { StepPatternError, type StepPatternErrorReason } from "./Errors.ts"
  * everything compiled against it; nothing here has to know when a feature load is over.
  */
 const expressionCache = new WeakMap<ParameterTypeRegistry, Map<string, CucumberExpression>>()
-
-/**
- * Raise a `StepPatternError` shaped `<reason>: <what happened, then what to do>`, matching the
- * message convention `Validate.ts` established for `LoadFeatureError` and `ParameterTypes.ts`
- * reuses.
- */
-const fail = (
-  args: {
-    reason: StepPatternErrorReason
-    parameterTypeName?: string
-    pattern: string
-    sentences: ReadonlyArray<string>
-    cause?: unknown
-  }
-): never => {
-  throw new StepPatternError({
-    reason: args.reason,
-    ...(args.parameterTypeName === undefined ? {} : { parameterTypeName: args.parameterTypeName }),
-    pattern: args.pattern,
-    message: `${args.reason}: ${args.sentences.join(" ")}`,
-    ...(args.cause === undefined ? {} : { cause: args.cause })
-  })
-}
 
 /**
  * The name of the parameter type an upstream construction failure complained about, or `undefined`
@@ -126,9 +104,6 @@ const undefinedParameterTypeNameOf = (thrown: unknown): string | undefined => {
 
 /** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). */
 const describeCause = (thrown: unknown): string => thrown instanceof Error ? thrown.message : String(thrown)
-
-/** Name a parameter type the way a step pattern would spell it. */
-const describeName = (name: string): string => name === "" ? "the anonymous {} parameter type" : `{${name}}`
 
 /**
  * Is this value a thenable?

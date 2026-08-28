@@ -60,11 +60,12 @@
  * This module never constructs a regular expression. Every pattern it is handed goes to
  * `CucumberExpression`, which owns all regex construction and escaping (threat T-03-12).
  *
- * Local imports: `./Errors.ts` only. Third-party: the `@cucumber/cucumber-expressions` barrel,
- * never a deep path into that package's published build directory.
+ * Local imports: `./Errors.ts` and `./StepPatternMessages.ts` only. Third-party: the
+ * `@cucumber/cucumber-expressions` barrel, never a deep path into that package's published build
+ * directory.
  */
 import { ParameterType, ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
-import { StepPatternError, type StepPatternErrorReason } from "./Errors.ts"
+import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /**
  * One custom parameter type, as data.
@@ -144,33 +145,16 @@ const rejectedRegexpFlags: ReadonlyArray<string> = ["g", "i", "m", "y"]
  */
 const illegalNameCharacters = "[ ] ( ) $ . | ? * +"
 
-/** The fallback used when a definition recorded no `definedAt`. */
+/** The fallback used when a definition recorded no `definedAt` — including an explicit `""`. */
 const unrecordedLocation = "an unrecorded location"
 
-/** Name a parameter type the way a step pattern would spell it. */
-const describeName = (name: string): string => name === "" ? "the anonymous {} parameter type" : `{${name}}`
+/** `value`, or `unrecordedLocation` when it is `undefined` or an explicit empty string. */
+const locationOf = (value: string | undefined): string =>
+  value === undefined || value === "" ? unrecordedLocation : value
 
 /** The built-in set, rendered for a message, so the caller needs no docs lookup. */
 const listBuiltInNames = (): string =>
   [...builtInParameterTypeNames].map((name) => (name === "" ? "the anonymous \"\"" : name)).join(", ")
-
-/**
- * Raise a `StepPatternError` shaped `<reason>: <what happened, then what to do>`, matching the
- * message convention `Validate.ts` established for `LoadFeatureError`.
- */
-const fail = (
-  reason: StepPatternErrorReason,
-  parameterTypeName: string,
-  sentences: ReadonlyArray<string>,
-  cause?: unknown
-): never => {
-  throw new StepPatternError({
-    reason,
-    parameterTypeName,
-    message: `${reason}: ${sentences.join(" ")}`,
-    cause
-  })
-}
 
 /** Normalise the three accepted `regexp` shapes to one list, without copying an array needlessly. */
 const toRegexpList = (regexp: ParameterTypeDefinition<unknown>["regexp"]): ReadonlyArray<string | RegExp> =>
@@ -229,7 +213,6 @@ export interface ParameterTypeStore {
  */
 export const createParameterTypeStore = (): ParameterTypeStore => {
   const records: Array<ParameterTypeDefinition<unknown>> = []
-  const definedAtByName = new Map<string, string | undefined>()
 
   const define = <T>(definition: ParameterTypeDefinition<T>): void => {
     const { name } = definition
@@ -238,47 +221,71 @@ export const createParameterTypeStore = (): ParameterTypeStore => {
     // and what guarantees the built-in message wins over the duplicate one for a name that is
     // both.
     if (builtInParameterTypeNames.has(name)) {
-      fail("BuiltInParameterTypeName", name, [
-        `${describeName(name)} is one of the parameter types every registry pre-registers`,
-        `(${listBuiltInNames()}), and upstream throws on any attempt to redefine one.`,
-        "Choose a different name for this custom parameter type."
-      ])
+      fail({
+        reason: "BuiltInParameterTypeName",
+        parameterTypeName: name,
+        sentences: [
+          `${describeName(name)} is one of the parameter types every registry pre-registers`,
+          `(${listBuiltInNames()}), and upstream throws on any attempt to redefine one.`,
+          "Choose a different name for this custom parameter type."
+        ]
+      })
     }
 
-    if (definedAtByName.has(name)) {
-      const firstSite = definedAtByName.get(name) ?? unrecordedLocation
-      const secondSite = definition.definedAt ?? unrecordedLocation
-      fail("DuplicateParameterTypeName", name, [
-        `${describeName(name)} was already defined in this store at ${firstSite},`,
-        `and is being defined again at ${secondSite}.`,
-        "Remove one of the two definitions, or give one of them a different name.",
-        "Set `definedAt` on each definition to make both sites appear here by name."
-      ])
+    // Searches `records` directly rather than a parallel name->site map: the store never holds
+    // more than a handful of definitions, and a second structure kept in sync by hand is a second
+    // place for `define` and this check to silently drift apart.
+    const existing = records.find((recorded) => recorded.name === name)
+    if (existing !== undefined) {
+      fail({
+        reason: "DuplicateParameterTypeName",
+        parameterTypeName: name,
+        sentences: [
+          `${describeName(name)} was already defined in this store at ${locationOf(existing.definedAt)},`,
+          `and is being defined again at ${locationOf(definition.definedAt)}.`,
+          "Remove one of the two definitions, or give one of them a different name.",
+          "Set `definedAt` on each definition to make both sites appear here by name."
+        ]
+      })
     }
 
     if (!ParameterType.isValidParameterTypeName(name)) {
-      fail("IllegalParameterTypeName", name, [
-        `${describeName(name)} was rejected by ParameterType.isValidParameterTypeName.`,
-        `A parameter type name may not contain any of ${illegalNameCharacters}.`,
-        "Remove the offending character."
-      ])
+      fail({
+        reason: "IllegalParameterTypeName",
+        parameterTypeName: name,
+        sentences: [
+          `${describeName(name)} was rejected by ParameterType.isValidParameterTypeName.`,
+          `A parameter type name may not contain any of ${illegalNameCharacters}.`,
+          "Remove the offending character."
+        ]
+      })
     }
 
     for (const entry of toRegexpList(definition.regexp)) {
       if (entry instanceof RegExp) {
         for (const flag of rejectedRegexpFlags) {
           if (entry.flags.includes(flag)) {
-            fail("InvalidParameterTypeRegexp", name, [
-              `the regexp /${entry.source}/${entry.flags} supplied for ${describeName(name)}`,
-              `carries the ${flag} flag, which upstream's ParameterType constructor rejects.`,
-              `Drop the ${flag} flag.`
-            ])
+            fail({
+              reason: "InvalidParameterTypeRegexp",
+              parameterTypeName: name,
+              sentences: [
+                `the regexp /${entry.source}/${entry.flags} supplied for ${describeName(name)}`,
+                `carries the ${flag} flag, which upstream's ParameterType constructor rejects.`,
+                `Drop the ${flag} flag.`
+              ]
+            })
           }
         }
       }
     }
 
-    const record: ParameterTypeDefinition<unknown> = definition
+    // A copy, not the caller's own array: `definition.regexp` is stored and replayed by
+    // `buildRegistry` on every future `loadFeature` call, so aliasing the caller's array would let
+    // a mutation made after `define` returns retroactively change an already-recorded definition.
+    // A single `string`/`RegExp` value needs no copy — only the array form is caller-mutable here.
+    const record: ParameterTypeDefinition<unknown> = Array.isArray(definition.regexp)
+      ? { ...definition, regexp: [...definition.regexp] }
+      : definition
 
     // The catch-all. Everything the four checks above name is already gone, so a throw here means
     // upstream rejected the definition for a reason this library did not anticipate — a `^20.1.0`
@@ -288,15 +295,19 @@ export const createParameterTypeStore = (): ParameterTypeStore => {
     try {
       toUpstreamParameterType(record)
     } catch (cause) {
-      fail("InvalidParameterTypeDefinition", name, [
-        `@cucumber/cucumber-expressions rejected the definition of ${describeName(name)}`,
-        "for a reason this library does not recognise; the original failure is attached as `cause`.",
-        "This most likely means the dependency changed behaviour within its major range."
-      ], cause)
+      fail({
+        reason: "InvalidParameterTypeDefinition",
+        parameterTypeName: name,
+        sentences: [
+          `@cucumber/cucumber-expressions rejected the definition of ${describeName(name)}`,
+          "for a reason this library does not recognise; the original failure is attached as `cause`.",
+          "This most likely means the dependency changed behaviour within its major range."
+        ],
+        cause
+      })
     }
 
     records.push(record)
-    definedAtByName.set(name, definition.definedAt)
   }
 
   const definitions = (): ReadonlyArray<ParameterTypeDefinition<unknown>> => [...records]
@@ -304,7 +315,32 @@ export const createParameterTypeStore = (): ParameterTypeStore => {
   const buildRegistry = (): ParameterTypeRegistry => {
     const registry = new ParameterTypeRegistry()
     for (const record of records) {
-      registry.defineParameterType(toUpstreamParameterType(record))
+      // Wrapped, not a bare call: `record` was already validated once by `define`, but a
+      // consumer holding a reference to a mutable field it did NOT copy (or a `^20.1.0` minor
+      // moving under us) could still make this throw. Every OTHER upstream call this store makes
+      // is wrapped this way; leaving replay bare would let exactly that throw escape every
+      // `loadFeature`/`parseFeature` call as a raw, unwrapped exception instead of the
+      // `StepPatternError` those functions document themselves as always throwing.
+      let upstream: ParameterType<unknown>
+      try {
+        upstream = toUpstreamParameterType(record)
+      } catch (cause) {
+        // `return`, not a bare call: `fail` always throws, but a statement-position call leaves
+        // `upstream` "used before being assigned" to the compiler — the same definite-assignment
+        // narrowing `StepMatcher.ts`'s `constructExpression` split exists to satisfy.
+        return fail({
+          reason: "InvalidParameterTypeDefinition",
+          parameterTypeName: record.name,
+          sentences: [
+            `@cucumber/cucumber-expressions rejected the definition of ${describeName(record.name)}`,
+            "while replaying it into a fresh registry, for a reason this library does not",
+            "recognise; the original failure is attached as `cause`. This most likely means the",
+            "dependency changed behaviour within its major range."
+          ],
+          cause
+        })
+      }
+      registry.defineParameterType(upstream)
     }
     return registry
   }
