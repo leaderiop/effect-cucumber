@@ -31,6 +31,14 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       of `compile()` (27 fixture rows) surfacing as a named, located
       `LoadFeatureError` or `LoadFeatureWarning` instead of a false-green
       test. 211 tests passing; full `check.yml` gate green.
+- [x] Data tables decode through Schema, via `@effect-cucumber/gherkin`'s own
+      `DataTable` wrapper (`.hashes()` isn't native to `@cucumber/gherkin`) —
+      ADR-EC-008. Validated in Phase 4 (DataTable / DocString): `.raw()`,
+      `.hashes()`, and `.rowsHash()` ship with `decodeHashes` mapping a
+      `Schema` decode failure to a `DataTableError` naming the exact row and
+      column; a step carrying both a DocString and a DataTable receives both,
+      in documented, mutation-proven argument order — ADR-EC-025,
+      BEH-EC-016. 404 tests passing; full `check.yml` gate green.
 
 ### Active
 
@@ -72,9 +80,6 @@ one or more ADRs in `spec/decisions/` for full rationale.
       reading `Clock` sees `@effect/vitest`'s simulated clock with zero
       test-specific code, confirmed against real `effect@4.0.0-rc.112` —
       BEH-EC-012, ADR-EC-018
-- [ ] Data tables decode through Schema, via `@effect-cucumber/gherkin`'s own
-      `DataTable` wrapper (`.hashes()` isn't native to `@cucumber/gherkin`) —
-      ADR-EC-008
 - [ ] A Pickle step matching zero or more-than-one registered pattern fails
       loudly, naming the step text and every ambiguous match; a registered
       pattern matching zero steps in the Feature is a warning — ADR-EC-019,
@@ -171,4 +176,4 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
 
 ---
-*Last updated: 2026-08-28 after Phase 2 (loadFeature — Parse, Compile, Correlate) completion*
+*Last updated: 2026-08-29 after Phase 4 (DataTable / DocString) completion*
