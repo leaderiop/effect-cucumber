@@ -16,14 +16,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect-cucumber/gherkin": "workspace:*",
-    "effect": "4.0.0-rc.112",
-    "@effect/vitest": "4.0.0-rc.112"
+    "@effect-cucumber/gherkin": "workspace:*"
   },
   "peerDependencies": {
+    "effect": "^4.0.0-rc.112",
+    "@effect/vitest": "^4.0.0-rc.112",
     "vitest": "^4.1.0"
   },
   "devDependencies": {
+    "effect": "4.0.0-rc.112",
+    "@effect/vitest": "4.0.0-rc.112",
     "vitest": "^4.1.0"
   }
 }

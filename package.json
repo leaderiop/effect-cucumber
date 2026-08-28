@@ -5,11 +5,13 @@
   "type": "module",
   "packageManager": "pnpm@10.26.1",
   "scripts": {
+    "prepare": "effect-tsgo patch",
     "build": "tsc -b",
     "test": "vitest run",
     "verify:spec": "bash spec/scripts/verify-traceability.sh"
   },
   "devDependencies": {
+    "@effect/tsgo": "^0.38.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.0"
   }

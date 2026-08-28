@@ -55,7 +55,11 @@ runtime "service not found."
 
 **Source (planned)**: TypeScript's structural checking of a step's
 `Effect<A, E, R>` against the `R` the enclosing `describeFeature`/`Rule`/
-`Scenario` Layer parameter actually provides.
+`Scenario` Layer parameter actually provides, backed by a second, type-aware
+enforcement mechanism: `@effect/tsgo`'s `missingLayerContext`/
+`missingEffectContext` diagnostics, wired to fail the build (see
+[ADR-EC-016](decisions/016-effect-tsgo-language-service-plugin.md)) rather
+than relying on structural typing alone.
 
 **Implication**: a Rule-scoped service (e.g. a `DiscountRegistry` declared only
 inside one `Rule`) is a real type boundary — a step outside that Rule

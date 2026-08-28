@@ -54,6 +54,8 @@ See `spec/roadmap.md` for what's actually built.
 | [ADR-EC-012](decisions/012-effect-v4-beta.md) | Target Effect v4 (beta) | — |
 | [ADR-EC-013](decisions/013-effect-cucumber-npm-scope.md) | One package per module, `@effect-cucumber` scope | — |
 | [ADR-EC-014](decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md) | `loadFeature` consumes both the `GherkinDocument` and compiled Pickles | — |
+| [ADR-EC-015](decisions/015-effect-is-a-peer-dependency.md) | `effect` is a peer dependency; `gherkin` package has no `effect` dependency | — |
+| [ADR-EC-016](decisions/016-effect-tsgo-language-service-plugin.md) | `@effect/tsgo` wired as the `tsc` language-service plugin | [INV-EC-003](invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides) |
 
 ## §4 Test file map
 

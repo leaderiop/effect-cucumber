@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@cucumber/gherkin": "^42.0.1",
-    "@cucumber/cucumber-expressions": "^20.1.0",
-    "effect": "4.0.0-rc.112"
+    "@cucumber/messages": "^34.2.1",
+    "@cucumber/cucumber-expressions": "^20.1.0"
   }
 }
