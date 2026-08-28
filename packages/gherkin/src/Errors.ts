@@ -29,10 +29,30 @@
  *     step, an ellipsis, a maximum-length constant, or a slice of message content: a test
  *     in `test/Contracts.test.ts` pins a long multi-line message byte for byte.
  *
+ * (d) `StepPatternError` is a SEPARATE class, not nine more members on
+ *     `LoadFeatureErrorReason`. BEH-EC-014 closes that union at exactly ten reason tags with
+ *     the words "drawn from exactly this set"; adding a parameter-type tag to it would make
+ *     the normative behaviour doc false without changing a line of it. A parameter-type or
+ *     step-pattern problem is also a different kind of failure: it is raised against a
+ *     pattern the *step author* wrote, not against a `.feature` file, so it carries a
+ *     `pattern` and a `parameterTypeName` rather than a `uri` and a `line`.
+ *
+ *     The no-truncation policy of (b) applies to this class verbatim: a message quoting a
+ *     step pattern, or the raw text a parameter transform was handed, quotes it whole. Same
+ *     accepted tradeoff, same reason, same pin in `test/Contracts.test.ts`.
+ *
+ *     The name `StepMatchError` is deliberately NOT used here. It is reserved for Phase 6's
+ *     unmatched/ambiguous step errors (MATCH-03, MATCH-04, ADR-EC-019), which are a
+ *     different failure entirely: a perfectly valid pattern that resolves to zero, or to
+ *     many, registered step definitions. Do not merge the two.
+ *
  * `this.name` is assigned explicitly in the constructor. `@cucumber/gherkin`'s own error
  * classes do not do this, so their `.name` reports the useless string `"Error"` and
- * `instanceof` is the only reliable discriminator upstream. That mistake is not repeated
- * here, and the assignment is pinned by a test.
+ * `instanceof` is the only reliable discriminator upstream. `@cucumber/cucumber-expressions`
+ * repeats the same mistake — its `CucumberExpressionError` and `UndefinedParameterTypeError`
+ * both report `.name === "Error"`, and neither is exported from that package's barrel at
+ * all. That mistake is not repeated here, and the assignment is pinned by a test on both
+ * classes.
  */
 
 /**
@@ -78,6 +98,92 @@ export class LoadFeatureError extends Error {
     this.reason = args.reason
     this.uri = args.uri
     this.line = args.line
+  }
+}
+
+/**
+ * Why a `StepPatternError` was raised. Every member names a failure that
+ * `@cucumber/cucumber-expressions` either raises as an un-discriminable
+ * `CucumberExpressionError`, or does not raise at all and this library must detect itself.
+ *
+ * - `BuiltInParameterTypeName` — the requested custom name is one of the eleven names
+ *   `ParameterTypeRegistry`'s constructor pre-registers (`int`, `float`, `word`, `string`,
+ *   the anonymous `""`, `double`, `bigdecimal`, `byte`, `short`, `long`, `biginteger`).
+ *   Raised at DEFINITION time, never at replay or match time, so the error points at the
+ *   caller's own `defineParameterType` call rather than at a `loadFeature` call several
+ *   modules away (Pitfall 14).
+ * - `DuplicateParameterTypeName` — the same store already holds a definition under this
+ *   name. Also raised at definition time, for the same reason: replaying two records with
+ *   one name into a fresh registry would surface as an upstream throw naming neither
+ *   definition site (Pitfall 14).
+ * - `IllegalParameterTypeName` — `ParameterType.isValidParameterTypeName` rejects the name.
+ *   It rejects exactly the characters `[ ] ( ) $ . | ? * +` after unescaping; the message
+ *   upstream throws names a DIFFERENT set, which is why this library asks the predicate and
+ *   never reads that message.
+ * - `InvalidParameterTypeRegexp` — a supplied `RegExp` carries one of the flags `g`, `i`,
+ *   `m` or `y`, which the upstream `ParameterType` constructor rejects outright.
+ * - `InvalidParameterTypeDefinition` — the upstream `ParameterType` constructor rejected the
+ *   definition for a reason this library did not anticipate. Present deliberately, so a
+ *   change in a `^20.1.0` minor surfaces as a named library error instead of a raw
+ *   `CucumberExpressionError` carrying a column number and no context.
+ * - `UndefinedParameterType` — a step pattern names a `{parameterType}` that is not
+ *   registered in the registry it is being compiled against. Upstream raises this at
+ *   `new CucumberExpression`, not at `match`, so it is a compile-time fact about the pattern
+ *   and not a per-step-text one (Pitfall 13).
+ * - `InvalidStepPattern` — the pattern is not a valid cucumber-expression for any other
+ *   reason.
+ * - `AsyncParameterTransform` — a custom transform returned a thenable. `Argument.getValue`
+ *   returns it UNWRAPPED, so the step body would receive a `Promise` where its declared
+ *   parameter type says `number` (Pitfall 25, Anti-Pattern 8).
+ * - `ParameterTransformFailed` — a custom transform threw. It throws synchronously out of
+ *   `getValue`, i.e. during argument extraction and outside any Effect, so it would bypass
+ *   ADR-EC-001's structured error channel entirely if left unguarded (Pitfall 25).
+ *
+ * A union type rather than an enum: `erasableSyntaxOnly` forbids enums.
+ */
+export type StepPatternErrorReason =
+  | "BuiltInParameterTypeName"
+  | "DuplicateParameterTypeName"
+  | "IllegalParameterTypeName"
+  | "InvalidParameterTypeRegexp"
+  | "InvalidParameterTypeDefinition"
+  | "UndefinedParameterType"
+  | "InvalidStepPattern"
+  | "AsyncParameterTransform"
+  | "ParameterTransformFailed"
+
+/**
+ * A fatal problem with a custom parameter type, or with a step pattern compiled against one.
+ *
+ * Shaped exactly like `LoadFeatureError` — same `_tag`/`reason` discrimination, same
+ * explicit `name` assignment, same `exactOptionalPropertyTypes` asymmetry (constructor
+ * arguments are optional, fields are `T | undefined` so every instance always answers the
+ * question) — and for the same reasons, recorded at the top of this module.
+ *
+ * Both locators are optional because neither is always knowable: a definition-time failure
+ * has a `parameterTypeName` and no pattern, while a malformed pattern has a `pattern` and
+ * possibly no parameter type at all.
+ *
+ * Fields are declared and assigned in the constructor body: parameter properties are
+ * `TS1294` under `erasableSyntaxOnly`.
+ */
+export class StepPatternError extends Error {
+  readonly _tag = "StepPatternError"
+  readonly reason: StepPatternErrorReason
+  readonly parameterTypeName: string | undefined
+  readonly pattern: string | undefined
+  constructor(args: {
+    reason: StepPatternErrorReason
+    parameterTypeName?: string
+    pattern?: string
+    message: string
+    cause?: unknown
+  }) {
+    super(args.message, args.cause === undefined ? undefined : { cause: args.cause })
+    this.name = "StepPatternError"
+    this.reason = args.reason
+    this.parameterTypeName = args.parameterTypeName
+    this.pattern = args.pattern
   }
 }
 
