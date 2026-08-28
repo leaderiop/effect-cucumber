@@ -7,5 +7,19 @@
     "incremental": false,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": [],
+  // This file is BOTH the shared parent that tsconfig.ok.json / tsconfig.floating.json extend
+  // AND the NEG_CONFIG that assertion 4 of scripts/verify-tsgo-gate.sh compiles. Those two roles
+  // pull in opposite directions, and only one of them is visible from the file itself.
+  //
+  // With an unscoped `include: ["src"]`, every fixture added to src/ from now on would silently
+  // fold into assertion 4's compilation: a new positive fixture would mix its diagnostics into
+  // NEG_OUTPUT, and a new negative one could satisfy the `effect(missingLayerContext)` grep on
+  // behalf of a file assertion 4 was never about. The assertion would stop being specific about
+  // the Layer-context guarantee without ever failing — a gate that reports ENFORCED while
+  // covering nothing.
+  //
+  // So: exactly one file, matching the two sibling configs' shape. Do NOT "simplify" this back to
+  // an `include` glob. A new fixture gets its own config instead.
+  "files": ["src/missing-layer-context.ts"]
 }
