@@ -1,5 +1,6 @@
 /**
- * PARSE-03, one test per Group A structural row of the phase fixture table.
+ * PARSE-03, one test per Group A structural row and per Group C heuristic row of the phase
+ * fixture table.
  *
  * **These tests assert `err.reason`, never the message text.** That is the one place this file
  * deliberately deviates from the repo's existing test analog
@@ -8,18 +9,26 @@
  * makes "distinct" and "named" mechanically checkable. Asserting message prose instead would pin
  * the wording and let a check that fires for the wrong reason pass.
  *
- * The single exception is the duplicate-name row, where "the message names BOTH line numbers" is
- * itself the requirement, and the F14 mitigation row, where "the description is reproduced
- * verbatim" is likewise the requirement. Both are asserted structurally (a line number, a
- * substring the parser produced) rather than by pinning surrounding prose.
+ * Four rows are deliberate exceptions, because on each of them the message IS the requirement:
+ * the duplicate-name row ("names BOTH line numbers"), the F14 mitigation row and the F14 warning
+ * ("the description is reproduced verbatim"), the F7 row (ADR-EC-014's prescribed
+ * Background-limitation sentence, which is the whole reason PARSE-03 exists), and the F9 row
+ * ("names the columns that DO exist"). Each is asserted on the substring that carries the
+ * requirement, not on the prose around it.
  *
- * Two controls guard the suite against the obvious way it could pass for nothing:
+ * Four controls guard the suite against the obvious ways it could pass for nothing:
  *
  * - a POSITIVE control — a correct feature validates and returns — because a `validateFeature`
  *   that rejected every input would otherwise satisfy every other test here;
  * - a per-scope NEGATIVE control — two Rules each holding a `Scenario: happy path` stays legal —
  *   which is the executable form of the locked per-scope decision. A whole-Feature-scoped
- *   implementation fails exactly there and nowhere else.
+ *   implementation fails exactly there and nowhere else;
+ * - three D4 NEGATIVE controls — `2 < 3`, `<div>hello</div>` and `<a@b.com>` in a plain Scenario
+ *   — all `[VERIFIED]` to survive `compile()` unchanged as valid Gherkin. A leftover-placeholder
+ *   check written as a bare `<...>` regex passes every positive test in this file and fails
+ *   exactly these three;
+ * - a BOUNDING control — the same three texts inside an Outline may warn but must never throw,
+ *   which pins the cost of the heuristic half of the check.
  *
  * Imports reach into `../src/*.ts` directly, never through `../src/index.ts`:
  * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and fails
@@ -74,6 +83,9 @@ const errorFrom = (source: string, uri: string): LoadFeatureError => {
 
 const errorFromFixture = (name: string): LoadFeatureError => errorFrom(readFixture(name), name)
 
+/** Every warning a fixture produced, in the order `validateFeature` returned them. */
+const warningsFromFixture = (name: string): ReadonlyArray<LoadFeatureWarning> => validate(readFixture(name), name)
+
 /** Every fixture that must be rejected. Reused by the located-and-attributed assertion. */
 const rejectedFixtures = [
   "empty-examples-no-header.feature",
@@ -82,7 +94,9 @@ const rejectedFixtures = [
   "scenario-keyword-with-examples.feature",
   "zero-step-scenario.feature",
   "zero-step-scenario-in-rule.feature",
-  "duplicate-scenario-name.feature"
+  "duplicate-scenario-name.feature",
+  "uninterpolated-placeholder-background.feature",
+  "uninterpolated-placeholder-in-argument.feature"
 ]
 
 describe("validateFeature rejects every Group A structural row with its own reason", () => {
@@ -182,5 +196,170 @@ describe("the ZeroStepScenario message mitigates the swallowed-step trap (F14 / 
     const error = errorFrom(swallowedSoleStep, uri)
     expect(error.message).not.toContain("…")
     expect(error.message).not.toContain("...")
+  })
+})
+
+/**
+ * A Background DocString under an Outline. Written inline rather than as a fixture because
+ * `uninterpolated-placeholder-in-argument.feature` reports its DataTable cell FIRST — the table
+ * step comes earlier in the document — so that fixture cannot reach the DocString branch of the
+ * scan, however many assertions are pointed at it.
+ */
+const backgroundDocString = `Feature: a Background DocString placeholder under an outline
+
+  Background:
+    Given a background docstring
+      """
+      the value is <token>, and the rest of this line exists to prove nothing is cut off
+      """
+
+  Scenario Outline: outline
+    When I use <token>
+
+    Examples:
+      | token |
+      | abc   |
+`
+
+describe("validateFeature rejects a leftover Examples-column placeholder (F7, F8)", () => {
+  it("F7 rejects a Background placeholder left un-interpolated under an Outline", () => {
+    expect(errorFromFixture("uninterpolated-placeholder-background.feature").reason)
+      .toBe("UninterpolatedPlaceholder")
+  })
+
+  it("F7 reproduces ADR-EC-014's prescribed Background-limitation wording", () => {
+    // The one message assertion that is not incidental: this sentence IS the deliverable of
+    // PARSE-03. Without it the author meets a downstream "no step matched" failure with nothing
+    // pointing at their Background, which is the confusion the whole check exists to remove.
+    const error = errorFromFixture("uninterpolated-placeholder-background.feature")
+    expect(error.message).toContain(
+      "known `@cucumber/gherkin` limitation for Backgrounds nested under a Scenario Outline"
+    )
+    expect(error.message).toContain("not a bug in your Background text")
+  })
+
+  it("F8 rejects a placeholder surviving inside a step argument", () => {
+    expect(errorFromFixture("uninterpolated-placeholder-in-argument.feature").reason)
+      .toBe("UninterpolatedPlaceholder")
+  })
+
+  it("F8 names the DataTable cell it scanned and quotes that cell value in full", () => {
+    // `<x>` alone would not prove anything — the message names the placeholder too. Naming the
+    // site is what proves the scan reached `argument.dataTable` rather than only `step.text`.
+    const error = errorFromFixture("uninterpolated-placeholder-in-argument.feature")
+    expect(error.message).toContain("a DataTable cell")
+    expect(error.message).toContain("<x>")
+    expect(error.message).not.toContain("…")
+    expect(error.message).not.toContain("...")
+  })
+
+  it("F8 reaches DocString content too, quoting the whole body", () => {
+    const uri = "background-docstring.feature"
+    const error = errorFrom(backgroundDocString, uri)
+    expect(error.reason).toBe("UninterpolatedPlaceholder")
+    expect(error.message).toContain("the DocString")
+    // The full body, not a prefix of it: a truncating implementation keeps the placeholder and
+    // drops the tail, so asserting the tail is what catches one.
+    expect(error.message).toContain(
+      "the value is <token>, and the rest of this line exists to prove nothing is cut off"
+    )
+  })
+})
+
+describe("validateFeature returns the Group C findings as warnings instead of throwing", () => {
+  it("F9 warns when an Examples column is dropped in silence, naming the columns that survived", () => {
+    const warnings = warningsFromFixture("warning-dropped-examples-column.feature")
+    expect(warnings.map((warning) => warning.reason)).toEqual(["UnknownPlaceholder"])
+    // Naming the surviving columns IS the requirement here: "unknown placeholder" on its own
+    // sends the author looking at the step rather than at the Examples table.
+    expect(warnings[0]?.message).toContain("declares: a")
+  })
+
+  it("F9 pins the verified silent-drop signature: the compiled step text stays literal", () => {
+    // If this ever stops being `1 and <b>`, upstream cucumber/gherkin#22 was fixed and this
+    // fixture no longer tests the silent path — revisit the fixture before the check.
+    const name = "warning-dropped-examples-column.feature"
+    const scenario = correlate(readFixture(name), name).feature.allScenarios[0]
+    expect(scenario?.steps[0]?.text).toBe("1 and <b>")
+  })
+
+  it("F11 warns when one Examples header row declares the same column twice", () => {
+    const warnings = warningsFromFixture("warning-duplicate-examples-column.feature")
+    expect(warnings.map((warning) => warning.reason)).toEqual(["DuplicateExamplesColumn"])
+    expect(warnings[0]?.message).toContain("\"a\"")
+  })
+
+  it("F13 warns when a Rule contains no scenarios at all", () => {
+    const warnings = warningsFromFixture("warning-empty-rule.feature")
+    expect(warnings.map((warning) => warning.reason)).toEqual(["EmptyRule"])
+    expect(warnings[0]?.message).toContain("empty rule")
+  })
+
+  it("F14 warns on a non-empty description and quotes the swallowed step verbatim", () => {
+    const name = "warning-swallowed-step.feature"
+    const warnings = warningsFromFixture(name)
+    expect(warnings.map((warning) => warning.reason)).toEqual(["SuspectedSwallowedStep"])
+    // Verbatim means the AST's own string, leading indentation included.
+    const node = correlate(readFixture(name), name).index.astScenarios[0]
+    expect(node?.description).toContain("Ginve x")
+    expect(warnings[0]?.message).toContain(node?.description ?? "")
+  })
+})
+
+/**
+ * Decision D4's verified false-positive list, in executable form.
+ *
+ * `[VERIFIED]`: all three survive `compile()` unchanged and are perfectly valid Gherkin. A bare
+ * `<...>` implementation of the leftover-placeholder check rejects all three, so these three
+ * names are what a regression to it reports.
+ */
+const legitimateStepTexts = [
+  "the assertion 2 < 3 holds",
+  "the html is <div>hello</div>",
+  "an email <a@b.com>"
+]
+
+const plainScenarioWith = (text: string): string =>
+  `Feature: legitimate angle brackets
+
+  Scenario: a plain scenario
+    Given ${text}
+`
+
+const outlineWith = (text: string): string =>
+  `Feature: legitimate angle brackets inside an outline
+
+  Scenario Outline: outline
+    Given ${text}
+    And a step using <colname>
+
+    Examples:
+      | colname |
+      | value   |
+`
+
+describe("the placeholder scan never fires on legitimate angle brackets (D4 negative controls)", () => {
+  for (const text of legitimateStepTexts) {
+    it(`D4 leaves a plain Scenario step reading "${text}" completely alone`, () => {
+      const uri = "legitimate-plain.feature"
+      const source = plainScenarioWith(text)
+      expect(() => validate(source, uri)).not.toThrow()
+      // A plain Scenario has no Examples columns and is never scanned, so neither check can
+      // reach it. This is the exclusion that removes the entire false-positive class.
+      expect(validate(source, uri)).toHaveLength(0)
+    })
+  }
+
+  it("D4 bounds the heuristic cost inside an Outline to a warning, never a throw", () => {
+    // Check beta DOES reach `<div>`-shaped text written inside an Outline. That is the accepted
+    // cost of catching the dropped-column case, and it is bounded: a warning, never an error.
+    const uri = "legitimate-outline.feature"
+    for (const text of legitimateStepTexts) {
+      const source = outlineWith(text)
+      expect(() => validate(source, uri)).not.toThrow()
+      for (const warning of validate(source, uri)) {
+        expect(warning.reason).toBe("UnknownPlaceholder")
+      }
+    }
   })
 })
