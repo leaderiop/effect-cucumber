@@ -8,7 +8,8 @@
     "prepare": "effect-tsgo patch",
     "build": "tsc -b",
     "test": "vitest run",
-    "verify:spec": "bash spec/scripts/verify-traceability.sh"
+    "verify:spec": "bash spec/scripts/verify-traceability.sh",
+    "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",
