@@ -168,7 +168,25 @@ Decisions locked at planning time (no CONTEXT.md; surfaced directly to the devel
   2. A `.hashes()` result decodes through a `Schema` into typed rows; a row that fails the schema produces a decode error naming the offending row and column, not a generic parse failure.
   3. A step whose Gherkin carries **both** a DocString and a DataTable (a real `@cucumber/gherkin@42` capability the spec doesn't contemplate) receives both, in a documented, tested argument order.
 
-**Plans**: TBD — set by `/gsd:plan-phase 4`
+**Plans**: 5 plans (4 waves — the fixture pin and the wrapper are independent, then decode, then wiring, then spec reconciliation)
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Pin `@cucumber/gherkin@42`'s DataTable/DocString argument shapes: five new fixtures (F29-F33) and the `argumentIndex` facts the ordering rule rests on
+- [ ] 04-02-PLAN.md — `DataTableError` plus `DataTable.ts`'s `raw()` / `hashes()` / `rowsHash()`, with a duplicate header column and a non-two-column `rowsHash()` failing loudly
+
+**Wave 2** *(blocked on 04-02)*
+
+- [ ] 04-03-PLAN.md — `decodeHashes`: ADR-EC-008's decode-through-`Schema` path, naming the offending row and column, plus an `effect@4.0.0-rc.112` issue-tree pin
+
+**Wave 3** *(blocked on 04-01, 04-02, 04-03)*
+
+- [ ] 04-04-PLAN.md — `StepArguments.ts`, the required `ParsedStep.stepArguments` field populated in `Correlate.ts`, and the Phase 4 barrel exports
+
+**Wave 4** *(blocked on 04-04)*
+
+- [ ] 04-05-PLAN.md — Spec reconciliation: ADR-EC-025, BEH-EC-016, traceability rows, README/roadmap status, and PARSE-04 marked Complete
 
 **Research flag**: Skip — standard, low-risk.
 
