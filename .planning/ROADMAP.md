@@ -100,7 +100,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 02-08-PLAN.md — `Validate.ts` column-aware placeholder scan (F7/F8 error, F9 warning) and the four Group C warnings
+- [x] 02-08-PLAN.md — `Validate.ts` column-aware placeholder scan (F7/F8 error, F9 warning) and the four Group C warnings
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
@@ -295,7 +295,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
-| 2. `loadFeature` — Parse, Compile, Correlate | 7/11 | In Progress|  |
+| 2. `loadFeature` — Parse, Compile, Correlate | 8/11 | In Progress|  |
 | 3. Parameter Types and Step Matching | 0/TBD | Not started | - |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
