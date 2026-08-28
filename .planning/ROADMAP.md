@@ -178,7 +178,7 @@ Plans:
 
 **Wave 2** *(blocked on 04-02)*
 
-- [ ] 04-03-PLAN.md — `decodeHashes`: ADR-EC-008's decode-through-`Schema` path, naming the offending row and column, plus an `effect@4.0.0-rc.112` issue-tree pin
+- [x] 04-03-PLAN.md — `decodeHashes`: ADR-EC-008's decode-through-`Schema` path, naming the offending row and column, plus an `effect@4.0.0-rc.112` issue-tree pin
 
 **Wave 3** *(blocked on 04-01, 04-02, 04-03)*
 
@@ -339,7 +339,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
-| 4. DataTable / DocString | 2/5 | In Progress|  |
+| 4. DataTable / DocString | 3/5 | In Progress|  |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
