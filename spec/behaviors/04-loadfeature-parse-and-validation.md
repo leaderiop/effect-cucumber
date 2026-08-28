@@ -104,14 +104,29 @@ the author sees has to be enough on its own.
 ### Signatures
 
 ```ts
-export const loadFeature: (path: string) => ParsedFeature
-export const parseFeature: (source: string, uri: string) => ParsedFeature
+export interface LoadFeatureOptions {
+  readonly parameterTypes?: ParameterTypeStore
+}
+
+export const loadFeature: (path: string, options?: LoadFeatureOptions) => ParsedFeature
+export const parseFeature: (source: string, uri: string, options?: LoadFeatureOptions) => ParsedFeature
 ```
 
 `parseFeature` is the same pipeline without the filesystem read, for text already in hand —
 a Vite `.feature?raw` import, or an inline template literal. `uri` is supplied by the
 caller because a string parse has no other source for it, and it is what every error and
 warning message names.
+
+The trailing options argument is optional, and so is its single member, so
+[BEH-EC-001](./01-steps-and-world.md)'s one-argument `loadFeature("x.feature")` call form is
+unchanged. Every call builds a **fresh** `ParameterTypeRegistry` from the resolved store and
+returns it on `ParsedFeature.parameterTypes`. The option exists because the default store is
+append-only for the life of the process — a definition made into it cannot be withdrawn — so a
+caller needing isolation supplies its own store instead of sharing that one.
+[BEH-EC-015](./05-step-matching-and-parameter-types.md) is the full contract for the parameter
+type lifecycle. Nothing about it widens the reason set above: a rejected parameter type or an
+unusable step pattern raises `StepPatternError`, a separate class, precisely so that this
+behavior's closed ten-member set stays true.
 
 ### Worked example
 

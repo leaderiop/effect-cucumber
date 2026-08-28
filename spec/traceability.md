@@ -26,6 +26,7 @@ rows name real files. See `spec/roadmap.md` for what's actually built.
 | [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                                                |
 | [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                             |
 | [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                               |
+| [05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015                 | `packages/gherkin/src/{ParameterTypes,StepMatcher,StepArgs,Errors}.ts`                                                      |
 
 ## §2 Invariant traceability
 
@@ -70,15 +71,28 @@ exist yet" caveat no longer applies to the rows below, which name real files on
 disk. It still applies to the **Source module** column above wherever that
 column names `packages/vitest`, which has no source files yet.
 
-| Test file                                    | Covers     | Description                                                                                  |
-| -------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------- |
-| `packages/gherkin/test/Contracts.test.ts`    | BEH-EC-014 | Error and warning shape, including the no-truncation policy                                  |
-| `packages/gherkin/test/Correlate.test.ts`    | BEH-EC-001 | Substitution, Background stacking, tag inheritance, origin, keyword, and both scenario names |
-| `packages/gherkin/test/Parser.test.ts`       | BEH-EC-014 | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`  |
-| `packages/gherkin/test/Validate.test.ts`     | BEH-EC-014 | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards |
-| `packages/gherkin/test/dialect.test.ts`      | BEH-EC-001 | A non-English feature parses with no special handling                                        |
-| `packages/gherkin/test/loadFeature.test.ts`  | BEH-EC-001 | Synchronous, contributes zero tests, path and `?raw` parity                                  |
-| `packages/gherkin/test/upstream-pin.test.ts` | BEH-EC-014 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture so an upstream bump fails loudly |
+The rows below are enumerated from disk — one per `packages/gherkin/test/*.test.ts` file —
+plus **one deliberate non-suite entry**, `StepArgs.types.ts`. That file is compiled by
+`pnpm typecheck:test` and is never collected by vitest (its `.types.ts` suffix is outside the
+vitest include glob, which is the point of the suffix), and it is where MATCH-01's type-level
+claim is actually asserted. It is listed here so the claim is traceable; it is not a stray file
+to be "fixed" by renaming it to `.test.ts`, which would break `pnpm test` with "No test suite
+found".
+
+| Test file                                              | Covers     | Description                                                                                                                     |
+| ------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/gherkin/test/Contracts.test.ts`              | BEH-EC-014 | Error and warning shape, including the no-truncation policy                                                                     |
+| `packages/gherkin/test/Correlate.test.ts`              | BEH-EC-001 | Substitution, Background stacking, tag inheritance, origin, keyword, and both scenario names                                    |
+| `packages/gherkin/test/ParameterTypeLifecycle.test.ts` | BEH-EC-015 | A custom parameter type resolving across two `loadFeature` calls in one process                                                 |
+| `packages/gherkin/test/ParameterTypes.test.ts`         | BEH-EC-015 | One test per definition-time rejection, repeated builds, and store isolation                                                    |
+| `packages/gherkin/test/Parser.test.ts`                 | BEH-EC-014 | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`                                     |
+| `packages/gherkin/test/StepMatcher.test.ts`            | BEH-EC-015 | Runtime coercion, match-every-pattern, and memoization identity per (registry, pattern)                                         |
+| `packages/gherkin/test/Validate.test.ts`               | BEH-EC-014 | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards                                    |
+| `packages/gherkin/test/dialect.test.ts`                | BEH-EC-001 | A non-English feature parses with no special handling                                                                           |
+| `packages/gherkin/test/expressions-pin.test.ts`        | BEH-EC-015 | Pins `@cucumber/cucumber-expressions@20.1.0`'s verified behavior; imports nothing from `../src`                                 |
+| `packages/gherkin/test/loadFeature.test.ts`            | BEH-EC-001 | Synchronous, contributes zero tests, path and `?raw` parity                                                                     |
+| `packages/gherkin/test/upstream-pin.test.ts`           | BEH-EC-014 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture so an upstream bump fails loudly                                    |
+| `packages/gherkin/test/StepArgs.types.ts`              | BEH-EC-015 | **Type-check, not a suite** — compiled by `pnpm typecheck:test`, never collected by vitest; asserts MATCH-01's type-level claim |
 
 ## §5 Acceptance scenario traceability
 
