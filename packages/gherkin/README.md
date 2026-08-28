@@ -18,9 +18,12 @@ scenarios, steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surfa
 types and step matching have shipped too: `defineParameterType` records a type as plain data at module scope,
 every parse replays the recorded definitions into a fresh registry handed back on
 `ParsedFeature.parameterTypes`, and `createStepMatcher` matches a step text against every registered pattern
-with its arguments already coerced. The `DataTable` wrapper — this package's own `.hashes()`-style accessor
-over a step's data table — does **not** ship yet; it is a later phase's deliverable. See
-[`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
+with its arguments already coerced. The `DataTable` wrapper has shipped too: a step's DocString and data table
+arrive on `ParsedStep.stepArguments`, wrapped and in the source order the feature file wrote them, a `DataTable`
+there answers `.raw()`/`.hashes()`/`.rowsHash()` — this package's own accessors, since `.hashes()` is not native
+to `@cucumber/gherkin` — and `decodeHashes(rowSchema)` decodes a table's body rows through `Schema`, naming the
+offending row and column on failure. See [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what
+is only specified.
 
 ## Install
 

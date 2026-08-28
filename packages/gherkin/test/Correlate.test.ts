@@ -12,13 +12,16 @@
  * basename is `index.*`.
  */
 import { IdGenerator } from "@cucumber/messages"
+import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { correlateFeature, type CorrelationResult, isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
+import type { DataTable } from "../src/DataTable.ts"
 import type { ParsedScenario, ParsedStep, PickleStepArgument } from "../src/Model.ts"
 import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
+import type { DocString, StepArgument } from "../src/StepArguments.ts"
 
 const readFixture = (name: string): string => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8")
 
@@ -50,6 +53,65 @@ const stepAt = (scenario: ParsedScenario, at: number): ParsedStep => {
     throw new Error(`expected a step at index ${at} of ${scenario.name}, found ${scenario.steps.length} in total`)
   }
   return step
+}
+
+/**
+ * Every wrapped argument's `_tag`, in the order `stepArguments` holds them.
+ *
+ * Asserting the whole array at once is stronger than indexing into it: an assertion written as
+ * `toEqual(["DocString", "DataTable"])` fails if the ORDER is wrong, if an argument went missing,
+ * and if an extra one appeared, where two separate index assertions would only catch the first.
+ *
+ * `_tag` is read by destructuring rather than by dotted member access, here and in the two
+ * predicates below: `no-underscore-dangle` is error-level in this repo for member expressions.
+ */
+const tagsOf = (step: ParsedStep): ReadonlyArray<string> =>
+  step.stepArguments.map((argument) => {
+    const { _tag } = argument
+    return _tag
+  })
+
+const isDataTable = (argument: StepArgument): argument is DataTable => {
+  const { _tag } = argument
+  return _tag === "DataTable"
+}
+
+const isDocString = (argument: StepArgument): argument is DocString => {
+  const { _tag } = argument
+  return _tag === "DocString"
+}
+
+const argumentAt = (step: ParsedStep, at: number): StepArgument => {
+  const argument = step.stepArguments[at]
+  if (argument === undefined) {
+    throw new Error(
+      `expected a wrapped step argument at index ${at}, found ${step.stepArguments.length} in total`
+    )
+  }
+  return argument
+}
+
+/**
+ * The wrapped argument at `at`, asserted to be a `DataTable`.
+ *
+ * Throws rather than wrapping the caller's assertions in an `if`: an unexpected arm means the
+ * ordering rule broke, which should read as a named failure, and `vitest(no-conditional-expect)`
+ * is error-level anyway.
+ */
+const dataTableAt = (step: ParsedStep, at: number): DataTable => {
+  const argument = argumentAt(step, at)
+  if (!isDataTable(argument)) {
+    throw new Error(`expected a DataTable at stepArguments[${at}], found ${tagsOf(step).join(", ")}`)
+  }
+  return argument
+}
+
+const docStringAt = (step: ParsedStep, at: number): DocString => {
+  const argument = argumentAt(step, at)
+  if (!isDocString(argument)) {
+    throw new Error(`expected a DocString at stepArguments[${at}], found ${tagsOf(step).join(", ")}`)
+  }
+  return argument
 }
 
 describe("correlateFeature on correlation-full.feature (F21)", () => {
@@ -397,10 +459,82 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
     // Phase 4 owns that decision. A wrapper added here would not conflict at merge time; it
     // would quietly ship a second, competing DataTable API. Asserting the ABSENCE of the
     // methods turns that into a named test failure the moment someone "helpfully" adds one.
+    //
+    // That wrapper now EXISTS, on `stepArguments` (see the four tests below) — which is exactly
+    // why this assertion still matters and still reads the same. Two fields, one wrapped and one
+    // raw, both produced once by `resolveStep`; this test is what keeps the raw one raw.
     const argument = argumentOf()
     for (const method of ["hashes", "raw", "rowsHash"]) {
       expect(argument).not.toHaveProperty(method)
       expect(argument.dataTable).not.toHaveProperty(method)
     }
+  })
+
+  it("F25: exposes both arguments on stepArguments, DocString first", () => {
+    expect(onlyStep().stepArguments).toHaveLength(2)
+    expect(tagsOf(onlyStep())).toEqual(["DocString", "DataTable"])
+  })
+
+  it("F25: the wrapped DocString carries the content and an absent mediaType", () => {
+    // The fixture opens its DocString with a bare `"""`, so upstream reports no media type at
+    // all. ADR-EC-022's rule is what makes that `Option.none()` here rather than `undefined`.
+    const docString = docStringAt(onlyStep(), 0)
+    expect(docString.content).toBe("the docstring content")
+    expect(docString.mediaType).toEqual(Option.none())
+  })
+
+  it("F25: the wrapped DataTable carries the step's uri and line", () => {
+    // `correlateFixture` passes the fixture NAME as the uri, so this also asserts that the uri
+    // reaching the wrapper is the caller's rather than the document's (which is always
+    // `undefined` when parsing from a string). The line is the step's own, not the table's
+    // first row: a `PickleTableRow` carries no location at all.
+    const table = dataTableAt(onlyStep(), 1)
+    expect(table.uri).toBe("docstring-and-datatable.feature")
+    expect(table.line).toBe(onlyStep().line)
+  })
+
+  it("F25: the wrapped DataTable's hashes() decodes the fixture's rows", () => {
+    // The end-to-end join: fixture file -> parse -> compile -> correlate -> wrapper -> records.
+    // Every earlier test in this block reads a field; this one CALLS the wrapper, which is the
+    // only way to prove `makeDataTable` was handed the real rows and not an empty stand-in.
+    //
+    // `Effect.runSync` directly rather than the `Outcome` helper `DataTable.test.ts` builds:
+    // this table has no duplicate header column, so a failure here is a genuine regression and
+    // should surface as a thrown Effect failure rather than be converted into a value first.
+    expect(Effect.runSync(dataTableAt(onlyStep(), 1).hashes())).toEqual([{ a: "1", b: "2" }])
+  })
+})
+
+describe("stepArguments across the remaining argument shapes (F33, F29)", () => {
+  const stepOfFixture = (name: string): ParsedStep =>
+    stepAt(scenarioAt(correlateFixture(name).feature.allScenarios, 0), 0)
+
+  it("F33: reverses the order to DataTable first, DocString second", () => {
+    // The load-bearing test of the whole ordering rule, and the roadmap's success criterion 3
+    // asserted directly. `datatable-before-docstring.feature` is the byte-mirror of F25, so a
+    // rule that hardcoded "DocString then DataTable" would pass every assertion above and fail
+    // exactly here. The order can only come from `argumentIndex`, which upstream sets to 1 for
+    // the table and 2 for the doc string in this file (pinned in `upstream-pin.test.ts`).
+    expect(tagsOf(stepOfFixture("datatable-before-docstring.feature"))).toEqual(["DataTable", "DocString"])
+  })
+
+  it("a step with only a DataTable exposes exactly one argument", () => {
+    // F29 is the case where upstream leaves the `argumentIndex` KEY in place holding `undefined`,
+    // which is the case `stepArgumentsOf`'s fallback exists for. A rule that read the key rather
+    // than its value would still produce one argument here; a rule that crashed on the
+    // `undefined` VALUE, or dropped the argument because of it, would not.
+    const step = stepOfFixture("datatable-single-column.feature")
+    expect(step.stepArguments).toHaveLength(1)
+    expect(tagsOf(step)).toEqual(["DataTable"])
+    expect(dataTableAt(step, 0).raw()).toEqual([["name"], ["alice"]])
+  })
+
+  it("a step with no argument exposes an empty array", () => {
+    // `[]` and not `Option.none()`, so a consumer can spread `stepArguments` unconditionally.
+    // Asserted alongside `argument` being `Option.none()` to show the two fields agree about
+    // absence as well as about presence.
+    const step = stepAt(scenarioAt(correlateFixture("correlation-full.feature").feature.allScenarios, 0), 0)
+    expect(step.stepArguments).toEqual([])
+    expect(step.argument).toEqual(Option.none())
   })
 })

@@ -87,14 +87,17 @@ found".
 | ------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/gherkin/test/Contracts.test.ts`              | BEH-EC-014 | Error and warning shape, including the no-truncation policy                                                                     |
 | `packages/gherkin/test/Correlate.test.ts`              | BEH-EC-001 | Substitution, Background stacking, tag inheritance, origin, keyword, and both scenario names                                    |
+| `packages/gherkin/test/DataTable.test.ts`              | BEH-EC-014 | `raw()`/`hashes()`/`rowsHash()` semantics, `decodeHashes`, and the `__proto__` header-cell guard                                |
 | `packages/gherkin/test/ParameterTypeLifecycle.test.ts` | BEH-EC-015 | A custom parameter type resolving across two `loadFeature` calls in one process                                                 |
 | `packages/gherkin/test/ParameterTypes.test.ts`         | BEH-EC-015 | One test per definition-time rejection, repeated builds, and store isolation                                                    |
 | `packages/gherkin/test/Parser.test.ts`                 | BEH-EC-014 | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`                                     |
+| `packages/gherkin/test/StepArguments.test.ts`          | BEH-EC-014 | `stepArgumentsOf`'s wrapping and its `argumentIndex` ordering rule, on synthetic literals only                                  |
 | `packages/gherkin/test/StepMatcher.test.ts`            | BEH-EC-015 | Runtime coercion, match-every-pattern, and memoization identity per (registry, pattern)                                         |
 | `packages/gherkin/test/Validate.test.ts`               | BEH-EC-014 | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards                                    |
 | `packages/gherkin/test/dialect.test.ts`                | BEH-EC-001 | A non-English feature parses with no special handling                                                                           |
 | `packages/gherkin/test/expressions-pin.test.ts`        | BEH-EC-015 | Pins `@cucumber/cucumber-expressions@20.1.0`'s verified behavior; imports nothing from `../src`                                 |
 | `packages/gherkin/test/loadFeature.test.ts`            | BEH-EC-001 | Synchronous, contributes zero tests, path and `?raw` parity                                                                     |
+| `packages/gherkin/test/schema-issue-pin.test.ts`       | BEH-EC-014 | Pins `effect@4.0.0-rc.112`'s `SchemaError` issue tree, which `decodeHashes`' locator walk reads; imports nothing from `../src`  |
 | `packages/gherkin/test/upstream-pin.test.ts`           | BEH-EC-014 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture so an upstream bump fails loudly                                    |
 | `packages/gherkin/test/StepArgs.types.ts`              | BEH-EC-015 | **Type-check, not a suite** — compiled by `pnpm typecheck:test`, never collected by vitest; asserts MATCH-01's type-level claim |
 
