@@ -40,3 +40,33 @@ pattern syntax is introduced.
 **Trade-off accepted**: syntax familiarity and migration cost savings outweigh
 any theoretical gain from inventing a stricter, non-standard step-matching
 syntax.
+
+---
+
+> **Correction (2026-08-28, resolving [research ticket #3](https://github.com/leaderiop/effect-cucumber/issues/3)):**
+> `defineParameterExpression` does not exist anywhere in
+> `@cucumber/cucumber-expressions@20.1.0` — verified against the package's
+> actual `.d.ts`/`.js` files and a real runtime match. The real API for a
+> custom parameter type is two steps: construct a `ParameterType` (a class,
+> `new ParameterType(name, regexps, type, transform, ...)`), then register it
+> on a `ParameterTypeRegistry` instance via its `defineParameterType(parameterType)`
+> **instance method** — not a standalone function taking bare
+> name/regexp/transform arguments the way "`defineParameterExpression`"
+> implied. Every consequence above still holds; only the named API was wrong.
+>
+> This also surfaced a gap the original decision didn't address: a
+> `ParameterTypeRegistry` is a stateful, instance-scoped object — not global —
+> and a `CucumberExpression` permanently binds to whichever registry instance
+> it was constructed with. `@effect-cucumber/gherkin` must therefore own at
+> least one registry's lifecycle explicitly (built once, with any custom
+> types registered into it before the first `CucumberExpression` is compiled
+> against it), rather than assuming a global/ambient registry the way the
+> original decision's silence implied. The simplest approach consistent with
+> this library's existing design — one registry per `loadFeature`
+> call/process, custom types registered up front (mirroring
+> `@amiceli/vitest-cucumber`'s own top-level `defineParameterExpression`
+> call pattern) — is assumed sufficient until a real need for per-Rule or
+> per-Scenario custom types appears; see `spec/roadmap.md` § Not yet specified.
+>
+> Full primary-source findings: [`research/cucumber-expressions-api.md`](https://github.com/leaderiop/effect-cucumber/blob/research/cucumber-expressions-api/research/cucumber-expressions-api.md)
+> (branch `research/cucumber-expressions-api`, not merged to `main`).
