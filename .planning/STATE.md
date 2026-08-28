@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 02 complete (11/11) — ready to discuss Phase 3
-last_updated: 2026-08-28T13:24:55.314Z
-last_activity: 2026-08-28 -- Phase 2 execution started
+status: executing
+stopped_at: "Phase 03 plan 01 complete (1/6) — StepPatternError and the cucumber-expressions upstream pin landed. Next: 03-02."
+last_updated: "2026-08-28T14:51:51.702Z"
+last_activity: 2026-08-28 -- 03-01 complete (StepPatternError + expressions pin)
 progress:
   total_phases: 11
-  completed_phases: 1
-  total_plans: 17
-  completed_plans: 17
-  percent: 9
+  completed_phases: 2
+  total_plans: 23
+  completed_plans: 18
+  percent: 18
 ---
 
 # Project State
@@ -21,34 +21,37 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 3 — parameter types and step matching
+**Current focus:** Phase 03 — parameter-types-and-step-matching
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-28
+Phase: 03 (parameter-types-and-step-matching) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-08-28 -- 03-01 complete (StepPatternError + expressions pin)
 
-**Current focus:** Phase 2 — `loadFeature` — Parse, Compile, Correlate
+**Current focus:** Phase 3 — parameter types and step matching
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
-Overall progress:  [█░░░░░░░░░] ~9% (6 of ~66 plans; only phase 1 is planned in detail)
+Phase 2 progress: [██████████] 100% (11/11 plans)
+Phase 3 progress: [██░░░░░░░░] 17% (1/6 plans)
+Overall progress:  [███░░░░░░░] ~27% (18 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: ~10m
-- Total execution time: ~60m
+- Total execution time: ~73m
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
-| 02 | 11 | - | - |
+| 02 | 11/11 | - | - |
+| 03 | 1/6 | ~13m | ~13m |
 
 **Per-plan detail:**
 
@@ -60,10 +63,11 @@ Overall progress:  [█░░░░░░░░░] ~9% (6 of ~66 plans; only ph
 | 01-04 | ~8m | 2 | 5 |
 | 01-05 | ~14m | 2 | 9 |
 | 01-06 | ~3m | 2 | 4 |
+| 03-01 | ~13m | 3 | 3 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m), 01-05 (~14m), 01-06 (~3m)
+- Last 6 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m)
 - Trend: 01-02, 01-03 and 01-05 each spent most of their time mutation-testing a gate script rather than writing the thing it guards; 01-04 was the outlier because its equivalent proof (unpacking a `pnpm pack` tarball) was a single command rather than a script that has to be written and then attacked. 01-05 turned that one-off command into the standing gate, which is why it costs script-writing time again. 01-06 is the payoff and the cheapest plan in the phase: because every gate was already a root script proven by mutation, wiring them into CI was assembly, not design.
 
 *Updated after each plan completion*
@@ -101,6 +105,11 @@ Recent decisions affecting current work:
 - [Phase 01]: check.yml uses four independent parallel jobs (lint/types/test/package) rather than one serial check job — a lint failure and a type failure are reported in the same run instead of one push at a time
 - [Phase 01]: A gate that can silently stop firing gets its own CI liveness step: pnpm verify:oxlint-plugin runs alongside pnpm lint — pnpm lint exiting 0 does not prove the vendored effect rules loaded; an unresolvable jsPlugins specifier looks identical to a clean run
 - [Phase 01]: snapshot.yml (pkg-pr-new) is deliberately excluded from branch-protection required checks — a preview publish failing for reasons outside the PR must never block a merge
+- [03-01]: StepPatternError is a separate Error class, not new members on LoadFeatureErrorReason — BEH-EC-014 closes that union at exactly ten tags with the words 'drawn from exactly this set'. A Contracts grep asserts it stays at ten.
+- [03-01]: Upstream cucumber-expressions errors are discriminated STRUCTURALLY (a string undefinedParameterTypeName property) — never by instanceof against a deep dist import, never by .name (it reports 'Error'), never by message text. CucumberExpressionError/UndefinedParameterTypeError/AmbiguousParameterTypeError are not exported from the package barrel at all.
+- [03-01]: oxlint's vitest(require-to-throw-message) is error-level, so a bare expect(...).toThrow() fails lint. Upstream throws are asserted via a local thrownBy(action) helper returning the thrown value plus instanceof Error, so upstream prose never becomes a contract. Do not simplify these back to toThrow().
+- [03-01]: The eleven built-in parameter type names are pinned as a Set read off a real ParameterTypeRegistry in test/expressions-pin.test.ts. ParameterTypes.ts must DERIVE its built-in set from a live registry, never hardcode one.
+- [03-01]: StepPatternError is deliberately NOT exported from packages/gherkin/src/index.ts yet. The plan that first raises it (03-02/03-03) owns adding the export. The name StepMatchError is reserved for Phase 6 (MATCH-03/04, ADR-EC-019).
 
 ### Pending Todos
 
@@ -172,8 +181,16 @@ New since 01-06 (not blockers, constraints to respect):
 - `pnpm/action-setup` reads the root `packageManager: pnpm@10.26.1` field — no `version:` input is duplicated in any workflow step. A pnpm bump is still a one-line edit.
 - The "Ignored build scripts: dprint@0.56.1" install notice was **not** silenced in CI (harmless, and silencing it would mean an install flag that differs from local).
 
+New since 03-01 (not blockers, constraints to respect):
+
+- **`LoadFeatureErrorReason` must stay at exactly ten members.** BEH-EC-014 says "drawn from exactly this set". A parameter-type or step-pattern failure goes on `StepPatternError` instead. `packages/gherkin/src/Errors.ts` note (d) records why; a `grep`-based acceptance criterion checks the count.
+- **`packages/gherkin/test/expressions-pin.test.ts` must never import from `../src`.** It is the dependency pin for `@cucumber/cucumber-expressions@20.1.0`; the whole point is that its failure is attributable to the dependency and not to this library. Same rule already applies to `upstream-pin.test.ts`.
+- **`MATCH-01` / `MATCH-02` are still Pending in REQUIREMENTS.md after 03-01, deliberately.** 03-01 shipped the error surface and the upstream pin, not step matching. Following the Phase 2 precedent (`PARSE-01..03` were marked at 02-09, the plan that shipped them end to end), the plan that actually delivers matching marks them.
+- **`StepPatternError` is not yet in `packages/gherkin/src/index.ts`.** The plan that first raises it owns adding `export { StepPatternError }` and `export type { StepPatternErrorReason }` beside the existing `LoadFeatureError` export.
+- Repo test count is now **273** across 11 files (211 before this phase).
+
 ## Session Continuity
 
-Last session: 2026-08-28T05:00:00.000Z
-Stopped at: Phase 1 verified passed (see .planning/phases/01-workspace-toolchain-and-dependency-policy/01-VERIFICATION.md). One outstanding manual step: install the pkg-pr-new GitHub App on leaderiop/effect-cucumber (https://github.com/apps/pkg-pr-new) — not blocking.
+Last session: 2026-08-28T16:57:00.000Z
+Stopped at: Phase 03 plan 01 complete (1/6). `StepPatternError` + `test/expressions-pin.test.ts` landed; 273 tests passing, all gates green. Next: 03-02.
 Resume file: None

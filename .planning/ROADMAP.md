@@ -134,7 +134,7 @@ Decisions locked at planning time (no CONTEXT.md; surfaced directly to the devel
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — `StepPatternError` (nine reason tags, a class separate from `LoadFeatureError` so BEH-EC-014's ten-tag set stays closed) plus `expressions-pin.test.ts`, the verified-behaviour pin for `@cucumber/cucumber-expressions@20.1.0`
+- [x] 03-01-PLAN.md — `StepPatternError` (nine reason tags, a class separate from `LoadFeatureError` so BEH-EC-014's ten-tag set stays closed) plus `expressions-pin.test.ts`, the verified-behaviour pin for `@cucumber/cucumber-expressions@20.1.0`
 - [ ] 03-02-PLAN.md — `StepArgs.ts`: the type-level coercion map (`{int}` → `number`, all eleven built-ins verified) and the `@ts-expect-error` type test that is MATCH-01's type-test half
 
 **Wave 2** *(blocked on 03-01)*
@@ -320,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 0/6 | Not started | - |
+| 3. Parameter Types and Step Matching | 1/6 | In Progress|  |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
