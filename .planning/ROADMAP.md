@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Workspace, Toolchain, and Dependency Policy** - The repo builds/lints/formats/type-checks under the Effect v4 convention, and a Layer type error genuinely fails the build (completed 2026-08-28)
 - [x] **Phase 2: `loadFeature` — Parse, Compile, Correlate** - A `.feature` file becomes a correlated `ParsedFeature`; every known silent-wrong `compile()` output becomes a loud typed error (completed 2026-08-28)
 - [x] **Phase 3: Parameter Types and Step Matching** - cucumber-expression coercion works, custom types replay into a fresh registry per call, and matching considers every registered pattern (completed 2026-08-28)
-- [ ] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema`
+- [x] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema` (completed 2026-08-28)
 - [ ] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first
 - [ ] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly
 - [ ] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.ensuring`
@@ -186,7 +186,7 @@ Plans:
 
 **Wave 4** *(blocked on 04-04)*
 
-- [ ] 04-05-PLAN.md — Spec reconciliation: ADR-EC-025, BEH-EC-016, traceability rows, README/roadmap status, and PARSE-04 marked Complete
+- [x] 04-05-PLAN.md — Spec reconciliation: ADR-EC-025, BEH-EC-016, traceability rows, README/roadmap status, and PARSE-04 marked Complete
 
 **Research flag**: Skip — standard, low-risk.
 
@@ -339,7 +339,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
-| 4. DataTable / DocString | 4/5 | In Progress|  |
+| 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
