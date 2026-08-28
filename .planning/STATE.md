@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-03-PLAN.md — pnpm lint + verify:oxlint-plugin make AGENTS.md §3 mechanical"
-last_updated: "2026-08-28T04:23:45.462Z"
+stopped_at: "Completed 01-04-PLAN.md — two-catalog version policy + publishable ESM-only manifests"
+last_updated: "2026-08-28T04:33:01.400Z"
 last_activity: 2026-08-28
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,26 +26,26 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 1 of 11 (Workspace, Toolchain, and Dependency Policy)
-Plan: 4 of 6 in current phase (01-01, 01-02, 01-03 complete; 01-04 is next)
+Plan: 5 of 6 in current phase (01-01, 01-02, 01-03, 01-04 complete; 01-05 is next)
 Status: Ready to execute
-Last activity: 2026-08-28 — Completed 01-03-PLAN.md (lint + format toolchain)
+Last activity: 2026-08-28
 
-Phase 1 progress: [█████░░░░░] 50% (3/6 plans)
-Overall progress:  [░░░░░░░░░░] ~5% (3 of ~66 plans; only phase 1 is planned in detail)
+Phase 1 progress: [███████░░░] 67% (4/6 plans)
+Overall progress:  [█░░░░░░░░░] ~6% (4 of ~66 plans; only phase 1 is planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
-- Average duration: ~12m
-- Total execution time: ~35m
+- Total plans completed: 4
+- Average duration: ~11m
+- Total execution time: ~43m
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 3/6 | ~35m | ~12m |
+| 1 | 4/6 | ~43m | ~11m |
 
 **Per-plan detail:**
 
@@ -54,11 +54,12 @@ Overall progress:  [░░░░░░░░░░] ~5% (3 of ~66 plans; only ph
 | 01-01 | ~5m | 3 | 5 |
 | 01-02 | ~12m | 2 | 8 |
 | 01-03 | ~18m | 2 | 16 |
+| 01-04 | ~8m | 2 | 5 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m)
-- Trend: rising — 01-02 and 01-03 both spent most of their time mutation-testing a gate script rather than writing the config it guards. That is the intended cost profile for this phase.
+- Last 5 plans: 01-01 (~5m), 01-02 (~12m), 01-03 (~18m), 01-04 (~8m)
+- Trend: 01-02 and 01-03 spent most of their time mutation-testing a gate script rather than writing the config it guards; 01-04 was faster because the equivalent proof (unpacking a `pnpm pack` tarball) is a single command rather than a script that has to be written and then attacked. That is the intended cost profile for this phase.
 
 *Updated after each plan completion*
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Vendored code in tools/oxlint/effect/** is exempt from *style* rules only (unicorn/consistent-function-scoping), never from correctness/suspicious/perf. Editing upstream files to satisfy our style would break the curl resync path documented in ATTRIBUTION.md.
 - [Phase 01]: Effect's dprint config is adopted wholesale including `semiColons: "asi"` — no semicolons. Confirmed non-destructive: the four vendored rule sources are MD5-identical before and after `dprint fmt`.
 - [Phase 01]: spec/**/*.md is dprint-formatted, including fenced ts code blocks. Spec examples now match house style (double quotes, no semicolons). Future spec edits must survive `dprint check`.
+- [Phase 01]: Peer ranges and dev pins live in **separate pnpm catalogs** — the default `catalog:` holds exact rc pins for `devDependencies`, the named `catalogs.peer` holds ranges for `peerDependencies`. `catalog:` expands verbatim at pack time, so a pinned catalog behind a peerDependency would publish an exact peer range and strand consumers on a different rc (Pitfall 20). An Effect rc bump is now a two-line edit in `pnpm-workspace.yaml`.
+- [Phase 01]: Dev-time `exports` point at `./src/index.ts`; `publishConfig.exports` swaps them to `./dist/index.js` at pack time. No build step is needed for in-repo development, and no prepack script exists. Verified with `tsc -b --force` and `--traceResolution` — the feared TS6307 under composite project references did not occur.
+- [Phase 01]: **`pnpm install` does not validate named-catalog references.** A `catalog:typo` in a `peerDependency` exits 0 on install, lint and build, and only fails at `pnpm pack` (`ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`). Peer deps leave no trace in `pnpm-lock.yaml` at all. Packaging claims must be proven by unpacking the tarball, never by reading the source manifest.
 
 ### Pending Todos
 
@@ -131,8 +135,18 @@ New since 01-03 (not blockers, constraints to respect):
 - `no-bigint-literals` is the one vendored rule with no test (upstream shipped none). Enabled and loading, but locally unverified.
 - `pnpm install` prints "Ignored build scripts: dprint@0.56.1". Harmless — dprint resolves its binary via a platform optional dependency. 01-06 may want to silence it in CI.
 
+New since 01-04 (not blockers, constraints to respect):
+
+- **Version bumps happen in `pnpm-workspace.yaml`, nowhere else.** No package manifest may reintroduce a literal `effect` / `@effect/vitest` / `vitest` / `typescript` version — use `catalog:` in `devDependencies` and `catalog:peer` in `peerDependencies`. The two catalogs are not interchangeable.
+- **`@effect-cucumber/gherkin` must never gain an `effect` dependency** in any field (ADR-EC-015). If Phase 2 finds it needs Effect, that is an ADR revision, not a manifest edit.
+- **Neither package declares `main` or `types`.** The `exports` map is the only resolution surface, and it points at `src` in-repo. A future plan adding a subpath export must add it to *both* `exports` and `publishConfig.exports`, or the subpath will 404 for consumers while working locally.
+- **`files: ["src/**/*.ts", "dist"]`** — anything a package needs shipped (a README, a LICENSE, an `ai-docs/` tree) must be added here explicitly.
+- **01-06 (CI) should add `pnpm pack` to the merge gate**, not just to a release job. It is the only check that catches an invalid `catalog:` reference or a `publishConfig.exports` pointing at a file outside `files`.
+- The peer ranges mirror `@effect/vitest@4.0.0-rc.112`'s own published peers. Nothing enforces that they stay in sync across a future rc bump — check by hand, or add a drift check.
+- `"license": "MIT"` is declared with no LICENSE file anywhere in the repo. See `.planning/phases/01-workspace-toolchain-and-dependency-policy/deferred-items.md`.
+
 ## Session Continuity
 
-Last session: 2026-08-28T04:23:36.324Z
-Stopped at: Completed 01-03-PLAN.md — pnpm lint + verify:oxlint-plugin make AGENTS.md §3 mechanical
+Last session: 2026-08-28T04:32:41.120Z
+Stopped at: Completed 01-04-PLAN.md — two-catalog version policy + publishable ESM-only manifests
 Resume file: None
