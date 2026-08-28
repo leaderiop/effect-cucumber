@@ -228,3 +228,9 @@ and one unit test — no network, no I/O beyond the compiler's own file reads, n
 no auth, no persistence. Every `mitigate` disposition in the plan's threat register (T-05-01,
 T-05-02, T-05-03) was discharged by a recorded mutation proof above, and T-05-SC's "installs zero
 packages" holds (the `--frozen-lockfile` install changed no manifest dependency field).
+
+## Self-Check: PASSED
+
+All five claimed files verified present on disk; all four commits verified in `git log`
+(`6691c3a`, `9f10cf1`, `d4968ff`, `efe4de3`). Working tree clean — every throwaway probe from the
+four mutation proofs was deleted before its task's commit.
