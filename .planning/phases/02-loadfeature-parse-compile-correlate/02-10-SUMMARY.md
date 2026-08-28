@@ -216,6 +216,13 @@ static checks over files already in the repository.
 | 2 | `f0e984a` | `feat(02-10): type-check packages/gherkin/test via tsconfig.test.json (D7)` |
 | 3 | `afe3c1d` | `ci(02-10): wire typecheck:test and verify:no-runner-dep as root scripts and CI steps` |
 
+## Self-Check: PASSED
+
+All three created files exist on disk (`scripts/verify-no-runner-dep.sh`,
+`packages/gherkin/tsconfig.test.json`,
+`.planning/phases/02-loadfeature-parse-compile-correlate/02-10-SUMMARY.md`) and all four commits
+(`266b454`, `f0e984a`, `afe3c1d`, `395781d`) are present in `git log`.
+
 ## Notes for Future Phases
 
 `packages/vitest/test/` is still not covered by any type-check. It deliberately holds broken probe
