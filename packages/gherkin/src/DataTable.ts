@@ -1,8 +1,8 @@
 /**
  * `@effect-cucumber/gherkin`'s own DataTable wrapper: `raw()`, `hashes()` and `rowsHash()` over a
- * raw `PickleTable`.
+ * raw `PickleTable`, plus the `decodeHashes` decoder that makes ADR-EC-008 true.
  *
- * Four decisions are recorded here, because none of them is visible from the code that implements
+ * Five decisions are recorded here, because none of them is visible from the code that implements
  * them.
  *
  * (a) **This module exists because those three accessors are not free.**
@@ -45,6 +45,22 @@
  *     that branch: it is what `noUncheckedIndexedAccess` requires of any index expression, and it
  *     cannot be reached at runtime for the reason just given.
  *
+ * (e) **`decodeHashes` is a standalone exported function, not a `decode` method on the `DataTable`
+ *     interface.** A generic method would have to carry the `Schema.Constraint` type parameter
+ *     through the interface declaration itself, and the `DataTable` VALUE is constructed per step
+ *     by `Correlate.ts`, where no schema is in hand and none could be — the schema belongs to the
+ *     step body, which is written by the consuming project. Keeping it standalone also keeps
+ *     `makeDataTable`'s return value a plain data record with no schema-shaped hole in it, which
+ *     is what lets `DataTable` be one arm of plan 04-04's `StepArgument` union without dragging a
+ *     type parameter into that union.
+ *
+ *     Its message deliberately does NOT follow the `<uri>:<line>: <reason>: <sentences>` shape the
+ *     three failures above use. Those are faults in the table's own SHAPE, where the file location
+ *     is the first thing a reader needs. A decode failure is a fault in one ROW against a schema
+ *     the step author wrote, so the row ordinal leads and the location follows it inline. The
+ *     no-truncation policy of `Errors.ts` note (b) still applies verbatim: the offending row is
+ *     reproduced whole, and the underlying `SchemaError` message is embedded unedited.
+ *
  * Local imports: `./Errors.ts` only. Third-party imports reach the `@cucumber/messages` BARREL,
  * never a deep path into its published build directory — the rule `Model.ts` and `StepMatcher.ts`
  * already follow.
@@ -52,6 +68,8 @@
 import type { PickleTable, PickleTableRow } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
+import type * as SchemaIssue from "effect/SchemaIssue"
 import { DataTableError, type DataTableErrorReason } from "./Errors.ts"
 
 /** Every cell value of one row, in order. */
@@ -265,3 +283,138 @@ export const makeDataTable = (table: PickleTable, uri: string, line: number): Da
 
   return { _tag: "DataTable", uri, line, rows, raw, hashes, rowsHash }
 }
+
+/**
+ * Discriminate on the `_tag` STRING, never on `instanceof SchemaIssue.Pointer`.
+ *
+ * `effect` is a peer dependency (ADR-EC-021), so a consuming project can end up with two copies of
+ * it in one graph — exactly the duplicate-package risk ADR-EC-015 was written about. `instanceof`
+ * silently returns `false` across two copies and would degrade every located error into an
+ * unlocated one; a `_tag` comparison is copy-independent. `test/schema-issue-pin.test.ts` asserts
+ * that the `_tag` string and the exported class still agree, so this choice costs nothing.
+ *
+ * `_tag` is read by destructuring rather than by member access because `no-underscore-dangle` is
+ * error-level in this repo for member expressions. The predicate form is what carries the
+ * narrowing, which a bare destructured comparison could not.
+ */
+const isPointerIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Pointer => {
+  const { _tag } = issue
+  return _tag === "Pointer"
+}
+
+const isCompositeIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Composite => {
+  const { _tag } = issue
+  return _tag === "Composite"
+}
+
+/**
+ * The first locatable leaf's accumulated `Pointer` path, or `[]` when the tree contains no
+ * `Pointer` at all.
+ *
+ * Walks down concatenating every `Pointer.path` on the way, and recurses through `Composite`'s
+ * `issues`. Every other tag — `Filter`, `Encoding`, `AnyOf`, and the six `Leaf` tags — terminates
+ * the walk, because none of them adds a path segment.
+ *
+ * This is safe to rely on ONLY because `test/schema-issue-pin.test.ts` asserts the shape it
+ * assumes against the installed `effect@4.0.0-rc.112`: that an array decode wraps every element
+ * failure in a `Pointer` carrying the element index, that a struct decode wraps every field
+ * failure in a nested `Pointer` carrying the key, that `Composite`'s children field is named
+ * `issues`, and that a location-free failure produces no `Pointer` at all. Keep the two walks in
+ * step: that pin is a deliberate second copy of this logic, so an rc bump that reshapes the tree
+ * fails there — where it is attributable to the dependency — rather than here.
+ */
+const firstIssuePath = (
+  issue: SchemaIssue.Issue,
+  prefix: ReadonlyArray<PropertyKey>
+): ReadonlyArray<PropertyKey> => {
+  if (isPointerIssue(issue)) {
+    return firstIssuePath(issue.issue, [...prefix, ...issue.path])
+  }
+  if (isCompositeIssue(issue)) {
+    for (const child of issue.issues) {
+      const path = firstIssuePath(child, prefix)
+      if (path.length > 0) {
+        return path
+      }
+    }
+    return []
+  }
+  return prefix
+}
+
+/**
+ * Convert a `SchemaError` raised while decoding one table's `hashes()` into a LOCATED
+ * `DataTableError`.
+ *
+ * The whole mechanism is the accumulated `Pointer` path: its first element is the index into the
+ * array that was decoded — which is the `.hashes()` body-row index, because `decodeHashes` is what
+ * wrapped the row schema in `Schema.Array` — and its second is the record key, which is the header
+ * column name.
+ *
+ * Both `typeof` checks are load-bearing rather than defensive (threat T-04-06). A `PropertyKey` is
+ * `string | number | symbol`; `index + 1` on a string would produce a concatenation and on a symbol
+ * would throw, so a reshaped path must yield `Option.none()` — an ABSENT locator — and never a
+ * silently-wrong "Row 1". The pin's fifth case is where the empty-path possibility is asserted at
+ * the dependency level; against rc.112 no element failure reaches this function without a
+ * `Pointer`, and the pin is what will notice if that ever stops being true.
+ */
+const rowDecodeFailed = (
+  table: DataTable,
+  rows: ReadonlyArray<Readonly<Record<string, string>>>,
+  schemaError: Schema.SchemaError
+): DataTableError => {
+  const path = firstIssuePath(schemaError.issue, [])
+  const index = path[0]
+  const key = path[1]
+  const row: Option.Option<number> = typeof index === "number" ? Option.some(index + 1) : Option.none()
+  const column: Option.Option<string> = typeof key === "string" ? Option.some(key) : Option.none()
+  const offending = typeof index === "number" ? rows[index] : undefined
+
+  const opening = Option.isSome(row)
+    ? `Row ${row.value} of the DataTable at ${table.uri}:${table.line} failed to decode`
+    : `The DataTable at ${table.uri}:${table.line} failed to decode`
+  const located = Option.isSome(column) ? `${opening}, column ${JSON.stringify(column.value)}` : opening
+  // Reproduced whole, with no ellipsis and no maximum length: `Errors.ts` note (b) governs this
+  // message exactly as it governs the three above.
+  const subject = offending === undefined
+    ? `The rows were ${JSON.stringify(rows)}.`
+    : `The row was ${JSON.stringify(offending)}.`
+
+  return new DataTableError({
+    reason: "RowDecodeFailed",
+    uri: table.uri,
+    line: Option.some(table.line),
+    row,
+    column,
+    message: `${located}: ${schemaError.message} ${subject}`,
+    cause: Option.some(schemaError)
+  })
+}
+
+/**
+ * Decode a DataTable's body rows through a `Schema`, naming the offending row and column when one
+ * of them fails. This is what ADR-EC-008 promises, made true.
+ *
+ * `rowSchema` describes ONE row, not the array of them, and `decodeHashes` does the
+ * `Schema.Array` wrapping itself. That is not an ergonomic nicety — it is the mechanism. The array
+ * index in the resulting issue path is the `.hashes()` body-row index precisely BECAUSE this
+ * function is what introduced the array level. A caller who passed `Schema.Array(Row)` would push
+ * every path one level deeper, and the recovered row ordinal would silently name the wrong row, so
+ * this function owns the wrapping and the type signature makes passing an array schema a mistake
+ * the decode itself rejects.
+ *
+ * `table.hashes()` runs FIRST and its failure propagates untouched: a duplicate header column is a
+ * fault in the table's SHAPE, not in decoding, and it keeps its own `DuplicateHeaderColumn` reason
+ * tag rather than being flattened into a generic decode failure.
+ *
+ * The type parameter mirrors `Schema.decodeUnknownEffect`'s own, so a row schema carrying decoding
+ * services propagates them into this Effect's `R` channel instead of erasing them to `never`.
+ */
+export const decodeHashes =
+  <S extends Schema.Constraint>(rowSchema: S) =>
+  (table: DataTable): Effect.Effect<ReadonlyArray<S["Type"]>, DataTableError, S["DecodingServices"]> =>
+    Effect.flatMap(table.hashes(), (rows) =>
+      Effect.mapError(
+        Schema.decodeUnknownEffect(Schema.Array(rowSchema))(rows),
+        (schemaError) => rowDecodeFailed(table, rows, schemaError)
+      ))

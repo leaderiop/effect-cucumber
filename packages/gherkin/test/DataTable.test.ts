@@ -22,8 +22,9 @@
 import type { PickleTable } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
 import { describe, expect, it } from "vitest"
-import { makeDataTable } from "../src/DataTable.ts"
+import { decodeHashes, makeDataTable } from "../src/DataTable.ts"
 import { DataTableError } from "../src/Errors.ts"
 
 /** The uri and line every table below is located at, so the locator assertions have a target. */
@@ -200,6 +201,110 @@ describe("rowsHash", () => {
 
   it("returns {} for an empty table", () => {
     expect(succeeds(dataTableOf().rowsHash())).toEqual({})
+  })
+})
+
+describe("decodeHashes", () => {
+  /**
+   * `age` is a TRANSFORMATION, not another string field, so a decoded row's `age` is a real
+   * `number` and "decodes into typed rows" is exercised rather than being a string-to-string
+   * identity that would pass against no transformation at all.
+   */
+  const Row = Schema.Struct({ name: Schema.String, age: Schema.FiniteFromString })
+
+  it("decodes every body row into the schema's type", () => {
+    const table = dataTableOf(["name", "age"], ["alice", "30"], ["bob", "41"])
+    const rows = succeeds(decodeHashes(Row)(table))
+
+    expect(rows).toEqual([{ name: "alice", age: 30 }, { name: "bob", age: 41 }])
+    const [first] = rows
+    if (first === undefined) {
+      throw new Error("expected decodeHashes to produce two rows")
+    }
+    // The transformation actually ran: this is a number, not the string "30".
+    expect(typeof first.age).toBe("number")
+  })
+
+  it("decodes a single-column table", () => {
+    const rows = succeeds(decodeHashes(Schema.Struct({ name: Schema.String }))(dataTableOf(["name"], ["alice"])))
+
+    expect(rows).toEqual([{ name: "alice" }])
+  })
+
+  it("decodes a header-only table to an empty array", () => {
+    // Zero body rows is not a decode failure — it is a table with nothing to decode, and the
+    // schema is never consulted.
+    expect(succeeds(decodeHashes(Row)(dataTableOf(["name", "age"])))).toEqual([])
+  })
+
+  it("names the offending row and column when a body row fails the schema", () => {
+    const table = dataTableOf(["name", "age"], ["alice", "30"], ["bob", "old"])
+    const error = fails(decodeHashes(Row)(table))
+
+    expect(error).toBeInstanceOf(DataTableError)
+    expect(error.reason).toBe("RowDecodeFailed")
+    // The 1-based BODY-row ordinal, written as a literal rather than computed: "bob" is the second
+    // row under the header, and effect's own path names it as element 1.
+    expect(error.row).toEqual(Option.some(2))
+    expect(error.column).toEqual(Option.some("age"))
+    expect(error.uri).toBe(uri)
+    expect(error.line).toEqual(Option.some(line))
+
+    // Thrown rather than branched around an `expect`: `vitest(no-conditional-expect)` is
+    // error-level, and this file's `succeeds`/`fails` helpers already establish throwing as how a
+    // precondition that did not hold is reported.
+    const { cause } = error
+    if (!Option.isSome(cause)) {
+      throw new Error("expected the decode failure to carry the underlying SchemaError as its cause")
+    }
+    const { _tag } = cause.value as { readonly _tag: string }
+    expect(_tag).toBe("SchemaError")
+  })
+
+  it("reproduces the offending row verbatim in the message", () => {
+    const table = dataTableOf(["name", "age"], ["alice", "30"], ["bob", "old"])
+    const { message } = fails(decodeHashes(Row)(table))
+
+    expect(message).toContain("Row 2 of the DataTable at features/checkout.feature:12 failed to decode")
+    expect(message).toContain("column \"age\"")
+    // Both cell values of the offending row, whole: Errors.ts note (b)'s no-truncation policy
+    // pinned on the newest DataTableError reason.
+    expect(message).toContain("{\"name\":\"bob\",\"age\":\"old\"}")
+    expect(message.includes("…")).toBe(false)
+    expect(message.endsWith("...")).toBe(false)
+  })
+
+  it("leaves the column as none when the failure is not attributable to one cell", () => {
+    // A row schema that rejects the WHOLE row rather than one of its fields. effect's path is
+    // then just [0] — an element index and no property key — so the row ordinal is reported and
+    // the column is honestly absent rather than guessed at.
+    //
+    // The both-absent case (row AND column none) is the empty-path branch of `firstIssuePath`.
+    // It is not reachable through this API against effect@4.0.0-rc.112: `decodeHashes` always
+    // feeds an array to a `Schema.Array`, and every element failure of an array decode is wrapped
+    // in a `Pointer` carrying the index — asserted over six element-failure shapes in
+    // `schema-issue-pin.test.ts`. That pin's fifth case is where the Pointer-free tree IS
+    // asserted to exist, which is why the branch stays: an rc bump could make it reachable, and
+    // fabricating "Row 1" for an unlocatable failure is exactly the silently-wrong answer this
+    // library refuses to give.
+    const error = fails(decodeHashes(Schema.String)(dataTableOf(["name", "age"], ["alice", "30"])))
+
+    expect(error.reason).toBe("RowDecodeFailed")
+    expect(error.row).toEqual(Option.some(1))
+    expect(error.column).toEqual(Option.none())
+    expect(error.message).not.toContain("column ")
+    expect(error.message).toContain("{\"name\":\"alice\",\"age\":\"30\"}")
+  })
+
+  it("propagates DuplicateHeaderColumn unchanged rather than reporting a decode failure", () => {
+    // hashes() runs BEFORE the decoder, so a fault in the table's shape keeps its own reason tag.
+    // A wrapper that ran the decode first — or that caught everything and relabelled it — would
+    // report RowDecodeFailed here and bury the real, fixable problem in the header row.
+    const error = fails(decodeHashes(Row)(dataTableOf(["name", "name"], ["alice", "bob"])))
+
+    expect(error.reason).toBe("DuplicateHeaderColumn")
+    expect(error.column).toEqual(Option.some("name"))
+    expect(error.row).toEqual(Option.none())
   })
 })
 
