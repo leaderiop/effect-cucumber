@@ -43,14 +43,15 @@
  * error.
  */
 import {
+  type AstRuleInfo,
   type AstScenarioInfo,
   type AstStepInfo,
   type CorrelationResult,
   isOutlineKeyword,
   isScenarioKeyword
 } from "./Correlate.ts"
-import { LoadFeatureError, type LoadFeatureWarning } from "./Errors.ts"
-import type { Pickle, PickleStep } from "./Model.ts"
+import { LoadFeatureError, type LoadFeatureWarning, makeWarning } from "./Errors.ts"
+import type { GherkinDocument, Pickle, PickleStep } from "./Model.ts"
 
 /**
  * Every message is shaped `uri:line: <reason>: <what happened, then what to do>`.
@@ -62,11 +63,21 @@ import type { Pickle, PickleStep } from "./Model.ts"
 const at = (uri: string, line: number): string => `${uri}:${line}: `
 
 /**
- * Name an AST Scenario node the way the author would recognise it: its localised keyword and its
+ * Name any AST block the way the author would recognise it: its localised keyword and its
  * un-interpolated name, quoted. `JSON.stringify` rather than hand-added quotes so a name
  * containing a quote character stays unambiguous.
+ *
+ * A `Background:` and an unnamed `Rule:` both legitimately have an empty name, and
+ * `Background: ""` reads as a defect rather than as the anonymous block it is, so the keyword
+ * stands alone in that case.
  */
-const describeNode = (node: AstScenarioInfo): string => `${node.keyword}: ${JSON.stringify(node.name)}`
+const describeBlock = (keyword: string, name: string): string =>
+  name === "" ? `${keyword}:` : `${keyword}: ${JSON.stringify(name)}`
+
+/**
+ * `describeBlock` for an AST Scenario node.
+ */
+const describeNode = (node: AstScenarioInfo): string => describeBlock(node.keyword, node.name)
 
 /**
  * F3 — an Outline keyword with no `Examples:` block at all.
@@ -400,6 +411,211 @@ const uninterpolatedPlaceholder = (
   })
 }
 
+// --- Group C: the four heuristic findings, which are WARNINGS ------------------------------
+//
+// **LOCKED DECISION 3 — severity: WARN, for all four.** F9, F11, F13 and F14 accumulate onto the
+// returned array and NEVER throw. (Research Assumption A2, decided.)
+//
+// The reasoning, because it is not visible from the code. Each of these four is a REAL defect
+// with a verified silent-failure path, but for each one the detector admits an innocent reading:
+// a `<div>`-shaped string inside an Outline is legal text, a description is legal Gherkin, and a
+// `Rule:` may be a placeholder an author is about to fill in. Raising them as errors would reject
+// legitimate feature files, which costs this library the trust it is asking for; leaving them
+// silent would let a dropped Examples column ship unnoticed, which is the exact failure mode the
+// phase exists to remove. A returned, reason-tagged warning is the only option that pays neither
+// price.
+//
+// `validateFeature` returns these; it does not print, log or throw them. How a warning reaches a
+// human is Phase 6's decision — MATCH-05 already needs a Feature-level warning channel — and this
+// phase produces only the data (Decision D6).
+// -------------------------------------------------------------------------------------------
+
+/**
+ * F9 — check beta: a leftover `<token>` that is NOT one of this Outline's Examples columns.
+ *
+ * The message NAMES the columns that do exist, because the gap between what the author wrote and
+ * what the parser kept is the whole finding — "unknown placeholder" alone sends them looking in
+ * the wrong place.
+ *
+ * `[VERIFIED]` upstream signature (cucumber/gherkin#22, still open): an Examples header row
+ * missing its trailing `|` on BOTH the header and the body rows silently drops the last column.
+ * Header and body cell counts stay consistent, so no upstream guard fires, and the placeholder
+ * survives into the compiled step as literal text. Omitting the pipe from the body row alone is a
+ * loud `AstBuilderException` instead — the two differ by one character and take opposite paths.
+ */
+const unknownPlaceholder = (
+  uri: string,
+  node: AstScenarioInfo,
+  leftover: Leftover,
+  info: AstStepInfo | undefined,
+  columns: ReadonlySet<string>
+): LoadFeatureWarning => {
+  const line = info?.step.location.line ?? node.location.line
+  return makeWarning({
+    reason: "UnknownPlaceholder",
+    uri,
+    line,
+    message: `${at(uri, line)}UnknownPlaceholder: <${leftover.name}> is not one of the Examples columns of `
+      + `${describeNode(node)}, which declares: ${Array.from(columns).join(", ")}. It was found in `
+      + `${leftover.site} of the step on line ${line}, un-substituted. The usual cause is an Examples row `
+      + `missing its trailing "|" on both the header and the body rows: the cell counts stay consistent, the `
+      + `last column is dropped with no error, and the placeholder survives as literal text. This is a warning `
+      + `rather than an error because legitimate angle-bracket text written inside an Outline reaches the same `
+      + `check. That text reads, in full:\n${leftover.content}`
+  })
+}
+
+/**
+ * F11 — the same column name written twice in one `Examples:` header row.
+ *
+ * `[VERIFIED]`: the FIRST column wins for BOTH occurrences. Header `| a | a |` with body
+ * `| 1 | 2 |` compiles `<a> twice <a>` to `1 twice 1`, and the second column's values are simply
+ * unreachable. No error at any layer (cucumber/gherkin#28).
+ */
+const duplicateExamplesColumn = (
+  uri: string,
+  node: AstScenarioInfo,
+  column: string,
+  line: number
+): LoadFeatureWarning =>
+  makeWarning({
+    reason: "DuplicateExamplesColumn",
+    uri,
+    line,
+    message: `${at(uri, line)}DuplicateExamplesColumn: an Examples: block of ${describeNode(node)} declares the `
+      + `column ${JSON.stringify(column)} more than once. The first column wins for every occurrence of `
+      + `<${column}>, so the later column's values are unreachable and no error is raised. Rename one of the `
+      + `two columns.`
+  })
+
+/**
+ * F13 — a `Rule:` with no Scenarios inside it.
+ *
+ * `[VERIFIED]`: it contributes zero pickles, in silence. Nothing runs and nothing reports the
+ * absence, so a Rule left as a heading reads like covered behavior.
+ */
+const emptyRule = (uri: string, rule: AstRuleInfo): LoadFeatureWarning => {
+  const line = rule.location.line
+  return makeWarning({
+    reason: "EmptyRule",
+    uri,
+    line,
+    message: `${at(uri, line)}EmptyRule: ${describeBlock(rule.keyword, rule.name)} contains no scenarios, so it `
+      + `compiles to nothing and no test reports it as missing. Add a scenario to it, or delete it.`
+  })
+}
+
+/**
+ * F14 — a Scenario or Background carrying a description, which is where a swallowed step lands.
+ *
+ * `[VERIFIED]`: a step keyword misspelled BEFORE any valid step is absorbed into the block's
+ * `description`. The AST has one fewer step, the compiled scenario has one fewer step, and no
+ * layer reports anything — a step the author wrote simply does not exist. The same typo written
+ * AFTER a valid step is a loud parse error, so the behavior is position-dependent and casual
+ * testing will not find it.
+ *
+ * There is no exact detector, because a description is legal Gherkin; the message says so, and
+ * quotes the text so the author can judge in one glance. Nothing fuzzier is attempted — matching
+ * the description against dialect keywords by similarity is marked speculative and out of scope
+ * by the phase research.
+ *
+ * This is additive to, not a replacement for, the `ZeroStepScenario` message quoting the same
+ * description. That error covers the case where the swallowed step was the block's ONLY step;
+ * this warning covers every other case, where the block still has steps and so never reaches it.
+ *
+ * The description is quoted in full, per the package's locked full-content policy (threat
+ * T-02-02, accepted).
+ */
+const suspectedSwallowedStep = (
+  uri: string,
+  label: string,
+  description: string,
+  line: number
+): LoadFeatureWarning =>
+  makeWarning({
+    reason: "SuspectedSwallowedStep",
+    uri,
+    line,
+    message: `${at(uri, line)}SuspectedSwallowedStep: ${label} has a description. A step keyword misspelled `
+      + `before any valid step is absorbed into the description rather than reported, so a step written there `
+      + `does not exist at any layer and nothing fails. A description is legal Gherkin, so this is a heuristic, `
+      + `not a defect: if the text below is prose, ignore this. It reads, in full:\n${description}`
+  })
+
+/**
+ * The values in one header row that appear more than once, each reported once, in source order.
+ *
+ * Takes the duplicate-PRESERVING `examplesHeaders` array. A `Set` of the header cells would erase
+ * the very thing being detected.
+ */
+const duplicatedColumns = (header: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const seen = new Set<string>()
+  const duplicated: Array<string> = []
+  for (const value of header) {
+    if (seen.has(value) && !duplicated.includes(value)) {
+      duplicated.push(value)
+    }
+    seen.add(value)
+  }
+  return duplicated
+}
+
+/**
+ * One `Background:` node, reduced to what the F14 heuristic needs.
+ */
+interface BackgroundInfo {
+  readonly keyword: string
+  readonly name: string
+  readonly description: string
+  readonly line: number
+}
+
+/**
+ * The two details the Group C warnings need that `AstIndex` does not carry.
+ *
+ * `AstIndex` records what CORRELATION needs, and neither of these is that: a Background produces
+ * no pickle of its own, and an `Examples:` block's location is not needed to join a pickle to its
+ * AST node. Rather than widen `Correlate.ts`'s index with fields only this file reads, both are
+ * recovered here in one small pass over the document that `ParsedFeatureCore` already carries.
+ * Nothing below re-derives anything `compile()` produced; it reads two source locations and one
+ * description.
+ */
+interface AstDetail {
+  /** Every `Background:`, at feature level and inside a `Rule:`, in document order. */
+  readonly backgrounds: ReadonlyArray<BackgroundInfo>
+  /** AST scenario id to the source line of each of its `Examples:` blocks, in source order. */
+  readonly examplesLines: ReadonlyMap<string, ReadonlyArray<number>>
+}
+
+const astDetailOf = (document: GherkinDocument): AstDetail => {
+  const backgrounds: Array<BackgroundInfo> = []
+  const examplesLines = new Map<string, ReadonlyArray<number>>()
+  const feature = document.feature
+  if (feature !== undefined) {
+    // A `Rule:` is the only nesting level Gherkin has, so flattening its children into the
+    // feature's own gives one list holding every block that can own a Background or an Examples
+    // table. `Parser.ts` has already rejected a comment-only file, so the guard above is
+    // unreachable through `loadFeature` and exists because the type says it can happen.
+    const children = feature.children.flatMap((child) => child.rule === undefined ? [child] : child.rule.children)
+    for (const child of children) {
+      const background = child.background
+      if (background !== undefined) {
+        backgrounds.push({
+          keyword: background.keyword.trim(),
+          name: background.name,
+          description: background.description,
+          line: background.location.line
+        })
+      }
+      const scenario = child.scenario
+      if (scenario !== undefined) {
+        examplesLines.set(scenario.id, scenario.examples.map((block) => block.location.line))
+      }
+    }
+  }
+  return { backgrounds, examplesLines }
+}
+
 /**
  * Validate one correlated feature.
  *
@@ -444,8 +660,11 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
     }
   }
 
-  // Check alpha — the exact, column-aware leftover-placeholder scan (rows F7 and F8). This is
+  // Checks alpha and beta — the leftover-placeholder scan (rows F7, F8 and F9). Check alpha is
   // PARSE-03 itself.
+  //
+  // One scan, one regular expression, two verdicts. A token that names one of this Outline's own
+  // columns is an ERROR (alpha); any other token found in the same places is a WARNING (beta).
   //
   // Two restrictions are load-bearing, and dropping either one turns this from an exact check
   // into a source of rejected-but-valid feature files (threat T-02-18).
@@ -464,18 +683,46 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
     }
     for (const pickle of index.byScenarioId.get(node.id) ?? []) {
       for (const leftover of scanPlaceholders(pickle)) {
+        const info = astStepOf(leftover.step, index.byStepId)
         if (columns.has(leftover.name)) {
-          throw uninterpolatedPlaceholder(uri, node, leftover, astStepOf(leftover.step, index.byStepId))
+          throw uninterpolatedPlaceholder(uri, node, leftover, info)
         }
+        warnings.push(unknownPlaceholder(uri, node, leftover, info, columns))
       }
     }
   }
 
-  // --- EXTENSION POINT -------------------------------------------------------------------
-  // Still to add in this file: the Group C warnings pushed onto `warnings` —
-  // `UnknownPlaceholder` (F9), `DuplicateExamplesColumn` (F11) via `index.examplesHeaders`,
-  // `EmptyRule` (F13) via `index.astRules`, and `SuspectedSwallowedStep` (F14).
-  // ---------------------------------------------------------------------------------------
+  // The remaining Group C findings (F11, F13, F14). None of these throws.
+  const detail = astDetailOf(feature.document)
 
+  for (const node of index.astScenarios) {
+    const blockLines = detail.examplesLines.get(node.id) ?? []
+    for (const [blockIndex, header] of node.examplesHeaders.entries()) {
+      for (const column of duplicatedColumns(header)) {
+        warnings.push(duplicateExamplesColumn(uri, node, column, blockLines[blockIndex] ?? node.location.line))
+      }
+    }
+    if (node.description.trim() !== "") {
+      warnings.push(suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line))
+    }
+  }
+
+  for (const rule of index.astRules) {
+    if (rule.scenarioIds.length === 0) {
+      warnings.push(emptyRule(uri, rule))
+    }
+  }
+
+  for (const background of detail.backgrounds) {
+    if (background.description.trim() !== "") {
+      const label = describeBlock(background.keyword, background.name)
+      warnings.push(suspectedSwallowedStep(uri, label, background.description, background.line))
+    }
+  }
+
+  // Deterministic document order, so a test can assert the array by position rather than by
+  // searching it. `Array.prototype.sort` is stable, so two findings on one line keep the order
+  // they were found in.
+  warnings.sort((left, right) => (left.line ?? 0) - (right.line ?? 0))
   return warnings
 }
