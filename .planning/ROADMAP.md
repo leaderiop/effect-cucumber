@@ -147,7 +147,7 @@ Plans:
 
 **Wave 4** *(blocked on 03-03 and 03-04)*
 
-- [ ] 03-05-PLAN.md — Wiring: `ParsedFeature.parameterTypes`, a fresh registry per `loadFeature` call with an optional store override, the real barrel, and the two-`loadFeature`-calls MATCH-02 proof
+- [x] 03-05-PLAN.md — Wiring: `ParsedFeature.parameterTypes`, a fresh registry per `loadFeature` call with an optional store override, the real barrel, and the two-`loadFeature`-calls MATCH-02 proof
 
 **Wave 5** *(blocked on 03-05)*
 
@@ -320,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 4/6 | In Progress|  |
+| 3. Parameter Types and Step Matching | 5/6 | In Progress|  |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |

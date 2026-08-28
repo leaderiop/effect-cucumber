@@ -16,8 +16,8 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 
 ### Step matching
 
-- [ ] **MATCH-01**: Step patterns use cucumber-expressions syntax (`{int}`, `{float}`, `{string}`, `{word}`, custom types) (ADR-EC-007)
-- [ ] **MATCH-02**: A custom parameter type is defined once as data and replayed into a fresh `ParameterTypeRegistry` on every `loadFeature` call, with no duplicate-registration failure across repeated calls (ADR-EC-007 correction)
+- [x] **MATCH-01**: Step patterns use cucumber-expressions syntax (`{int}`, `{float}`, `{string}`, `{word}`, custom types) (ADR-EC-007)
+- [x] **MATCH-02**: A custom parameter type is defined once as data and replayed into a fresh `ParameterTypeRegistry` on every `loadFeature` call, with no duplicate-registration failure across repeated calls (ADR-EC-007 correction)
 - [ ] **MATCH-03**: A Pickle step matching zero registered patterns fails the containing Scenario, naming the unmatched step text and its source location (ADR-EC-019, BEH-EC-013)
 - [ ] **MATCH-04**: A Pickle step matching more than one registered pattern fails the same way, naming every matching pattern rather than silently picking the first registered (ADR-EC-019, BEH-EC-013)
 - [ ] **MATCH-05**: A registered pattern matching zero steps across the whole Feature is reported as a Feature-level warning, not a hard failure (ADR-EC-019, BEH-EC-013)
@@ -85,8 +85,8 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | PARSE-02 | Phase 2 | Complete |
 | PARSE-03 | Phase 2 | Complete |
 | PARSE-04 | Phase 4 | Pending |
-| MATCH-01 | Phase 3 | Pending |
-| MATCH-02 | Phase 3 | Pending |
+| MATCH-01 | Phase 3 | Complete |
+| MATCH-02 | Phase 3 | Complete |
 | MATCH-03 | Phase 6 | Pending |
 | MATCH-04 | Phase 6 | Pending |
 | MATCH-05 | Phase 6 | Pending |

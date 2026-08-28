@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 03 plan 04 complete (4/6). `src/StepMatcher.ts` + `test/StepMatcher.test.ts` landed; 329 tests passing (304 before), both required mutations recorded and the tree restored clean, all gates green. Next: 03-05 (loadFeature registry lifecycle + index.ts public surface)."
-last_updated: "2026-08-28T17:26:00.000Z"
-last_activity: 2026-08-28 -- 03-04 complete (StepMatcher: match-all + per-(registry, pattern) cache)
+stopped_at: "Phase 03 plan 05 complete (5/6). `ParsedFeature.parameterTypes` + `LoadFeatureOptions` + the real `index.ts` barrel + `test/ParameterTypeLifecycle.test.ts` landed; 337 tests passing (329 before), the required mutation recorded and the tree restored clean, all gates green. MATCH-01 and MATCH-02 marked Complete. Next: 03-06 (spec/ADR reconciliation — BEH-EC-014 signatures, ADR-EC-007 implementation note)."
+last_updated: "2026-08-28T17:38:00.000Z"
+last_activity: 2026-08-28 -- 03-05 complete (per-call registry lifecycle + the real gherkin barrel)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 23
-  completed_plans: 21
+  completed_plans: 22
   percent: 18
 ---
 
@@ -26,24 +26,24 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 03 (parameter-types-and-step-matching) — EXECUTING
-Plan: 5 of 6
-Status: Ready to execute
+Plan: 6 of 6
+Status: Ready to execute (03-06 is the last plan of the phase)
 Last activity: 2026-08-28
 
 **Current focus:** Phase 3 — parameter types and step matching
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
 Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [███████░░░] 67% (4/6 plans)
-Overall progress:  [████░░░░░░] ~39% (21 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Phase 3 progress: [████████░░] 83% (5/6 plans)
+Overall progress:  [████░░░░░░] ~41% (22 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 21
+- Total plans completed: 22
 - Average duration: ~10m
-- Total execution time: ~95m
+- Total execution time: ~109m
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Overall progress:  [████░░░░░░] ~39% (21 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 4/6 | ~35m | ~9m |
+| 03 | 5/6 | ~49m | ~10m |
 
 **Per-plan detail:**
 
@@ -67,14 +67,16 @@ Overall progress:  [████░░░░░░] ~39% (21 of 23 planned plans
 | 03-02 | ~7m | 2 | 2 |
 | 03-03 | ~6m | 2 | 2 |
 | 03-04 | ~9m | 2 | 2 |
+| 03-05 | ~14m | 3 | 4 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m), 03-04 (~9m)
-- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so every later plan verified its assumptions by reading an assertion instead of re-running the dependency. 03-04 cost slightly more than its two neighbours only because it is the first Phase 3 plan whose source has real control flow to get wrong rather than data to record.
+- Last 6 plans: 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m), 03-04 (~9m), 03-05 (~14m)
+- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so every later plan verified its assumptions by reading an assertion instead of re-running the dependency. 03-04 cost slightly more than its two neighbours only because it is the first Phase 3 plan whose source has real control flow to get wrong rather than data to record. 03-05 is the phase's most expensive plan and should be: it is the only one that touches three source files, adds a required field to an already-consumed public contract, and has to run the full gate set (including `verify:pack`) twice — once for the wiring and once for the mutation proof.
 
 *Updated after each plan completion*
 | Phase 03 P04 | 9m | 2 tasks | 2 files |
+| Phase 03 P05 | 14m | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -128,6 +130,10 @@ Recent decisions affecting current work:
 - [03-04]: The compilation cache is a `WeakMap` keyed on the `ParameterTypeRegistry` INSTANCE holding a per-registry `Map` keyed on the pattern string. Mutating it to a pattern-only `Map` made an expression compiled against a registry carrying `{money}` get served to a registry without it, so `UndefinedParameterType` never fired at all — the exact stale-binding failure Pitfall 13 predicts. Reference INEQUALITY across two registries is the assertion that catches it; the identity assertions alone pass the broken version.
 - [03-04]: Compilation is LAZY — `createStepMatcher` compiles nothing, the first `match` compiles every entry. Fail-fast survives (still Plan time, before any Scenario body runs) without Pitfall 13's module-evaluation-order coupling. A failed compilation is deliberately NOT cached, so a second `match` reports the same named failure rather than a confusing absence.
 - [03-04]: A `null` from `Argument.getValue` — a non-participating optional group — is passed through, never filtered out. Positional correspondence between `StepMatch.args` and the pattern's parameters is what `StepArgs`' tuple type claims, and dropping an element would shift every argument after it.
+- [03-05]: ParsedFeature.parameterTypes is the Phase 6 join point — a Plan gets its registry off the feature it was built for, never by calling buildParameterTypeRegistry() itself. Otherwise the expressions compile against a registry the feature does not carry, and StepMatcher's (registry, pattern) cache silently does the wrong thing.
+- [03-05]: parseFeature builds ONE fresh registry per invocation, eagerly, from options?.parameterTypes ?? defaultParameterTypeStore. Never memoized at module scope, never cached per store, never lazy. Mutation-proven: a module-scope registry fails the reference-inequality test plus three others.
+- [03-05]: LoadFeatureOptions exists for hermeticity, not configurability — the default store is append-only for the life of the process, so a test needing a custom parameter type supplies its own store. ParameterTypeLifecycle.test.ts's defineParameterType( count is 0, by acceptance criterion.
+- [03-05]: The gherkin barrel is now real public API and still a SINGLE barrel — no subpath export, both exports key sets asserted at '.,./package.json' and packages/gherkin/package.json byte-identical. Tests still import ../src/*.ts directly; checkRelativeIndexImports is unaffected by the barrel existing.
 
 ### Pending Todos
 
@@ -237,8 +243,21 @@ New since 03-04 (not blockers, constraints to respect):
 - **Writing a grep-based acceptance criterion that forbids a literal also forbids explaining it in a comment.** 03-04's `.sort(` criterion tripped on a comment saying why `.sort()` is not used; `expressions-pin.test.ts`'s phrasing ("the in-place one is rejected by oxlint's `unicorn(no-array-sort)`") is the workaround to copy.
 - Repo test count is now **329 across 13 files** (304 before this plan).
 
+New since 03-05 (not blockers, constraints to respect):
+
+- **`ParsedFeature.parameterTypes` is the Phase 6 join point.** A `Plan` gets its registry off the feature it was built for, never by calling `buildParameterTypeRegistry()` itself — otherwise the expressions compile against a registry the feature does not carry, and `StepMatcher`'s `(registry, pattern)` cache silently does the wrong thing.
+- **`grep -c 'buildRegistry()' packages/gherkin/src/loadFeature.ts` must stay exactly 1, and `parameterTypes` must stay a REQUIRED field.** Freshness is MATCH-02 itself, not an implementation detail. Mutation-proven in 03-05: a module-scope registry fails the reference-inequality test plus three others. An optional field would let a Phase 6 consumer forget the registry exists.
+- **`loadFeature` is now `(path, options?)` and `parseFeature` is `(source, uri, options?)`.** BEH-EC-001's one-argument call form is unchanged and has its own regression test in `ParameterTypeLifecycle.test.ts`. **03-06 owes BEH-EC-014's `Signatures` block the update** — nothing else in the repo carries that text, and nothing checks it automatically.
+- **`packages/gherkin/src/index.ts` is now real public API.** Anything added to it from here on is a published surface. It is still a SINGLE barrel: a future subpath must go into BOTH `exports` and `publishConfig.exports` or it 404s for consumers while resolving locally. Reuse 03-05's `node -e` assertion on both key sets rather than re-deriving it.
+- **Tests still import `../src/*.ts` directly, never `../src/index.ts`.** `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`; the barrel existing does not change that rule.
+- **`test/ParameterTypeLifecycle.test.ts` must never write to `defaultParameterTypeStore`.** It reads built-ins from it and nothing else; a `defineParameterType(` count of 0 is an acceptance criterion. The one deliberate default-store probe in the repo remains `ParameterTypes.test.ts`'s `moneyDefaultStoreProbe`.
+- **A plan that adds a required field to `ParsedFeature` cannot be scoped to `Model.ts` alone.** 03-05's Task 1 needed a two-line `loadFeature.ts` change in the same commit to keep `pnpm build` green — recorded as a Rule 3 deviation. Any future contract-widening plan should scope the composition-root edit into the same task from the start.
+- **MATCH-01 and MATCH-02 are now Complete in REQUIREMENTS.md**, marked by 03-05 as the four preceding Phase 3 plans each said they should be. MATCH-03/04/05 stay Pending against Phase 6.
+- **03-06 still owes ADR-EC-007 an implementation note** closing its `Layer`-provided-service option against ADR-EC-015; note (c) of `ParameterTypes.ts`'s module doc comment is the source text.
+- Repo test count is now **337 across 14 files** (329 before this plan).
+
 ## Session Continuity
 
-Last session: 2026-08-28T17:26:00.000Z
-Stopped at: Phase 03 plan 04 complete (4/6). `src/StepMatcher.ts` + `test/StepMatcher.test.ts` landed; 329 tests passing, both required mutations recorded and the tree restored clean, all gates green. Next: 03-05 (loadFeature registry lifecycle + the `index.ts` public surface).
+Last session: 2026-08-28T17:38:00.000Z
+Stopped at: Phase 03 plan 05 complete (5/6). `ParsedFeature.parameterTypes`, `LoadFeatureOptions`, the real `index.ts` barrel and `test/ParameterTypeLifecycle.test.ts` landed; 337 tests passing, the required mutation recorded and the tree restored clean, all gates green (`build`, `lint`, `circular`, `typecheck:test`, `verify:no-runner-dep`, `verify:pack`). MATCH-01 and MATCH-02 marked Complete. Next: 03-06 (spec/ADR reconciliation — BEH-EC-014's `Signatures` block, ADR-EC-007's implementation note).
 Resume file: None
