@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 03 plan 03 complete (3/6). `src/ParameterTypes.ts` + `test/ParameterTypes.test.ts` landed; 304 tests passing (273 before), both required mutations recorded, all gates green. Next: 03-04 (StepMatcher)."
-last_updated: "2026-08-28T15:15:00.000Z"
-last_activity: 2026-08-28 -- 03-03 complete (custom parameter types as data)
+stopped_at: "Phase 03 plan 04 complete (4/6). `src/StepMatcher.ts` + `test/StepMatcher.test.ts` landed; 329 tests passing (304 before), both required mutations recorded and the tree restored clean, all gates green. Next: 03-05 (loadFeature registry lifecycle + index.ts public surface)."
+last_updated: "2026-08-28T17:26:00.000Z"
+last_activity: 2026-08-28 -- 03-04 complete (StepMatcher: match-all + per-(registry, pattern) cache)
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 23
-  completed_plans: 20
+  completed_plans: 21
   percent: 18
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 03 (parameter-types-and-step-matching) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-08-28
 
@@ -34,16 +34,16 @@ Last activity: 2026-08-28
 
 Phase 1 progress: [██████████] 100% (6/6 plans)
 Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [█████░░░░░] 50% (3/6 plans)
-Overall progress:  [████░░░░░░] ~37% (20 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Phase 3 progress: [███████░░░] 67% (4/6 plans)
+Overall progress:  [████░░░░░░] ~39% (21 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: ~10m
-- Total execution time: ~86m
+- Total execution time: ~95m
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Overall progress:  [████░░░░░░] ~37% (20 of 23 planned plans
 |-------|-------|-------|----------|
 | 1 | 6/6 | ~60m | ~10m |
 | 02 | 11/11 | - | - |
-| 03 | 3/6 | ~26m | ~9m |
+| 03 | 4/6 | ~35m | ~9m |
 
 **Per-plan detail:**
 
@@ -66,13 +66,15 @@ Overall progress:  [████░░░░░░] ~37% (20 of 23 planned plans
 | 03-01 | ~13m | 3 | 3 |
 | 03-02 | ~7m | 2 | 2 |
 | 03-03 | ~6m | 2 | 2 |
+| 03-04 | ~9m | 2 | 2 |
 
 **Recent Trend:**
 
-- Last 6 plans: 01-04 (~8m), 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m)
-- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so 03-02 and 03-03 could verify their assumptions by reading an assertion instead of re-running the dependency.
+- Last 6 plans: 01-05 (~14m), 01-06 (~3m), 03-01 (~13m), 03-02 (~7m), 03-03 (~6m), 03-04 (~9m)
+- Trend: Phase 1's expensive plans (01-02, 01-03, 01-05) spent most of their time mutation-testing a gate script rather than writing the thing it guards. Phase 3 is cheaper and steady at 6-13m because the mutation testing is now two commands against an existing suite rather than a script that has to be written and then attacked — and because 03-01 front-loaded the upstream pin, so every later plan verified its assumptions by reading an assertion instead of re-running the dependency. 03-04 cost slightly more than its two neighbours only because it is the first Phase 3 plan whose source has real control flow to get wrong rather than data to record.
 
 *Updated after each plan completion*
+| Phase 03 P04 | 9m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -122,6 +124,10 @@ Recent decisions affecting current work:
 - [03-03]: All five parameter-type rejections fire at DEFINITION time, in a fixed order (built-in name first, which is also what rejects the anonymous empty-string name). Upstream's duplicate message text is never reproduced or matched.
 - [03-03]: A module-level default store does NOT contradict ARCHITECTURE.md Anti-Pattern 4 — that anti-pattern is about mutable per-run state, this store is append-only and process-wide by design. createParameterTypeStore() exists so no test ever depends on the default one.
 - [03-03]: The store is a plain object, not a Layer-provided service — ADR-EC-015 forbids effect in this package's manifest and verify:no-runner-dep enforces it. ADR-EC-007's open option is closed in writing by 03-06; note (c) of the module doc comment is its source text.
+- [03-04]: `StepMatcher.match` returns EVERY matching entry in registration order and never sorts, dedupes, prefers, or throws for a zero-or-many outcome. Interpreting zero or many is ADR-EC-019's job, delivered by MATCH-03/MATCH-04 in Phase 6 where the Scenario and its source location are in hand; a throw here would move a per-Scenario failure to a whole-file collection error. Mutation-proven — do not collapse the array to a single best match.
+- [03-04]: The compilation cache is a `WeakMap` keyed on the `ParameterTypeRegistry` INSTANCE holding a per-registry `Map` keyed on the pattern string. Mutating it to a pattern-only `Map` made an expression compiled against a registry carrying `{money}` get served to a registry without it, so `UndefinedParameterType` never fired at all — the exact stale-binding failure Pitfall 13 predicts. Reference INEQUALITY across two registries is the assertion that catches it; the identity assertions alone pass the broken version.
+- [03-04]: Compilation is LAZY — `createStepMatcher` compiles nothing, the first `match` compiles every entry. Fail-fast survives (still Plan time, before any Scenario body runs) without Pitfall 13's module-evaluation-order coupling. A failed compilation is deliberately NOT cached, so a second `match` reports the same named failure rather than a confusing absence.
+- [03-04]: A `null` from `Argument.getValue` — a non-participating optional group — is passed through, never filtered out. Positional correspondence between `StepMatch.args` and the pattern's parameters is what `StepArgs`' tuple type claims, and dropping an element would shift every argument after it.
 
 ### Pending Todos
 
@@ -220,8 +226,19 @@ New since 03-03 (not blockers, constraints to respect):
 - **03-06 owes ADR-EC-007 an implementation note** closing its `Layer`-provided-service option against ADR-EC-015. Note (c) of `ParameterTypes.ts`'s module doc comment is the source text for it.
 - Repo test count is now **304 across 12 files** (273 before this plan).
 
+New since 03-04 (not blockers, constraints to respect):
+
+- **`StepMatcher.match` must not grow a `throw` for a zero-or-many outcome, and must not grow a sort.** Phase 6's MATCH-03/MATCH-04 consume the array as-is and supply the Scenario location the error needs. An acceptance grep (`toSorted`/`.sort(`/`[0]!` count of 0) and a recorded mutation both defend this.
+- **The compilation cache stays two-level.** `WeakMap<ParameterTypeRegistry, Map<string, CucumberExpression>>`. A future "simplification" to a pattern-only `Map` reproduces a real bug, not just a slower path — see the 03-04 decision entry and the summary's mutation proof 2.
+- **`compileExpression` is exported mainly so the memoization claim is assertable by reference identity.** Normal callers go through `createStepMatcher`. Do not remove the export to "tidy the surface" without moving the identity assertions somewhere they still hold.
+- **`StepMatch<D>.args` is `ReadonlyArray<unknown>` deliberately.** Phase 5's DSL narrows it with `StepArgs<P>` at the call site; this package cannot, because a custom parameter type's transform return type is not recoverable from a pattern string at runtime.
+- **`packages/gherkin/src/index.ts` still exports none of `createStepMatcher`, `defineParameterType`, `StepPatternError`, `StepArgs`.** 03-05 owns it. Until then, import by direct relative path (`../src/StepMatcher.ts`), never through the barrel.
+- **MATCH-01 is still Pending in REQUIREMENTS.md after 03-04, deliberately** — the fourth consecutive plan in this phase to decline the marking on "say only what is true" grounds. The mechanism is proven at runtime and at the type level, but nothing a consumer can reach uses it. **03-05 should mark MATCH-01 and MATCH-02 together.**
+- **Writing a grep-based acceptance criterion that forbids a literal also forbids explaining it in a comment.** 03-04's `.sort(` criterion tripped on a comment saying why `.sort()` is not used; `expressions-pin.test.ts`'s phrasing ("the in-place one is rejected by oxlint's `unicorn(no-array-sort)`") is the workaround to copy.
+- Repo test count is now **329 across 13 files** (304 before this plan).
+
 ## Session Continuity
 
-Last session: 2026-08-28T15:15:00.000Z
-Stopped at: Phase 03 plan 03 complete (3/6). `src/ParameterTypes.ts` + `test/ParameterTypes.test.ts` landed; 304 tests passing, both required mutations recorded and the tree restored clean, all gates green. Next: 03-04 (StepMatcher).
+Last session: 2026-08-28T17:26:00.000Z
+Stopped at: Phase 03 plan 04 complete (4/6). `src/StepMatcher.ts` + `test/StepMatcher.test.ts` landed; 329 tests passing, both required mutations recorded and the tree restored clean, all gates green. Next: 03-05 (loadFeature registry lifecycle + the `index.ts` public surface).
 Resume file: None

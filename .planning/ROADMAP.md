@@ -143,7 +143,7 @@ Plans:
 
 **Wave 3** *(blocked on 03-02 and 03-03)*
 
-- [ ] 03-04-PLAN.md — `StepMatcher.ts`: match every registered pattern, `(registry, pattern)`-keyed memoization in a registry-keyed `WeakMap`, and the thenable / throwing-transform guards
+- [x] 03-04-PLAN.md — `StepMatcher.ts`: match every registered pattern, `(registry, pattern)`-keyed memoization in a registry-keyed `WeakMap`, and the thenable / throwing-transform guards
 
 **Wave 4** *(blocked on 03-03 and 03-04)*
 
@@ -320,7 +320,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Workspace, Toolchain, Dependency Policy | 6/6 | Complete   | 2026-08-28 |
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
-| 3. Parameter Types and Step Matching | 3/6 | In Progress|  |
+| 3. Parameter Types and Step Matching | 4/6 | In Progress|  |
 | 4. DataTable / DocString | 0/TBD | Not started | - |
 | 5. `describeFeature` Type Surface | 0/TBD | Not started | - |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
