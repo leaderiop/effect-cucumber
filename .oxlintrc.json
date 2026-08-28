@@ -27,7 +27,21 @@
       "checkPatterns": [
         "^effect$",
         "^effect/(.+/)?[a-z][a-z0-9]*$",
-        "^@effect/[^/]+$",
+        // `@effect/vitest` is EXEMPTED by the negative lookahead, and it is the one exemption.
+        // The rule assumes an Effect package publishes a module per file, so its fix is "import
+        // from the specific module instead". @effect/vitest does not: its package.json maps "."
+        // to dist/index.js and the only other file is dist/utils.js, so the suggested
+        // `@effect/vitest/describe` / `/expect` / `/it` do not resolve to anything. The rule was
+        // therefore unfollowable for the only import that yields `it.effect`, which AGENTS.md §5
+        // mandates for every test in this repo.
+        //
+        // Scoped to this ONE package name on purpose. Do NOT "simplify" this back to
+        // `^@effect/[^/]+$` (re-breaks @effect/vitest), and do NOT widen it to a rule-off override
+        // for test files — that would also stop catching `import { Effect } from "effect"`, which
+        // is a real barrel import the rule exists to reject and which tests are as prone to as
+        // src. Every other @effect/* package is still checked; verified against @effect/platform
+        // and @effect/tsgo.
+        "^@effect/(?!vitest$)[^/]+$",
         "^@effect/[^/]+/(.+/)?[a-z][a-z0-9]*$"
       ],
       "checkRelativeIndexImports": true
