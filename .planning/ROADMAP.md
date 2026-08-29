@@ -274,7 +274,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 06-07-PLAN.md — Composition root, `console.warn` channel, public barrel, end-to-end emission proof
+- [x] 06-07-PLAN.md — Composition root, `console.warn` channel, public barrel, end-to-end emission proof
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -397,7 +397,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
-| 6. Plan, Scenario-Effect, Runner, Drift Detection | 6/8 | In Progress|  |
+| 6. Plan, Scenario-Effect, Runner, Drift Detection | 7/8 | In Progress|  |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
