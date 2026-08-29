@@ -4,6 +4,20 @@ _Pre-implementation: `@effect-cucumber/vitest` doesn't exist yet (see
 `spec/roadmap.md`). Code fences below describe the intended API — reference
 material, not a compiled example._
 
+> **Correction (2026-08-29, Phase 8 implementation):** the header note above was written before
+> `@effect-cucumber/vitest` had any source, and its first clause is no longer true — the package is
+> real, and `Rule`, `Rule`-level `Background`, the `Scenario` extra-Layer form and Outline row
+> titling all ship. It is kept rather than rewritten because it still correctly describes the status
+> of the WORKED EXAMPLE below, which remains a `typescript`-tagged reference fence that no
+> doc-examples check compiles (that gate is still unwired — `spec/process/definitions-of-done.md`).
+> `spec/roadmap.md` remains the single authority on build status.
+>
+> BEH-EC-009 and BEH-EC-010 below were both checked against the shipped implementation during this
+> phase and needed no correction. What was simply UNWRITTEN — the registration mechanics, the
+> Rule/Feature hook ordering, Rule-level `Background`, and the exact Outline row title format — is
+> now stated as BEH-EC-018 at the end of this file, following the same precedent BEH-EC-017 set for
+> Phase 7's hook ordering.
+
 ---
 
 ## BEH-EC-009: A Rule can extend the ambient Layer
@@ -231,6 +245,144 @@ Scenarios in the same Rule don't leak into each other despite sharing the
 Rule's `DiscountRegistry.layer` merge point (each still gets a _fresh_ `World`
 per Scenario — the default per-Scenario scope from
 [ADR-EC-006](../decisions/006-two-layer-scopes-only.md)).
+
+## BEH-EC-018: Rule/Scenario registration, hook ordering, Rule `Background`, and Outline row titling
+
+> **Invariant:** [INV-EC-005](../invariants.md#inv-ec-005-a-rule-scoped-layer-is-invisible-outside-that-rule)
+> **See:** [ADR-EC-010](../decisions/010-rule-and-scenario-scoped-extra-layers.md), [ADR-EC-006](../decisions/006-two-layer-scopes-only.md), [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md), [ADR-EC-017](../decisions/017-background-and-scenario-are-step-definition-containers.md), [BEH-EC-017](./07-hook-ordering-and-guarantees.md)
+
+BEH-EC-009 states the Rule Layer's compile-time BOUNDARY and BEH-EC-010 states the Outline
+COERCION guarantee. Neither states how a Rule or an extra-Layer Scenario is REGISTERED, what
+happens when a Feature and a Rule both declare a hook of the same kind, where a `Rule:`-level
+`Background:` block's steps are declared, or what an Outline row's emitted test title actually
+reads. This section is the normative source for all four, and stands to BEH-EC-009/010 exactly as
+BEH-EC-017 stands to BEH-EC-006.
+
+```
+REQUIREMENT: BOTH extra-Layer forms exist and share one mechanism.
+             Rule(name, extraLayer, define) and
+             Scenario(name, extraLayer, define) each MUST combine extraLayer
+             with whatever Layer was ambient AT THAT CALL SITE via
+             Layer.provideMerge(ambient)(extraLayer) — never Layer.merge.
+             provideMerge, and only provideMerge, feeds the ambient Layer's
+             output into extraLayer's own requirements, which is what lets an
+             extra Layer DEPEND on ambient services rather than merely sit
+             beside them (ADR-EC-010's "extraLayer can itself depend on
+             ambient services").
+
+             "Ambient at that call site" is literal and nests: a Scenario
+             written inside a Rule merges onto that RULE's already-merged
+             Layer, so all three tiers — Feature, Rule, Scenario — are
+             reachable from one merged Layer inside that Scenario's steps.
+
+             Both forms are ALWAYS per-Scenario scope, built fresh for every
+             Scenario, on the same lifecycle as the Feature's default Layer.
+             There is NO third "shared within a Rule" scope
+             (ADR-EC-006, ADR-EC-010): a Rule's extra Layer is not built once
+             per Rule and shared by its Scenarios. A resource needing that
+             MUST be promoted to the Feature's `shared` Layer.
+
+             Scenario's extra Layer is OPTIONAL — Scenario(name, define)
+             stays valid and unchanged. Rule's is REQUIRED: a Rule with
+             nothing to contribute passes Layer.empty.
+```
+
+```
+REQUIREMENT: A hook declared inside a Rule applies to that Rule's Scenarios
+             ONLY, and composes with the Feature's own hooks of the same kind
+             in this order:
+
+               Before-shaped kinds (Before, BeforeStep) run OUTER TO INNER:
+                 every Feature-level hook of that kind first, then that
+                 Rule's own.
+
+               After-shaped kinds (After, AfterStep) run INNER TO OUTER:
+                 that Rule's own first, then every Feature-level one.
+
+             This mirrors the describe(feature) -> describe(rule) nesting the
+             runner already emits: outer setup before inner setup, inner
+             guarantee before outer guarantee. It is the same "outer wraps
+             inner, and unwinds symmetrically" rule BEH-EC-017 already applies
+             to Before/After around a single Scenario, applied one level up —
+             at the Rule/Feature nesting instead of the hook/step nesting.
+
+             Composition is ORDER ONLY. The merged result is ONE batch, and
+             every guarantee BEH-EC-017 states about a batch — independence,
+             combined causes, registration order within a kind, the Before
+             gate, the After/AfterStep guarantee — holds over the merged
+             array unchanged. A Rule's After hooks MUST NOT be given a second,
+             separately-nested finalizer.
+
+             A Scenario NOT inside any Rule runs the Feature's hooks alone.
+```
+
+```
+REQUIREMENT: RuleDsl exposes exactly Given/When/Then/And/But, Background,
+             Scenario, and exactly four hook registrars —
+             Before, After, BeforeStep, AfterStep.
+
+             It MUST NOT expose BeforeAllScenarios or AfterAllScenarios.
+             ADR-EC-010's Rule-scopeable hook list is those four and no more,
+             and "once per Feature" (BEH-EC-017) does not narrow to "once per
+             Rule" without its own design pass. Those two remain Feature-only,
+             they are never merged into a Rule's set, and reaching for either
+             on a Rule's dsl MUST be a compile error.
+
+             Rule's Background receives Given/And ONLY, the identical
+             restriction ADR-EC-017 places on the Feature's own Background —
+             the Gherkin grammar does not change one nesting level down. Its
+             steps are step DEFINITIONS matched against that Rule's literal
+             Background text, not steps run unconditionally.
+
+             Rule-level and Feature-level registrations do not cross. A
+             Rule-scoped registration MUST NOT resolve a step in a different
+             Rule or in a Feature-level Scenario; a Feature-level Background
+             registration MUST NOT resolve a Rule's Background step, and vice
+             versa. Where a Scenario-, Rule- and Feature-level registration
+             all match one step, the innermost wins.
+```
+
+```
+REQUIREMENT: A Scenario Outline row's emitted test title is that row's own
+             interpolated name, followed by a suffix naming EVERY Examples
+             column and that row's value for it, in the Examples table's own
+             left-to-right column order:
+
+               `{interpolated name} ({col}={value}, {col}={value}, ...)`
+
+             The suffix is UNCONDITIONAL. It is appended whether or not the
+             Outline's title text already references a placeholder — the two
+             concrete forms are:
+
+               "Applying a valid discount code (code=SAVE10, percent=10, expected=31.50)"
+                 — the Outline's title text contains no <placeholder> at all,
+                   so every row's interpolated name is BYTE-IDENTICAL and the
+                   suffix is the ONLY thing that distinguishes the rows.
+
+               "adding 1 (count=1)"
+                 — the Outline is titled "adding <count>", so the name is
+                   already row-distinct, and the suffix is appended anyway.
+
+             The suffix is ADDED TO the interpolated name, never substituted
+             for it, and a plain (non-Outline) Scenario's title MUST come back
+             byte-for-byte as written, with no parenthesised suffix.
+
+             Making the suffix conditional on the title already being distinct
+             is expressly rejected: a filterable title is one whose FORM is
+             predictable, and one an author can `-t` against by grepping any
+             column value directly.
+```
+
+```
+REQUIREMENT: Two rows of one Outline share NO mutable state. Each emitted row
+             is its own test, running its own Effect against its own Layer
+             build, and observes only its own Examples values — never a later
+             row's, and never the last row's for all of them. This is the
+             regression class Pitfall 34 records (the loop-variable-capture
+             bug a comparable library shipped), and it MUST be proven by a
+             real running test PER ROW that asserts the value its own row
+             carried, not by inspecting emitted titles alone.
+```
 
 ---
 

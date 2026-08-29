@@ -153,15 +153,57 @@ guarantee (it doesn't and can't — the runner applies it, not the author).
 A service contributed by a `Rule`'s extra Layer is available only to Scenarios
 defined inside that Rule's `dsl` callback.
 
-**Source (planned)**: the extra Layer is combined with the ambient Layer via
-`Layer.provideMerge(ambient)(extraLayer)` only within the scope of the `Rule`
-call; the Feature's own top-level Layer (used outside any Rule) is unaffected.
+**Source**: two independent halves, in two places.
+
+The REGISTRATION half is `packages/vitest/src/describeFeature.ts`. Its `Rule` container resolves the
+author-written Rule name to a `ParsedRule.id` through `resolveRuleId` — falling back to an
+`unregistered-rule:${name}` sentinel no real generator-produced id can equal, so a `Rule(...)` naming
+no Rule in the parsed Feature registers definitions that can never match rather than silently
+matching everything — and builds that Rule's ambient Layer as
+`Layer.provideMerge(featureLayer)(extraLayer)`, recorded per `ruleId`. `Layer.merge` is expressly not
+used: only `provideMerge` feeds the ambient Layer's output into `extraLayer`'s own requirements,
+which is what lets a Rule Layer DEPEND on ambient services (ADR-EC-010). The identical mechanism
+serves ADR-EC-010's `Scenario(name, extraLayer, define)` form through one shared
+`makeScenarioRegistrar`, whose entries are keyed by `packages/vitest/src/ScenarioKey.ts`'s
+`scenarioKey(ruleId, name)` — the pair, NUL-separated, and never the name alone, because a Scenario
+name is unique per scope and no further. `packages/vitest/src/Runner.ts` threads the innermost of the
+three tiers into each emitted `it.effect`.
+
+The MATCHING half is `packages/vitest/src/Registry.ts` and `packages/vitest/src/Plan.ts`.
+`RegistryScope.ruleId` is a required `string | null` field carried by every registered definition,
+`null` meaning Feature level and only Feature level; `Plan.ts`'s `isVisibleTo` compares
+`Option.getOrNull(scenario.ruleId)` against `definition.scope.ruleId` by plain string equality in its
+`"rule"`, `"background"` and `"scenario"` arms, so one Rule's registration can never serve another
+Rule's Scenario, a Feature-level Background registration can never resolve a `rule-background` step,
+and a same-named Scenario in a different Rule is a different scope.
+
+The COMPILE-TIME half is `packages/vitest/src/Dsl.ts`: `FeatureDsl.Rule` hands its callback a
+`RuleDsl<ROut | R2>` and `ScenarioRegistrar`'s three-argument signature hands its callback a
+`ScenarioDsl<ROut | R2>`, so `R2` is in scope inside and absent outside.
+
+Asserted by `packages/vitest/test/Plan.test.ts`'s cross-rule isolation tests ("never lets one Rule's
+registration serve another Rule's Scenario, even under one pattern text", "does not let a
+Scenario-scope pattern cross into a same-named Scenario in a different Rule") and its three-level
+Scenario-over-Rule-over-Feature precedence tests; by
+`packages/vitest/test/describeFeature.test.ts`'s per-Rule Layer resolution tests ("provides both the
+Feature's ambient service and the Rule's own from the Rule's Layer", "leaves the Feature's own Layer
+unable to provide the Rule's extra service", "builds a Rule Layer whose own requirements the
+Feature's ambient Layer satisfies") and their `Scenario`-form and three-tier counterparts; by
+`packages/vitest/test/emission.test.ts`'s real end-to-end Rule run, where the Rule tier is a
+`Layer.effect`-built service DERIVED from the Feature's, so it exists at runtime only if
+`provideMerge` really composed the two; and, for the compile-time half, by
+`scripts/verify-tsgo-gate.sh` assertions 12 and 13 — a committed satisfied/starved fixture pair in
+which assertion 13's negative is assertion 12's Rule-scoped step body, byte-for-byte, registered at
+Feature level with no Rule in the file, checked for a non-zero exit AND for
+`effect(missingEffectContext)` by name.
 
 **Implication**: there is no third "shared across a Rule's Scenarios but not
 the whole Feature" scope — a resource needing that must be promoted to the
-Feature's `shared` Layer instead.
+Feature's `shared` Layer instead. A Rule's extra Layer is built FRESH per
+Scenario, not once per Rule, so two Scenarios in one Rule share the Rule's
+services by type but never by instance.
 
-**Related**: [BEH-EC-009](behaviors/03-rules-outlines-and-testclock.md), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md).
+**Related**: [BEH-EC-009](behaviors/03-rules-outlines-and-testclock.md), [BEH-EC-018](behaviors/03-rules-outlines-and-testclock.md#beh-ec-018-rulescenario-registration-hook-ordering-rule-background-and-outline-row-titling), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md).
 
 ---
 
