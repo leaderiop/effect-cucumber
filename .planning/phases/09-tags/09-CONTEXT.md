@@ -89,6 +89,61 @@ not re-litigated, in discussion:
   existing "no vitest import in Runner.ts" seam (note (a)) intact.
 - Tag matching for `@skip`/`@only`/`includeTags`/`excludeTags` is exact-string, case-sensitive
   (Cucumber tag convention) — no fuzzy or case-insensitive matching was discussed or requested.
+- **Empty-array filter semantics (resolved by research, no user input needed):** `undefined` and
+  `[]` both mean "no filter" for `includeTags`/`excludeTags`. A computed-empty array must never
+  silently delete the whole suite.
+- **`AfterAllScenarios`/`BeforeAllScenarios` asymmetry under full exclusion (resolved by research,
+  no user input needed):** when every Scenario in a Feature is skipped or filtered out, suppress
+  the `AfterAllScenarios` node (it currently runs unconditionally per `Runner.ts` note (e), while
+  `BeforeAllScenarios` structurally cannot run in that state). `⚠` warning nodes still emit — they
+  describe registration, not execution. `Runner.ts` note (e) must be updated to say so.
+
+### Corrections and Additions from Phase 9 Research (2026-08-29)
+
+`09-RESEARCH.md` falsified one bullet of D-04 and surfaced four public-behavior gray areas that
+were not covered above. The user resolved all four before planning; both sets are locked decisions
+now, superseding the conflicting text above.
+
+- **D-04 correction (FACTUAL, not a preference):** vitest 4.1.11's `strictTags` defaults to
+  **`true`**, not off. Emitting any tag with no `vitest.config.ts` declaring it fails the *entire*
+  test file (0 tests collected) — verified empirically (RESEARCH.md Finding 1). The D-04 bullet
+  reading "No vitest config changes are needed … `strictTags` … is off by default" is **wrong** and
+  must not be planned against. A root `vitest.config.ts` declaring `@skip`/`@only` (plus every tag
+  this repo's own fixtures use) and `allowOnly: false` is required work in this phase (RESEARCH.md
+  Finding 15), not optional polish.
+- **D-08:** An undeclared tag reaching vitest's `strictTags` check must **warn and continue**, not
+  fail the file. Catch the throw at the `describeFeature.ts` adapter boundary (verified catchable,
+  RESEARCH.md Finding 3), re-emit the test untagged, and print a located warning naming the
+  `.feature` file, the Scenario, and the offending tag. Matches ADR-EC-019's "dead code, not a
+  broken Scenario" precedent.
+- **D-09:** Ship a `gherkinTags(glob)` config helper **in this phase** — it pre-scans `.feature`
+  files matching a glob and returns a `TestTagDefinition[]` a consumer spreads into their
+  `vitest.config.ts`'s `test.tags`. Without this (or manual declaration), `--tagsFilter` — the
+  entirety of ADR-EC-020's "run just one Scenario locally" story — does not work for a real
+  consumer (RESEARCH.md Finding 2). This is new public surface: its own file I/O, a glob
+  dependency, and an `index.ts` export. Scope it to an explicit glob argument, never a recursive
+  default (Security Domain, V12).
+- **D-10:** The library prints **one collection-time notice** when `excludeTags`/`includeTags`
+  causes registration-time exclusions (e.g. `N Scenario(s) excluded by excludeTags`), on the same
+  terminal channel as the existing unused-step-definition warnings. D-03's Scenario still never
+  becomes an `it.effect` call and never appears as its own test node — this notice is a single
+  summary line, not per-Scenario output. Guards against a stale `excludeTags` silently hiding a
+  whole Feature behind a green run.
+- **D-11:** Add a small enforcement script in this phase (mirroring
+  `scripts/verify-no-runner-dep.sh`'s method, including its positive control) that greps
+  `packages/vitest/src/Runner.ts` and `TestApi.ts` for a forbidden `vitest` import. No such script
+  exists today (RESEARCH.md Finding 16) — this phase is the first to create real pressure toward
+  reaching for `import type { TestOptions } from "vitest"` in `TestApi.ts`, which would type-check,
+  lint clean, and quietly undo the seam Anti-Pattern 3 exists for.
+
+**Spec reconciliation is larger than originally flagged.** Not just ADR-EC-020's scope note —
+`spec/behaviors/02-shared-layers-and-tags.md` §BEH-EC-008's MUST-level text explicitly *forbids* a
+`describeFeature`-time registration filter, which D-01–D-03 do anyway. Per AGENTS.md §1/§4, the
+plan that closes this phase must amend, in the same change: BEH-EC-008's MUST-level text and
+worked example, ADR-EC-020's Decision/Negative-Consequences sections (or supersede it with a new
+`ADR-EC-NNN` per AGENTS.md §6), `.planning/REQUIREMENTS.md` RUN-05's text, and
+`spec/roadmap.md`'s "custom, non-reserved tags" entry — then `bash spec/scripts/verify-traceability.sh`
+must pass.
 
 </decisions>
 
