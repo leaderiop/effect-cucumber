@@ -72,6 +72,23 @@
  *     other, which is precisely why the choice belongs at a call site and not in an import
  *     statement. `TestApi.ts` note (a) is the other half of the argument.
  *
+ *     Because this module is the only one that can SEE the framework, it is also the only one that
+ *     can see the framework FAIL — so it owns one more translation than the seam's shape suggests.
+ *     `vitest@4.1.11`'s `strictTags` check THROWS on a tag no `vitest.config.ts` declares, and the
+ *     throw is caught here and turned into a library-owned, located `UndeclaredTagWarning` plus an
+ *     untagged re-emission (D-08; the factory below has the whole argument). That placement is not
+ *     convenience: it is what lets `Runner.ts` go on not knowing the failure mode exists at all,
+ *     which is the same property the rest of this note is about. A `try`/`catch` one layer up in
+ *     `emitFeature` would compile and behave identically today, and would put a framework-specific
+ *     recovery path in the module whose entire design premise is that it has never heard of the
+ *     framework.
+ *
+ *     The acceptance grep this note refers to above is real and runnable:
+ *     `scripts/verify-testapi-seam.sh` (`pnpm verify:testapi-seam`), added by plan 09-01 for exactly
+ *     this phase's pressure — tags end up inside a framework option object, which makes
+ *     `import type { TestOptions } from "vitest"` in `TestApi.ts` or `Runner.ts` the plausible,
+ *     type-checking, lint-clean way to undo the seam.
+ *
  * Neither `collectFeature` nor the registry behind it is re-exported from
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
@@ -88,6 +105,7 @@ import type {
   ScenarioRegistrar,
   StepRegistrar
 } from "./Dsl.ts"
+import { makeExcludedScenariosNotice, makeUndeclaredTagWarning } from "./Errors.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
@@ -103,7 +121,7 @@ import { emitFeature } from "./Runner.ts"
 // one encoding instead of two that compile while disagreeing.
 import { scenarioKey } from "./ScenarioKey.ts"
 import { register } from "./Step.ts"
-import { noTagFilter } from "./Tags.ts"
+import { makeTagFilter } from "./Tags.ts"
 import type { TestApi } from "./TestApi.ts"
 
 /**
@@ -116,6 +134,50 @@ import type { TestApi } from "./TestApi.ts"
 type LayerArgument =
   | Layer.Layer<any, any, never>
   | { readonly shared: Layer.Layer<any, any, never>; readonly perScenario: Layer.Layer<any, any, never> }
+
+/**
+ * `describeFeature`'s optional fourth argument: the registration-time tag filter (D-01, D-03).
+ *
+ * Both fields narrow what `describeFeature` REGISTERS, not what runs among what it registered. A
+ * Scenario the filter removes never becomes a test node at all — it is absent from the run's output
+ * rather than reported as skipped, which is exactly what makes it different from `@skip`. vitest's
+ * own `--tagsFilter` CLI mechanism still applies, independently and afterwards, to whatever survives
+ * this; the two compose rather than compete (09-CONTEXT.md's "additive, not a replacement" bullet).
+ *
+ * Omit the argument entirely and nothing filters, which is the pre-Phase-9 behaviour byte for byte.
+ *
+ * Plan 09-07 owns the `packages/vitest/src/index.ts` barrel edit that makes this type nameable by a
+ * consumer; `describeFeature` itself is already exported there.
+ */
+export interface DescribeFeatureOptions {
+  /**
+   * Register a Scenario only if it carries at least one of these tags, `@` prefixes intact.
+   *
+   * A PLAIN ARRAY OF TAG STRINGS and never a boolean expression (D-02): `["@slow", "@wip"]`, not
+   * `"@slow && !@wip"`. That is a decision and not a simplification — an expression form here would
+   * be a SECOND grammar beside vitest's own `--tagsFilter`, which this library would then have to
+   * parse, document, and keep in sync with someone else's parser forever, while the two silently
+   * disagreed on every edge case neither had thought about. Anything the array form cannot express
+   * is expressible with `--tagsFilter` at the CLI, against the real grammar.
+   *
+   * `undefined` and `[]` are the SAME input and both mean NO FILTER — never "match nothing"
+   * (`Tags.ts` note (b) has the argument, and `makeTagFilter` is where the two collapse). A consumer
+   * computing this from an environment flag or a `.filter()` that happens to come out empty gets
+   * their whole suite back, rather than a suite deleted from existence behind a green run: zero
+   * tests emitted and zero tests failed look identical in a reporter.
+   */
+  readonly includeTags?: ReadonlyArray<string>
+  /**
+   * Do not register a Scenario carrying any of these tags, `@` prefixes intact.
+   *
+   * A PLAIN ARRAY OF TAG STRINGS, for `includeTags`' D-02 reason above, and with `undefined` and
+   * `[]` identically meaning NO FILTER for the same empty-array reason. Where a tag appears in BOTH
+   * arrays, EXCLUDE WINS — `Tags.ts`'s `shouldEmit` evaluates the two halves as conjuncts, and the
+   * safe reading of an author contradicting themselves is the one that runs fewer tests than
+   * expected, which a test count shows, rather than more.
+   */
+  readonly excludeTags?: ReadonlyArray<string>
+}
 
 /**
  * What `describeFeature` collected, before anything is run.
@@ -214,7 +276,13 @@ export type FeatureCollection = {
 }
 
 /**
- * The concrete `TestApi`, built once at module scope — note (e).
+ * The concrete `TestApi`, built once PER FEATURE by this factory — note (e).
+ *
+ * It used to be a module-scope constant and is not one any more, for exactly one reason: `featureUri`.
+ * D-08's warning has to name the `.feature` file it came from, a uri is per-Feature data, and module
+ * scope is the one place in this file where no Feature exists yet. What did NOT change is the part
+ * note (e) is actually about — the concrete framework objects are still constructed HERE and nowhere
+ * else, and `pnpm verify:testapi-seam` still enforces that. A factory is not a second seam.
  *
  * `describe` is vitest's own and is re-exported by the package this module imports it from; the
  * Effect-aware test constructor is that package's, and its `self` parameter is
@@ -224,15 +292,87 @@ export type FeatureCollection = {
  * `effect` is a forwarding function rather than the bare method reference it used to be, for exactly
  * one reason: `EmitOptions.tags` is a `ReadonlyArray<string>` — as it is in `Model.ts`, `Plan.ts` and
  * `TestApi.ts`, all the way from the parse — while vitest's own options type wants a mutable
- * `string[]`. `[...options.tags]` is THE single widening in this package, and it lives here because
- * this is already the one module permitted to name a test framework at all. Widening
+ * `string[]`. `[...options.tags]` is THE single tag-array widening in this package, and it lives here
+ * because this is already the one module permitted to name a test framework at all. Widening
  * `ScenarioPlan.tags` or `EmitOptions.tags` instead would "fix" the same assignment error by letting
  * every stage upstream rewrite a Scenario's tags in place.
+ *
+ * ## The `try`/`catch`: D-08's catch-and-degrade
+ *
+ * `vitest@4.1.11`'s `strictTags` defaults to `true`, so emitting a tag no `vitest.config.ts` declares
+ * THROWS. Left alone, that throw escapes collection and the ENTIRE `.feature` file reports zero tests
+ * collected — one undeclared tag on one Scenario deleting every Scenario in the file, which is the
+ * failure mode this block exists to convert into one warning about one Scenario.
+ *
+ * Four facts here were established by RUNNING it (RESEARCH Finding 3), not by reading the framework
+ * or reasoning about it, and each one is load-bearing for the shape below:
+ *
+ * - the throw is SYNCHRONOUS from the emission call, so an ordinary `try`/`catch` around that one
+ *   statement actually catches it — nothing is on a promise or an event loop turn;
+ * - nothing is left half-registered by it, so the catch path is not cleaning up after a partial
+ *   registration and does not need to;
+ * - the tagless re-emission registers CLEANLY from inside the catch block; and
+ * - every later sibling in the same file still collects afterwards, which is the whole point —
+ *   degradation is local to the Scenario rather than to the file.
+ *
+ * The consequence a reader needs, and the reason this warns rather than staying silent: the Scenario
+ * RUNS, but its tags do not exist as far as the runner is concerned, so a `--tagsFilter` invocation
+ * naming any of them cannot select it. The `.feature` file still says the tag is there and the runner
+ * disagrees. That is a discrepancy no test failure will ever surface, so the warning names the file,
+ * the Scenario, every offending tag, and where to declare them.
+ *
+ * ## Why the failure is discriminated STRUCTURALLY, and never by message, name or class
+ *
+ * Not every throw from an emission call is about tags, and swallowing an unrelated one behind an
+ * untagged re-emission would be a silent loss of signal (T-09-05-03). The obvious discriminator is
+ * the caught value's `message`, its `name`, or an `instanceof` against a framework error type, and
+ * all three are refused here. This repo's rule since plan 03-01 is that upstream PROSE never becomes
+ * a contract — a wording change in a dependency's patch release would silently turn this branch off,
+ * and the framework's own message for this case is additionally known to contain a typo, so matching
+ * it would mean encoding somebody else's bug as our condition.
+ *
+ * The discriminator used instead is an OUTCOME, and it is exact rather than heuristic: the fallback
+ * emission carries NO tags at all, so `strictTags` has nothing to reject in it. If the fallback
+ * throws too, the failure was categorically not about tags — and in that case the ORIGINAL caught
+ * value is re-thrown, unmodified and unwrapped, because it is the one that describes what actually
+ * went wrong. Replacing it with the fallback's throw, or with an error of ours, would name the
+ * recovery attempt instead of the defect.
+ *
+ * ## Order inside the catch: re-emit FIRST, then warn
+ *
+ * The two statements read equally well in either order and only one is correct. `console.warn` is a
+ * call into a host object a consumer's setup file is free to have replaced, so it can throw; if it
+ * did, and it ran first, the Scenario would be left unregistered — silently absent from the run,
+ * which is precisely the file-level disappearance this whole block exists to prevent, narrowed to one
+ * Scenario. Registration is the guarantee and the warning is the report, so the guarantee goes first.
+ *
+ * @param featureUri - the `.feature` file every warning from this adapter is located against
  */
-const vitestTestApi: TestApi = {
+const vitestTestApi = (featureUri: string): TestApi => ({
   describe,
-  effect: (name, self, options) => it.effect(name, self, { tags: [...options.tags], skip: options.skip })
-}
+  effect: (name, self, options) => {
+    try {
+      it.effect(name, self, { tags: [...options.tags], skip: options.skip })
+    } catch (cause) {
+      try {
+        // The SAME name and the SAME thunk, so the Scenario a reader is looking for is still the one
+        // that appears — and `skip` preserved, because a `@skip` Scenario whose tags were undeclared
+        // is still a skipped Scenario. Only `tags` is dropped, and it is OMITTED rather than passed
+        // as an empty array: an empty array is a value `strictTags` would have to validate, and the
+        // one thing this call must not do is reach the check that just threw.
+        it.effect(name, self, { skip: options.skip })
+      } catch {
+        // Structural discrimination, and the only branch that reaches it: an emission with no tags
+        // cannot fail `strictTags`, so whatever is wrong here was never about tags. `cause` and not
+        // the inner throw — the original is the one that describes the defect.
+        throw cause
+      }
+      console.warn(
+        makeUndeclaredTagWarning({ uri: featureUri, scenarioName: name, tags: options.tags }).message
+      )
+    }
+  }
+})
 
 /**
  * Collapse the two accepted layer arguments into the one Layer the runner will provide.
@@ -609,7 +749,16 @@ const collect = (
  * `index.ts`: publishing it would freeze the collection shape into the package's contract, and no
  * consumer needs it — a test author calls `describeFeature`.
  *
- * The two overloads mirror `describeFeature`'s exactly, including the order — note (a).
+ * The two overloads mirror `describeFeature`'s in the `layer`/`define` POSITIONS and — the part that
+ * is load-bearing — in the ORDER note (a) protects, plain-Layer form last.
+ *
+ * They deliberately do NOT mirror its ARITY. `describeFeature` grew an optional fourth `options`
+ * parameter carrying `includeTags`/`excludeTags`, and this function did not, because that option is a
+ * REGISTRATION filter (D-03) and this entry point registers nothing: it returns the collection and
+ * emits no test node at all. Accepting the parameter here could only mean ignoring it silently, or
+ * filtering `collection.plan` — and `Runner.ts` note (g) is the reason the second is worse than the
+ * first, since planning and warning deliberately cover the WHOLE Feature and only emission is
+ * filtered. The absence is the contract, not an oversight awaiting a follow-up.
  */
 export function collectFeature<RShared, RScenario, E1, E2>(
   feature: ParsedFeature,
@@ -662,9 +811,17 @@ export function collectFeature(
  * structurally on the plan. `collectFeature` reaches that third one —
  * `collection.plan.warnings` — and emits nothing at all.
  *
+ * `options.includeTags`/`options.excludeTags` narrow what is REGISTERED (D-01, D-03): a Scenario the
+ * filter removes never becomes a test node, so it is absent from the output rather than reported as
+ * skipped. Omit the argument and nothing filters. When the filter does remove Scenarios, ONE summary
+ * line naming the count and the Feature is written to the terminal (D-10) — a stale `excludeTags`
+ * hiding a whole Feature behind a green run is otherwise indistinguishable from a Feature that
+ * passed.
+ *
  * @param feature - a `ParsedFeature` from `@effect-cucumber/gherkin`'s `loadFeature`/`parseFeature`
  * @param layer - the ambient Layer, or `{ shared, perScenario }`
  * @param define - runs synchronously; registers steps and containers. Note (c)
+ * @param options - the registration-time tag filter; absent means no filter, and so does `[]`
  */
 export function describeFeature<RShared, RScenario, E1, E2>(
   feature: ParsedFeature,
@@ -672,19 +829,26 @@ export function describeFeature<RShared, RScenario, E1, E2>(
     readonly shared: Layer.Layer<RShared, E1, never>
     readonly perScenario: Layer.Layer<RScenario, E2, never>
   },
-  define: (dsl: FeatureDsl<RShared | RScenario>) => void
+  define: (dsl: FeatureDsl<RShared | RScenario>) => void,
+  options?: DescribeFeatureOptions
 ): void
 // The plain-Layer overload is LAST, and must stay last — note (a). This is the one TypeScript
-// reports against, and the one `effect(missingLayerContext)` fires from.
+// reports against, and the one `effect(missingLayerContext)` fires from. The `options` parameter
+// added to both overloads is TRAILING and OPTIONAL precisely so that this order needs no
+// adjustment: a call that omits it still matches both signatures exactly as it did before, so the
+// last-overload reporting rule note (a) depends on is untouched. That was RESEARCH assumption A1
+// and it is settled empirically by `pnpm verify:tsgo-gate`, not by this comment.
 export function describeFeature<ROut, E>(
   feature: ParsedFeature,
   layer: Layer.Layer<ROut, E, never>,
-  define: (dsl: FeatureDsl<ROut>) => void
+  define: (dsl: FeatureDsl<ROut>) => void,
+  options?: DescribeFeatureOptions
 ): void
 export function describeFeature(
   feature: ParsedFeature,
   layer: LayerArgument,
-  define: (dsl: FeatureDsl<any>) => void
+  define: (dsl: FeatureDsl<any>) => void,
+  options?: DescribeFeatureOptions
 ): void {
   // REGISTER, then PLAN — both inside `collect`, which `collectFeature` shares verbatim.
   const collection = collect(feature, layer, define)
@@ -715,20 +879,65 @@ export function describeFeature(
   //
   // The eighth, `tagFilter`, follows the same rule and for a sharper reason: an omitted filter that
   // defaulted to "no filter" and an omitted filter that defaulted to "match nothing" are one
-  // keystroke apart and the second deletes a whole suite behind a green run. So the "filter nothing"
-  // case is a NAMED value the caller passes — `Tags.ts`'s sentinel, hard-coded here because this
-  // function still takes no options object. The plan that adds the public `includeTags`/`excludeTags`
-  // options replaces this one expression with `makeTagFilter(...)` and starts reading `emitFeature`'s
-  // returned `excludedScenarioCount` for D-10's collection-time notice; the return value is
-  // deliberately discarded until then rather than half-used.
-  emitFeature({
-    api: vitestTestApi,
+  // keystroke apart and the second deletes a whole suite behind a green run. So `emitFeature`
+  // requires an explicit, fully normalised filter, and the collapse from the OPTIONAL public
+  // argument to that one required internal value happens exactly once, right here — `normalizeLayer`'s
+  // idiom applied to the other over-permissive public argument this function takes. `makeTagFilter`
+  // is what turns `undefined` and `[]` into the same thing (`Tags.ts` note (b)), so `options ?? {}`
+  // is the whole of the "no options at all" case and there is no second default anywhere.
+  const tagFilter = makeTagFilter(options ?? {})
+
+  const outcome = emitFeature({
+    // ONE adapter per `describeFeature` call, built here rather than at module scope, because
+    // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
+    // Two Features in one file get two adapters, each located against its own uri.
+    api: vitestTestApi(collection.plan.feature.uri),
     plan: collection.plan,
     layer: collection.layer,
     hooks: collection.hooks,
     ruleHooks: collection.ruleHooks,
     ruleLayers: collection.ruleLayers,
     scenarioLayers: collection.scenarioLayers,
-    tagFilter: noTagFilter
+    tagFilter
   })
+
+  // D-10's ONE collection-time summary line, and two things about WHERE it is are worth writing down
+  // because neither is visible from the code.
+  //
+  // (1) It lives in `describeFeature`'s own body and NOT inside `collect`, for the identical reason
+  //     the unused-definition loop above does: `collectFeature` shares `collect` verbatim and must
+  //     stay silent, or every test asserting on a plan would print the very thing it is asserting on.
+  //     `emitFeature` is silent for the sibling reason `Runner.ts` records — a terminal write there
+  //     would spam `Runner.test.ts`'s dozens of direct calls — which is why it RETURNS the count
+  //     instead of printing it.
+  //
+  // (2) It necessarily prints AFTER the emitted block rather than above it like the warnings loop,
+  //     which is the one asymmetry in this function's output order. The count does not exist until
+  //     the emission walk has run, and the only way to have it earlier would be to walk the Feature a
+  //     second time before emitting — a duplicate walk that could disagree with the real one.
+  //
+  // `notice.message` is passed straight through, never rebuilt and never reformatted, for the reason
+  // the warnings loop states three lines above: a second rendering lets the terminal text and the
+  // structured value say different things, and it drops the `JSON.stringify` quoting that stops a tag
+  // or a Feature name containing a control character from rewriting the terminal line (T-09-05-01).
+  //
+  // Guarded on `> 0` rather than printed unconditionally: a Feature nothing was filtered out of has
+  // nothing to report, and a "0 Scenario(s) excluded" line on every Feature in a suite is noise that
+  // trains a reader to skip the exact line D-10 exists to make them read.
+  if (outcome.excludedScenarioCount > 0) {
+    console.warn(
+      makeExcludedScenariosNotice({
+        featureName: collection.plan.feature.name,
+        uri: collection.plan.feature.uri,
+        count: outcome.excludedScenarioCount,
+        // The NORMALISED arrays, not `options.includeTags`/`options.excludeTags`: those are optional
+        // and the notice's fields are not, and `makeExcludedScenariosNotice` derives its `reason`
+        // from exactly these two lengths. Reading the raw options here would let the notice's
+        // `reason` be computed from a different pair of values than the filter that produced the
+        // count.
+        includeTags: tagFilter.include,
+        excludeTags: tagFilter.exclude
+      }).message
+    )
+  }
 }
