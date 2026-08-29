@@ -1330,3 +1330,237 @@ describe("a @skip Scenario runs no step and no hook (09-06)", () => {
     expect(allSkippedCounts).toEqual({ beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 })
   })
 })
+
+/**
+ * Plan 09-06, Task 3a — D-08's catch-and-degrade, observed end to end. The EIGHTH real
+ * `describeFeature` call in this file.
+ *
+ * ## This block is the positive control for Task 1, and Task 1 is the negative control for it
+ *
+ * Task 1 asserts that a Feature emitting only DECLARED tags produces no warning. On its own that is
+ * satisfied by a library which drops every tag before the framework ever sees one — the tags would be
+ * absent, nothing would be validated, and nothing would be warned about. This block is what rules
+ * that out: `@undeclared-on-purpose` is not in `vitest.config.ts`, so a warning naming it can only
+ * exist if the tag array genuinely crossed into the framework's validator and was rejected there.
+ * One block proves the path is quiet when it should be; the other proves the path exists at all.
+ *
+ * ## `@undeclared-on-purpose` is RESERVED — declaring it deletes this test while leaving it green
+ *
+ * `vitest.config.ts` note (d) reserves the tag and forbids adding it to `test.tags`. If it were
+ * declared, the emission below would simply succeed, no warning would be printed, and the assertion
+ * that the warning names it would fail — loudly, which is the good case. The dangerous edit is the
+ * other direction: someone "tidying up" by deleting this Scenario, or by renaming the tag to a
+ * declared one, removes the only evidence in this repo that tags reach the framework at all, and
+ * every remaining test stays green.
+ *
+ * ## The Scenario carries exactly ONE tag, and that is deliberate
+ *
+ * `describeFeature.ts`'s adapter passes the Scenario's WHOLE tag array to `makeUndeclaredTagWarning`,
+ * not the subset the framework actually rejected — it cannot know which those are without reading the
+ * framework's message, which 09-05 forbids on purpose. So a Scenario carrying a declared tag ALONGSIDE
+ * an undeclared one produces a message naming both as undeclared, which is false about the declared
+ * one. That is a real reporting defect and it is recorded in this plan's summary rather than worked
+ * around here; giving this Scenario a single tag keeps this block's assertions about the mechanism
+ * rather than about the defect, and this paragraph is why the Feature deliberately carries no
+ * Feature-level tag of its own.
+ *
+ * ## The quoting assertion is a SECURITY control, not a formatting preference
+ *
+ * A tag is author-controlled text that reaches a terminal. `Errors.ts` note (f) `JSON.stringify`s
+ * every author-controlled component precisely so a tag containing a quote, a newline or an ANSI escape
+ * cannot forge what reads as a second line of this library's own output. The assertion below therefore
+ * matches the QUOTED form specifically — `"@undeclared-on-purpose"` with the quote characters — and
+ * fails against a message that interpolated the tag bare, which a `toContain(tag)` check would not.
+ */
+const undeclaredTagRuns: Array<string> = []
+
+const undeclaredTagFeature = Effect.runSync(
+  parseFeature(
+    `Feature: An undeclared tag degrades instead of destroying the file
+
+  @undeclared-on-purpose
+  Scenario: a Scenario carrying an undeclared tag still runs
+    When the undeclared-tag scenario's step body runs
+
+  Scenario: a sibling Scenario in the same Feature still collects and runs
+    When the undeclared-tag sibling's step body runs
+`,
+    "test/undeclared-tag.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE EIGHTH real `describeFeature` call in this file, and the only one in the repo that deliberately
+// emits a tag the config does not declare.
+describeFeature(undeclaredTagFeature, Layer.empty, ({ When }) => {
+  When("the undeclared-tag scenario's step body runs", function*() {
+    undeclaredTagRuns.push("undeclared")
+    yield* Effect.void
+  })
+  When("the undeclared-tag sibling's step body runs", function*() {
+    undeclaredTagRuns.push("sibling")
+    yield* Effect.void
+  })
+})
+
+/**
+ * Plan 09-06, Task 3b — D-03's registration filter and D-10's empty-array rule. The NINTH and TENTH
+ * real `describeFeature` calls in this file.
+ *
+ * ## Absence is asserted by TITLE, never by a count
+ *
+ * D-03's whole point is that an excluded Scenario never becomes a test node — absent from the run
+ * rather than reported as skipped. A total test count cannot tell those two apart, and neither can a
+ * counter that only says "fewer ran". So each step body records its own `currentTestName()`, and the
+ * assertion is a whole-array comparison against the ONE title that should exist. An implementation
+ * that emitted the excluded Scenarios as skipped would leave the array unchanged — a skipped test
+ * runs no body — so the array is paired with the surviving Scenario's presence, which is what makes
+ * the empty entries mean "never registered" rather than "registered and skipped".
+ *
+ * ## The empty-array case is the one that catches a suite deleted behind a green run
+ *
+ * `excludeTags: []` and `excludeTags: undefined` are the SAME input and both mean NO FILTER
+ * (`Tags.ts` note (b)). The failure this guards is a consumer computing the array from an environment
+ * flag or a `.filter()` that happens to come out empty: read as "match nothing", their whole suite
+ * would vanish while the reporter showed zero failures. Zero tests emitted and zero tests failed look
+ * identical, which is why this needs its own Feature rather than a variation on the one above.
+ *
+ * ## D-10's exclusion NOTICE is not asserted here, because it is not currently printed
+ *
+ * This block asserts the exclusion itself and deliberately makes NO claim about the one-line summary
+ * D-10 requires when a filter removed Scenarios. That line does not reach the terminal through the
+ * real entry point, and the cause is the deferral fact `collectionWarnings` above records:
+ * `emitFeature` increments `excludedScenarioCount` INSIDE the `describe` factory, `describeFeature`
+ * reads the returned `EmitOutcome` on the line after `emitFeature` returns, and vitest has not run
+ * that factory yet — so the count is always 0 there and the `> 0` guard never opens.
+ *
+ * `Runner.test.ts` cannot see this: its recording fake invokes `define` synchronously, so all four of
+ * its `excludedScenarioCount` assertions are correct about the fake and silent about the framework.
+ * This is exactly the class of defect this file exists for, and it was measured rather than reasoned
+ * about — with the two `@wip` Scenarios provably excluded (the assertion below), the captured warning
+ * list for this Feature's uri is empty.
+ *
+ * Asserting the notice needs a source fix that changes how `emitFeature` reports its outcome, which is
+ * a contract this plan does not own. The gap is written down rather than left as a missing assertion
+ * so that nobody reads this block as having covered D-10.
+ */
+const excludeTagsRan: Array<string> = []
+
+const excludeTagsFeature = Effect.runSync(
+  parseFeature(
+    `Feature: excludeTags removes Scenarios from registration
+
+  @wip
+  Scenario: the first wip Scenario, which excludeTags removes
+    When the first excluded wip step runs
+
+  @wip
+  Scenario: the second wip Scenario, which excludeTags removes
+    When the second excluded wip step runs
+
+  Scenario: the Scenario that survives excludeTags
+    When the surviving excludeTags step runs
+`,
+    "test/exclude-tags.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE NINTH real `describeFeature` call in this file, and the first anywhere in this repo to pass the
+// fourth `options` argument to the real entry point.
+describeFeature(excludeTagsFeature, Layer.empty, ({ When }) => {
+  When("the first excluded wip step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+  When("the second excluded wip step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+  When("the surviving excludeTags step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+}, { excludeTags: ["@wip"] })
+
+const emptyFilterRan: Array<string> = []
+
+const emptyFilterFeature = Effect.runSync(
+  parseFeature(
+    `Feature: An empty excludeTags array filters nothing
+
+  @wip
+  Scenario: a wip Scenario an empty excludeTags array must not remove
+    When the empty-filter wip step runs
+
+  Scenario: an untagged Scenario beside it
+    When the empty-filter untagged step runs
+`,
+    "test/empty-filter.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE TENTH real `describeFeature` call in this file. The SAME `@wip` tag the block above excludes,
+// with an EMPTY array — so the two blocks differ in exactly the one thing under test.
+describeFeature(emptyFilterFeature, Layer.empty, ({ When }) => {
+  When("the empty-filter wip step runs", function*() {
+    emptyFilterRan.push("wip")
+    yield* Effect.void
+  })
+  When("the empty-filter untagged step runs", function*() {
+    emptyFilterRan.push("untagged")
+    yield* Effect.void
+  })
+}, { excludeTags: [] })
+
+/**
+ * DECLARED LAST in this file, after every block that registered any of the three Features above, for
+ * the declaration-order reason every other reader here uses.
+ */
+describe("an undeclared tag warns and keeps running; a filter excludes without a trace (09-06)", () => {
+  it("ran the undeclared-tag Scenario AND its sibling — the file did not collapse", () => {
+    // The degradation's headline: the Scenario RAN. D-08 converts a whole-file collection failure into
+    // one warning about one Scenario, so the sibling's presence is half the claim — it proves the
+    // damage was contained to the Scenario rather than to the Feature.
+    expect(undeclaredTagRuns).toEqual(["undeclared", "sibling"])
+  })
+
+  it("printed exactly one warning, naming the file, the Scenario and the tag in QUOTED form", () => {
+    const printed = warningsFor("test/undeclared-tag.feature")
+    // Exactly one, not "at least one": a warning per TAG rather than per catch would still name the
+    // right tag and still read correctly, and only a count separates the two.
+    expect(printed).toHaveLength(1)
+
+    const line = printed[0] ?? ""
+    // The three facts a reader needs in order to act, each matched in its `JSON.stringify`'d form.
+    // Quoting is `Errors.ts` note (f)'s security control against a tag forging a second output line
+    // (T-09-06-01), so matching the quotes is matching the control — a message that interpolated any
+    // of these bare would pass a `toContain(value)` check and fail these.
+    expect(line).toContain(JSON.stringify("@undeclared-on-purpose"))
+    expect(line).toContain(JSON.stringify("test/undeclared-tag.feature"))
+    expect(line).toContain(JSON.stringify("a Scenario carrying an undeclared tag still runs"))
+
+    // The fact that stops the obvious misreading. Without it the natural conclusion from this warning
+    // is "my Scenario was skipped", which is the one thing that did not happen.
+    expect(line).toContain("still ran")
+    expect(line).toContain("UNTAGGED")
+  })
+
+  it("excluded both @wip Scenarios ENTIRELY — no test node, no step, not even a skip", () => {
+    // ONE whole-array comparison, and the two properties it pins have different failure modes. That
+    // the survivor RAN rules out "the filter removed everything"; that neither excluded title appears
+    // rules out "they were emitted as skipped" — a skipped test runs no body, so a count could not
+    // separate those two, and D-03's entire distinction is exactly that separation.
+    expect(excludeTagsRan).toEqual([
+      `excludeTags removes Scenarios from registration${nameSeparator}the Scenario that survives excludeTags`
+    ])
+  })
+
+  it("emitted every Scenario under excludeTags: [], and printed nothing about it", () => {
+    // The empty-array rule at the public boundary: `[]` means NO FILTER, never "match nothing". The
+    // `@wip` entry is the load-bearing one — it is the tag the block above excludes, so its presence
+    // here is what proves the array's EMPTINESS did the deciding rather than the tag's identity.
+    expect(emptyFilterRan).toEqual(["wip", "untagged"])
+    // And no notice: nothing was excluded, so there is nothing to report. A "0 Scenario(s) excluded"
+    // line on every unfiltered Feature is the noise D-10's `> 0` guard exists to prevent.
+    expect(warningsFor("test/empty-filter.feature")).toEqual([])
+  })
+})
