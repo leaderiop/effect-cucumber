@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly (completed 2026-08-29)
 - [x] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.onExit` (completed 2026-08-29)
 - [x] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples (completed 2026-08-29)
-- [ ] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI
+- [x] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI (completed 2026-08-29)
 - [ ] **Phase 10: Layer Scopes (per-Scenario default + `shared`)** - Both scopes work, and `TestClock` stays per-Scenario even on the shared path
 - [ ] **Phase 11: Composition Root and Dogfooded Acceptance Suite** - The spec's worked examples run green end to end, closing traceability
 
@@ -389,7 +389,7 @@ unconditionally, even when the Outline's own title already differs by interpolat
   3. A Feature containing an `@only`-tagged Scenario passes a CI-mode run (the mode where `.only` fails by design) — proving `@only` is emitted as a plain tag and never `it.effect.only` (RUN-05).
   4. A tag filter selects exactly the tagged Scenarios, and `excludeTags` on `describeFeature`'s options object excludes them (RUN-05; `excludeTags`' exact signature location is decided in this phase — currently unspecified in the spec).
 
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 **Wave 1**
@@ -417,7 +417,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 09-09-PLAN.md — spec reconciliation: ADR-EC-026 supersedes ADR-EC-020, BEH-EC-008/017 amended, RUN-05 marked
+- [x] 09-09-PLAN.md — spec reconciliation: ADR-EC-026 supersedes ADR-EC-020, BEH-EC-008/017 amended, RUN-05 marked
 
 **Research flag**: **Light research recommended** — vitest v4's native tag API is new; confirm its config-time tag-declaration mechanics against the installed `vitest@4.1.x` before finalizing the design.
 
@@ -491,7 +491,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
-| 9. Tags | 8/9 | In Progress|  |
+| 9. Tags | 9/9 | Complete   | 2026-08-29 |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
