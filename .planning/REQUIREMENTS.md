@@ -115,4 +115,26 @@ enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-29 after Phase 6 (plan/Scenario Effect/runner emission and drift detection) — RUN-01, MATCH-03, MATCH-04 and MATCH-05 marked Complete in plan 06-07, the plan that wires `describeFeature` → `planFeature` → `emitFeature` and so makes all four true end to end. Plans 06-01 through 06-06 each declined the marking on AGENTS.md §4 grounds while the stages existed but nothing user-facing reached them. Each is backed by a named automated assertion that fails if the requirement stops being true: RUN-01 by `packages/vitest/test/emission.test.ts` (a real `describeFeature` call whose two emitted tests run, pass, and prove the Background ran first) plus `Runner.test.ts`'s positional emission-shape assertions and `ScenarioEffect.test.ts`'s recorded step order; MATCH-03 and MATCH-04 by `packages/vitest/test/Plan.test.ts` and `Errors.test.ts` for the located error, and `ScenarioEffect.test.ts` for it failing its own Scenario in position; MATCH-05 by `emission.test.ts`'s terminal-channel assertions, `Runner.test.ts`'s always-passing warning node, and `describeFeature.test.ts`'s `plan.warnings` assertions — D-02's three channels, one per test file. See `.planning/phases/06-plan-scenario-effect-runner-emission-and-drift-detection/06-07-SUMMARY.md` for the per-requirement evidence. No requirement outside RUN-01 and MATCH-03..05 changed status. The previous entry covered Phase 5: DSL-01 in plan 05-04, DSL-03 in 05-05, DSL-02/DSL-04 in 05-06.*
+*Last updated: 2026-08-29 after Phase 7 (hooks) — DSL-07 and RUN-02 are Complete, each backed by a
+named automated assertion that fails if the requirement stops being true: DSL-07 by
+`packages/vitest/test/Hook.test.ts` (the span-name and reference-identity normalization assertions),
+`scripts/verify-tsgo-gate.sh` assertions 10 and 11 (a hook requiring an unprovided service is rejected
+by name), and `packages/vitest/test/Runner.test.ts`'s full six-hook ordering test; RUN-02 by
+`packages/vitest/test/ScenarioEffect.test.ts`'s After-on-step-failure and failing-After-does-not-mask
+assertions, and `packages/vitest/test/emission.test.ts`'s real-run hook proof. See
+`.planning/phases/07-hooks/07-08-SUMMARY.md` for the per-requirement evidence. No requirement outside
+DSL-07 and RUN-02 changed status. The previous entry covered Phase 6: RUN-01, MATCH-03, MATCH-04 and
+MATCH-05 marked Complete in plan 06-07, the plan that wires `describeFeature` → `planFeature` →
+`emitFeature` and so makes all four true end to end. Plans 06-01 through 06-06 each declined the
+marking on AGENTS.md §4 grounds while the stages existed but nothing user-facing reached them. Each is
+backed by a named automated assertion that fails if the requirement stops being true: RUN-01 by
+`packages/vitest/test/emission.test.ts` (a real `describeFeature` call whose two emitted tests run,
+pass, and prove the Background ran first) plus `Runner.test.ts`'s positional emission-shape assertions
+and `ScenarioEffect.test.ts`'s recorded step order; MATCH-03 and MATCH-04 by
+`packages/vitest/test/Plan.test.ts` and `Errors.test.ts` for the located error, and
+`ScenarioEffect.test.ts` for it failing its own Scenario in position; MATCH-05 by
+`emission.test.ts`'s terminal-channel assertions, `Runner.test.ts`'s always-passing warning node, and
+`describeFeature.test.ts`'s `plan.warnings` assertions — D-02's three channels, one per test file. See
+`.planning/phases/06-plan-scenario-effect-runner-emission-and-drift-detection/06-07-SUMMARY.md` for
+the per-requirement evidence. The previous-previous entry covered Phase 5: DSL-01 in plan 05-04,
+DSL-03 in 05-05, DSL-02/DSL-04 in 05-06.*

@@ -1,9 +1,10 @@
 # @effect-cucumber/vitest
 
 The package most consumers install directly. It provides `describeFeature`, the Given/When/Then/Background/Scenario
-DSL, and the `it.effect`-based runner that turns a Gherkin `.feature` file into ordinary vitest `describe`/`it` calls —
-no plugin and no custom reporter. The `ScenarioOutline` and `Rule` containers and the hooks are specified but not yet
-built; "## Status" below says which phase each is waiting on. It depends on
+DSL, the six-hook `Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios` surface, and the
+`it.effect`-based runner that turns a Gherkin `.feature` file into ordinary vitest `describe`/`it` calls — no plugin
+and no custom reporter. The `ScenarioOutline` and `Rule` containers are specified but not yet built; "## Status" below
+says which phase each is waiting on. It depends on
 [`@effect-cucumber/gherkin`](../gherkin). A wrapped, `ManagedRuntime`-backed `loadFeature`
 (ADR-EC-024) is planned but not yet exported — see "## Status" below.
 
@@ -33,11 +34,20 @@ with a located `StepMatchError` — the ambiguous case naming every matching pat
 defined at, in a deterministic order — and a registered pattern that matches no step in the Feature is a non-fatal
 warning on three channels: the terminal, the reporter, and the collected plan.
 
-**What is not built yet**, each waiting on its own phase: hooks — `Before`/`After`/`BeforeStep`/`AfterStep` and the
-`Effect.ensuring`-backed guarantee that `After` runs even when a step fails (Phase 7); `Rule`-scoped extra Layers and
-typed `Scenario Outline` Examples (Phase 8); tag routing and `@skip`/`@only` (Phase 9); and the build-once `shared`
-Layer with its per-Scenario `TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted
-and type-checked today, but both halves are currently built per Scenario at runtime. See
+**Hooks run, and the guarantees are real.** All six hooks — `Before`, `After`, `BeforeStep`, `AfterStep`,
+`BeforeAllScenarios`, `AfterAllScenarios` — are registered through the same dsl object as `Given`/`When`/`Then`, and
+accept a bare generator function auto-wrapped with `Effect.fn` using the hook's own name as its span. A Feature may
+register more than one hook of a kind, and they run in registration order; a batch of same-kind hooks is independent
+— a failing hook does not stop the rest of its batch, and every failure in the batch reaches the one reported failure,
+combined rather than first-wins. A Scenario's own steps run only if every `Before` hook succeeded. `After`, `AfterStep`
+and `AfterAllScenarios` each run whether the thing they guard succeeded or failed, and never mask its error.
+`BeforeAllScenarios` runs once per Feature, shared across every Scenario, and its failure is reported by every
+Scenario individually.
+
+**What is not built yet**, each waiting on its own phase: `Rule`-scoped extra Layers and typed `Scenario Outline`
+Examples (Phase 8); tag routing and `@skip`/`@only` (Phase 9); and the build-once `shared` Layer with its per-Scenario
+`TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted and type-checked today, but
+both halves are currently built per Scenario at runtime. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
 
 ## Install
