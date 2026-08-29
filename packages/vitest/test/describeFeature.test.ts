@@ -78,7 +78,9 @@ import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import { collectFeature, type FeatureCollection } from "../src/describeFeature.ts"
 import type { ScenarioDsl } from "../src/Dsl.ts"
 
@@ -272,7 +274,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 277
+    const givenLine = 279
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -524,5 +526,402 @@ describe("the collection carries every registered hook, grouped by kind", () => 
     expect(scenarioDslKeys).not.toContain("AfterStep")
     expect(scenarioDslKeys).not.toContain("BeforeAllScenarios")
     expect(scenarioDslKeys).not.toContain("AfterAllScenarios")
+  })
+})
+
+/**
+ * ## The `Rule` container (08-05a)
+ *
+ * Everything below is appended at the END of this file on purpose, and must stay there. The
+ * `definedAt` test above hard-codes its own line number, so anything inserted ABOVE it silently
+ * invalidates that literal — the same reason `tagsOf` is declared where it is.
+ *
+ * A SECOND parsed Feature, not an edit to the module-scope `feature` constant: every test above
+ * depends on that fixture's exact shape (one Scenario, one Background step, no Rules), and adding a
+ * `Rule:` block to it would change plan lengths and warning counts in half a dozen unrelated
+ * assertions.
+ *
+ * These assertions are written against `collection.plan` — the plan `collect` itself computed — and
+ * never against a hand-built `Plan.ts` fixture. That is the point of them: `Registry.ts`,
+ * `HookRegistry.ts` and `Plan.ts` were each given Rule awareness by an earlier plan and each has its
+ * own unit tests, but until this one nothing REGISTERED through any of it. A hand-built fixture would
+ * re-prove `Plan.ts`'s own tests while leaving the registration path — the only thing 08-05a adds —
+ * completely unexercised.
+ */
+const ruleFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Discounts
+  Rule: members get a discount
+    Background:
+      Given the member is signed in
+
+    Scenario: member checkout
+      When the member pays
+      Then the member is charged less
+
+  Rule: guests pay full price
+    Scenario: guest checkout
+      When the guest pays
+      Then the guest is charged full price
+`,
+    "test/describeFeature-rules.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+/**
+ * The id the fixture's parser assigned a Rule, looked up by name — the value `resolveRuleId` is
+ * expected to have produced for the same name.
+ *
+ * Throws rather than returning `undefined`: a typo in a Rule name here would otherwise make every
+ * `ruleHooks.get(...)` below return `undefined`, and `expect(undefined?.Before).toBeUndefined()`
+ * would pass while proving nothing at all.
+ */
+const ruleIdOf = (name: string): string => {
+  const found = ruleFeature.rules.find((rule) => rule.name === name)
+  if (found === undefined) {
+    throw new Error(`the Rule fixture Feature has no Rule named "${name}"`)
+  }
+  return found.id
+}
+
+const ruleAId = ruleIdOf("members get a discount")
+const ruleBId = ruleIdOf("guests pay full price")
+
+/**
+ * A service NO Feature-level Layer in this file provides — only a Rule's own `extraLayer` does.
+ *
+ * A distinct tag from `Marker` rather than a second `Marker` implementation, because the claim under
+ * test is REACHABILITY ("the Rule's Layer provides this and the Feature's does not"), not precedence.
+ * Precedence between an ambient and an extra Layer is 08-05b's Scenario-form test.
+ */
+class RuleMarker extends Context.Service<RuleMarker, { readonly who: string }>()("RuleMarker") {}
+
+const ruleAMarker = Layer.succeed(RuleMarker, RuleMarker.of({ who: "rule A" }))
+
+/**
+ * The same service, built ON TOP of the Feature's ambient one — `Layer<RuleMarker, never, Marker>`,
+ * with a non-`never` `RIn`.
+ *
+ * This is the only shape that tells `Layer.provideMerge(featureLayer)(extraLayer)` apart from
+ * `Layer.merge(featureLayer, extraLayer)`, which is the plausible tidy-up given `normalizeLayer` sits
+ * a few dozen lines above the `Rule` container and already uses `merge`. Both combinators make BOTH
+ * services reachable when the extra Layer needs nothing, so every assertion using `ruleAMarker`
+ * passes under either one; only feeding the ambient Layer's output into the extra Layer's
+ * REQUIREMENTS — which is what `provideMerge` does and `merge` does not — makes this one build at
+ * all. ADR-EC-010's "`extraLayer` can itself depend on ambient services" is exactly this case.
+ */
+const ruleAMarkerBuiltOnAmbient = Layer.effect(
+  RuleMarker,
+  Effect.gen(function*() {
+    return RuleMarker.of({ who: `rule A on ${(yield* Marker).who}` })
+  })
+)
+
+/** Read `Marker` back out of an arbitrary collected Layer — `whoProvides`, without the collection. */
+const markerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+  Effect.provide(
+    Effect.gen(function*() {
+      return (yield* Marker).who
+    }),
+    layer
+  )
+
+/** The same, for the Rule-only service. */
+const ruleMarkerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+  Effect.provide(
+    Effect.gen(function*() {
+      return (yield* RuleMarker).who
+    }),
+    layer
+  )
+
+/**
+ * The `ruleLayers` entry for `ruleId`, or a thrown error naming what was missing.
+ *
+ * `?? collected.layer` would be the tempting fallback and is exactly wrong: a missing entry would
+ * then resolve against the FEATURE's Layer, and the "the Rule's Layer provides the extra service"
+ * assertion would report a `Marker` mismatch instead of the absent entry that actually caused it.
+ */
+const ruleLayerOf = (collected: FeatureCollection, ruleId: string): Layer.Layer<any, any, never> => {
+  const found = collected.ruleLayers.get(ruleId)
+  if (found === undefined) {
+    throw new Error(`the collection has no ruleLayers entry for "${ruleId}"`)
+  }
+  return found
+}
+
+const planFor = (collected: FeatureCollection, name: string) =>
+  collected.plan.scenarios.find((scenario) => scenario.name === name)
+
+describe("the Rule container registers against the Rule it names", () => {
+  it("gives the two fixture Rules two different ids", () => {
+    // The premise every isolation assertion below rests on. `Validate.ts`'s
+    // `duplicate-scenario-name-across-rules.feature` makes Rule NAMES a non-key, so if these two ever
+    // collided, three-way isolation would be untestable rather than merely broken.
+    expect(ruleAId).not.toBe(ruleBId)
+  })
+
+  it("keeps a Rule-scoped Before out of the Feature's hooks and out of the other Rule's", () => {
+    // Already-wrapped, so it survives registration BY IDENTITY (`registerHook` delegates to
+    // `Step.ts`'s `register`) and the assertion can discriminate on WHICH hook landed where rather
+    // than merely on how many did.
+    const ruleABefore = Effect.fn("rule A Before")(function*() {
+      yield* Effect.void
+    })
+
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", Layer.empty, ({ Before }) => {
+        Before(ruleABefore)
+      })
+      Rule("guests pay full price", Layer.empty, () => {})
+    })
+
+    // THE three-way isolation proof, and all three arms are load-bearing. A `ruleId` dropped on the
+    // registration path leaves the hook Feature-level, where it would run for every Scenario in the
+    // document including rule B's; a `ruleId` resolved by name-equality rather than by id would put
+    // it in both Rules at once. Neither defect produces a type error.
+    expect(collected.ruleHooks.get(ruleAId)?.Before).toHaveLength(1)
+    expect(collected.ruleHooks.get(ruleAId)?.Before[0]).toBe(ruleABefore)
+    expect(collected.hooks.Before).toHaveLength(0)
+    expect(collected.ruleHooks.get(ruleBId)?.Before).toHaveLength(0)
+  })
+
+  it("gives a Rule that registered no hook an all-empty HookSet rather than no entry", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("guests pay full price", Layer.empty, () => {})
+    })
+
+    // Keyed off `ruleLayers`, so every Rule the author actually called gets an entry — a consumer
+    // never has to tell "this Rule registered no hooks" apart from "there is no such Rule".
+    expect(collected.ruleHooks.has(ruleBId)).toBe(true)
+    expect(collected.ruleHooks.get(ruleBId)?.Before).toHaveLength(0)
+    expect(collected.ruleHooks.get(ruleBId)?.After).toHaveLength(0)
+    // Never called, so never keyed.
+    expect(collected.ruleHooks.has(ruleAId)).toBe(false)
+  })
+
+  it("keeps a Feature-level Before out of every Rule's hooks", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Before, Rule }) => {
+      Before(noop)
+      Rule("members get a discount", Layer.empty, () => {})
+    })
+
+    // The other direction of the same filter: `hooks` keeps what `ruleHooks` must not take, and a
+    // filter written as `!== ruleId` on both sides would put this one in both places.
+    expect(collected.hooks.Before).toHaveLength(1)
+    expect(collected.ruleHooks.get(ruleAId)?.Before).toHaveLength(0)
+  })
+})
+
+describe("a Rule's extra Layer merges onto the Feature's without joining it", () => {
+  it.effect("provides both the Feature's ambient service and the Rule's own from the Rule's Layer", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {
+        Rule("members get a discount", ruleAMarker, () => {})
+      })
+
+      const ruleLayer = ruleLayerOf(collected, ruleAId)
+
+      // BOTH, from one Layer — `Layer.provideMerge` keeps the dependency's services reachable, which
+      // is the half `Layer.provide` would drop and the reason ADR-EC-010 names this combinator.
+      assert.strictEqual(yield* markerFrom(ruleLayer), "shared")
+      assert.strictEqual(yield* ruleMarkerFrom(ruleLayer), "rule A")
+    }))
+
+  it.effect("leaves the Feature's own Layer unable to provide the Rule's extra service", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {
+        Rule("members get a discount", ruleAMarker, () => {})
+      })
+
+      // The isolation half, and the one that makes INV-EC-005 more than a compile-time convention:
+      // folding every Rule's extra Layer into `collection.layer` would make this resolve, and a step
+      // that only type-checks inside the Rule would also RUN fine outside it.
+      const outside = yield* Effect.exit(ruleMarkerFrom(collected.layer))
+      assert.isTrue(Exit.isFailure(outside))
+
+      // …while the Feature's own service is still reachable from it, so the assertion above is about
+      // the extra service and not about a Layer that provides nothing at all.
+      assert.strictEqual(yield* markerFrom(collected.layer), "shared")
+    }))
+
+  it.effect("builds a Rule Layer whose own requirements the Feature's ambient Layer satisfies", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {
+        Rule("members get a discount", ruleAMarkerBuiltOnAmbient, () => {})
+      })
+
+      // THE combinator assertion. `Layer.merge(featureLayer, extraLayer)` composes the two side by
+      // side and satisfies nothing, so this Layer's `Marker` requirement stays unmet and the build
+      // dies — while every other Layer assertion in this file goes on passing, because their extra
+      // Layers need nothing. Resolved by RUNNING it, for the same reason the D-04 merge-direction
+      // test above is: the two combinators produce indistinguishable static shapes here.
+      assert.strictEqual(yield* ruleMarkerFrom(ruleLayerOf(collected, ruleAId)), "rule A on shared")
+    }))
+
+  it("keys ruleLayers by the same id ruleHooks uses", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", Layer.empty, ({ Before }) => {
+        Before(noop)
+      })
+    })
+
+    // 08-05b and 08-07 both look a Rule up in both maps with one id — two key schemes would make
+    // every Scenario in a Rule get either its Layer or its hooks, never both.
+    expect([...collected.ruleLayers.keys()]).toEqual([ruleAId])
+    expect([...collected.ruleHooks.keys()]).toEqual([ruleAId])
+  })
+})
+
+describe("a step registered inside a Rule resolves for that Rule's Scenarios only", () => {
+  it("resolves every step of the Rule's Scenario from rule-scope registrations", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", Layer.empty, ({ Given, Then, When }) => {
+        // Siblings of this Rule's own containers, reaching the spread `...scenarioDsl` registrars —
+        // which read `registry.currentScope()` at call time and so land at `"rule"` scope.
+        Given("the member is signed in", noop)
+        When("the member pays", noop)
+        Then("the member is charged less", noop)
+      })
+    })
+
+    // End to end through `collect`'s own `planFeature` call: this is what proves 08-01's `isVisibleTo`
+    // `"rule"` arm against a REAL registration rather than a hand-built `StepDefinition`.
+    expect(tagsOf(planFor(collected, "member checkout")?.steps ?? [])).toEqual([
+      "Resolved",
+      "Resolved",
+      "Resolved"
+    ])
+  })
+
+  it("resolves nothing in a different Rule's Scenario from the same registrations", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", Layer.empty, ({ Then, When }) => {
+        // Deliberately worded to match rule B's steps too, so only the `ruleId` can keep them apart.
+        When("the guest pays", noop)
+        Then("the guest is charged full price", noop)
+      })
+    })
+
+    // Rule A's registrations match rule B's step TEXT exactly and are still invisible to it. A
+    // `ruleId` compared by Rule NAME, or left `null`, makes both of these "Resolved".
+    expect(tagsOf(planFor(collected, "guest checkout")?.steps ?? [])).toEqual([
+      "Unresolved",
+      "Unresolved"
+    ])
+  })
+
+  it("resolves a rule-background step from that Rule's own Background (D-04)", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", Layer.empty, ({ Background, Then, When }) => {
+        Background(({ Given }) => {
+          Given("the member is signed in", noop)
+        })
+        When("the member pays", noop)
+        Then("the member is charged less", noop)
+      })
+    })
+
+    // The Rule's Background step is already the LEADING entry of its Scenario's step list
+    // (`Correlate.ts` stacked it there), and it carries `origin: "rule-background"` — which only a
+    // `background`-scope definition carrying THIS Rule's id is visible to.
+    expect(tagsOf(planFor(collected, "member checkout")?.steps ?? [])).toEqual([
+      "Resolved",
+      "Resolved",
+      "Resolved"
+    ])
+  })
+
+  it("leaves a rule-background step unresolved when the same pattern sits in the Feature's Background", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Background, Rule }) => {
+      // The FEATURE's Background container — `ruleId: null` — registering the exact pattern the
+      // Rule's own Background step says.
+      Background(({ Given }) => {
+        Given("the member is signed in", noop)
+      })
+      Rule("members get a discount", Layer.empty, ({ Then, When }) => {
+        When("the member pays", noop)
+        Then("the member is charged less", noop)
+      })
+    })
+
+    // The other half of D-04, and the reason `Plan.ts`'s `"background"` arm checks the two origins
+    // separately: a Feature-level Background definition blanketing every Rule's Background steps is
+    // the same cross-Rule leak the `"rule"` arm exists to prevent.
+    expect(tagsOf(planFor(collected, "member checkout")?.steps ?? [])).toEqual([
+      "Unresolved",
+      "Resolved",
+      "Resolved"
+    ])
+  })
+
+  it("returns to the feature root after a Rule callback throws", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Given, Rule }) => {
+      try {
+        Rule("members get a discount", Layer.empty, () => {
+          throw new Error("the define callback for this rule threw")
+        })
+      } catch {
+        // Swallowed HERE, inside the define callback, exactly as the Scenario and Background cases
+        // above do — the point is that the `"rule"` frame is off the stack when it happens.
+      }
+
+      Given("a step after the rule throw", noop)
+    })
+
+    const scope = collected.definitions.find((definition) => definition.pattern === "a step after the rule throw")
+      ?.scope
+    expect(scope).toEqual({ kind: "feature", name: "Discounts", ruleId: null })
+  })
+})
+
+describe("a Rule naming no Rule in the parsed Feature registers nothing that can ever match", () => {
+  it("resolves to zero Scenarios and reports its pattern unused", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("a name no Rule: block in this Feature uses", Layer.empty, ({ Given, When }) => {
+        // Every one of these matches a real step's TEXT somewhere in the fixture — one from each of
+        // the three origins a Rule's registrations could otherwise leak into. Only the sentinel
+        // `ruleId` keeps them from resolving.
+        Given("the member is signed in", noop)
+        When("the member pays", noop)
+        When("the guest pays", noop)
+      })
+    })
+
+    // MATCH-05 counts a pattern USED when it was VISIBLE to a step AND matched it (`Plan.ts` note
+    // (g)). All three are reported unused, which is the strongest available statement that they were
+    // visible to NOTHING — a sentinel that collided with a real Rule's id would leave at least one
+    // of them used and this list short.
+    expect(collected.plan.warnings.map((each) => each.pattern).toSorted()).toEqual([
+      "the guest pays",
+      "the member is signed in",
+      "the member pays"
+    ])
+
+    // And no Scenario anywhere resolved a step from them.
+    expect(tagsOf(planFor(collected, "member checkout")?.steps ?? [])).toEqual([
+      "Unresolved",
+      "Unresolved",
+      "Unresolved"
+    ])
+    expect(tagsOf(planFor(collected, "guest checkout")?.steps ?? [])).toEqual([
+      "Unresolved",
+      "Unresolved"
+    ])
+  })
+
+  it("keys the unresolved Rule under a sentinel no real Rule id can equal", () => {
+    const collected = collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+      Rule("a name no Rule: block in this Feature uses", Layer.empty, () => {})
+    })
+
+    const keys = [...collected.ruleLayers.keys()]
+
+    // The registration is REAL — it has a Layer and a hook slot like any other — and it is keyed
+    // where nothing can reach it. A generator-produced `ParsedRule.id` never contains a colon, which
+    // is what makes the sentinel format provably disjoint rather than merely unlikely.
+    expect(keys).toEqual(["unregistered-rule:a name no Rule: block in this Feature uses"])
+    expect(ruleFeature.rules.map((rule) => rule.id)).not.toContain(keys[0])
+    expect(ruleFeature.allScenarios.map((scenario) => Option.getOrNull(scenario.ruleId))).not.toContain(keys[0])
   })
 })

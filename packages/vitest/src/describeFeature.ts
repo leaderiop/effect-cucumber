@@ -133,7 +133,13 @@ export type FeatureCollection = {
    */
   readonly plan: FeaturePlan
   /**
-   * Every registered hook, grouped by kind and in registration order within each kind (D-01).
+   * Every FEATURE-LEVEL hook, grouped by kind and in registration order within each kind (D-01).
+   *
+   * Feature-level means `ruleId === null`, and the filter that enforces it is not cosmetic: a
+   * Rule-scoped `Before` leaking into this field would run for every Scenario in the document,
+   * including the ones in other Rules and the ones in no Rule at all — the exact
+   * elevation-of-privilege INV-EC-005 forbids, and one that produces no type error and no failing
+   * test on its own. A Rule's own hooks are in `ruleHooks`, keyed by that Rule's id.
    *
    * REQUIRED, not optional — same reasoning as `ParsedFeature.parameterTypes` (03-05's recorded
    * decision): an optional field would let a later consumer forget hooks exist. Grouped HERE, in the
@@ -146,6 +152,36 @@ export type FeatureCollection = {
    * `Effect.onExit`, plan 07-04's headline change.
    */
   readonly hooks: HookSet
+  /**
+   * One entry per `Rule(...)` call this Feature's define callback made: that Rule's `extraLayer`
+   * already merged onto the Feature's own via `Layer.provideMerge`, keyed by `resolveRuleId`'s
+   * output.
+   *
+   * Deliberately a SEPARATE map rather than merged into `layer`: `layer` is what a Scenario outside
+   * every Rule is provided, and folding a Rule's extra services into it would make INV-EC-005's
+   * compile-time boundary decorative at runtime — a step that type-checks only inside the Rule would
+   * also RUN fine outside it, so the guarantee would hold in the checker and nowhere else.
+   *
+   * Every key is either a real `ParsedRule.id` or `resolveRuleId`'s sentinel; there is no `null`
+   * key, because the Feature's own Layer is the `layer` field.
+   *
+   * `Runner.ts` is what threads these into emission, and that wiring is plan 08-07's.
+   */
+  readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+  /**
+   * One entry per `Rule(...)` call, carrying only the hooks registered through THAT Rule's dsl —
+   * `Before`/`After`/`BeforeStep`/`AfterStep` only, since `RuleDsl` exposes no other registrar
+   * (ADR-EC-010, `Dsl.ts` note (f)). Keyed exactly as `ruleLayers` is.
+   *
+   * REQUIRED, not optional, for the reason `hooks` is: an optional field would let a later consumer
+   * forget Rule-scoped hooks exist and hand `ScenarioEffect.ts` the Feature's set alone, silently
+   * dropping every hook a Rule declared.
+   *
+   * `Hook.ts`'s `mergeHookSets(collection.hooks, collection.ruleHooks.get(ruleId) ?? emptyHookSet)`
+   * is what a consumer combines these with, in D-02's order — which is why they arrive separated
+   * rather than pre-merged, and why `emptyHookSet` exists for a Scenario in no Rule.
+   */
+  readonly ruleHooks: ReadonlyMap<string, HookSet>
 }
 
 /**
@@ -455,6 +491,12 @@ const collect = (
 
   const definitions = registry.definitions()
 
+  // Read ONCE, after `define(dsl)` has returned, and shared by both groupings below. `hooks()` is a
+  // snapshot copy (`HookRegistry.ts` note (b)), so calling it once per Rule would allocate one array
+  // per Rule for no gain — and, worse, would leave two readers of a mutable store that a future
+  // change could interleave a registration between.
+  const hookDefinitions = hookRegistry.hooks()
+
   // PLAN, and it happens in the SHARED implementation rather than in `describeFeature` alone. This
   // function exists precisely so the two public entry points cannot drift into two behaviours, and
   // planning in only one of them would be that drift: `collectFeature` would hand back a collection
@@ -468,7 +510,23 @@ const collect = (
     plan: planFeature({ feature, definitions }),
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
     // the `hooks` field's own doc comment on `FeatureCollection`.
-    hooks: groupHooks(hookRegistry.hooks())
+    //
+    // FILTERED to Feature scope. Before Rule-scoped hooks existed, every registration was
+    // Feature-level and grouping the whole list was correct; now `hookRegistry.hooks()` is the union
+    // of both tiers, and grouping it unfiltered would silently run every Rule's hooks for every
+    // Scenario in the document.
+    hooks: groupHooks(hookDefinitions.filter((definition) => definition.ruleId === null)),
+    ruleLayers,
+    // Keyed off `ruleLayers` and not off the hook list, deliberately: the key set is "every Rule this
+    // Feature called `Rule(...)` for", so a Rule that registered a Layer and no hooks still gets an
+    // entry — an all-empty `HookSet` — instead of a `.get` that returns `undefined` and sends a
+    // consumer down a "no such Rule" path it should never reach.
+    ruleHooks: new Map(
+      [...ruleLayers.keys()].map((ruleId): readonly [string, HookSet] => [
+        ruleId,
+        groupHooks(hookDefinitions.filter((definition) => definition.ruleId === ruleId))
+      ])
+    )
   }
 }
 
