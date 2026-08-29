@@ -37,11 +37,29 @@
  * mask its error; `BeforeAllScenarios` runs once per Feature and its failure reaches every Scenario;
  * `AfterAllScenarios` runs as a trailing node regardless of what failed before it.
  *
+ * **Tags** (RUN-05, [ADR-EC-020](../../../spec/decisions/020-vitest-native-tags-for-skip-only.md)).
+ * Every tag on a Scenario reaches the emitted test as a native runner tag, including the ones it
+ * inherits from its `Feature`, its `Rule` and its `Examples` block. `@skip` additionally emits the
+ * test as skipped, so neither its steps nor any of its hooks run. `@only` is emitted as a plain tag
+ * and is NEVER routed to the runner's only-mode, so an `@only` left in a committed `.feature` file
+ * cannot fail a CI run that forbids only-marking. `includeTags`/`excludeTags` on `describeFeature`'s
+ * optional fourth argument narrow what is REGISTERED rather than what runs: a Scenario the filter
+ * excludes is absent from the report entirely rather than listed in it as skipped, and one summary
+ * line naming the count, the Feature and the option that removed them prints when the filter removed
+ * anything at all.
+ *
+ * One prerequisite comes with all of that, and it is stated here rather than left to be discovered:
+ * a tag must be DECLARED in the runner's own config or the runner rejects the emission. This library
+ * catches that rejection, re-emits the test untagged and prints a warning naming the `.feature` file,
+ * the Scenario and the offending tag — so the Scenario still runs, but its tags do not exist for the
+ * runner and a `--tagsFilter` naming any of them cannot select it. `gherkinTags("<glob>")`, exported
+ * below, is the supported way to produce those declarations from the same `.feature` files the tags
+ * are written in.
+ *
  * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: a `Rule`
  * that extends the ambient Layer with its own per-Scenario Layer, and typed `Scenario Outline`
  * Examples, are Phase 8 (DSL-05, DSL-06) — a Rule's Scenarios run today and are nested correctly, but
- * nothing can REGISTER at Rule scope; tag routing, `@skip` and the `@only` policy are Phase 9
- * (RUN-05), so a tag is currently inert; and the opt-in `shared` Layer built once per Feature,
+ * nothing can REGISTER at Rule scope; and the opt-in `shared` Layer built once per Feature,
  * together with the per-Scenario `TestClock` isolation that has to accompany it, is Phase 10
  * (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is accepted and type-checked today,
  * but both halves are built per Scenario at runtime.
@@ -68,6 +86,21 @@
  * types) from `HookRegistry.ts`. Each is an internal stage of `describeFeature` with no standalone
  * consumer contract, exactly like the modules above it in this list.
  *
+ * The same is true of everything RUN-05 added BEHIND `describeFeature`: `EmitOptions` from
+ * `TestApi.ts`, which is the per-emission argument the seam carries; the outcome value `emitFeature`
+ * returns, which is how the emission walk reports its excluded-Scenario count back to the caller that
+ * prints the notice; and the whole of `Tags.ts` — `makeTagFilter`, `shouldEmit`, `isSkipped`, the
+ * `TagFilter` type and the `skipTag`/`onlyTag` constants. Each is an internal stage of
+ * `describeFeature` with no standalone consumer contract, exactly like the modules above it: a
+ * consumer writes tags in a `.feature` file and declares them in a config, and never constructs a
+ * filter, an emission option or an outcome.
+ *
+ * `GherkinTags.ts` is the one module on the OTHER side of this ledger, and the reason it is there is
+ * not that it is more useful than the rest — it is that there is no internal stage to freeze. It is
+ * called from a consumer's own config file rather than from inside the register → plan → emit
+ * pipeline, so exporting it commits this project to a single function signature it already has to
+ * keep, not to the shape of a join between two stages that Phase 10 is going to change.
+ *
  * The omission is a decision, not an oversight, and the cost of getting it wrong is asymmetric: a
  * published internal stage is a contract this project then has to keep, through every change to the
  * pipeline it is a stage of. `collectFeature` is the sharpest case — it is the in-package join point
@@ -79,6 +112,45 @@
 
 /** The entry point. Everything else in this package is reached through the dsl it hands `define`. */
 export { describeFeature } from "./describeFeature.ts"
+
+/**
+ * The optional fourth argument's type, exported for annotation.
+ *
+ * A consumer computing an options object before passing it — from an environment variable, from a
+ * CLI flag, from a shared helper the whole suite calls — needs the name to annotate it. This is the
+ * same reason `FeatureDsl` and `StepRegistrar` are exported: neither is constructed by this package
+ * on the consumer's behalf, and a value whose type is unnameable can only be written inline.
+ *
+ * Both of its fields are plain arrays of tag strings and never the runner's boolean tag-expression
+ * grammar, and `undefined` and `[]` both mean NO FILTER — so a computed-empty array cannot silence a
+ * suite. `describeFeature.ts` states both rules on the fields themselves.
+ */
+export type { DescribeFeatureOptions } from "./describeFeature.ts"
+
+/**
+ * Produce a runner config's tag declarations from the `.feature` files the tags are written in
+ * (RUN-05, 09-CONTEXT.md D-09).
+ *
+ * This is the one module in this package that is CONSUMER-FACING rather than an internal pipeline
+ * stage, and it exists because of a fact about the runner that is easy to miss: a `--tagsFilter`
+ * expression is validated against the tag list declared in `test.tags` REGARDLESS of whether the
+ * runner's strict-tags check is on. A tag that is written in a `.feature` file but not declared in
+ * the config therefore cannot select anything — which is the entirety of ADR-EC-020's "run just one
+ * Scenario locally" story, unavailable to a real consumer unless they maintain that list by hand and
+ * never forget an entry.
+ *
+ * `gherkinTags` takes a GLOB PATTERN, or an array of them, resolved against `process.cwd()` exactly
+ * like every other glob-taking Node tool — there is deliberately no default, so it never scans a
+ * tree its caller did not name, and an empty pattern throws rather than quietly declaring nothing.
+ * Its result spreads straight into `test.tags` beside any hand-written entries, which
+ * `packages/vitest/test/GherkinTags.types.ts` proves at compile time against the runner's own type.
+ *
+ * It is also why this package carries one non-workspace runtime dependency: expanding a glob
+ * synchronously at config-load time needs a library, because `fs.globSync` requires Node 22 and this
+ * package supports Node 20. `GherkinTags.ts`'s notes (c) and (d) carry the full argument.
+ */
+export { gherkinTags } from "./GherkinTags.ts"
+export type { GherkinTagDefinition } from "./GherkinTags.ts"
 
 /**
  * The compile-time surface `define` receives, exported for annotation.
@@ -108,8 +180,26 @@ export type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, StepRegistr
  * test node's title. `@effect-cucumber/gherkin`'s barrel exports `LoadFeatureWarning` alongside
  * `LoadFeatureError` for the same reason, and this mirrors it.
  *
- * The two `*Reason` unions come with them: they are the discriminants a consumer branches on, and a
- * `reason` field whose type is unnameable forces a string comparison at every call site.
+ * `UndeclaredTagWarning` and `ExcludedScenariosNotice` join them for the identical reason, and they
+ * belong in this block rather than in one of their own because they are the same KIND of thing:
+ * structured collection-time reports that are not failures and never enter an error channel. The
+ * first is printed when a Scenario carried a tag the runner's config does not declare — the test is
+ * re-emitted untagged so it still runs, and the warning is the only signal that its tags are gone.
+ * The second is printed once per Feature whose `includeTags`/`excludeTags` removed Scenarios, which
+ * is the one thing a green run cannot tell a reader by itself. Both are exported so a consumer can
+ * assert on the structured value rather than on terminal text, exactly as
+ * `UnusedStepDefinitionWarning` already is.
+ *
+ * The `*Reason` unions come with all of them: they are the discriminants a consumer branches on, and
+ * a `reason` field whose type is unnameable forces a string comparison at every call site.
  */
 export { StepMatchError } from "./Errors.ts"
-export type { StepMatchErrorReason, UnusedStepDefinitionWarning, UnusedStepDefinitionWarningReason } from "./Errors.ts"
+export type {
+  ExcludedScenariosNotice,
+  ExcludedScenariosNoticeReason,
+  StepMatchErrorReason,
+  UndeclaredTagWarning,
+  UndeclaredTagWarningReason,
+  UnusedStepDefinitionWarning,
+  UnusedStepDefinitionWarningReason
+} from "./Errors.ts"
