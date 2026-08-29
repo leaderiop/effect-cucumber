@@ -358,7 +358,7 @@ Plans:
 
 **Wave 3** *(blocked on 08-05a)*
 
-- [ ] 08-05b-PLAN.md — describeFeature.ts: Scenario's own extra-Layer form (D-01's second half), shared with RuleDsl via one factory
+- [x] 08-05b-PLAN.md — describeFeature.ts: Scenario's own extra-Layer form (D-01's second half), shared with RuleDsl via one factory
 
 **Wave 4** *(blocked on 08-05b, 08-04, 08-02)*
 
@@ -462,7 +462,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
-| 8. Rule and Scenario Outline | 6/9 | In Progress|  |
+| 8. Rule and Scenario Outline | 7/9 | In Progress|  |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
