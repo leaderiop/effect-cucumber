@@ -79,7 +79,15 @@ import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import { describe, it } from "@effect/vitest"
 import * as Layer from "effect/Layer"
 import { captureCallSite } from "./CallSite.ts"
-import type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, ScenarioRegistrar, StepRegistrar } from "./Dsl.ts"
+import type {
+  BackgroundDsl,
+  FeatureDsl,
+  HookRegistrar,
+  RuleDsl,
+  ScenarioDsl,
+  ScenarioRegistrar,
+  StepRegistrar
+} from "./Dsl.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
@@ -165,6 +173,38 @@ const normalizeLayer = (layer: LayerArgument): Layer.Layer<any, any, never> =>
   "perScenario" in layer ? Layer.merge(layer.shared, layer.perScenario) : layer
 
 /**
+ * Turn the Rule NAME a test author wrote into the `ruleId` every scope and hook registered inside
+ * that `Rule(...)` call will carry.
+ *
+ * This is the ONLY place in the package where a Rule name becomes an id. `Registry.ts` note (e) and
+ * `Plan.ts` note (e) both say so on their own side of the seam, and both are dependency-free
+ * modules that could not do it if they wanted to: neither has access to a `ParsedFeature`.
+ *
+ * A name that matches no Rule in the parsed Feature resolves to a SENTINEL, never to `null`, and the
+ * distinction is the whole reason this function exists rather than an inline `find`. `Plan.ts`
+ * compares `ruleId` with plain string equality and reserves `null` for "this scope is not nested
+ * inside any `Rule` call at all" — so a `null` here would make an unresolved Rule's registrations
+ * visible to every Feature-level Scenario in the document, silently attaching a typo'd `Rule("Discout
+ * rules", …)` block's steps to the Feature root. That defect compiles, type-checks, lints, and turns
+ * the suite GREEN, because the steps do resolve; they just resolve everywhere instead of nowhere.
+ *
+ * The sentinel format is what makes the fallback provably inert rather than merely unlikely: a
+ * `ParsedRule.id` is generator-produced (`"5"`, `"12"`) and never contains a colon, so
+ * `unregistered-rule:${name}` cannot equal any real Rule's id and therefore cannot equal any
+ * `ParsedScenario.ruleId` either. No counter and no uniquifier: two unresolved calls sharing one bad
+ * name produce the same sentinel, and that is harmless — both are equally, permanently invisible to
+ * every Scenario, so colliding with each other changes nothing a Scenario can observe.
+ *
+ * `Array.find` returns the FIRST match by name. If `Validate.ts` ever permits two Rules to share a
+ * name, that is deterministic rather than ambiguous; detecting the upstream case is not attempted
+ * here, because nothing in this phase can produce it.
+ */
+const resolveRuleId = (feature: ParsedFeature, name: string): string => {
+  const match = feature.rules.find((rule) => rule.name === name)
+  return match === undefined ? `unregistered-rule:${name}` : match.id
+}
+
+/**
  * The one implementation both public entry points delegate to.
  *
  * Not exported, and deliberately so: it exists to keep `describeFeature` and `collectFeature` from
@@ -185,6 +225,19 @@ const collect = (
   // `describeFeature` calls in one file sharing a hook store would make the second Feature run the
   // first Feature's `Before` hooks.
   const hookRegistry = createHookRegistry<HookBody>()
+
+  // Normalised ONCE per `collect` call, here rather than at the return site, because the `Rule`
+  // container below needs the same value to merge each Rule's `extraLayer` onto — and a second
+  // `normalizeLayer(layer)` call at the bottom would build a second, structurally identical Layer
+  // that no Rule's merged Layer was derived from. Nothing would go red: both Layers provide the same
+  // services, so every assertion in this repo would still pass while a Feature-level `Layer.effect`
+  // resource got built twice per Scenario.
+  const featureLayer = normalizeLayer(layer)
+
+  // Every Rule this Feature's define callback actually called `Rule(...)` for, keyed by the id
+  // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
+  // member's closure mutates it while `define(dsl)` runs, and read only after that call returns.
+  const ruleLayers = new Map<string, Layer.Layer<any, any, never>>()
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
@@ -268,9 +321,11 @@ const collect = (
       // `name: null` and not the feature's name: a Background genuinely has none (Registry.ts's
       // note on RegistryScope).
       //
-      // `ruleId: null` is not a placeholder — it is the truthful value. This file offers no `Rule`
-      // container yet (that is 08-05a's job), so every frame it pushes is genuinely NOT nested in a
-      // Rule, which is exactly what Registry.ts note (e) reserves `null` for.
+      // `ruleId: null` is not a placeholder — it is the truthful value. This is the FEATURE's own
+      // Background, reached through the dsl `define` itself receives, so it is genuinely NOT nested
+      // in a Rule, which is exactly what Registry.ts note (e) reserves `null` for. A Rule's own
+      // Background is a different container, built inside the `Rule` member below, and it pushes
+      // that Rule's id instead — which is the only thing telling the two apart downstream (D-04).
       registry.pushScope({ kind: "background", name: null, ruleId: null })
       try {
         defineBackground(backgroundDsl)
@@ -281,22 +336,109 @@ const collect = (
       }
     },
     Scenario: scenarioRegistrar,
-    // TEMPORARY, and deliberately loud. Plan 08-03 landed `FeatureDsl.Rule`'s TYPE ahead of its
-    // runtime wiring, which plan 08-05a owns: a `"rule"` `RegistryScopeKind` to push/pop, the
-    // `ruleId`-keyed `Layer.provideMerge(featureLayer)(extraLayer)` map, and Rule-scoped hook
-    // registration. Until those exist, a `Rule(...)` call has nowhere to register anything.
-    //
-    // Throwing is the only honest stand-in, and both alternatives are worse in the same way. A
-    // no-op would emit a Feature whose Rule-nested Scenarios silently have zero step definitions;
-    // running `defineRule` against `scenarioDsl` would register the Rule's steps at Feature scope,
-    // making INV-EC-005's compile-time boundary decorative at runtime. Either one turns a
-    // `.feature` file with a `Rule:` block green while enforcing nothing, and neither would fail a
-    // single test in this repo — the false-green failure mode AGENTS.md §4 forbids papering over.
-    Rule: (name: string) => {
-      throw new Error(
-        `Rule("${name}") is not implemented yet. The DSL type surface for Rule-scoped extra Layers `
-          + "(ADR-EC-010) exists, but Rule-scope registration does not — see plan 08-05a."
-      )
+    // A sibling of `Background`/`Scenario`, and never spread into `scenarioDsl` — the identical
+    // "would leak into every `Scenario(...)` callback and into `backgroundDsl`" argument `Dsl.ts`
+    // note (f) makes for the hooks applies unchanged to a nested container.
+    Rule: (
+      ruleName: string,
+      extraLayer: Layer.Layer<any, any, any>,
+      defineRule: (dsl: RuleDsl<any>) => void
+    ): void => {
+      // The one place a Rule NAME becomes an id — `resolveRuleId`'s own comment has the sentinel
+      // argument, and `Registry.ts` note (e) / `Plan.ts` note (e) are the two consumers that depend
+      // on it never being `null`.
+      const ruleId = resolveRuleId(feature, ruleName)
+
+      // Merged HERE, where `extraLayer` is captured, and exactly once per `Rule(...)` call — the
+      // same "compute the single Layer to hand downstream once, at the point the extra argument is
+      // captured" placement `normalizeLayer` has for the Feature's own.
+      //
+      // `Layer.provideMerge(featureLayer)(extraLayer)` and NOT `Layer.merge(featureLayer,
+      // extraLayer)`, which is the plausible tidy-up given the line `normalizeLayer` runs a few
+      // dozen lines above. ADR-EC-010 requires `extraLayer` to be able to DEPEND on ambient
+      // services, and `provideMerge` is what feeds the ambient Layer's output into `extraLayer`'s
+      // own requirements while keeping BOTH sets reachable. `merge` composes them side by side and
+      // satisfies nothing, so a Rule Layer built on top of a Feature service — the ADR's own worked
+      // example — would not type-check at all.
+      const ruleAmbientLayer = Layer.provideMerge(featureLayer)(extraLayer)
+      ruleLayers.set(ruleId, ruleAmbientLayer)
+
+      // The Rule-scoped counterpart of the Feature-level `hookRegistrar` closure above, differing in
+      // exactly one thing: it passes THIS Rule's id where that one passes `null`. It cannot be
+      // hoisted beside it, because `ruleId` is per-`Rule(...)`-call state.
+      const ruleHookRegistrar = (kind: HookKind): HookRegistrar<any> => (fn) => {
+        hookRegistry.register(kind, ruleId, registerHook(kind, fn))
+      }
+
+      // The Rule's own `Scenario`, structurally identical to the Feature-level `scenarioRegistrar`
+      // above and differing only in the `ruleId` it pushes. Both arities are spelled for the reason
+      // that one spells them — `ScenarioRegistrar<ROut>` is an overloaded call signature, and a
+      // two-parameter function is not assignable to a type whose second signature takes a Layer in
+      // that position.
+      //
+      // Plan 08-05b replaces BOTH this closure and the Feature-level one with a single shared
+      // arity-detecting factory that actually merges the extra Layer. Do not "helpfully" widen this
+      // one on its own first: a Scenario-level `extraLayer` dropped on the floor here compiles and
+      // fails at RUNTIME with the "service not found" INV-EC-003 exists to make impossible.
+      const ruleScenarioRegistrar: ScenarioRegistrar<any> = (
+        scenarioName: string,
+        extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: ScenarioDsl<any>) => void),
+        maybeDefine?: (dsl: ScenarioDsl<any>) => void
+      ): void => {
+        if (maybeDefine !== undefined) {
+          throw new Error(
+            `Scenario("${scenarioName}", extraLayer, define) is not implemented yet. The DSL type `
+              + "surface for Scenario-scoped extra Layers (ADR-EC-010) exists, but the runtime merge "
+              + "does not — see plan 08-05b."
+          )
+        }
+        const defineScenario = extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void
+        registry.pushScope({ kind: "scenario", name: scenarioName, ruleId })
+        try {
+          defineScenario(scenarioDsl)
+        } finally {
+          registry.popScope()
+        }
+      }
+
+      const ruleDsl: RuleDsl<any> = {
+        // The SAME `scenarioDsl` object the Feature level hands out. Its five registrars read
+        // `registry.currentScope()` at CALL time, so they need no per-level parameterization — which
+        // is also what makes a `Given` written directly inside this callback, as a sibling of the
+        // Rule's own `Background`/`Scenario` calls, register at `"rule"` scope.
+        ...scenarioDsl,
+        Background: (defineBackground) => {
+          // D-04: a Rule has its own Background container. The SAME `backgroundDsl` object
+          // (`Given`/`And` only, ADR-EC-017 — the grammar restriction does not change one nesting
+          // level down), differing from the Feature's own Background solely in the `ruleId` this
+          // pushed scope carries. That one field is what makes `Plan.ts`'s `"background"` arm show
+          // these registrations only to a `rule-background` step of THIS Rule.
+          registry.pushScope({ kind: "background", name: null, ruleId })
+          try {
+            defineBackground(backgroundDsl)
+          } finally {
+            registry.popScope()
+          }
+        },
+        Scenario: ruleScenarioRegistrar,
+        // Exactly the four hooks ADR-EC-010 scopes to a Rule. `BeforeAllScenarios`/`AfterAllScenarios`
+        // are absent by design and `RuleDsl` does not declare them — `Dsl.ts` note (f).
+        Before: ruleHookRegistrar("Before"),
+        After: ruleHookRegistrar("After"),
+        BeforeStep: ruleHookRegistrar("BeforeStep"),
+        AfterStep: ruleHookRegistrar("AfterStep")
+      }
+
+      // The identical push/try/finally/pop shape `Background`/`Scenario` use, and `finally` for the
+      // identical reason: a `defineRule` callback that throws must not leave the `"rule"` frame on
+      // the stack and re-parent every later Feature-level step onto a Rule the author never put it
+      // in.
+      registry.pushScope({ kind: "rule", name: ruleName, ruleId })
+      try {
+        defineRule(ruleDsl)
+      } finally {
+        registry.popScope()
+      }
     },
     // Siblings of `Background`/`Scenario`, NOT spread into `scenarioDsl` — `scenarioDsl` is the same
     // object handed to every `Scenario(...)` callback and to `backgroundDsl`, and a hook member there
@@ -320,7 +462,8 @@ const collect = (
   // differ on, and it is the only thing they differ on.
   return {
     feature,
-    layer: normalizeLayer(layer),
+    // The SAME binding every Rule's merged Layer was derived from — normalised once, near the top.
+    layer: featureLayer,
     definitions,
     plan: planFeature({ feature, definitions }),
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
