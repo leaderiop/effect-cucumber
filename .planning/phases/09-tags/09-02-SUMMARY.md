@@ -307,3 +307,10 @@ boundary. Both files are pure, synchronous, in-process data transforms with no I
 - `makeUndeclaredTagWarning` takes only the OFFENDING tags, not the Scenario's whole tag list.
 - Plan 09-07 owns the `index.ts` barrel edit for `UndeclaredTagWarning`, `UndeclaredTagWarningReason`, `ExcludedScenariosNotice` and `ExcludedScenariosNoticeReason`, and any decision about `Tags.ts`.
 - If either message is reworded, `UNDECLARED_MESSAGE_LENGTH` (1361) and `BOTH_FILTERS_MESSAGE_LENGTH` (1286) in `test/Errors.test.ts` move with it. That is by design.
+
+## Self-Check: PASSED
+
+All five source/spec files claimed above exist on disk, and all four commits (`45fecb8`, `55764ce`,
+`f1495f0`, `11ca87c`) are present in `git log`. Working tree clean; no untracked files. STATE.md and
+ROADMAP.md deliberately untouched — this executor ran in a worktree and the orchestrator owns those
+writes after the wave.
