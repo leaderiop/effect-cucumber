@@ -39,17 +39,27 @@ that follow it from running at all.
 Unless a Layer is explicitly declared `shared`, no state built by that Layer
 for one Scenario is visible to any other Scenario.
 
-**Source (half built)**: `packages/vitest/src/ScenarioEffect.ts` supplies the
-Feature's Layer once around each Scenario Effect and never memoizes it, so every
-execution rebuilds it — asserted by `packages/vitest/test/ScenarioEffect.test.ts`
-running one Scenario Effect twice and observing two independent service
-instances. `packages/vitest/src/Runner.ts` now completes the MECHANISM: it emits
-one test per Scenario, each handed its own unexecuted Effect, so no two
-Scenarios can share a build. The other half of the CLAIM is still **planned**,
-and the gap is a test rather than a module — nothing yet runs two emitted
-Scenarios against a state-carrying Layer and observes that neither sees the
-other's state, because `describeFeature` does not yet wire the pipeline end to
-end and `Runner.test.ts` asserts emission shape against a trivial Layer.
+**Source**: `packages/vitest/src/ScenarioEffect.ts` supplies the Feature's Layer
+once around each Scenario Effect and never memoizes it, so every execution
+rebuilds it — asserted by `packages/vitest/test/ScenarioEffect.test.ts` running
+one Scenario Effect twice and observing two independent service instances.
+`packages/vitest/src/Runner.ts` completes the MECHANISM: it emits one test per
+Scenario, each handed its own unexecuted Effect, so no two Scenarios can share a
+build. Both halves of the claim now hold for the per-Scenario scope, and the
+second half is asserted end to end by
+`packages/vitest/test/emission.test.ts` — a real `describeFeature` call whose two
+emitted Scenarios each append to a `Ref` obtained from the ambient Layer and each
+assert the WHOLE accumulated log, so a Layer built once and shared would leave
+the second Scenario reading the first's entries and fail.
+
+The `shared` half of the invariant's own wording — "unless a Layer is explicitly
+declared `shared`" — is still **planned**. The `{ shared, perScenario }` argument
+form is accepted and type-checked today, but both halves are built per Scenario
+at runtime; ADR-EC-018's build-once path is Phase 10's (RUN-03/RUN-04). Nothing
+is currently wrong as a result, because building a `shared` Layer more often than
+necessary cannot make one Scenario see another's state — the gap is a missed
+optimisation and a missed `TestClock` isolation requirement, not a violated
+invariant.
 
 **Implication**: a `Given`/`When`/`Then` author can rely on a clean World for
 every Scenario without writing manual reset logic, _unless_ that Scenario

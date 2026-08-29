@@ -18,9 +18,9 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 
 - [x] **MATCH-01**: Step patterns use cucumber-expressions syntax (`{int}`, `{float}`, `{string}`, `{word}`, custom types) (ADR-EC-007)
 - [x] **MATCH-02**: A custom parameter type is defined once as data and replayed into a fresh `ParameterTypeRegistry` on every `loadFeature` call, with no duplicate-registration failure across repeated calls (ADR-EC-007 correction)
-- [ ] **MATCH-03**: A Pickle step matching zero registered patterns fails the containing Scenario, naming the unmatched step text and its source location (ADR-EC-019, BEH-EC-013)
-- [ ] **MATCH-04**: A Pickle step matching more than one registered pattern fails the same way, naming every matching pattern rather than silently picking the first registered (ADR-EC-019, BEH-EC-013)
-- [ ] **MATCH-05**: A registered pattern matching zero steps across the whole Feature is reported as a Feature-level warning, not a hard failure (ADR-EC-019, BEH-EC-013)
+- [x] **MATCH-03**: A Pickle step matching zero registered patterns fails the containing Scenario, naming the unmatched step text and its source location (ADR-EC-019, BEH-EC-013)
+- [x] **MATCH-04**: A Pickle step matching more than one registered pattern fails the same way, naming every matching pattern rather than silently picking the first registered (ADR-EC-019, BEH-EC-013)
+- [x] **MATCH-05**: A registered pattern matching zero steps across the whole Feature is reported as a Feature-level warning, not a hard failure (ADR-EC-019, BEH-EC-013)
 
 ### Registration DSL (`@effect-cucumber/vitest`)
 
@@ -34,7 +34,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 
 ### Execution semantics
 
-- [ ] **RUN-01**: Each Scenario compiles to exactly one `it.effect` call; Background and Scenario steps run as sequential `yield*`s inside one `Effect.gen`, short-circuiting on the first failure (ADR-EC-004, INV-EC-001)
+- [x] **RUN-01**: Each Scenario compiles to exactly one `it.effect` call; Background and Scenario steps run as sequential `yield*`s inside one `Effect.gen`, short-circuiting on the first failure (ADR-EC-004, INV-EC-001)
 - [ ] **RUN-02**: A Scenario's `After` hook runs whether every step succeeded or one failed, via `Effect.ensuring` (ADR-EC-005, INV-EC-004)
 - [ ] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
 - [ ] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
@@ -87,9 +87,9 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | PARSE-04 | Phase 4 | Complete |
 | MATCH-01 | Phase 3 | Complete |
 | MATCH-02 | Phase 3 | Complete |
-| MATCH-03 | Phase 6 | Pending |
-| MATCH-04 | Phase 6 | Pending |
-| MATCH-05 | Phase 6 | Pending |
+| MATCH-03 | Phase 6 | Complete |
+| MATCH-04 | Phase 6 | Complete |
+| MATCH-05 | Phase 6 | Complete |
 | DSL-01 | Phase 5 | Complete |
 | DSL-02 | Phase 5 | Complete |
 | DSL-03 | Phase 5 | Complete |
@@ -97,7 +97,7 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | DSL-05 | Phase 8 | Pending |
 | DSL-06 | Phase 8 | Pending |
 | DSL-07 | Phase 7 | Pending |
-| RUN-01 | Phase 6 | Pending |
+| RUN-01 | Phase 6 | Complete |
 | RUN-02 | Phase 7 | Pending |
 | RUN-03 | Phase 10 | Pending |
 | RUN-04 | Phase 10 | Pending |
@@ -115,4 +115,4 @@ enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-29 after Phase 5 (`describeFeature` type surface) — DSL-01 marked Complete in plan 05-04, DSL-03 in plan 05-05, and DSL-02/DSL-04 here in plan 05-06. Each is backed by a named automated assertion that fails if the requirement stops being true: DSL-01 by `scripts/verify-tsgo-gate.sh` assertions 5, 6 and 8; DSL-02 by `packages/vitest/test/Step.test.ts`; DSL-03 by assertion 7 (`TS2339`); DSL-04 by `packages/vitest/test/Registry.test.ts` and `describeFeature.test.ts`. See `.planning/phases/05-describefeature-type-surface/05-06-SUMMARY.md` for the per-requirement evidence, including which half of DSL-04 is structural and which lands with the runner in Phase 6. No requirement outside DSL-01..04 changed status.*
+*Last updated: 2026-08-29 after Phase 6 (plan/Scenario Effect/runner emission and drift detection) — RUN-01, MATCH-03, MATCH-04 and MATCH-05 marked Complete in plan 06-07, the plan that wires `describeFeature` → `planFeature` → `emitFeature` and so makes all four true end to end. Plans 06-01 through 06-06 each declined the marking on AGENTS.md §4 grounds while the stages existed but nothing user-facing reached them. Each is backed by a named automated assertion that fails if the requirement stops being true: RUN-01 by `packages/vitest/test/emission.test.ts` (a real `describeFeature` call whose two emitted tests run, pass, and prove the Background ran first) plus `Runner.test.ts`'s positional emission-shape assertions and `ScenarioEffect.test.ts`'s recorded step order; MATCH-03 and MATCH-04 by `packages/vitest/test/Plan.test.ts` and `Errors.test.ts` for the located error, and `ScenarioEffect.test.ts` for it failing its own Scenario in position; MATCH-05 by `emission.test.ts`'s terminal-channel assertions, `Runner.test.ts`'s always-passing warning node, and `describeFeature.test.ts`'s `plan.warnings` assertions — D-02's three channels, one per test file. See `.planning/phases/06-plan-scenario-effect-runner-emission-and-drift-detection/06-07-SUMMARY.md` for the per-requirement evidence. No requirement outside RUN-01 and MATCH-03..05 changed status. The previous entry covered Phase 5: DSL-01 in plan 05-04, DSL-03 in 05-05, DSL-02/DSL-04 in 05-06.*
