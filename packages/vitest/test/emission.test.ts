@@ -21,8 +21,17 @@
  * `Plan.test.ts` for the resolution outcome and the message text, `ScenarioEffect.test.ts` for the
  * failure landing in the Scenario's error channel at the position the step occupies.
  *
- * The one deviation from happy-path is the unused pattern in the drift block below, and it is safe
- * for the same reason: ADR-EC-019 makes an unused pattern a WARNING, so its emitted node PASSES.
+ * There are exactly TWO deviations from happy-path, and each is safe for a reason that has to be
+ * stated rather than assumed, because "a step that resolves to nothing" is otherwise the one thing
+ * this file forbids.
+ *
+ * - The unused pattern in the drift block below. ADR-EC-019 makes an unused pattern a WARNING, so its
+ *   emitted node PASSES.
+ * - The unmatched STEP inside a `@skip`-tagged Scenario in Phase 9's skip block. `planFeature` stores
+ *   an unresolved step rather than throwing, and its `StepMatchError` is only reached at `yield*` time
+ *   inside the Scenario's Effect — which a skipped test never builds, because its handler is never
+ *   invoked. So the node reports SKIPPED, never undefined and never failed. That block's own comment
+ *   has the full chain; this bullet exists so the rule above is not read as having been broken.
  *
  * ## What the emitted tests assert, and why they are written this way
  *
@@ -46,6 +55,27 @@
  * the identical test names and the identical pass count. `Runner.test.ts` proves the same property
  * structurally against a recording fake by recording a nesting DEPTH; this proves it against the
  * real framework, which is the half a fake cannot.
+ *
+ * ## Phase 9's tag blocks are appended AFTER every block above, and that placement is load-bearing
+ *
+ * Every reader block in this file reads a module-scope array and depends on vitest running a file's
+ * suites in declaration order. Appending the tag blocks at the END is therefore the only placement
+ * that leaves all of them meaning exactly what they meant: nothing a tag block registers can run
+ * before a pre-Phase-9 reader has already made its assertion. Each tag block brings its OWN counters,
+ * for the reason the hook Feature brought its own fixture — a shared counter would make one block's
+ * assertion depend on another block's arrangement.
+ *
+ * The tag blocks are also the only ones in this file whose COLLECTION can fail for a reason that has
+ * nothing to do with what they assert. `vitest.config.ts` declares a closed tag list and vitest's
+ * `strictTags` defaults to `true`, so emitting a tag that file does not declare THROWS at collection
+ * time — and, left alone, would take the WHOLE file to zero tests, every block in it, not just the
+ * offending Scenario. `describeFeature.ts`'s adapter catches that throw and re-emits the Scenario
+ * untagged with one located warning (D-08), which is the only reason a stray tag in any block below
+ * costs a Scenario its tags instead of costing this file all of its tests. Both halves were run:
+ * with the degradation intact an undeclared tag here leaves the file green and prints one warning;
+ * with the degradation bypassed the same tag produces `Tests no tests`. That is why one of these
+ * blocks deliberately emits `@undeclared-on-purpose`, and why `vitest.config.ts` note (d) reserves
+ * that tag and forbids declaring it.
  *
  * ## The Scenario Outline block is here rather than in a value-asserting file
  *
@@ -111,7 +141,7 @@
  * same workaround, as `test/Step.test.ts` and `test/describeFeature.test.ts`.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, expect, it } from "@effect/vitest"
+import { assert, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -371,7 +401,8 @@ describe("describeFeature emitted tests that actually ran", () => {
 /**
  * Task 2: all six hooks, through a REAL `describeFeature` call — the second real call in this file,
  * against its own fixture, so the happy-path Feature above and its assertions stay completely
- * untouched. (The third is the Pitfall 34 Outline below, the fourth 08-07's Rule composition.)
+ * untouched. (The third is the Pitfall 34 Outline below, the fourth 08-07's Rule composition; Phase
+ * 9's tag blocks at the end of this file add six more.)
  *
  * `hookLog` is a plain module-scope array, not a `Recorder`-style `Context.Service` — deliberately.
  * The happy-path Feature above already proves per-Scenario Layer freshness (INV-EC-002); this block
@@ -637,7 +668,8 @@ describe("three Outline rows ran as three independent tests", () => {
 })
 
 /**
- * Plan 08-07's end-to-end proof, and the FOURTH and last real `describeFeature` call in this file:
+ * Plan 08-07's end-to-end proof, and the FOURTH real `describeFeature` call in this file — the last
+ * of the pre-Phase-9 ones, with the tag blocks below adding six more:
  * one `.feature` with a `Rule:` block, a Rule-scoped extra Layer, Rule-scoped hooks, and a
  * Scenario-scoped extra Layer, all composed and all observed from inside REAL running steps.
  *
@@ -775,8 +807,8 @@ const ruleFeature = Effect.runSync(
   ).pipe(Effect.provide(ParameterTypeStore.Default))
 )
 
-// THE FOURTH and last real `describeFeature` call in this file. Its two emitted tests are RUN by this
-// suite; the two blocks below read what they recorded.
+// THE FOURTH real `describeFeature` call in this file, and the last of the pre-Phase-9 ones. Its two
+// emitted tests are RUN by this suite; the two blocks below read what they recorded.
 describeFeature(ruleFeature, ruleFeatureLayer, ({ After, Before, Rule }) => {
   Before(recordRuleHook("featureBefore"))
   After(recordRuleHook("featureAfter"))
@@ -890,5 +922,670 @@ describe("a Rule's Layer and hooks compose with the Feature's at runtime (08-07)
       `Rule composition${nameSeparator}discounted checkout${nameSeparator}a Rule Scenario reaches the Feature and Rule tiers`,
       `Rule composition${nameSeparator}discounted checkout${nameSeparator}a Scenario Layer adds a third tier`
     ])
+  })
+})
+
+/**
+ * Plan 09-06, Task 1 — a Feature tagged at ALL FOUR inheritance levels, collected and run through the
+ * real `describeFeature`. The FIFTH real call in this file.
+ *
+ * ## Why the claim is carried by a SILENT warning channel and not by the test count
+ *
+ * `vitest.config.ts` declares a closed tag list and leaves `strictTags` at its default `true`, so
+ * emitting a tag that file does not declare THROWS at collection time. The obvious reading is that a
+ * non-zero, all-green test count for this file is therefore itself proof that the validator accepted
+ * these tags. **That reading is wrong, and it was wrong when this block was first written.** D-08's
+ * catch-and-degrade (plan 09-05) sits between the two: an undeclared tag is caught, the Scenario is
+ * re-emitted UNTAGGED, and the file stays green with one warning printed. Run and confirmed — swapping
+ * `@slow` below for an undeclared tag leaves this file at its full green count. So the test count
+ * cannot distinguish "every tag was accepted" from "some tag was rejected and silently dropped", and
+ * an assertion resting on it would be vacuous.
+ *
+ * What DOES distinguish them is the warning channel, so that is what this block asserts: no
+ * collection-phase warning may name this Feature's uri. One warning would mean at least one of the six
+ * tags this Feature emits failed validation and its Scenario is running untagged — the exact silent
+ * state D-08 converts a collection failure into, and one that no test count and no passing Scenario
+ * can see. See `collectionWarnings` for why the capture spans collection rather than wrapping the
+ * call: vitest defers a `describe` factory, so the emission — and therefore the warning — happens
+ * after `describeFeature` has returned.
+ *
+ * The pairing with Task 3 is what makes the empty capture evidence rather than absence of evidence: a
+ * library that dropped every tag before reaching the framework would also print nothing here. Task 3
+ * emits `@undeclared-on-purpose` and asserts exactly one warning naming that tag, which is only
+ * reachable if the tag array genuinely crossed into the validator. Neither block proves the tag path
+ * is live by itself; together they do.
+ *
+ * ## What is asserted here, and what deliberately is not
+ *
+ * Asserted: every Scenario's step body RAN, in document order, including the `@slow` one, the `@only`
+ * one and the untagged one; and no tag warning was printed while registering them. Both are
+ * in-process facts a module-scope array can see.
+ *
+ * NOT asserted: that the tag landed on the framework's own task object. A Scenario body cannot reach
+ * one — `TestApi.effect`'s self thunk takes no arguments by design (`TestApi.ts` note (d)), so there is
+ * no test context inside a step to read a task from. The definitive "the tag reached the real task"
+ * assertion is plan 09-08's CLI gate, which runs this file under `--tagsFilter` and checks the
+ * selection. This paragraph exists so a reader looking for that assertion here finds out why it is
+ * elsewhere rather than concluding it was forgotten.
+ *
+ * ## The `@only` Scenario IS roadmap criterion 3
+ *
+ * D-06 makes `@only` a plain pass-through tag that is NEVER routed to the framework's only-mode.
+ * RESEARCH Finding 15 records why that makes the criterion structural rather than arranged: the
+ * framework's `allowOnly` check is reachable only from branches guarded by some task already being in
+ * only-mode, so a library that emits no such task makes the check unreachable. `vitest.config.ts` pins
+ * `allowOnly: false` for every run, local and CI alike, so THIS SUITE PASSING is the assertion — an
+ * `@only` Scenario emitted as an only-modifier would fail its own task with "[Vitest] Unexpected .only
+ * modifier". No modifier is written anywhere in this file, and an acceptance grep enforces that.
+ */
+
+/**
+ * Every `console.warn` line printed while vitest COLLECTED this file, in order.
+ *
+ * ## Why this is a collection-phase capture and not `recordWarnings`' wrap-one-call shape
+ *
+ * `recordWarnings` above wraps a single `describeFeature` call and reads what that call printed. It
+ * works for the drift block because an unused-definition warning is printed from `describeFeature`'s
+ * OWN BODY, synchronously, before it returns.
+ *
+ * A tag warning is not printed there and cannot be caught that way. **vitest DEFERS a `describe`
+ * factory** — `describe(name, define)` registers a suite collector and runs `define` later, when the
+ * runner collects the file, not at the point the call is written. Every `it.effect` emission
+ * `Runner.ts` makes therefore happens AFTER `describeFeature` has already returned, which puts D-08's
+ * catch-and-degrade `console.warn` outside any wrapper around the call. Verified by running it: a
+ * wrap-the-call capture around the four-level block below records ZERO lines while
+ * `--disableConsoleIntercept` shows the warning was printed. A wrapped capture here would not fail —
+ * it would be permanently, silently empty, and every assertion reading it would pass for the wrong
+ * reason. That is the single most plausible way to write this block wrong, which is why the mechanism
+ * is written down rather than left to read as a style choice.
+ *
+ * So the stub is installed ONCE, at module scope, and left installed for the whole collection phase;
+ * the `beforeAll` below removes it before the first test runs. Two consequences fall out and both are
+ * relied on:
+ *
+ * - It is restored to `originalConsoleWarn` BY REFERENCE, and the drift block's
+ *   "restored the original console.warn, by reference" assertion is what proves the removal happened.
+ *   That test runs in the test phase, after `beforeAll`, so a stub still installed there fails it —
+ *   this capture cannot leak into the rest of the run without something going red (T-06-07-06).
+ * - `recordWarnings`' two module-scope calls run EARLIER in this file than the install below, so they
+ *   still capture and restore `originalConsoleWarn` exactly as they did before, and `warnCalls`,
+ *   `countAfterDescribeFeature` and `countAfterCollectFeature` all keep meaning precisely what they
+ *   meant. Nothing above this line changed.
+ *
+ * Note for anyone debugging one of these blocks: vitest intercepts `console` output by default, so a
+ * warning that IS printed appears nowhere in the reporter unless the run passes
+ * `--disableConsoleIntercept`. Every assertion below reads this array rather than anyone's eyes on
+ * terminal output.
+ */
+const collectionWarnings: Array<string> = []
+
+// Installed at module scope, removed in the `beforeAll` below. STRINGS rather than argument lists,
+// because every assertion here is about the rendered line: `Errors.ts`'s factories build one message
+// and `describeFeature.ts` passes `.message` straight through, so a second argument arriving here
+// would itself be the defect.
+globalThis.console.warn = (...args: Array<unknown>) => {
+  collectionWarnings.push(args.map((arg) => String(arg)).join(" "))
+}
+
+beforeAll(() => {
+  // BY REFERENCE, to the value captured at the very top of this file before any stub existed.
+  globalThis.console.warn = originalConsoleWarn
+})
+
+/**
+ * The collection-phase warning lines that name `uri`, which is how each block reads only its own.
+ *
+ * Filtering by uri rather than slicing by position, because the tag blocks below are collected in an
+ * order this file should not have to encode, and because the framework itself is free to warn about
+ * something unrelated during collection. Every message `Errors.ts` builds opens with the quoted uri
+ * (`makeUndeclaredTagWarning`) or carries it (`makeExcludedScenariosNotice`), so a per-Feature filter
+ * is exact rather than approximate.
+ */
+const warningsFor = (uri: string): ReadonlyArray<string> => collectionWarnings.filter((line) => line.includes(uri))
+
+const fourLevelStepRuns: Array<string> = []
+
+/** A bare generator that records one label into `fourLevelStepRuns`. */
+const recordFourLevel = (label: string) =>
+  function*() {
+    fourLevelStepRuns.push(label)
+    yield* Effect.void
+  }
+
+/**
+ * Tags at every level Gherkin has: the Feature, a Rule, a Scenario Outline, and its Examples block —
+ * the same four-level arrangement `packages/gherkin/test/Correlate.test.ts`'s inheritance fixture uses,
+ * brought here so the flattened chain is proved to survive the whole pipeline rather than only the
+ * parse.
+ *
+ * Every tag is drawn from `vitest.config.ts`'s declared list. Adding an undeclared one here does NOT
+ * fail this block and does not fail anything else either: D-08's catch-and-degrade re-emits that
+ * Scenario untagged and prints one warning, so the observable cost is a silently untagged Scenario
+ * rather than a red test. Both halves of that were run and are recorded in this plan's summary — the
+ * same tag with the degradation bypassed takes the entire FILE to `Tests no tests`.
+ */
+const fourLevelFeature = Effect.runSync(
+  parseFeature(
+    `@featuretag
+Feature: Four-level tagging
+
+  Scenario: an untagged Scenario still inherits the Feature's own tag
+    When the untagged four-level scenario runs
+
+  @slow
+  Scenario: a slow-tagged Scenario is a plain pass-through and runs like any other
+    When the slow four-level scenario runs
+
+  @only
+  Scenario: an only-tagged Scenario emits a plain tag and no modifier
+    When the only-tagged four-level scenario runs
+
+  @ruletag
+  Rule: a tagged rule
+
+    @scenariotag
+    Scenario Outline: a four-level-tagged row carrying <value>
+      When the four-level outline scenario runs with <value>
+
+      @exampletag
+      Examples:
+        | value |
+        | alpha |
+`,
+    "test/four-level-tags.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE FIFTH real `describeFeature` call in this file. `Layer.empty` is the ambient Layer: every body
+// below is a counter increment requiring no service, and this block's subject is tags rather than
+// composition, which the four blocks above already cover. Nothing wraps the call — the warnings it can
+// produce are printed later, during collection, into `collectionWarnings`.
+describeFeature(fourLevelFeature, Layer.empty, ({ Rule, When }) => {
+  When("the untagged four-level scenario runs", recordFourLevel("untagged"))
+  When("the slow four-level scenario runs", recordFourLevel("slow"))
+  When("the only-tagged four-level scenario runs", recordFourLevel("only-tagged"))
+
+  Rule("a tagged rule", Layer.empty, ({ When: RuleWhen }) => {
+    // RENAMED for the reason 08-07's Rule block above records: oxlint's `no-shadow` rejects reusing
+    // the enclosing name, and the rename also says at the call site which container the registration
+    // lands in.
+    RuleWhen("the four-level outline scenario runs with {word}", function*(value: string) {
+      fourLevelStepRuns.push(`outline:${value}`)
+      yield* Effect.void
+    })
+  })
+})
+
+/**
+ * DECLARED AFTER the block that registered the Feature, for the declaration-order reason every other
+ * reader in this file uses.
+ */
+describe("a Feature tagged at all four levels collects and runs through the real describeFeature", () => {
+  it("ran every Scenario's step, in document order, tagged and untagged alike", () => {
+    // ONE positional comparison over the WHOLE array rather than four membership checks. It pins that
+    // each Scenario ran exactly once, that the Feature-level Scenarios ran before the Rule's, and —
+    // the property this block exists for — that a tag on a Scenario changes nothing about whether it
+    // runs. `@slow` and `@only` are pass-through tags (D-07, D-06); a library that special-cased
+    // either would drop its entry here.
+    expect(fourLevelStepRuns).toEqual(["untagged", "slow", "only-tagged", "outline:alpha"])
+  })
+
+  it("emitted all six tags with the framework accepting every one — nothing was degraded", () => {
+    // The block's real claim, and the ONE observable that separates "the validator accepted these six
+    // tags" from "the validator rejected one and D-08 silently re-emitted its Scenario untagged". The
+    // test count cannot tell those apart — the degraded Scenario still runs and still passes — so an
+    // EMPTY set of warnings for this Feature's uri is the assertion, not a green count. `toEqual([])`
+    // rather than a length check, so a failure prints the offending warning instead of `1 !== 0`.
+    expect(warningsFor("test/four-level-tags.feature")).toEqual([])
+  })
+})
+
+/**
+ * Plan 09-06, Task 2 — `@skip` runs NOTHING: no step body, no hook, and no failure from a step no
+ * definition matches. The SIXTH and SEVENTH real `describeFeature` calls in this file.
+ *
+ * ## Why this is a runtime block and not a `Runner.test.ts` one
+ *
+ * `Runner.test.ts` already proves, against a recording fake, that a `@skip` Scenario is emitted with
+ * `skip: true`. That is the whole of what a fake can see: it records the thunks and never invokes
+ * them, so an implementation that ran every hook regardless of the skip flag would record exactly the
+ * same thing. "The hooks did not run" is a claim about EXECUTION, and only a real run has any.
+ *
+ * ## The chain that makes this structural rather than arranged (RESEARCH Finding 5)
+ *
+ * Every hook in this package is woven INSIDE the Scenario's Effect by `ScenarioEffect.ts` —
+ * `runHookBatch(hooks.Before)` at the head, `Effect.onExit(... hooks.After)` around the whole thing —
+ * and there is no vitest `beforeEach`/`afterEach` anywhere under `packages/vitest/src`. `Runner.ts`
+ * note (b) additionally guarantees `buildScenarioEffect` is called only INSIDE the thunk handed to
+ * `TestApi.effect`, never eagerly during the walk. A skipped test's handler is never invoked, so the
+ * thunk is never called, so `buildScenarioEffect` is never reached, so no hook Effect is ever
+ * CONSTRUCTED — let alone run. The counters below cannot move for a skipped Scenario without one of
+ * those three links breaking, which is why they are the assertion.
+ *
+ * That is also why the arrangement is worth protecting from the obvious tidy-up: moving hooks to
+ * vitest's own `beforeEach`/`afterEach` would compile, would keep every ordering assertion in this
+ * file green, and would run a skipped Scenario's `Before` and `After` anyway — because those hooks
+ * belong to the SUITE, not to the skipped task.
+ *
+ * ## The unmatched step is deliberate, and it is Pitfall 15
+ *
+ * The second Scenario contains a step text NO registered definition matches, which the file header
+ * otherwise forbids. It is safe, and the reason is the same chain: `Plan.ts` stores an unresolved
+ * step rather than throwing at plan time, and the `StepMatchError` it carries is only reached at
+ * `yield*` time inside the composed Effect. A skipped test never builds that Effect, so the error is
+ * never reached and the node reports SKIPPED — not undefined, not failed. Written down because the
+ * safety is entirely non-obvious: read at registration time, this looks exactly like the broken-suite
+ * arrangement the header rules out.
+ *
+ * It also means the `@skip` is what carries the property, not the absence of a definition. Making
+ * `isSkipped` always return `false` turns this Scenario RED — the mutation is recorded in this plan's
+ * summary.
+ *
+ * ## The untagged Scenario beside them is what makes the counters non-vacuous
+ *
+ * Hook counters that must be zero prove nothing on their own: they are also zero for a Feature whose
+ * hooks were never registered, for one whose Scenarios never ran, and for one this file forgot to
+ * emit at all. One RUNNABLE Scenario in the same Feature, with a known step count, turns each counter
+ * into an exact number — greater than zero, and no larger than that Scenario's own contribution.
+ */
+const skipHookCounts = {
+  before: 0,
+  after: 0,
+  beforeStep: 0,
+  afterStep: 0,
+  skippedBodies: 0,
+  runnableBodies: 0
+}
+
+/** A bare generator that increments one `skipHookCounts` key. */
+const countSkipHook = (key: keyof typeof skipHookCounts) =>
+  function*() {
+    skipHookCounts[key] += 1
+    yield* Effect.void
+  }
+
+/**
+ * Two `@skip` Scenarios and one runnable one, in ONE Feature so they share the same hook
+ * registrations — which is the whole point: the hooks are declared once and must fire for exactly one
+ * of the three Scenarios.
+ *
+ * The runnable Scenario has TWO steps, deliberately. `BeforeStep`/`AfterStep` wrap every resolved step
+ * rather than every Scenario, so a per-Scenario count of 2 and a per-step count of 2 would be
+ * indistinguishable with one step, and the two hook kinds would stop being told apart.
+ */
+const skipFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Skip runs nothing
+
+  @skip
+  Scenario: a skipped Scenario runs none of its own step bodies
+    When the skipped scenario's first step body runs
+    Then the skipped scenario's second step body runs
+
+  @skip
+  Scenario: a skipped Scenario whose step matches no definition is still just skipped
+    When no registered definition anywhere in this file matches this step
+
+  Scenario: the one runnable Scenario in the skip Feature
+    When the skip Feature's runnable first step runs
+    Then the skip Feature's runnable second step runs
+`,
+    "test/skip-runs-nothing.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE SIXTH real `describeFeature` call in this file. Note there is NO registration for
+// "no registered definition anywhere in this file matches this step" — that omission is the Pitfall 15
+// arrangement and is the one thing in this block that must not be "fixed".
+describeFeature(skipFeature, Layer.empty, ({ After, AfterStep, Before, BeforeStep, Then, When }) => {
+  Before(countSkipHook("before"))
+  After(countSkipHook("after"))
+  BeforeStep(countSkipHook("beforeStep"))
+  AfterStep(countSkipHook("afterStep"))
+
+  When("the skipped scenario's first step body runs", countSkipHook("skippedBodies"))
+  Then("the skipped scenario's second step body runs", countSkipHook("skippedBodies"))
+
+  When("the skip Feature's runnable first step runs", countSkipHook("runnableBodies"))
+  Then("the skip Feature's runnable second step runs", countSkipHook("runnableBodies"))
+})
+
+/**
+ * The second Feature: EVERY Scenario is `@skip`, so nothing runnable is emitted at all.
+ *
+ * This is the runtime half of plan 09-04's `AfterAllScenarios` suppression, and `Runner.ts` note (e)
+ * has the argument it makes true. `BeforeAllScenarios` is a once-cell reachable ONLY from inside a
+ * Scenario thunk, and a skipped test never invokes its thunk — so in this state the setup hook
+ * structurally CANNOT have run. An unconditional teardown node would therefore tear down resources
+ * that were never set up, which is why the emission condition carries a runnable-count conjunct
+ * alongside the "are there any AfterAllScenarios hooks" one.
+ *
+ * Both counters are asserted, not just the teardown's. `beforeAllScenarios` staying at zero is what
+ * makes `afterAllScenarios` staying at zero mean "teardown was correctly suppressed" rather than
+ * "teardown happened to be skipped along with everything else" — the pairing is the claim.
+ */
+const allSkippedCounts = { beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 }
+
+const allSkippedFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Every Scenario in this Feature is skipped
+
+  @skip
+  Scenario: the only Scenario here, and it is skipped
+    When the all-skipped Feature's step body runs
+`,
+    "test/all-skipped.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE SEVENTH real `describeFeature` call in this file.
+describeFeature(allSkippedFeature, Layer.empty, ({ AfterAllScenarios, BeforeAllScenarios, When }) => {
+  BeforeAllScenarios(function*() {
+    allSkippedCounts.beforeAllScenarios += 1
+    yield* Effect.void
+  })
+  AfterAllScenarios(function*() {
+    allSkippedCounts.afterAllScenarios += 1
+    yield* Effect.void
+  })
+  When("the all-skipped Feature's step body runs", function*() {
+    allSkippedCounts.body += 1
+    yield* Effect.void
+  })
+})
+
+/**
+ * DECLARED AFTER both blocks that registered these Features, for the declaration-order reason every
+ * other reader in this file uses. Every Scenario above — the skipped ones included, since a skipped
+ * node still resolves before the next suite runs — has been reported by the time these execute.
+ */
+describe("a @skip Scenario runs no step and no hook (09-06)", () => {
+  it("ran every hook exactly the number of times the ONE runnable Scenario accounts for", () => {
+    // ONE comparison over the WHOLE record rather than six separate expectations, so a failure prints
+    // every counter at once and the shape of the deviation is readable — a hook that fired for all
+    // three Scenarios reads 3/3/6/6, and one that fired for none reads 0/0/0/0. Those are different
+    // defects and a per-key assertion would report whichever happened to be checked first.
+    //
+    // The numbers: ONE runnable Scenario with TWO steps. `Before`/`After` are per Scenario, so 1 each;
+    // `BeforeStep`/`AfterStep` wrap every resolved step, so 2 each. `skippedBodies` covers BOTH steps
+    // of the first `@skip` Scenario and must be 0 — that is the headline. `runnableBodies` at 2 is
+    // what proves the whole Feature was not simply skipped wholesale, which would zero every counter
+    // here and pass a naive "the skipped bodies did not run" check.
+    expect(skipHookCounts).toEqual({
+      before: 1,
+      after: 1,
+      beforeStep: 2,
+      afterStep: 2,
+      skippedBodies: 0,
+      runnableBodies: 2
+    })
+  })
+
+  it("emitted no teardown for a Feature in which every Scenario is skipped", () => {
+    // `body` at 0 is the ordinary skip claim. The other two are 09-04's suppression conjunct: the
+    // once-cell was never reached because no thunk was ever invoked, so a teardown node would run
+    // against resources nothing set up. Dropping the runnable-count conjunct from `Runner.ts` makes
+    // `afterAllScenarios` 1 while leaving `beforeAllScenarios` at 0 — the asymmetry IS the bug, and
+    // asserting the pair together is what shows it.
+    expect(allSkippedCounts).toEqual({ beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 })
+  })
+})
+
+/**
+ * Plan 09-06, Task 3a — D-08's catch-and-degrade, observed end to end. The EIGHTH real
+ * `describeFeature` call in this file.
+ *
+ * ## This block is the positive control for Task 1, and Task 1 is the negative control for it
+ *
+ * Task 1 asserts that a Feature emitting only DECLARED tags produces no warning. On its own that is
+ * satisfied by a library which drops every tag before the framework ever sees one — the tags would be
+ * absent, nothing would be validated, and nothing would be warned about. This block is what rules
+ * that out: `@undeclared-on-purpose` is not in `vitest.config.ts`, so a warning naming it can only
+ * exist if the tag array genuinely crossed into the framework's validator and was rejected there.
+ * One block proves the path is quiet when it should be; the other proves the path exists at all.
+ *
+ * ## `@undeclared-on-purpose` is RESERVED — declaring it deletes this test while leaving it green
+ *
+ * `vitest.config.ts` note (d) reserves the tag and forbids adding it to `test.tags`. If it were
+ * declared, the emission below would simply succeed, no warning would be printed, and the assertion
+ * that the warning names it would fail — loudly, which is the good case. The dangerous edit is the
+ * other direction: someone "tidying up" by deleting this Scenario, or by renaming the tag to a
+ * declared one, removes the only evidence in this repo that tags reach the framework at all, and
+ * every remaining test stays green.
+ *
+ * ## The Scenario carries exactly ONE tag, and that is deliberate
+ *
+ * `describeFeature.ts`'s adapter passes the Scenario's WHOLE tag array to `makeUndeclaredTagWarning`,
+ * not the subset the framework actually rejected — it cannot know which those are without reading the
+ * framework's message, which 09-05 forbids on purpose. So a Scenario carrying a declared tag ALONGSIDE
+ * an undeclared one produces a message naming both as undeclared, which is false about the declared
+ * one. That is a real reporting defect and it is recorded in this plan's summary rather than worked
+ * around here; giving this Scenario a single tag keeps this block's assertions about the mechanism
+ * rather than about the defect, and this paragraph is why the Feature deliberately carries no
+ * Feature-level tag of its own.
+ *
+ * ## The quoting assertion is a SECURITY control, not a formatting preference
+ *
+ * A tag is author-controlled text that reaches a terminal. `Errors.ts` note (f) `JSON.stringify`s
+ * every author-controlled component precisely so a tag containing a quote, a newline or an ANSI escape
+ * cannot forge what reads as a second line of this library's own output. The assertion below therefore
+ * matches the QUOTED form specifically — `"@undeclared-on-purpose"` with the quote characters — and
+ * fails against a message that interpolated the tag bare, which a `toContain(tag)` check would not.
+ */
+const undeclaredTagRuns: Array<string> = []
+
+const undeclaredTagFeature = Effect.runSync(
+  parseFeature(
+    `Feature: An undeclared tag degrades instead of destroying the file
+
+  @undeclared-on-purpose
+  Scenario: a Scenario carrying an undeclared tag still runs
+    When the undeclared-tag scenario's step body runs
+
+  Scenario: a sibling Scenario in the same Feature still collects and runs
+    When the undeclared-tag sibling's step body runs
+`,
+    "test/undeclared-tag.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE EIGHTH real `describeFeature` call in this file, and the only one in the repo that deliberately
+// emits a tag the config does not declare.
+describeFeature(undeclaredTagFeature, Layer.empty, ({ When }) => {
+  When("the undeclared-tag scenario's step body runs", function*() {
+    undeclaredTagRuns.push("undeclared")
+    yield* Effect.void
+  })
+  When("the undeclared-tag sibling's step body runs", function*() {
+    undeclaredTagRuns.push("sibling")
+    yield* Effect.void
+  })
+})
+
+/**
+ * Plan 09-06, Task 3b — D-03's registration filter and D-10's empty-array rule. The NINTH and TENTH
+ * real `describeFeature` calls in this file.
+ *
+ * ## Absence is asserted by TITLE, never by a count
+ *
+ * D-03's whole point is that an excluded Scenario never becomes a test node — absent from the run
+ * rather than reported as skipped. A total test count cannot tell those two apart, and neither can a
+ * counter that only says "fewer ran". So each step body records its own `currentTestName()`, and the
+ * assertion is a whole-array comparison against the ONE title that should exist. An implementation
+ * that emitted the excluded Scenarios as skipped would leave the array unchanged — a skipped test
+ * runs no body — so the array is paired with the surviving Scenario's presence, which is what makes
+ * the empty entries mean "never registered" rather than "registered and skipped".
+ *
+ * ## The empty-array case is the one that catches a suite deleted behind a green run
+ *
+ * `excludeTags: []` and `excludeTags: undefined` are the SAME input and both mean NO FILTER
+ * (`Tags.ts` note (b)). The failure this guards is a consumer computing the array from an environment
+ * flag or a `.filter()` that happens to come out empty: read as "match nothing", their whole suite
+ * would vanish while the reporter showed zero failures. Zero tests emitted and zero tests failed look
+ * identical, which is why this needs its own Feature rather than a variation on the one above.
+ *
+ * ## D-10's exclusion NOTICE, and the defect this block found
+ *
+ * The notice is asserted below, and it did not print at all until this plan changed the source. The
+ * cause is the deferral fact `collectionWarnings` above records: `emitFeature` increments
+ * `excludedScenarioCount` INSIDE the `describe` factory, and `describeFeature` used to read the
+ * returned `EmitOutcome` on the line after `emitFeature` returns — which vitest has not run the
+ * factory by. The count was therefore always `0` there and the `> 0` guard never opened, so a stale
+ * `excludeTags` hiding a whole Feature sat behind a green run exactly as D-10 exists to prevent.
+ *
+ * `Runner.test.ts` could not see it: its recording fake invokes `define` synchronously, so all four of
+ * its `excludedScenarioCount` assertions are correct about the fake and silent about the framework.
+ * That is this file's founding argument — a value-asserting test and a fake are each sharper than a
+ * real run at the thing they test, and neither can see the emission that never happened.
+ *
+ * The fix is `Runner.ts`'s `onEmitted` callback, invoked as the last statement inside the walk, which
+ * `describeFeature.ts` now passes; `Runner.ts` note (h) has the argument and records why the return
+ * value is kept anyway. THIS ASSERTION is the only thing in the repo that fails if the notice
+ * regresses to reading that return value — so it is not a formality.
+ */
+const excludeTagsRan: Array<string> = []
+
+const excludeTagsFeature = Effect.runSync(
+  parseFeature(
+    `Feature: excludeTags removes Scenarios from registration
+
+  @wip
+  Scenario: the first wip Scenario, which excludeTags removes
+    When the first excluded wip step runs
+
+  @wip
+  Scenario: the second wip Scenario, which excludeTags removes
+    When the second excluded wip step runs
+
+  Scenario: the Scenario that survives excludeTags
+    When the surviving excludeTags step runs
+`,
+    "test/exclude-tags.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE NINTH real `describeFeature` call in this file, and the first anywhere in this repo to pass the
+// fourth `options` argument to the real entry point.
+describeFeature(excludeTagsFeature, Layer.empty, ({ When }) => {
+  When("the first excluded wip step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+  When("the second excluded wip step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+  When("the surviving excludeTags step runs", function*() {
+    excludeTagsRan.push(currentTestName())
+    yield* Effect.void
+  })
+}, { excludeTags: ["@wip"] })
+
+const emptyFilterRan: Array<string> = []
+
+const emptyFilterFeature = Effect.runSync(
+  parseFeature(
+    `Feature: An empty excludeTags array filters nothing
+
+  @wip
+  Scenario: a wip Scenario an empty excludeTags array must not remove
+    When the empty-filter wip step runs
+
+  Scenario: an untagged Scenario beside it
+    When the empty-filter untagged step runs
+`,
+    "test/empty-filter.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE TENTH real `describeFeature` call in this file. The SAME `@wip` tag the block above excludes,
+// with an EMPTY array — so the two blocks differ in exactly the one thing under test.
+describeFeature(emptyFilterFeature, Layer.empty, ({ When }) => {
+  When("the empty-filter wip step runs", function*() {
+    emptyFilterRan.push("wip")
+    yield* Effect.void
+  })
+  When("the empty-filter untagged step runs", function*() {
+    emptyFilterRan.push("untagged")
+    yield* Effect.void
+  })
+}, { excludeTags: [] })
+
+/**
+ * DECLARED LAST in this file, after every block that registered any of the three Features above, for
+ * the declaration-order reason every other reader here uses.
+ */
+describe("an undeclared tag warns and keeps running; a filter excludes without a trace (09-06)", () => {
+  it("ran the undeclared-tag Scenario AND its sibling — the file did not collapse", () => {
+    // The degradation's headline: the Scenario RAN. D-08 converts a whole-file collection failure into
+    // one warning about one Scenario, so the sibling's presence is half the claim — it proves the
+    // damage was contained to the Scenario rather than to the Feature.
+    expect(undeclaredTagRuns).toEqual(["undeclared", "sibling"])
+  })
+
+  it("printed exactly one warning, naming the file, the Scenario and the tag in QUOTED form", () => {
+    const printed = warningsFor("test/undeclared-tag.feature")
+    // Exactly one, not "at least one": a warning per TAG rather than per catch would still name the
+    // right tag and still read correctly, and only a count separates the two.
+    expect(printed).toHaveLength(1)
+
+    const line = printed[0] ?? ""
+    // The three facts a reader needs in order to act, each matched in its `JSON.stringify`'d form.
+    // Quoting is `Errors.ts` note (f)'s security control against a tag forging a second output line
+    // (T-09-06-01), so matching the quotes is matching the control — a message that interpolated any
+    // of these bare would pass a `toContain(value)` check and fail these.
+    expect(line).toContain(JSON.stringify("@undeclared-on-purpose"))
+    expect(line).toContain(JSON.stringify("test/undeclared-tag.feature"))
+    expect(line).toContain(JSON.stringify("a Scenario carrying an undeclared tag still runs"))
+
+    // The fact that stops the obvious misreading. Without it the natural conclusion from this warning
+    // is "my Scenario was skipped", which is the one thing that did not happen.
+    expect(line).toContain("still ran")
+    expect(line).toContain("UNTAGGED")
+  })
+
+  it("excluded both @wip Scenarios ENTIRELY — no test node, no step, not even a skip", () => {
+    // ONE whole-array comparison, and the two properties it pins have different failure modes. That
+    // the survivor RAN rules out "the filter removed everything"; that neither excluded title appears
+    // rules out "they were emitted as skipped" — a skipped test runs no body, so a count could not
+    // separate those two, and D-03's entire distinction is exactly that separation.
+    expect(excludeTagsRan).toEqual([
+      `excludeTags removes Scenarios from registration${nameSeparator}the Scenario that survives excludeTags`
+    ])
+  })
+
+  it("printed exactly one D-10 notice, naming the count, the option and the quoted tag", () => {
+    const printed = warningsFor("test/exclude-tags.feature")
+    // Exactly ONE, per Feature and never per excluded Scenario. D-03 removed the per-Scenario output
+    // on purpose, and a line each would rebuild it in `console.warn`; the count is what makes the
+    // aggregate honest without doing that. This is also the assertion that fails if the notice ever
+    // goes back to reading `emitFeature`'s synchronous return value, which is `0` under vitest.
+    expect(printed).toHaveLength(1)
+
+    const line = printed[0] ?? ""
+    // The COUNT, which is the fact a reader acts on and the one a stale filter makes alarming.
+    expect(line).toContain("2 Scenario(s)")
+    // The OPTION that did it, so the reader knows which of the two to go and look at. The notice
+    // derives this from the normalised arrays rather than accepting it, so a wrong one here would mean
+    // the reason and the fields beside it disagreed.
+    expect(line).toContain("excludeTags")
+    // QUOTED, for the D-08 assertion's reason: author-controlled text reaching a terminal is escaped
+    // by `Errors.ts` note (f), and matching the quote characters is what tests the control rather than
+    // merely the content.
+    expect(line).toContain(JSON.stringify("@wip"))
+    expect(line).toContain(JSON.stringify("excludeTags removes Scenarios from registration"))
+    // The sentence that stops "excluded" being read as "skipped". A skipped test at least appears in
+    // the reporter; these Scenarios appear nowhere at all, and the notice is the only trace of them.
+    expect(line).toContain("never registered")
+  })
+
+  it("emitted every Scenario under excludeTags: [], and printed nothing about it", () => {
+    // The empty-array rule at the public boundary: `[]` means NO FILTER, never "match nothing". The
+    // `@wip` entry is the load-bearing one — it is the tag the block above excludes, so its presence
+    // here is what proves the array's EMPTINESS did the deciding rather than the tag's identity.
+    expect(emptyFilterRan).toEqual(["wip", "untagged"])
+    // And no notice: nothing was excluded, so there is nothing to report. A "0 Scenario(s) excluded"
+    // line on every unfiltered Feature is the noise D-10's `> 0` guard exists to prevent.
+    expect(warningsFor("test/empty-filter.feature")).toEqual([])
   })
 })
