@@ -54,6 +54,7 @@
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import { captureCallSite } from "./CallSite.ts"
 import type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
 import { register } from "./Step.ts"
@@ -125,13 +126,18 @@ const collect = (
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
-  // it under the scope that is current right now. The keyword is recorded verbatim — an `And` stays
-  // an `And` and is never rewritten to the keyword it continues, because that continuation is a
-  // match-time question and this is registration time.
+  // it under the scope that is current right now, together with where the author wrote it. The
+  // keyword is recorded verbatim — an `And` stays an `And` and is never rewritten to the keyword it
+  // continues, because that continuation is a match-time question and this is registration time.
   const registrar = (keyword: StepKeyword): StepRegistrar<any> => (pattern, fn) => {
-    // The definition site is `null` for now — `Registry.ts` takes it as an argument and never
-    // captures one itself. Wiring the real capture in is the next plan step.
-    registry.register(keyword, pattern, register(pattern, fn), null)
+    // The `captureCallSite` call below MUST stay INSIDE this arrow — the one a test author calls as
+    // `Given`/`When`/`Then`/`And`/`But`. An extra helper frame between the arrow and the capture is
+    // fine, because frame selection is by directory and not by a frame count (CallSite.ts note (a)),
+    // but hoisting the call to a `const` in `collect`'s body or to module scope is not: it would
+    // then run from THIS file's frame and record this module's own line for every step in every
+    // suite. That defect compiles, type-checks, lints, and produces a perfectly well-formed site —
+    // it just names `describeFeature.ts` in the ambiguous-step error D-03 exists to make readable.
+    registry.register(keyword, pattern, register(pattern, fn), captureCallSite())
   }
 
   const scenarioDsl: ScenarioDsl<any> = {

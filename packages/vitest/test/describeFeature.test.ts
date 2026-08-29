@@ -27,11 +27,17 @@
  *   no await and no tick. An async define callback would leave the flag false there while every
  *   content assertion in this file still passed, because there would simply be no steps to disagree
  *   about (PITFALLS #2).
+ * - **The definition site (D-03)** is asserted against a HARD-CODED line number in this file. Every
+ *   weaker check — "is not null", "has a numeric line", "names a `.ts` file" — passes against a
+ *   registrar that captures its own frame inside `src/describeFeature.ts`, which is the actual
+ *   defect and the one nothing else in the repo can see.
  *
- * Mutation-tested (both performed, then reverted, both confirmed failing) — see the plan summary for
- * the recorded output:
+ * Mutation-tested (all three performed, then reverted, all three confirmed failing) — see the plan
+ * summary for the recorded output:
  * - A. `createRegistry` hoisted to module scope → the cross-contamination test fails.
  * - B. `Layer.merge`'s two arguments swapped → the D-04 test fails.
+ * - C. `registrar` passes `null` instead of `captureCallSite()` → the end-to-end `definedAt` test
+ *      fails.
  *
  * ## The `ParsedFeature` argument
  *
@@ -228,6 +234,26 @@ describe("a step definition carries the container it was registered inside", () 
       kind: "feature",
       name: "Checkout"
     })
+  })
+})
+
+describe("a step definition records where its author wrote it", () => {
+  it("names this test file and the exact line of the Given call, not a line inside the package", () => {
+    // POSITION-SENSITIVE: the literal below is the real line number of the `Given(...)` call two
+    // lines further down. Editing anything above this point in the file moves it, and this
+    // assertion fails until the literal is updated. That is deliberate — it is exactly what a
+    // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
+    const givenLine = 248
+    const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
+      Given("a located step", noop)
+    })
+
+    const definedAt = collected.definitions[0]?.definedAt
+
+    // The file half rules out `src/describeFeature.ts` and `src/CallSite.ts`; the line half rules
+    // out any other call site in this file. Mutation C fails both.
+    expect(definedAt?.file.endsWith("describeFeature.test.ts")).toBe(true)
+    expect(definedAt?.line).toBe(givenLine)
   })
 })
 
