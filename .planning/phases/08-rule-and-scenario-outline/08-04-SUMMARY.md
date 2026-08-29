@@ -140,6 +140,10 @@ None. This plan adds no network endpoint, no auth path, no file access and no sc
 - `08-07` re-touches `Runner.ts`'s emission call sites. The contract to keep is `titleFor(scenarioPlan)` at every `api.effect` Scenario call site (including any new Rule-nesting depth it introduces); `buildScenarioTitles` itself needs no change, since it already flattens Rule children exactly as `Validate.ts` does and the Rule-nested fixture in `OutlineTitle.test.ts` proves it.
 - No blockers.
 
+## Self-Check: PASSED
+
+All created files exist on disk (`packages/vitest/src/OutlineTitle.ts`, `packages/vitest/test/OutlineTitle.test.ts`, this SUMMARY). All four commits are present in `git log`: `5e02a0c`, `200b166`, `92cda9d`, `411f9bb`.
+
 ---
 *Phase: 08-rule-and-scenario-outline, Plan: 04*
 *Completed: 2026-08-29*
