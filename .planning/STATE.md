@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-08-29T18:00:03.121Z"
-last_activity: 2026-08-29 -- Phase 08 planning complete
+last_updated: "2026-08-29T18:02:32.315Z"
+last_activity: 2026-08-29 -- Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 7
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 8 — rule and scenario outline
+**Current focus:** Phase 08 — rule-and-scenario-outline
 
 ## Current Position
 
-Phase: 8
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-29 -- Phase 08 planning complete
+Phase: 08 (rule-and-scenario-outline) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 08
+Last activity: 2026-08-29 -- Phase 08 execution started
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
