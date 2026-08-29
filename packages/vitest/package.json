@@ -47,7 +47,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@effect-cucumber/gherkin": "workspace:^"
+    "@effect-cucumber/gherkin": "workspace:^",
+    "tinyglobby": "^0.2.17"
   },
   "peerDependencies": {
     "effect": "catalog:peer",
