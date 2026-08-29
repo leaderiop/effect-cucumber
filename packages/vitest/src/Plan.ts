@@ -226,6 +226,39 @@ export type ScenarioPlan = {
   readonly name: string
   readonly astName: string
   readonly ruleId: Option.Option<string>
+  /**
+   * Every tag this Scenario carries, ALREADY FLATTENED and inherited.
+   *
+   * `packages/gherkin/src/Model.ts`'s `ParsedScenario.tags` states the contract this field passes
+   * through unchanged: the names come off `Pickle.tags`, which `compile()` has already stacked in
+   * feature then rule then scenario then examples-block order, and its own comment ends "Do not
+   * recompute inheritance." Nothing in this package recomputes it, re-sorts it or dedupes it. The
+   * literal `@` prefix is RETAINED and is never normalised away: it is the exact byte sequence a
+   * `--tagsFilter '@slow'` invocation matches against, so stripping it here would silently make every
+   * filter on the command line match nothing.
+   *
+   * REQUIRED, never optional. `describeFeature.ts`'s `FeatureCollection.hooks` field comment gives
+   * the general reason — an optional field would let a later consumer forget the value exists — and
+   * the specific one is that there is no "absent" state to model: a Scenario with no tags at all
+   * already arrives as an empty array from `ParsedScenario.tags`, not as `undefined`. An optional
+   * field would let the emission walk see `undefined` and emit nothing, with nothing going red.
+   *
+   * `ReadonlyArray`, and it stays one the whole way down. The test framework's own options type wants
+   * a mutable array; the single spread that widens it lives in `describeFeature.ts`'s adapter, which
+   * is the one module allowed to name that framework at all. Widening the field here to "fix" the
+   * assignment error that appears at that boundary would move a one-line adapter concern into the
+   * plan's public shape.
+   *
+   * `FeaturePlan`'s doc comment immediately below argues against copying — "a plan that copied a
+   * subset would have to grow a field every time the runner learned to read one more" — and this
+   * field does not contradict it. That sentence is about FEATURE-level fields, which is why
+   * `FeaturePlan` carries the whole `ParsedFeature` by reference instead of destructuring it.
+   * `ScenarioPlan` has always taken the other route for SCENARIO-level values, copying three of them
+   * (`name`, `astName`, `ruleId`) because there is no per-Scenario reference to carry. `tags` is the
+   * fourth of exactly that kind, and copying it is what makes the value assertable from
+   * `Plan.test.ts` rather than only observable at emission time.
+   */
+  readonly tags: ReadonlyArray<string>
   readonly steps: ReadonlyArray<PlannedStep>
 }
 
@@ -601,6 +634,7 @@ export const planFeature = (args: {
     name: scenario.name,
     astName: scenario.astName,
     ruleId: scenario.ruleId,
+    tags: scenario.tags,
     steps: scenario.steps.map((step) => {
       const visible = matcher.match(step.text).filter((match) => isVisibleTo(match.definition, scenario, step))
       for (const match of visible) {

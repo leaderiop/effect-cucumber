@@ -1121,11 +1121,15 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
           }
         ]
 
+        // `tags: []` on both, and it is not filler: `checkout`'s two Scenarios genuinely carry no
+        // tags, so an empty array is what `planFeature` would have produced for them. This test is
+        // about hook ORDERING and asserts nothing about tags.
         const scenario1: ScenarioPlan = {
           scenarioId: payingId,
           name: "paying",
           astName: "paying",
           ruleId: Option.none(),
+          tags: [],
           steps: stepsOf("scenario1")
         }
         const scenario2: ScenarioPlan = {
@@ -1133,6 +1137,7 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
           name: "refunding",
           astName: "refunding",
           ruleId: Option.none(),
+          tags: [],
           steps: stepsOf("scenario2")
         }
 
