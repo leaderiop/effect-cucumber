@@ -82,7 +82,7 @@ completed: 2026-08-30
 1. **Task 1: a four-level-tagged Feature collects and runs for real** — `82a16ab` (test)
 2. **Task 2: `@skip` runs no step, no hook and no teardown** — `f619271` (test)
 3. **Task 3: the D-08 degradation and the D-03 registration filter** — `66bcfaa` (test)
-4. **D-10 fix: report the emission outcome from inside the walk (Option B)** — `a674068` (fix)
+4. **D-10 fix: report the emission outcome from inside the walk (Option B)** — `fee956c` (fix)
 
 ---
 
@@ -394,7 +394,7 @@ All five performed against real source, run, observed, reverted. `git status` is
   `emission.test.ts` gained the notice assertion. Mutation VII proves the assertion guards it.
 - **Files modified:** `packages/vitest/src/Runner.ts`, `packages/vitest/src/describeFeature.ts`,
   `packages/vitest/test/emission.test.ts`
-- **Committed in:** `a674068`
+- **Committed in:** `fee956c`
 
 **7. [Rule 2 — Say only what is true] `spec/traceability.md` §4's `emission.test.ts` row**
 
@@ -409,7 +409,7 @@ All five performed against real source, run, observed, reverted. `git status` is
   return value. `npx dprint fmt` re-padded the table.
 - **Files modified:** `spec/traceability.md`
 - **Verification:** `pnpm verify:spec` — PASS 7, FAIL 0
-- **Committed in:** `a674068`
+- **Committed in:** `fee956c`
 
 ## Findings for the phase owner
 
@@ -490,7 +490,7 @@ All four commits present in `git log`:
 - `82a16ab` — FOUND
 - `f619271` — FOUND
 - `66bcfaa` — FOUND
-- `a674068` — FOUND
+- `fee956c` — FOUND
 
 Working tree clean of every mutation: `Tags.ts`, `Runner.ts` and `describeFeature.ts` were each
 restored from a byte copy taken before mutating and confirmed by `git status`/`git diff --stat`; both
