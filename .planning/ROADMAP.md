@@ -226,7 +226,7 @@ Plans:
 
 **Wave 5** *(blocked on 05-04)*
 
-- [ ] 05-05-PLAN.md — DSL-03's `TS2339` fixture, the `effect(missingLayerContext)` Layer-argument fixture that proves the overload order, the supplementary stacked-directive `@ts-expect-error` fixture, and gate assertions 7-9
+- [x] 05-05-PLAN.md — DSL-03's `TS2339` fixture, the `effect(missingLayerContext)` Layer-argument fixture that proves the overload order, the supplementary stacked-directive `@ts-expect-error` fixture, and gate assertions 7-9
 
 **Wave 6** *(blocked on 05-05)*
 
@@ -369,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
-| 5. `describeFeature` Type Surface | 4/6 | In Progress|  |
+| 5. `describeFeature` Type Surface | 5/6 | In Progress|  |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
