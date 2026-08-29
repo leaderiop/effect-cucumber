@@ -77,15 +77,24 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       ADR-EC-002. Validated in Phase 5: reading a field absent from World's
       declared type is a plain `TS2339` compile error (not an Effect
       diagnostic), proven by a dedicated negative fixture (DSL-03).
+- [x] Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/
+      `AfterAllScenarios`) are Effects; `After` always runs via
+      `Effect.onExit` — ADR-EC-005. Validated in Phase 7 (Hooks): all six
+      hooks accept a bare generator function and are registered auto-wrapped
+      as a named `Effect.fn`; a 36-entry append-only `Ref` log proves the
+      full ordering across a two-Scenario Feature
+      (`BeforeAllScenarios` → (`Before` → `BeforeStep`/step/`AfterStep` per
+      step → `After`) per Scenario → `AfterAllScenarios`); `After` and
+      `AfterStep` are guaranteed via `Effect.onExit`, not `Effect.ensuring`
+      (whose finalizer error channel is `never` in `effect@4.0.0-rc.112`),
+      and a failing `After` never masks the original step failure —
+      DSL-07, RUN-02, INV-EC-004. 575 tests passing; full `check.yml` gate
+      green.
 
 ### Active
 
 Derived from `spec/behaviors/` (BEH-EC-001 through BEH-EC-013). Each maps to
 one or more ADRs in `spec/decisions/` for full rationale.
-
-- [ ] Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/
-      `AfterAllScenarios`) are Effects; `After` always runs via
-      `Effect.ensuring` — ADR-EC-005
 - [ ] Two Layer scopes only: per-Scenario (default, fresh every Scenario) and
       an opt-in `shared` Layer built once via `@effect/vitest`'s `layer(...)`
       with `excludeTestServices: true` so `TestClock` stays per-Scenario even
@@ -198,4 +207,4 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
 
 ---
-*Last updated: 2026-08-29 after Phase 6 (Plan, Scenario-Effect, Runner Emission, and Drift Detection) completion*
+*Last updated: 2026-08-29 after Phase 7 (Hooks) completion*
