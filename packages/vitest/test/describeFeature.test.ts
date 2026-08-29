@@ -208,6 +208,27 @@ describe("a step definition carries the container it was registered inside", () 
     // step is attributed to a scenario the author never put it in.
     expect(scopeOf(collected, "a step after the throw")).toEqual({ kind: "feature", name: "Checkout" })
   })
+
+  it("returns to the feature root after a Background callback throws", () => {
+    const collected = collectFeature(feature, Layer.empty, ({ Background, Given }) => {
+      try {
+        Background(() => {
+          throw new Error("the define callback for this background threw")
+        })
+      } catch {
+        // Swallowed HERE, inside the define callback, mirroring the Scenario case above — the
+        // point is that Background's identical pushScope/try/finally/popScope structure keeps
+        // the scope stack balanced when the callback throws.
+      }
+
+      Given("a step after the background throw", noop)
+    })
+
+    expect(scopeOf(collected, "a step after the background throw")).toEqual({
+      kind: "feature",
+      name: "Checkout"
+    })
+  })
 })
 
 describe("the define callback runs synchronously", () => {

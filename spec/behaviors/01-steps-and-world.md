@@ -250,8 +250,10 @@ REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
 ### Worked example
 
 ```typescript
-// The API below is real; this fence is still not compiled, because the doc-examples
-// check is not wired yet (spec/roadmap.md). Nothing here emits a test until Phase 6.
+// describeFeature and the dsl below are real and compile-gated (this phase). The
+// `loadFeature` import is ADR-EC-024's planned ManagedRuntime wrapper, not yet shipped
+// from @effect-cucumber/vitest — see packages/vitest/README.md "## Status". This fence
+// is still not compiled either way; the doc-examples check is not wired yet (spec/roadmap.md).
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Ref } from "effect"
 

@@ -60,8 +60,8 @@
  *     are wrong. `unknown[]` does not accept a generator's inferred parameter tuple cleanly, and a
  *     vacuous `any` yield type makes a step requiring an unprovided service compile clean, exit 0 —
  *     INV-EC-003 becomes decorative under the spec's own text (RESEARCH.md Finding 4, reproduced).
- *     Do not copy BEH-EC-003 as written; plan 05-06 corrects the spec to match this file. The two
- *     `any`s below are the ONLY ones permitted in this module: one `any` anywhere in a step body's
+ *     Do not copy BEH-EC-003 as written; plan 05-06 corrects the spec to match this file. The one
+ *     `any` below is the ONLY one permitted in this module: one `any` anywhere in a step body's
  *     declared type is assignable to everything and disables the whole guarantee.
  *
  * (e) **`R` is bound to the enclosing `describeFeature`'s `ROut` through `StepRegistrar<ROut>`; it

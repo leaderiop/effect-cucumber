@@ -3,7 +3,8 @@
 The package most consumers install directly. It provides `describeFeature`, the
 Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, the hooks, and the `it.effect`-based runner that turns a
 Gherkin `.feature` file into ordinary vitest `describe`/`it` calls — no plugin and no custom reporter. It depends on
-[`@effect-cucumber/gherkin`](../gherkin) and re-exports `loadFeature` from it.
+[`@effect-cucumber/gherkin`](../gherkin). A wrapped, `ManagedRuntime`-backed `loadFeature`
+(ADR-EC-024) is planned but not yet exported — see "## Status" below.
 
 ## Status
 
