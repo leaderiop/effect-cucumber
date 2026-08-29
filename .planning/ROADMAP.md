@@ -251,7 +251,17 @@ Resolved by research, not re-opened at planning time: two `describeFeature` **ov
   4. A step text matching two registered patterns fails naming **every** matching pattern and its definition site, deterministically regardless of registration order (MATCH-04).
   5. A registered pattern that matches no step anywhere in the Feature produces a Feature-level warning while the suite still passes (MATCH-05).
 
-**Plans**: TBD — set by `/gsd:plan-phase 6`
+**Plans**: 8 plans (6 waves — three independent leaf modules in wave 1, then a sequential Register→Plan→Emit pipeline)
+
+Plans:
+- [ ] 06-01-PLAN.md — Call-site capture and `StepDefinition.definedAt`, the D-03 ordering key
+- [ ] 06-02-PLAN.md — `generateStepSnippet` in `@effect-cucumber/gherkin` (D-01; also resolves the pnpm isolated-layout blocker)
+- [ ] 06-03-PLAN.md — `StepMatchError`, the unused-pattern warning type, and the `TestApi` seam
+- [ ] 06-04-PLAN.md — `Plan.ts`: scope-chain resolution and MATCH-03/04/05 drift detection
+- [ ] 06-05-PLAN.md — `ScenarioEffect.ts`: one fail-fast `Effect.gen` per Scenario (RUN-01, INV-EC-001)
+- [ ] 06-06-PLAN.md — `Runner.ts`: describe/it.effect emission through the seam, plus D-02's reporter node
+- [ ] 06-07-PLAN.md — Composition root, `console.warn` channel, public barrel, end-to-end emission proof
+- [ ] 06-08-PLAN.md — Spec and README reconciliation (traceability §1/§3/§4, INV-EC-001, three Status sections)
 
 **Research flag**: Skip — standard once Phase 5's types are settled.
 
