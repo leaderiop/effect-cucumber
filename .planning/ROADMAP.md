@@ -294,7 +294,38 @@ Plans:
   3. `After` runs and its effect is observable in the log both when every step succeeded and when a step failed mid-Scenario, via `Effect.ensuring` (RUN-02, INV-EC-004).
   4. A failing `After` does not mask or replace the original step failure in the reported error.
 
-**Plans**: TBD — set by `/gsd:plan-phase 7`
+**Plans**: 8 plans (6 waves — two leaf modules, then the type surface, then two parallel tracks through `ScenarioEffect.ts` and `Runner.ts`, then the end-to-end proof, then spec reconciliation)
+
+Plans:
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — `HookRegistry.ts` and `Hook.ts`: the per-call hook store, the `Effect.fn(kind)` auto-wrap reusing `Step.ts`'s discriminator, per-kind grouping, and `runHookBatch`'s independent-and-combine semantics (D-01/D-02/D-03)
+
+**Wave 2** *(blocked on 07-01)*
+
+- [ ] 07-02-PLAN.md — `HookRegistrar<ROut>` and the six `FeatureDsl` members, plus hook registration in the composition root and `FeatureCollection.hooks`
+
+**Wave 3** *(blocked on 07-02)*
+
+- [ ] 07-03-PLAN.md — the `hook-satisfied` / `hook-missing-service` tsgo-gate fixture pair and gate assertions 10 and 11, so a reordered `HookRegistrar` union or a hook member leaked onto `ScenarioDsl` fails by name
+- [ ] 07-04-PLAN.md — `Before` gating and the `After` guarantee via `Effect.onExit` (RUN-02, INV-EC-004), threading the `HookSet` from the collection through `emitFeature` to `buildScenarioEffect`
+
+**Wave 4** *(blocked on 07-04)*
+
+- [ ] 07-05-PLAN.md — the per-step `BeforeStep`/step/`AfterStep` unit, guaranteed across the whole unit (D-05/D-06/D-07)
+- [ ] 07-06-PLAN.md — `BeforeAllScenarios` shared once through a synchronous `Deferred` and `AfterAllScenarios` as a trailing always-run node, with `TestApi.ts` unchanged (D-08/D-09)
+
+**Wave 5** *(blocked on 07-05 and 07-06)*
+
+- [ ] 07-07-PLAN.md — the headline full six-hook ordering assertion across a two-Scenario Feature, the real `describeFeature` hook run, and the `HookRegistrar` barrel export
+
+**Wave 6** *(blocked on 07-07)*
+
+- [ ] 07-08-PLAN.md — Spec: BEH-EC-017, BEH-EC-006's two-part correction, INV-EC-004's real source, traceability §1-§4, both READMEs, and DSL-07/RUN-02 marked Complete
+
+Decisions locked before planning (`07-CONTEXT.md`): multiple hooks of one kind are allowed and run in registration order (D-01); a hook batch is independent and every failure in it is combined into one reported failure (D-02/D-03); a Scenario's steps run only if every `Before` succeeded (D-04); `AfterStep` is guaranteed across the whole `BeforeStep`+step unit (D-05/D-06/D-07); a failing `BeforeAllScenarios` is reported by every Scenario individually (D-08); `AfterAllScenarios` always runs (D-09).
+
+Resolved at planning time against the installed `effect@4.0.0-rc.112`: the guarantee is delivered by **`Effect.onExit`, not `Effect.ensuring`** — `ensuring`'s finalizer error channel is `never`, so a fallible hook is not assignable to it and it merges no causes, while `onExit` documents both the guarantee and the cause merge. BEH-EC-006's literal "via `Effect.ensuring`" names the guarantee, not the combinator, and plan 07-08 corrects it. The `BeforeAllScenarios` sharing mechanism is a synchronous `Deferred.makeUnsafe` cell in `Runner.ts` — `Effect.cached`'s memo is only reachable by running an Effect first and there is no `Effect.once` in this build — so `TestApi.ts` gains no member. No wrapper error class is introduced: `Cause.combine` preserves each hook's own error value by identity, which `ScenarioEffect.ts` note (a) requires and a wrapper would destroy. Hook records carry no `definedAt`, because nothing consumes one and ADR-EC-005's named span is the attribution channel.
 
 **Research flag**: Skip — standard.
 
@@ -398,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 0/TBD | Not started | - |
+| 7. Hooks | 0/8 | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
