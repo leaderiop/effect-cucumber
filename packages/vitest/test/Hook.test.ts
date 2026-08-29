@@ -125,10 +125,12 @@ describe("a failing hook", () => {
 
 describe("groupHooks partitions a flat list by kind", () => {
   it("puts each body under its own kind and preserves registration order within a kind", () => {
+    // `ruleId: null` on every one of them: `groupHooks` partitions whatever flat list it is handed
+    // and never filters by scope itself, so this test stays a pure Feature-level partition test.
     const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
-      { kind: "Before", body: firstBefore },
-      { kind: "After", body: anAfter },
-      { kind: "Before", body: secondBefore }
+      { kind: "Before", body: firstBefore, ruleId: null },
+      { kind: "After", body: anAfter, ruleId: null },
+      { kind: "Before", body: secondBefore, ruleId: null }
     ]
 
     const grouped = groupHooks(definitions)

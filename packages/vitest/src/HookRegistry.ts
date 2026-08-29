@@ -2,10 +2,26 @@
  * The hook-definition store behind `describeFeature` — one per call, never one per module.
  *
  * `Registry.ts` is the structure-for-structure analog (a step-definition store with the identical
- * per-call-factory discipline), but this module is a SIBLING of it, not an extension. Hooks are
- * Feature-scoped only (07-CONTEXT.md phase boundary: "There is no Rule-scoped hook narrowing in this
- * roadmap"), so `Registry.ts`'s whole scope stack — `pushScope`, `popScope`, `currentScope`,
- * `RegistryScope` — is dead weight on the hook path and is deliberately not reproduced here.
+ * per-call-factory discipline), but this module is a SIBLING of it, not an extension.
+ *
+ * A hook MAY be Rule-scoped. ADR-EC-010 makes `Before`/`After`/`BeforeStep`/`AfterStep`
+ * Rule-scopeable, so every stored definition carries a `ruleId: string | null` — `null` means the
+ * hook was registered through the Feature-level dsl, a non-null string means it was registered
+ * through a specific Rule's dsl. This is the same invariant `Registry.ts`'s `RegistryScope.ruleId`
+ * states for a step definition, and it is compared the same way: plain string equality, with `null`
+ * reserved for "Feature level".
+ *
+ * `BeforeAllScenarios`/`AfterAllScenarios` stay Feature-only — nothing ever calls `register` with a
+ * non-null `ruleId` for those two kinds. This module does NOT enforce that, deliberately: it is a
+ * store, and the constraint lives where the surface that could violate it lives, in the DSL
+ * (`RuleDsl` simply does not expose those two registrars).
+ *
+ * `ruleId` is a plain parameter to `register`, supplied by the caller, exactly as `Registry.ts`'s
+ * `definedAt` is supplied rather than derived. This store still does NOT reproduce `Registry.ts`'s
+ * push/pop scope stack, and the reason is not inertia: a hook's `ruleId` is fixed once, at
+ * registration, and never pushed or popped, because a hook registration is never nested inside
+ * another container the way a step definition is nested inside a `Background` or a `Scenario`. A
+ * stack would be a second, independently-drifting source of truth for a value that has exactly one.
  *
  * Six things about this module are not visible from the code.
  *
@@ -33,7 +49,9 @@
  *     (note (b)).
  *
  * (c) **Why `Fn` stays a free type parameter and this module imports nothing.** A hook body's real
- *     type is `() => Effect<A, E, R>`, and that type lives in `Hook.ts`. Naming it here would tie
+ *     type is `() => Effect<A, E, R>`, and that type lives in `Hook.ts`. `ruleId` does not change
+ *     this: it is a bare `string | null`, deliberately not `Registry.ts`'s `RegistryScope`, so no
+ *     import is needed to express it. Naming the body type here would tie
  *     this container to `Hook.ts`, `Dsl.ts` and `effect` itself, none of which this module needs to
  *     know about to store and hand back a body by reference. Left abstract, the container is
  *     complete and testable on its own. This module deliberately has no dependencies of any kind —
@@ -76,24 +94,41 @@ export type HookKind =
   | "BeforeAllScenarios"
   | "AfterAllScenarios"
 
-/** One registered hook: the kind it was registered under, and its normalised body. */
+/**
+ * One registered hook: the kind it was registered under, its normalised body, and the Rule it was
+ * registered under, if any.
+ *
+ * `ruleId` is REQUIRED, never optional — `null` is a real value meaning "registered through the
+ * Feature-level dsl", the same way `Registry.ts`'s `RegistryScope.ruleId` reserves `null` for
+ * Feature level. A non-null string is a specific Rule's identity, either a real `ParsedRule.id` or
+ * a sentinel the caller resolved; this module makes no judgment about which, and never parses it.
+ */
 export type HookDefinition<Fn> = {
   readonly kind: HookKind
   readonly body: Fn
+  readonly ruleId: string | null
 }
 
 /**
  * A new hook registry sharing no state with any other registry.
  *
  * Takes NO arguments, unlike `createRegistry`, which needs a `featureName` to seed a scope stack
- * that does not exist here — hooks have no scope of their own to be attributed to.
+ * that does not exist here — a hook's Rule attribution is supplied per registration, not tracked.
  */
 export const createHookRegistry = <Fn>() => {
   const records: Array<HookDefinition<Fn>> = []
 
-  /** Record one hook body under `kind`, at the end of the list — see note (d) on order. */
-  const register = (kind: HookKind, body: Fn): void => {
-    records.push({ kind, body })
+  /**
+   * Record one hook body under `kind`, attributed to `ruleId`, at the end of the list — see note
+   * (d) on order.
+   *
+   * `ruleId` sits between `kind` and `body` rather than after it so every classifier precedes the
+   * body, and so a call site that forgets it is a type error rather than a body silently landing in
+   * the `ruleId` position — `Fn` is unconstrained, so a trailing-`ruleId` signature would accept
+   * `register(kind, body)` with `body` read as the scope whenever `Fn` admits `string | null`.
+   */
+  const register = (kind: HookKind, ruleId: string | null, body: Fn): void => {
+    records.push({ kind, body, ruleId })
   }
 
   /** A snapshot — see note (b). Never the live array. */
