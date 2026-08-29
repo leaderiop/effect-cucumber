@@ -182,6 +182,28 @@ export type FeatureCollection = {
    * rather than pre-merged, and why `emptyHookSet` exists for a Scenario in no Rule.
    */
   readonly ruleHooks: ReadonlyMap<string, HookSet>
+  /**
+   * One entry per THREE-argument `Scenario(name, extraLayer, define)` call, from either nesting
+   * level, keyed by `scenarioKey(ruleId, name)`: that Scenario's `extraLayer` already merged onto
+   * whichever Layer was AMBIENT where the call was written — the Feature's own `layer` at Feature
+   * level, or the enclosing Rule's already-merged `ruleLayers` entry inside a `Rule`.
+   *
+   * The two-argument form adds NO entry, and that absence is the contract rather than an
+   * optimisation: it is how a consumer tells "this Scenario runs against its scope's ambient Layer
+   * unchanged" from "this Scenario has its own", without comparing two Layers for an equality Effect
+   * gives no way to decide. Storing `Layer.empty` for the common form would erase the distinction.
+   *
+   * INVARIANT for `Runner.ts` to rely on: an entry, when present, is the FULLY merged effective
+   * Layer for every row of that Scenario — an Outline's rows share ONE `Scenario(...)` registration
+   * and therefore one entry. Use it AS-IS; re-merging it against the Feature's or the Rule's Layer a
+   * second time compiles, type-checks and leaves every service reachable, so nothing goes red while
+   * every ambient `Layer.effect` resource is built an extra time per Scenario.
+   *
+   * Keyed by the composite and never by name alone, for the reason `scenarioKey`'s own comment
+   * gives: F22 makes Scenario names unique per SCOPE only, so a Rule's Scenario and a same-named
+   * Feature-level one are both legal and must not collide here.
+   */
+  readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
 }
 
 /**
@@ -241,6 +263,27 @@ const resolveRuleId = (feature: ParsedFeature, name: string): string => {
 }
 
 /**
+ * The key a Scenario's merged extra Layer is recorded under: the pair `(ruleId, name)` encoded as
+ * one string, because a `Map` keys by identity and a two-field object literal would never hit.
+ *
+ * Mirrors `packages/gherkin/src/Validate.ts`'s own `uniquenessKey` — the same `ruleId ?? "<feature>"`
+ * head, the same NUL separator, on purpose. Keying by NAME alone is the plausible simplification and
+ * it is wrong for a reason that file already established: F22 makes a Scenario name unique PER SCOPE
+ * and no further, and its `duplicate-scenario-name-across-rules.feature` fixture is the executable
+ * proof that two Rules may each legally contain a `Scenario: happy path`. A name-keyed map would let
+ * one of them silently overwrite the other's entry, and the loser would then run against a Layer
+ * built for a DIFFERENT Scenario — a wrong service, not a missing one, so nothing fails loudly.
+ *
+ * NUL and not a space, a slash or a dash. A `ParsedRule.id` is generator-produced digits, but
+ * `resolveRuleId`'s other output is the `unregistered-rule:${name}` sentinel, which carries an
+ * author-written Rule NAME and can therefore contain any printable character. With a printable
+ * separator the encoding of the pair stops being unambiguous the moment such a name contains it;
+ * with NUL it cannot, because neither half can contain a NUL. Validate.ts's own note makes the
+ * identical argument on its side of the seam.
+ */
+const scenarioKey = (ruleId: string | null, name: string): string => `${ruleId ?? "<feature>"}\u0000${name}`
+
+/**
  * The one implementation both public entry points delegate to.
  *
  * Not exported, and deliberately so: it exists to keep `describeFeature` and `collectFeature` from
@@ -274,6 +317,12 @@ const collect = (
   // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
   // member's closure mutates it while `define(dsl)` runs, and read only after that call returns.
   const ruleLayers = new Map<string, Layer.Layer<any, any, never>>()
+
+  // Every THREE-argument `Scenario(...)` call, from either level, keyed by `scenarioKey`. Beside
+  // `ruleLayers` because it has the identical lifecycle — mutated by a container closure while
+  // `define(dsl)` runs, read only after it returns — and never keyed by name alone, for the reason
+  // `scenarioKey`'s own comment gives.
+  const scenarioLayers = new Map<string, Layer.Layer<any, any, never>>()
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
@@ -318,35 +367,69 @@ const collect = (
   // ADR-EC-017: a Background gets `Given` and `And` only. The omission is the contract, not a gap.
   const backgroundDsl: BackgroundDsl<any> = { Given: scenarioDsl.Given, And: scenarioDsl.And }
 
-  // ONE implementation covering BOTH arities of `Dsl.ts`'s `ScenarioRegistrar<ROut>`, because that is
-  // what an overloaded call signature requires: a two-parameter function is not assignable to a type
-  // whose second signature takes a Layer in that position, so the arity check has to be real even
-  // while one branch is unimplemented.
-  //
-  // The three-argument form's runtime — merging `extraLayer` onto whichever Layer is ambient at the
-  // call site and recording the result on `FeatureCollection.scenarioLayers` — belongs to plan
-  // 08-05b's `makeScenarioRegistrar`. Until that lands it throws, for the same reason the `Rule`
-  // member below does: pushing the scope and running `define` while dropping `extraLayer` on the
-  // floor would let a Scenario that type-checks against the extra service fail at RUNTIME with the
-  // "service not found" this package exists to make impossible — a green build, a green suite, and
-  // the one guarantee INV-EC-003 sells, gone (AGENTS.md §4).
-  const scenarioRegistrar: ScenarioRegistrar<any> = (
+  /**
+   * ONE `Scenario` container implementation, shared by the Feature level and by every `Rule`, and
+   * parameterised by the only two things they differ in: the `ruleId` the pushed scope carries, and
+   * the Layer that is AMBIENT where the call was written.
+   *
+   * A factory rather than two structurally identical closures, because the two call sites need the
+   * same behaviour and the earlier duplicated form is exactly how they drift: a fix applied to one
+   * (the arity check, the merge combinator, the `finally`) leaves the other silently wrong, and the
+   * wrong one is whichever nesting level that day's test happens not to cover.
+   *
+   * `ambientLayer` is a PARAMETER and not a read of `featureLayer`, and that is the whole D-01
+   * nesting rule in one argument. Inside a `Rule` the ambient Layer is that Rule's ALREADY-merged
+   * one, so a Scenario's own extra Layer composes ON TOP of the Rule's rather than instead of it;
+   * closing over `featureLayer` here instead would compile, type-check and pass every
+   * Feature-level test while silently dropping the enclosing Rule's services for exactly those
+   * Scenarios that asked for an extra Layer of their own.
+   *
+   * BOTH arities live in one function body because `ScenarioRegistrar<ROut>` is an overloaded call
+   * signature (`Dsl.ts`'s own note on it): a two-parameter function is not assignable to a type
+   * whose second signature takes a Layer in that position. The two forms are told apart by whether
+   * the THIRD argument is present — the same technique `describeFeature`/`collectFeature`'s own
+   * implementation signature uses one level up to accept either `LayerArgument` shape — and never by
+   * probing the second argument's shape: `Layer.isLayer`-style duck-typing would make a callable
+   * Layer-like value and a function indistinguishable in a way the arity never can be.
+   *
+   * `Layer.provideMerge(ambientLayer)(extraLayer)` and NOT `Layer.merge(ambientLayer, extraLayer)`,
+   * for the reason the `Rule` member below repeats: ADR-EC-010 requires `extraLayer` to be able to
+   * DEPEND on ambient services, and only `provideMerge` feeds the ambient Layer's output into
+   * `extraLayer`'s own requirements while keeping BOTH sets reachable. Its argument order is also
+   * what makes the Scenario's own implementation win a service both name — the collision rule
+   * `test/describeFeature.test.ts` proves by RESOLVING the merged Layer, because the two orders have
+   * the identical type and the identical shape (note (d) makes the same argument for `Layer.merge`).
+   *
+   * The merge and the `scenarioLayers.set` happen BEFORE `pushScope`/`try`, mirroring `Rule`'s own
+   * ordering: the map entry is then recorded even if the define callback throws, so a Scenario whose
+   * registration blew up still resolves against the Layer it asked for rather than against a
+   * silently narrower ambient one.
+   */
+  const makeScenarioRegistrar = (
+    ruleId: string | null,
+    ambientLayer: Layer.Layer<any, any, never>
+  ): ScenarioRegistrar<any> =>
+  (
     name: string,
     extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: ScenarioDsl<any>) => void),
     maybeDefine?: (dsl: ScenarioDsl<any>) => void
   ): void => {
+    // The two-argument form records NOTHING, and that absence is the contract `scenarioLayers`'
+    // own field comment states: no entry means "this Scenario runs against its scope's ambient
+    // Layer unchanged". Writing `Layer.empty` here instead would be the plausible tidy-up and would
+    // erase the distinction, leaving a consumer no way to tell the two forms apart.
     if (maybeDefine !== undefined) {
-      throw new Error(
-        `Scenario("${name}", extraLayer, define) is not implemented yet. The DSL type surface for `
-          + "Scenario-scoped extra Layers (ADR-EC-010) exists, but the runtime merge does not — see "
-          + "plan 08-05b."
-      )
+      const extraLayer = extraLayerOrDefine as Layer.Layer<any, any, any>
+      scenarioLayers.set(scenarioKey(ruleId, name), Layer.provideMerge(ambientLayer)(extraLayer))
     }
-    const defineScenario = extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void
-    registry.pushScope({ kind: "scenario", name, ruleId: null })
+
+    const defineScenario = maybeDefine ?? (extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void)
+    registry.pushScope({ kind: "scenario", name, ruleId })
     try {
       defineScenario(scenarioDsl)
     } finally {
+      // `finally`, so a define callback that throws cannot leave the stack unbalanced and re-parent
+      // every step registered after it onto a scope the document does not have.
       registry.popScope()
     }
   }
@@ -371,7 +454,10 @@ const collect = (
         registry.popScope()
       }
     },
-    Scenario: scenarioRegistrar,
+    // `null` because a Scenario declared through the Feature's own dsl is genuinely not nested in
+    // any Rule, and `featureLayer` because that is what is ambient here — the same binding every
+    // Rule's merged Layer is derived from, never a second `normalizeLayer(layer)` call.
+    Scenario: makeScenarioRegistrar(null, featureLayer),
     // A sibling of `Background`/`Scenario`, and never spread into `scenarioDsl` — the identical
     // "would leak into every `Scenario(...)` callback and into `backgroundDsl`" argument `Dsl.ts`
     // note (f) makes for the hooks applies unchanged to a nested container.
@@ -406,37 +492,6 @@ const collect = (
         hookRegistry.register(kind, ruleId, registerHook(kind, fn))
       }
 
-      // The Rule's own `Scenario`, structurally identical to the Feature-level `scenarioRegistrar`
-      // above and differing only in the `ruleId` it pushes. Both arities are spelled for the reason
-      // that one spells them — `ScenarioRegistrar<ROut>` is an overloaded call signature, and a
-      // two-parameter function is not assignable to a type whose second signature takes a Layer in
-      // that position.
-      //
-      // Plan 08-05b replaces BOTH this closure and the Feature-level one with a single shared
-      // arity-detecting factory that actually merges the extra Layer. Do not "helpfully" widen this
-      // one on its own first: a Scenario-level `extraLayer` dropped on the floor here compiles and
-      // fails at RUNTIME with the "service not found" INV-EC-003 exists to make impossible.
-      const ruleScenarioRegistrar: ScenarioRegistrar<any> = (
-        scenarioName: string,
-        extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: ScenarioDsl<any>) => void),
-        maybeDefine?: (dsl: ScenarioDsl<any>) => void
-      ): void => {
-        if (maybeDefine !== undefined) {
-          throw new Error(
-            `Scenario("${scenarioName}", extraLayer, define) is not implemented yet. The DSL type `
-              + "surface for Scenario-scoped extra Layers (ADR-EC-010) exists, but the runtime merge "
-              + "does not — see plan 08-05b."
-          )
-        }
-        const defineScenario = extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void
-        registry.pushScope({ kind: "scenario", name: scenarioName, ruleId })
-        try {
-          defineScenario(scenarioDsl)
-        } finally {
-          registry.popScope()
-        }
-      }
-
       const ruleDsl: RuleDsl<any> = {
         // The SAME `scenarioDsl` object the Feature level hands out. Its five registrars read
         // `registry.currentScope()` at CALL time, so they need no per-level parameterization — which
@@ -456,7 +511,12 @@ const collect = (
             registry.popScope()
           }
         },
-        Scenario: ruleScenarioRegistrar,
+        // THIS Rule's id, and THIS Rule's already-merged Layer — the same factory the Feature level
+        // calls with `(null, featureLayer)`, and the two arguments are the entire difference between
+        // the levels. `ruleAmbientLayer` and not `featureLayer`: a Scenario declared in here that
+        // brings its own extra Layer must end up with the Feature's services, this Rule's, AND its
+        // own, which is what makes composition NEST rather than replace (D-01).
+        Scenario: makeScenarioRegistrar(ruleId, ruleAmbientLayer),
         // Exactly the four hooks ADR-EC-010 scopes to a Rule. `BeforeAllScenarios`/`AfterAllScenarios`
         // are absent by design and `RuleDsl` does not declare them — `Dsl.ts` note (f).
         Before: ruleHookRegistrar("Before"),
@@ -526,7 +586,11 @@ const collect = (
         ruleId,
         groupHooks(hookDefinitions.filter((definition) => definition.ruleId === ruleId))
       ])
-    )
+    ),
+    // Handed back as-is — sparse by design, one entry per three-argument `Scenario(...)` call and
+    // nothing for the common two-argument form. Not back-filled with an entry per planned Scenario:
+    // that would make every Scenario look like it asked for a Layer of its own.
+    scenarioLayers
   }
 }
 
