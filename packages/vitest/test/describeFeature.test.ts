@@ -1,9 +1,15 @@
 /**
  * `describeFeature`'s runtime contract, asserted through `collectFeature`.
  *
- * `describeFeature` returns `void` by contract and emits zero vitest tests in this phase, so there is
- * nothing for a test to look at. `collectFeature` is the same collection with the result handed back
- * instead of discarded, and it is what everything below asserts against.
+ * `describeFeature` returns `void` by contract, so there is nothing for a test to look at, and
+ * calling it here for real would emit this repo's own suite a second copy of every Scenario in the
+ * fixture. `collectFeature` runs the identical Register and Plan stages with the result handed back
+ * instead of emitted, and it is what everything below asserts against.
+ *
+ * The end-to-end proof that `describeFeature` actually EMITS what it collects lives in
+ * `test/emission.test.ts`, which is the only file in this repo that calls it for real. The terminal
+ * warning channel is asserted there too, in a file that can isolate the stub — deliberately not
+ * here.
  *
  * Four of these assertions are written more strictly than they look like they need to be, because
  * the defects they exist to catch are all silent — the broken implementation compiles, type-checks,
@@ -32,12 +38,17 @@
  *   registrar that captures its own frame inside `src/describeFeature.ts`, which is the actual
  *   defect and the one nothing else in the repo can see.
  *
- * Mutation-tested (all three performed, then reverted, all three confirmed failing) — see the plan
+ * Mutation-tested (all four performed, then reverted, all four confirmed failing) — see the plan
  * summary for the recorded output:
  * - A. `createRegistry` hoisted to module scope → the cross-contamination test fails.
  * - B. `Layer.merge`'s two arguments swapped → the D-04 test fails.
  * - C. `registrar` passes `null` instead of `captureCallSite()` → the end-to-end `definedAt` test
  *      fails.
+ * - D. `describeFeature` calls `collect` but never hands the result to the emission stage → nothing
+ *      in THIS file notices, because `collectFeature` is unchanged by that mutation; the end-to-end
+ *      test in `test/emission.test.ts` reports zero tests and fails. Recorded here because it is the
+ *      defect this file structurally cannot see, and a reader who assumed otherwise would stop
+ *      looking.
  *
  * ## The `ParsedFeature` argument
  *
@@ -243,7 +254,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 248
+    const givenLine = 259
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -303,4 +314,84 @@ describe("the layer argument normalises to a single Layer", () => {
 
       assert.strictEqual(yield* whoProvides(collected), "shared")
     }))
+})
+
+/**
+ * The `_tag` of each planned step, in order.
+ *
+ * Destructured rather than read as `planned._tag`, because oxlint's `no-underscore-dangle` rejects
+ * member access on a leading-underscore property while permitting object destructuring —
+ * `test/Plan.test.ts` and `src/ScenarioEffect.ts` carry the same workaround for the same rule.
+ *
+ * Declared HERE, below every other test in this file, rather than beside `scopeOf`/`keywordOf` up
+ * top: the `definedAt` assertion above hard-codes its own line number, so anything inserted before
+ * it silently invalidates that literal. Position is load-bearing in this file.
+ */
+const tagsOf = (steps: ReadonlyArray<{ readonly _tag: string }>): ReadonlyArray<string> => steps.map(({ _tag }) => _tag)
+
+describe("the collection carries the plan the definitions were joined into", () => {
+  it("resolves every step of the fixture Scenario when all three patterns are registered", () => {
+    const collected = collectFeature(feature, Layer.empty, ({ Given, Then, When }) => {
+      Given("the cart is empty", noop)
+      When("I pay", noop)
+      Then("I am charged", noop)
+    })
+
+    // One `ScenarioPlan` per Pickle, and the Background step is ALREADY the leading entry of the
+    // Scenario's own step list — `Correlate.ts` stacked it there, so a plan with two steps here
+    // would mean the Background was dropped somewhere between parse and plan.
+    expect(collected.plan.scenarios).toHaveLength(1)
+    expect(collected.plan.scenarios[0]?.name).toBe("checkout")
+    expect(tagsOf(collected.plan.scenarios[0]?.steps ?? [])).toEqual(["Resolved", "Resolved", "Resolved"])
+
+    // Every pattern matched something, so channel 3 is empty. Asserted as well as the positive case:
+    // a plan that resolved every step while ALSO reporting all three patterns unused would be
+    // internally contradictory, and only this line can see it.
+    expect(collected.plan.warnings).toHaveLength(0)
+  })
+
+  it("names an unused pattern in plan.warnings, with its keyword and its definition site", () => {
+    const collected = collectFeature(feature, Layer.empty, ({ Given, Then, When }) => {
+      Given("the cart is empty", noop)
+      When("I pay", noop)
+      Then("I am charged", noop)
+      // Matches no step in the fixture Feature. MATCH-05, D-02 channel 3.
+      Given("a pattern nothing in this Feature says", noop)
+    })
+
+    expect(collected.plan.warnings).toHaveLength(1)
+
+    const warning = collected.plan.warnings[0]
+    expect(warning?.pattern).toBe("a pattern nothing in this Feature says")
+    expect(warning?.keyword).toBe("Given")
+    expect(warning?.featureName).toBe("Checkout")
+
+    // The MESSAGE, not just the fields: it is the string `describeFeature` hands the terminal
+    // channel verbatim, so what a developer reads and what a tool inspects are one value. A
+    // rebuilt message on the terminal side would let the two drift, which is the mutation
+    // `test/emission.test.ts` records as B.
+    expect(warning?.message).toContain("a pattern nothing in this Feature says")
+    expect(warning?.message).toContain("describeFeature.test.ts")
+
+    // The three USED patterns are absent from the warnings, which is what separates "reports the
+    // unused one" from "reports every registration".
+    expect(collected.plan.warnings.map((each) => each.pattern)).toEqual([
+      "a pattern nothing in this Feature says"
+    ])
+  })
+
+  it("hands collectFeature and describeFeature the same plan, because collect computes it once", () => {
+    // `collect` is the shared implementation, and the plan is built inside it rather than in
+    // `describeFeature` alone — so two calls with the identical define callback produce structurally
+    // identical plans. A plan computed on the emission side only would leave this field missing or
+    // stale on everything `collectFeature` returns.
+    const first = collectFeature(feature, Layer.empty, registerOneStep)
+    const second = collectFeature(feature, Layer.empty, registerOneStep)
+
+    expect(first.plan.warnings.map((each) => each.pattern)).toEqual(["a step"])
+    expect(second.plan.warnings.map((each) => each.pattern)).toEqual(["a step"])
+    expect(tagsOf(first.plan.scenarios[0]?.steps ?? [])).toEqual(
+      tagsOf(second.plan.scenarios[0]?.steps ?? [])
+    )
+  })
 })

@@ -1,13 +1,19 @@
 /**
  * The public entry point: `describeFeature(feature, layer, define)`.
  *
- * This is the file a test author calls, and the only place the ambient Layer's output type is
- * threaded into `FeatureDsl`. `Registry.ts` supplies the per-call step container, `Step.ts` supplies
- * the auto-wrap, `Dsl.ts` supplies the compile-time surface; this module composes the three and
- * decides what the type parameter of that surface is.
+ * This is the file a test author calls, the only place the ambient Layer's output type is threaded
+ * into `FeatureDsl`, and the COMPOSITION ROOT of the whole package. `Registry.ts` supplies the
+ * per-call step container, `Step.ts` supplies the auto-wrap, `Dsl.ts` supplies the compile-time
+ * surface, `Plan.ts` resolves every step against what was registered, and `Runner.ts` declares the
+ * test nodes; this module composes them and decides what the type parameter of that surface is.
  * [ADR-EC-003](../../../spec/decisions/003-describefeature-takes-a-layer.md) is the decision record.
  *
- * Four things about this module are not visible from the code.
+ * ARCHITECTURE.md's Register→Plan→Emit pipeline lands here as ONE flat, ordered sequence in
+ * `describeFeature`'s body, each stage a named import from its own module —
+ * `packages/gherkin/src/loadFeature.ts` is the same role in the sibling package, and its doc comment
+ * calls it "the only file that knows the order they run in". This is that file for this package.
+ *
+ * Five things about this module are not visible from the code.
  *
  * (a) **The plain-Layer overload is declared LAST, and the order is load-bearing — in the OPPOSITE
  *     direction from `Dsl.ts` note (a).** TypeScript reports a failed overloaded call as "No overload
@@ -36,10 +42,10 @@
  *     next reader "restoring consistency" finds out before deleting the overloads to do it.
  *
  * (c) **`define` returns `void`, never `void` or a promise.** An async define callback returns before
- *     registering anything, so the Feature would collect zero steps and — once Phase 6 emits tests —
- *     pass with zero tests rather than failing. The type is the only thing that forbids it
- *     (PITFALLS #2, this phase's Pitfall 6). Nothing in this module returns a thenable either: the
- *     define callback is invoked synchronously, and `collectFeature` returns its result by value.
+ *     registering anything, so the Feature collects zero steps and then PASSES with zero tests
+ *     rather than failing. The type is the only thing that forbids it (PITFALLS #2, this phase's
+ *     Pitfall 6). Nothing in this module returns a thenable either: the define callback is invoked
+ *     synchronously, and `collectFeature` returns its result by value.
  *
  * (d) **D-04 falls out of the merge combinator's argument order, and is not special-case code.**
  *     `shared` and `perScenario` MAY name the same service, and `perScenario` wins for a step that
@@ -48,20 +54,40 @@
  *     two arguments compiles, type-checks, lints, and silently inverts the rule;
  *     `test/describeFeature.test.ts`'s D-04 case is the only thing that catches it.
  *
+ * (e) **The concrete `TestApi` is constructed HERE, and this is the ONLY module under
+ *     `packages/vitest/src` permitted to import a test framework at all.** `Runner.ts` reaches
+ *     `describe` and the Effect test constructor exclusively through the object it is handed, and
+ *     imports neither. That is ARCHITECTURE.md's Pattern 3, and its Anti-Pattern 3 is the verified
+ *     failure the seam exists to disarm: `layer(sharedLayer)` hands its callback a
+ *     `MethodsNonLive<R>` carrying the shared Layer's services, and calling the MODULE-LEVEL test
+ *     constructor from inside that callback still compiles and still passes — while silently
+ *     rebuilding the "shared" resource once per Scenario. A composition root is exactly where a
+ *     concrete dependency belongs, and an acceptance grep enforces that this file stays the only
+ *     one holding it.
+ *
+ *     The seam is a PARAMETER rather than an import because Phase 10 (RUN-03/RUN-04, ADR-EC-018)
+ *     will pass a DIFFERENT `TestApi` through it — the `it` object that `layer(shared)(name, (it) =>
+ *     …)` hands its callback, which is the one carrying the shared Layer's services. That object
+ *     and the module-level pair below are both valid `TestApi`s and neither substitutes for the
+ *     other, which is precisely why the choice belongs at a call site and not in an import
+ *     statement. `TestApi.ts` note (a) is the other half of the argument.
+ *
  * Neither `collectFeature` nor the registry behind it is re-exported from
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
+import { describe, it } from "@effect/vitest"
 import * as Layer from "effect/Layer"
 import { captureCallSite } from "./CallSite.ts"
 import type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
-// `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse. `Plan.ts` is what will
-// import `planFeature`'s caller-facing surface INTO this module, so an edge pointing back the other
-// way would be an `import/no-cycle` violation and a `pnpm circular` failure. See that module's
-// closing paragraph.
-import type { StepBody } from "./Plan.ts"
+// `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
+// is imported FROM there INTO this module, so an edge pointing back the other way would be an
+// `import/no-cycle` violation and a `pnpm circular` failure. See that module's closing paragraph.
+import { type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
+import { emitFeature } from "./Runner.ts"
 import { register } from "./Step.ts"
+import type { TestApi } from "./TestApi.ts"
 
 /**
  * The union of what the two overloads accept, as the implementation signature sees it.
@@ -85,7 +111,28 @@ export type FeatureCollection = {
   /** The single Layer both forms normalise to — see note (d) for the collision rule. */
   readonly layer: Layer.Layer<any, any, never>
   readonly definitions: ReadonlyArray<StepDefinition<StepBody>>
+  /**
+   * The definitions joined against the Feature: every step resolved, plus the unused-pattern
+   * findings the join turned up.
+   *
+   * This is 06-CONTEXT.md D-02's channel 3, and the reason the field is on the COLLECTION rather
+   * than kept private to the emission path: `collection.plan.warnings` is a structured list a test
+   * or a downstream tool asserts on directly, instead of scraping terminal output or parsing a
+   * synthetic test node's title. `Model.ts:193-205` is the field-addition precedent — the producing
+   * stage adds its own field at the join seam rather than a later stage recomputing it.
+   */
+  readonly plan: FeaturePlan
 }
+
+/**
+ * The concrete `TestApi`, built once at module scope — note (e).
+ *
+ * `describe` is vitest's own and is re-exported by the package this module imports it from; the
+ * Effect-aware test constructor is that package's, and its `self` parameter is
+ * `() => Effect<A, E, Scope>`, which is exactly what `TestApi.effect` declares (`TestApi.ts` note
+ * (d), verified against the installed build rather than assumed).
+ */
+const vitestTestApi: TestApi = { describe, effect: it.effect }
 
 /**
  * Collapse the two accepted layer arguments into the one Layer the runner will provide.
@@ -170,21 +217,38 @@ const collect = (
 
   define(dsl)
 
-  return { feature, layer: normalizeLayer(layer), definitions: registry.definitions() }
+  const definitions = registry.definitions()
+
+  // PLAN, and it happens in the SHARED implementation rather than in `describeFeature` alone. This
+  // function exists precisely so the two public entry points cannot drift into two behaviours, and
+  // planning in only one of them would be that drift: `collectFeature` would hand back a collection
+  // whose `plan` field was computed by a different code path, or absent. Emission is what the two
+  // differ on, and it is the only thing they differ on.
+  return {
+    feature,
+    layer: normalizeLayer(layer),
+    definitions,
+    plan: planFeature({ feature, definitions })
+  }
 }
 
 /**
  * Collect a Feature's step definitions and normalised Layer, and hand them back instead of running
  * anything.
  *
- * This exists so the collection is assertable NOW, in this phase, without a runner:
- * `describeFeature` returns `void` by contract, so there is nothing for a test to look at, and
- * `test/describeFeature.test.ts` asserts against this instead. It is also Phase 6's join point —
- * RUN-01 reads a `FeatureCollection` and emits one `it.effect` per Pickle through the TestApi seam.
+ * This exists so the collection is assertable without a runner: `describeFeature` returns `void` by
+ * contract, so there is nothing for a test to look at, and `test/describeFeature.test.ts` asserts
+ * against this instead. It runs the identical Register and Plan stages — `collection.plan` is the
+ * same value the emission stage walks — and stops there.
+ *
+ * It emits no test node and writes NOTHING to the terminal. That silence is the point: a test
+ * asserting on `collection.plan.warnings` would otherwise spam the reporter with the very warnings
+ * it is asserting on, so the terminal channel lives in `describeFeature`'s own body and not in the
+ * shared implementation.
  *
  * Internal, and reached by relative import from inside this package. It is deliberately NOT in
- * `index.ts`: publishing it would freeze the collection shape into the package's contract before
- * Phase 6 has consumed it once.
+ * `index.ts`: publishing it would freeze the collection shape into the package's contract, and no
+ * consumer needs it — a test author calls `describeFeature`.
  *
  * The two overloads mirror `describeFeature`'s exactly, including the order — note (a).
  */
@@ -223,9 +287,21 @@ export function collectFeature(
  * REQUIRED in the object form even when a Feature has no per-Scenario-fresh state — write
  * `perScenario: Layer.empty` (D-03). Where both name the same service, `perScenario` wins — note (d).
  *
- * Emits ZERO vitest tests in this phase, on purpose. The collection is built and discarded; Phase 6
- * (RUN-01) replaces the discard with `it.effect` emission through the TestApi seam. Use
- * `collectFeature` to observe what was collected.
+ * Emits one running test per Scenario, nested inside a block named after the Feature, with a further
+ * nested block per `Rule` (RUN-01, ADR-EC-004). A Background's steps are the leading `yield*`s of the
+ * same Effect rather than a separate hook, so they run first and the first failure ends the Scenario
+ * (INV-EC-001).
+ *
+ * A step whose text matched no registered pattern visible to it, or more than one at the same scope
+ * level, fails ITS OWN Scenario with a located `StepMatchError` naming the step, the Scenario and
+ * either a copy-pasteable suggested definition or every colliding pattern — every other Scenario in
+ * the Feature still runs (MATCH-03, MATCH-04, ADR-EC-019).
+ *
+ * A registered pattern that matched no step anywhere in the Feature is a WARNING and never a failure
+ * (MATCH-05, same ADR), reported on all three of 06-CONTEXT.md D-02's channels: written to the
+ * terminal at collection time, emitted as an always-passing test node last in the block, and carried
+ * structurally on the plan. `collectFeature` reaches that third one —
+ * `collection.plan.warnings` — and emits nothing at all.
  *
  * @param feature - a `ParsedFeature` from `@effect-cucumber/gherkin`'s `loadFeature`/`parseFeature`
  * @param layer - the ambient Layer, or `{ shared, perScenario }`
@@ -251,6 +327,23 @@ export function describeFeature(
   layer: LayerArgument,
   define: (dsl: FeatureDsl<any>) => void
 ): void {
-  // Discarded on purpose — see the doc comment above. Phase 6 replaces this line with emission.
-  collect(feature, layer, define)
+  // REGISTER, then PLAN — both inside `collect`, which `collectFeature` shares verbatim.
+  const collection = collect(feature, layer, define)
+
+  // D-02 channel 1, and it lives HERE rather than inside `collect` deliberately: `collectFeature`
+  // runs that same implementation and must stay SILENT, or every test asserting on
+  // `plan.warnings` would also print the warnings it is asserting on.
+  //
+  // `warning.message` is passed straight through, never rebuilt and never reformatted. `Plan.ts`
+  // already assembled a message naming the pattern, the keyword, the definition site and the
+  // Feature; a second rendering here would let the terminal text and the structured list say
+  // different things, and it would drop the `JSON.stringify` quoting that stops a pattern containing
+  // a control character from rewriting the terminal line (threat T-06-07-01).
+  for (const warning of collection.plan.warnings) {
+    console.warn(warning.message)
+  }
+
+  // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
+  // collection output rather than interleaved with it.
+  emitFeature({ api: vitestTestApi, plan: collection.plan, layer: collection.layer })
 }
