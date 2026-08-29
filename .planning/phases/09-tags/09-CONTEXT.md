@@ -123,6 +123,20 @@ now, superseding the conflicting text above.
   consumer (RESEARCH.md Finding 2). This is new public surface: its own file I/O, a glob
   dependency, and an `index.ts` export. Scope it to an explicit glob argument, never a recursive
   default (Security Domain, V12).
+  - **D-09 confirmed, post-plan-checker (2026-08-29):** the planner's first pass implemented
+    `gherkinTags(paths: ReadonlyArray<string>)` — an explicit file/directory list, not a glob
+    string — citing three forcing constraints (Node `>=20` predates `fs.globSync`; `tinyglobby` is
+    only a transitive lockfile dependency; a hand-rolled matcher would mishandle glob syntax). The
+    plan-checker flagged this as an unapproved deviation from D-09's literal wording. **The user was
+    asked and confirmed the literal glob-string signature is required.** `gherkinTags` MUST accept
+    a glob pattern (e.g. `gherkinTags("features/**/*.feature")`), not an explicit path array.
+    `tinyglobby@0.2.17` (already present transitively in `pnpm-lock.yaml`) must be added as a real,
+    declared dependency of `packages/vitest` to implement this — this is a deliberate, approved
+    exception to Phase 9's "no new packages" baseline (RESEARCH's Package Legitimacy Audit and the
+    plan's own supply-chain threat row must be updated to reflect one new direct dependency,
+    `tinyglobby`, audited and accepted, not zero). The synchronous-read constraint from
+    `loadFeature.ts`'s `AsyncFiberError` precedent still applies — `tinyglobby`'s sync glob API must
+    be used, not its async one, to keep the helper callable synchronously at config-load time.
 - **D-10:** The library prints **one collection-time notice** when `excludeTags`/`includeTags`
   causes registration-time exclusions (e.g. `N Scenario(s) excluded by excludeTags`), on the same
   terminal channel as the existing unused-step-definition warnings. D-03's Scenario still never
