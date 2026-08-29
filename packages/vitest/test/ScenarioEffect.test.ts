@@ -220,12 +220,19 @@ const unresolved = (name: string, error: StepMatchError): PlannedStep => ({
   error
 })
 
-/** A `ScenarioPlan` around a step list. Nothing but `steps` is read by this module. */
+/**
+ * A `ScenarioPlan` around a step list. Nothing but `steps` is read by this module.
+ *
+ * `tags` is present and empty for the same reason every other field here is present and inert: the
+ * type requires it. `ScenarioEffect.ts` composes a Scenario's Effect and never reads a tag — tag
+ * routing happens at emission, one stage later — so there is nothing here for a tag to change.
+ */
 const planOf = (steps: ReadonlyArray<PlannedStep>): ScenarioPlan => ({
   scenarioId: "pickle-1",
   name: "a scenario",
   astName: "a scenario",
   ruleId: Option.none(),
+  tags: [],
   steps
 })
 

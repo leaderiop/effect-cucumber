@@ -45,6 +45,12 @@
  * - **The cross-Rule isolation case** asserts BODY REFERENCE and not the pattern string, because it
  *   registers one identical pattern in each of two Rules. The pattern cannot name the winner, and
  *   two matches at one rank that were never visible to each other must not become an ambiguity.
+ * - **The tag case** compares the WHOLE array with `toEqual`, not membership with `toContain`, and
+ *   uses a two-row Outline. The order is the assertion: it is what proves the set arrived already
+ *   flattened from `compile()` rather than being re-derived here, and a membership check would pass
+ *   against a re-derivation that collected the same four names in another order. The tag names are
+ *   `packages/gherkin/test/fixtures/correlation-full.feature`'s, so this expectation and
+ *   `packages/gherkin/test/Correlate.test.ts`'s cannot drift apart.
  *
  * ## Mutation-tested — the Rule level of the scope chain (DSL-05)
  *
@@ -260,6 +266,40 @@ const ruleBackgrounds = parse(
       Given I do the thing
 `,
   "test/plan-rule-backgrounds.feature"
+)
+
+const taggedUri = "test/plan-tagged.feature"
+
+/**
+ * A tag at all FOUR levels — Feature, Rule, Scenario Outline and Examples block — over an Outline
+ * with TWO rows.
+ *
+ * The four tag names are `packages/gherkin/test/fixtures/correlation-full.feature`'s, so the
+ * expectation here is byte-identical to `packages/gherkin/test/Correlate.test.ts`'s already-verified
+ * ordering assertion and the two cannot drift into disagreeing about what `compile()` produces.
+ *
+ * TWO Examples rows and not one, which is where this fixture differs from that one: the
+ * Examples-block tag is part of the flattened set on EVERY Pickle the Outline compiles to, and a
+ * single-row Outline cannot tell "every row carries it" from "the one row carries it".
+ */
+const tagged = parse(
+  `@featuretag
+Feature: Tagged
+
+  @ruletag
+  Rule: a rule
+
+    @scenariotag
+    Scenario Outline: adding <count>
+      Given I add <count> apples
+
+      @exampletag
+      Examples:
+        | count |
+        | 1     |
+        | 2     |
+`,
+  taggedUri
 )
 
 /** A step body that touches no service. Never called here; only its identity is asserted. */
@@ -657,6 +697,42 @@ describe("planFeature — a Rule's own Background", () => {
     expect(patternOf(scenarioIn(plan, ruleId)?.steps[1])).toBe("the rule is ready")
     // ...and still not visible outside the Rule.
     expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved", "Unresolved"])
+  })
+})
+
+describe("planFeature — the Scenario's tag set (RUN-05)", () => {
+  it("carries a Feature, Rule, Scenario and Examples tag onto the plan, in that order", () => {
+    const plan = planFeature({
+      feature: tagged,
+      definitions: [define({ pattern: "I add {int} apples", scope: featureScope("Tagged") })]
+    })
+
+    // Whole-array `toEqual`, never `toContain` — copied from `Correlate.test.ts`'s own assertion for
+    // its own reason: the ORDER is what proves the list came through `compile()`'s flattening rather
+    // than from a re-derivation somewhere in this package. A `toContain` set of four passes against
+    // an implementation that recomputed inheritance and happened to collect the same four names.
+    expect(plan.scenarios[0]?.tags).toEqual(["@featuretag", "@ruletag", "@scenariotag", "@exampletag"])
+  })
+
+  it("gives every Examples row of an Outline the same tag set, the Examples-block tag included", () => {
+    const plan = planFeature({
+      feature: tagged,
+      definitions: [define({ pattern: "I add {int} apples", scope: featureScope("Tagged") })]
+    })
+
+    // Two rows, so "every row carries it" is discriminated from "the first row carries it". The
+    // interpolated names differ; the tag sets must not.
+    expect(plan.scenarios.map((scenario) => scenario.name)).toEqual(["adding 1", "adding 2"])
+    expect(plan.scenarios[1]?.tags).toEqual(["@featuretag", "@ruletag", "@scenariotag", "@exampletag"])
+  })
+
+  it("plans an untagged Scenario with a present empty array, never a missing field", () => {
+    // `single` is an untagged Scenario in an untagged Feature, so there is genuinely no tag anywhere
+    // to inherit. `toEqual([])` and not `toBeUndefined`: the field is REQUIRED, and the emission walk
+    // reading `undefined` here would emit nothing with nothing going red.
+    const plan = planFeature({ feature: single, definitions: [] })
+
+    expect(plan.scenarios[0]?.tags).toEqual([])
   })
 })
 
