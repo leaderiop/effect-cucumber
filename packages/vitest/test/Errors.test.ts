@@ -364,7 +364,7 @@ const forgingTag = "@wip\"\n⚠ unused step definition: Then \"forged\""
  * The exact rendered length of `undeclaredWarning()`'s message, hard-coded — see this module's doc
  * comment. Any truncation, cap or ellipsis on the construction path moves it.
  */
-const UNDECLARED_MESSAGE_LENGTH = 1361
+const UNDECLARED_MESSAGE_LENGTH = 1396
 
 /**
  * The exact rendered length of `bothFiltersNotice()`'s message, hard-coded for the same reason.
@@ -434,7 +434,7 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
     expect(undeclaredWarning()).not.toBeInstanceOf(Error)
   })
 
-  it("round-trips uri, scenarioName and the offending tags unchanged", () => {
+  it("round-trips uri, scenarioName and the Scenario's whole tag list unchanged", () => {
     const warning = undeclaredWarning()
     expect(warning.uri).toBe("features/checkout.feature")
     expect(warning.scenarioName).toBe("a shopper fills a basket")
@@ -461,12 +461,22 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
     expect(undeclaredWarning().message).toContain(longTag)
   })
 
-  it("names the file, the Scenario and every offending tag", () => {
+  it("names the file, the Scenario and every tag the Scenario carried", () => {
     const { message } = undeclaredWarning()
     expect(message).toContain(JSON.stringify("features/checkout.feature"))
     expect(message).toContain(JSON.stringify("a shopper fills a basket"))
     expect(message).toContain(JSON.stringify("@slow"))
     expect(message).toContain(JSON.stringify(longTag))
+  })
+
+  it("says at least one of the listed tags is undeclared, never that all of them are", () => {
+    // The producer is handed the Scenario's WHOLE tag list and cannot compute the offending subset
+    // without reading the framework's message, which describeFeature.ts's adapter refuses to do by
+    // design. The earlier wording claimed every listed tag was undeclared, which sent a reader off
+    // to declare tags that were already declared. This assertion is what pins the honest claim.
+    const { message } = undeclaredWarning()
+    expect(message).toContain("at least one of which")
+    expect(message).not.toContain("tag(s) this project's vitest config does not declare")
   })
 
   it("says the Scenario still ran and was emitted untagged, and points at the tag docs", () => {

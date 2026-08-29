@@ -82,10 +82,24 @@ REQUIREMENT: After, AfterStep and AfterAllScenarios each run WHETHER the thing
                and the step body itself never ran.
 
                AfterAllScenarios runs once, after every Scenario in the
-               Feature has been attempted, regardless of whether
+               Feature has been ATTEMPTED, regardless of whether
                BeforeAllScenarios succeeded, whether any Scenario's hooks or
                steps failed, or whether any earlier After/AfterStep hook
                failed.
+
+               ONE CARVE-OUT applies to AfterAllScenarios, and only to the
+               case where NO Scenario was attempted at all — every Scenario
+               in the Feature skipped (@skip) or removed by a registration
+               filter (includeTags/excludeTags), or the Feature declaring no
+               Scenarios in the first place. In that case the node MUST NOT
+               be emitted: BeforeAllScenarios is reachable only from inside
+               a Scenario's body, so it structurally CANNOT have run, and an
+               AfterAllScenarios node would tear down resources nothing ever
+               set up. This carves the VACUOUS case out of the guarantee; it
+               does not weaken it. All three "regardless of" clauses above
+               are unchanged, because what they are about is a FAILURE being
+               unable to stop teardown — and a failing Scenario was still
+               attempted, so it still emits the node.
 
              A guaranteed hook that itself fails does NOT mask or replace the
              failure it was guarding — both reach the reported failure,
@@ -102,14 +116,18 @@ REQUIREMENT: BeforeAllScenarios runs AT MOST ONCE per Feature, shared across
 ```
 
 ```
-REQUIREMENT: Hooks are registered through the Feature-level dsl ONLY — the
-             same object Given/When/Then/Background/Scenario are registered
-             through (DSL-04's prohibition on a module-level registry applies
-             identically to hooks). There is no Rule-scoped hook narrowing in
-             this milestone: a hook registered on a Feature applies to every
-             Scenario in that Feature, Rule-nested Scenarios included, and
-             there is no mechanism to register a hook visible only inside one
-             Rule.
+REQUIREMENT: Hooks are registered through a dsl object ONLY — the same object
+             Given/When/Then/Background/Scenario are registered through
+             (DSL-04's prohibition on a module-level registry applies
+             identically to hooks). A hook registered on the FEATURE dsl
+             applies to every Scenario in that Feature, Rule-nested Scenarios
+             included. A Rule's own dsl additionally accepts Before, After,
+             BeforeStep and AfterStep, which narrow to that Rule's Scenarios
+             and compose with the Feature's own — see
+             [BEH-EC-018](./03-rules-outlines-and-testclock.md) for that
+             composition order, which this file does not restate.
+             BeforeAllScenarios and AfterAllScenarios stay Feature-only and
+             are a compile error on a Rule's dsl.
 ```
 
 ```

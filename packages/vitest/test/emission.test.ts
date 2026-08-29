@@ -1357,11 +1357,13 @@ describe("a @skip Scenario runs no step and no hook (09-06)", () => {
  *
  * `describeFeature.ts`'s adapter passes the Scenario's WHOLE tag array to `makeUndeclaredTagWarning`,
  * not the subset the framework actually rejected — it cannot know which those are without reading the
- * framework's message, which 09-05 forbids on purpose. So a Scenario carrying a declared tag ALONGSIDE
- * an undeclared one produces a message naming both as undeclared, which is false about the declared
- * one. That is a real reporting defect and it is recorded in this plan's summary rather than worked
- * around here; giving this Scenario a single tag keeps this block's assertions about the mechanism
- * rather than about the defect, and this paragraph is why the Feature deliberately carries no
+ * framework's message, which 09-05 forbids on purpose. Plan 09-06 recorded that as a reporting defect,
+ * because the message then claimed every listed tag was undeclared; plan 09-09 fixed it in the WORDING
+ * rather than in the data, which is the only honest place it could be fixed — the message now says the
+ * Scenario carries N tags, AT LEAST ONE of which is undeclared, and `Errors.test.ts` pins that claim.
+ * Giving this Scenario a single tag is still deliberate: it keeps this block's assertions about the
+ * mechanism, and with one tag the "at least one" wording and the offending subset coincide, so the
+ * quoting assertion below is unambiguous. It is also why the Feature deliberately carries no
  * Feature-level tag of its own.
  *
  * ## The quoting assertion is a SECURITY control, not a formatting preference

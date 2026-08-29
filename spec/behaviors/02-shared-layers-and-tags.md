@@ -1,8 +1,10 @@
 # 02 — Background, hooks, shared Layers, and tags
 
-_Pre-implementation: `@effect-cucumber/vitest` doesn't exist yet (see
-`spec/roadmap.md`). Code fences below describe the intended API — reference
-material, not a compiled example._
+See [`spec/roadmap.md`](../roadmap.md) for what is built versus what is only
+specified — this document describes the contract, not the build status. The
+header note that used to sit here said `@effect-cucumber/vitest` did not exist
+yet; it does, and the `typescript` fences below are written against its real
+API per AGENTS.md §2.
 
 ---
 
@@ -96,28 +98,91 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
-> **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md)
+> **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
 
 ```
 REQUIREMENT: Every tag on a Scenario (including inherited Feature/Rule/
              Examples tags) MUST be emitted as a native vitest tag on the
-             generated it.effect call. A Scenario tagged @skip MUST
+             generated it.effect call, keeping the literal @ prefix it
+             carries in the .feature file. A Scenario tagged @skip MUST
              additionally compile to it.effect.skip instead of it.effect.
              A Scenario tagged @only MUST NOT compile to it.effect.only
              (vitest fails CI on any committed .only) — @only is emitted as
              a plain tag only; running just that Scenario is a caller-side
              `vitest --tagsFilter '@only'` choice, not something the library
-             forces onto every run. excludeTags-style filtering MUST be
-             implemented as native vitest tag filtering (--tagsFilter), not
-             a describeFeature-time registration filter.
+             forces onto every run.
+```
+
+```
+REQUIREMENT: includeTags and excludeTags, on describeFeature's optional
+             fourth argument, MUST act as a registration filter — filtering
+             at REGISTRATION time, so a Scenario the filter excludes never
+             becomes a test and is ABSENT from the report rather than
+             present in it as skipped. Both MUST accept a plain array of tag
+             strings, never vitest's boolean tag-expression grammar, and
+             undefined and an empty array MUST both mean NO FILTER, so a
+             computed-empty array can never silence a suite. Native vitest
+             tag filtering (--tagsFilter) MUST continue to work
+             independently on whatever was registered, reporting
+             non-matching tests as skipped rather than removing them: the
+             registration filter and the CLI filter COMPOSE, and neither
+             replaces the other.
+```
+
+```
+REQUIREMENT: Every emitted tag MUST be DECLARED in the runner's config — a
+             --tagsFilter pattern is validated against that declaration list
+             regardless of the runner's strict-tags setting. A tag that is
+             not declared MUST NOT fail the Feature: the library MUST catch
+             the runner's rejection, re-emit the test UNTAGGED so the
+             Scenario still runs, and print one located warning naming the
+             .feature file, the Scenario and every tag that Scenario carried
+             — the Scenario's tags then do not exist for the runner, so no
+             --tagsFilter can select it. That warning MUST claim only that
+             AT LEAST ONE of the listed tags is undeclared, never that all
+             of them are: the runner rejects a tag array as a unit and names
+             the offenders only in its own message text, which the library
+             deliberately does not read. gherkinTags, a config-time helper
+             taking a GLOB PATTERN (or an array of patterns) over the
+             consumer's own .feature files, is the supported way to generate
+             those declarations.
 ```
 
 ### Worked example
 
+First the runner config, because without it none of the tags below can be
+selected by `--tagsFilter` — the declaration list is what a filter pattern is
+validated against. `gherkinTags` takes a glob over the consumer's own
+`.feature` files and returns entries that spread straight into `test.tags`,
+beside any hand-written ones:
+
 ```typescript
-// Pre-implementation reference — not yet compiled against a real API.
+// vitest.config.ts — gherkinTags is real and exported (this phase). The result type is
+// the runner's own TestTagDefinition[], proven at compile time by
+// packages/vitest/test/GherkinTags.types.ts.
+import { gherkinTags } from "@effect-cucumber/vitest"
+import { defineConfig } from "vitest/config"
+
+export default defineConfig({
+  test: {
+    // The glob is resolved against process.cwd(). There is deliberately no default —
+    // the helper never scans a tree its caller did not name.
+    tags: [...gherkinTags("features/**/*.feature"), { name: "@skip" }, { name: "@only" }]
+  }
+})
+```
+
+Then the Feature itself:
+
+```typescript
+// describeFeature, its optional fourth argument, and the dsl below are real and
+// compile-gated (this phase). The `loadFeature` import is ADR-EC-024's planned
+// ManagedRuntime wrapper, not yet shipped from @effect-cucumber/vitest — see
+// packages/vitest/README.md "## Status". This fence is still not compiled either way;
+// the doc-examples check is not wired yet (spec/roadmap.md).
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
+import { expect } from "vitest"
 
 // @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already wired to a
 // shared NodeFileSystem.layer and defaulting ParameterTypeStore — distinct from
@@ -133,6 +198,10 @@ const feature = await loadFeature("./accounts.feature")
 //   Scenario: Deleting a missing user
 //     When I delete a user named "Ghost"
 //     Then the operation fails with "not found"
+//   @wip
+//   Scenario: Renaming a user
+//     When I rename a user
+//     Then nothing happens yet
 
 class DatabaseError extends Schema.TaggedError<DatabaseError>()("DatabaseError", {
   message: Schema.String
@@ -219,13 +288,30 @@ describeFeature(
         expect(Option.isSome(error) && error.value.message).toBe(message)
       })
     })
-  }
+
+    // "Renaming a user" is @wip, and the fourth argument below excludes it — so it is
+    // never registered at all and no step definition for it is needed here.
+  },
+  // The optional fourth argument. A plain array of tag strings, never a boolean
+  // expression; `undefined` and `[]` both mean NO FILTER. The @wip Scenario never
+  // becomes a test and is absent from the report — unlike `--tagsFilter '!@wip'`,
+  // which would report it as skipped.
+  { excludeTags: ["@wip"] }
 )
 ```
 
 `Database.clear` in Background running per-Scenario against a _shared_ Layer
 is exactly why `clear` exists on `Database` at all — without it, "Creating a
 user" would leak into "Deleting a missing user"'s count.
+
+The three tag mechanisms in that example are deliberately different things.
+`@skip` still emits a test and reports it as skipped, so a reader sees it in
+the output. `excludeTags` removes "Renaming a user" from registration, so it
+appears nowhere at all — one summary line naming the count, the Feature and the
+option that removed them is printed when the filter removed anything, because a
+green run cannot otherwise tell a reader that a whole Feature is hiding behind a
+stale filter. And `--tagsFilter`, unused above, would narrow whatever survived
+registration without removing anything from the report.
 
 ---
 

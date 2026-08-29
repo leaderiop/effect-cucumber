@@ -69,8 +69,39 @@ name plus every Examples column and that row's value for it —
 already referenced a placeholder, so `-t` can filter on any column value. Two rows of one Outline share no mutable
 state: each is its own test against its own Layer build, and observes only its own row's values.
 
-**What is not built yet**, each waiting on its own phase: tag routing and `@skip`/`@only` (Phase 9); and the build-once
-`shared` Layer with its per-Scenario
+**Tags reach the runner, and `@skip`/`@only` behave as specified.** Every tag on a Scenario becomes a native runner tag
+on the emitted test, inherited `Feature`, `Rule` and `Examples` tags included, each keeping the literal `@` prefix it
+carries in the `.feature` file. `@skip` additionally emits the test as skipped, so neither its steps nor any of its
+hooks run — which is also why a `@skip` Scenario containing an unmatched step reports skipped rather than undefined.
+`@only` is emitted as a plain tag and is NEVER routed to the runner's only-mode, so an `@only` left in a committed
+`.feature` file cannot fail a CI run that forbids only-marking. `includeTags`/`excludeTags`, on `describeFeature`'s
+optional fourth argument, narrow what is REGISTERED rather than what runs: an excluded Scenario never becomes a test
+and is absent from the report entirely rather than listed in it as skipped, and one summary line naming the count, the
+Feature and the option that removed them prints whenever the filter removed anything. Both take a plain array of tag
+strings — never the runner's boolean tag-expression grammar — and `undefined` and `[]` both mean no filter. The
+runner's own `--tagsFilter` still works independently on whatever was registered; the two compose.
+
+**One prerequisite comes with tags, and it is not optional.** A tag must be DECLARED in your `vitest.config.ts`'s
+`test.tags`, or the runner rejects the emission — and a `--tagsFilter` pattern is validated against that same list
+regardless of the `strictTags` setting. This package catches the rejection, re-emits the test untagged and prints a
+warning naming the `.feature` file, the Scenario and the tag, so the Scenario still runs; but its tags do not exist for
+the runner, so no `--tagsFilter` can select it. `gherkinTags` is the supported way to keep that list correct:
+
+```ts
+import { gherkinTags } from "@effect-cucumber/vitest"
+import { defineConfig } from "vitest/config"
+
+export default defineConfig({
+  test: { tags: [...gherkinTags("features/**/*.feature"), { name: "@skip" }, { name: "@only" }] }
+})
+```
+
+It takes a glob pattern (or an array of them), resolved against `process.cwd()`, and has no default — it never scans a
+tree you did not name. It is why this package carries one non-workspace runtime dependency, `tinyglobby`: expanding a
+glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
+Node 20.
+
+**What is not built yet:** the build-once `shared` Layer with its per-Scenario
 `TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted and type-checked today, but
 both halves are currently built per Scenario at runtime. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.

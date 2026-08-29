@@ -51,18 +51,20 @@
  * One prerequisite comes with all of that, and it is stated here rather than left to be discovered:
  * a tag must be DECLARED in the runner's own config or the runner rejects the emission. This library
  * catches that rejection, re-emits the test untagged and prints a warning naming the `.feature` file,
- * the Scenario and the offending tag — so the Scenario still runs, but its tags do not exist for the
+ * the Scenario and the tags it carried — so the Scenario still runs, but its tags do not exist for the
  * runner and a `--tagsFilter` naming any of them cannot select it. `gherkinTags("<glob>")`, exported
  * below, is the supported way to produce those declarations from the same `.feature` files the tags
  * are written in.
  *
- * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: a `Rule`
- * that extends the ambient Layer with its own per-Scenario Layer, and typed `Scenario Outline`
- * Examples, are Phase 8 (DSL-05, DSL-06) — a Rule's Scenarios run today and are nested correctly, but
- * nothing can REGISTER at Rule scope; and the opt-in `shared` Layer built once per Feature,
- * together with the per-Scenario `TestClock` isolation that has to accompany it, is Phase 10
- * (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is accepted and type-checked today,
- * but both halves are built per Scenario at runtime.
+ * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: the opt-in
+ * `shared` Layer built once per Feature, together with the per-Scenario `TestClock` isolation that
+ * has to accompany it, is Phase 10 (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is
+ * accepted and type-checked today, but both halves are built per Scenario at runtime. A `Rule` that
+ * extends the ambient Layer with its own per-Scenario Layer, and typed `Scenario Outline` Examples,
+ * were on this list until Phase 8 and are built now (DSL-05, DSL-06): a Rule takes an extra Layer
+ * merged onto the Feature's with `Layer.provideMerge`, registers its own `Background` and its own
+ * `Before`/`After`/`BeforeStep`/`AfterStep`, and every Outline row emits its own test titled with
+ * that row's values.
  *
  * ## Export policy
  *
