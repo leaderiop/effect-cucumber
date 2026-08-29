@@ -26,7 +26,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 
 - [x] **DSL-01**: `describeFeature` takes a Layer (or `{ shared, perScenario }`); a step whose Effect requires a service the Layer doesn't provide fails to compile (ADR-EC-003), backed by `@effect/tsgo`'s `missingLayerContext`/`missingEffectContext` diagnostics failing the build (ADR-EC-016)
 - [ ] **DSL-02**: A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`/`And`/`But` accept a bare generator function, auto-wrapped with `Effect.fn(stepText)` internally (ADR-EC-001, ADR-EC-005)
-- [ ] **DSL-03**: `World` is a typed `Context.Service`; a field is unreachable by a step unless it appears in World's declared type (ADR-EC-002)
+- [x] **DSL-03**: `World` is a typed `Context.Service`; a field is unreachable by a step unless it appears in World's declared type (ADR-EC-002)
 - [ ] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
 - [ ] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
 - [ ] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
@@ -92,7 +92,7 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | MATCH-05 | Phase 6 | Pending |
 | DSL-01 | Phase 5 | Complete |
 | DSL-02 | Phase 5 | Pending |
-| DSL-03 | Phase 5 | Pending |
+| DSL-03 | Phase 5 | Complete |
 | DSL-04 | Phase 5 | Pending |
 | DSL-05 | Phase 8 | Pending |
 | DSL-06 | Phase 8 | Pending |
