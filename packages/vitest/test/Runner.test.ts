@@ -31,14 +31,33 @@
  *   `name` are the same string for every plain Scenario in every other fixture here, so titling with
  *   the wrong one is invisible until two rows of one Outline have to be told apart — mutation B.
  *
- * Mutation-tested (all three performed, then reverted, all three confirmed failing) — see the plan
- * summary for the recorded output:
+ * Mutation-tested (all seven performed against real source, run, confirmed to fail exactly the
+ * intended test(s), then reverted) — see the plan summary for the recorded output:
  * - A. `emitFeature` emits a Rule's Scenarios as SIBLINGS of the Rule's block instead of inside it
  *      → the Rule-nesting test fails on `depth`.
  * - B. `emitFeature` titles each test with `scenarioPlan.astName` instead of `scenarioPlan.name`
  *      → the Scenario Outline test fails, because both Examples rows get the same title.
  * - C. the unused-definition node is emitted with a failing Effect instead of `Effect.void`
  *      → the always-passing test fails.
+ * - K. `makeOnce`'s `started` flag is removed, so the batch runs once PER CALLER instead of once per
+ *      Feature → every test that exercises the once-cell across two thunk executions fails (4 of 19):
+ *      both once-across-N-Scenarios tests (the hook's `:start`/`:end` pair appears twice, once per
+ *      Scenario, instead of once), the failing-`BeforeAllScenarios` test (the second Scenario's
+ *      "isFailure" assertion sees `false` — `Deferred.into` on an already-completed `Deferred` still
+ *      re-runs `body`, so the hook fails "again" for the second thunk rather than the first failure
+ *      being replayed), and the runs-even-when-`BeforeAllScenarios`-failed `AfterAllScenarios` test
+ *      (same re-run leaks an extra `:start` entry into the log).
+ * - L. `Deferred.await` on the second and later callers is replaced with `Effect.void` → 2 of 19 tests
+ *      fail: the failing-`BeforeAllScenarios` test (the second Scenario thunk now SUCCEEDS instead of
+ *      failing, because it no longer awaits the deferred's real outcome) and the runs-even-when-
+ *      `BeforeAllScenarios`-failed `AfterAllScenarios` test (the second Scenario's steps now actually
+ *      run, since its own `flatMap` proceeds on the once-cell's fabricated success, leaking "the cart
+ *      is empty"/"I refund" into the log).
+ * - M. the `AfterAllScenarios` node is emitted after the warnings loop instead of before it → the
+ *      emission-shape test fails, because the node's position in `shapeOf(records)` no longer matches.
+ * - N. the `AfterAllScenarios` node's body is composed to `Effect.flatMap` the `BeforeAllScenarios`
+ *      cell first → the runs-even-when-`BeforeAllScenarios`-failed test fails, because the node's own
+ *      exit becomes a failure instead of a success.
  *
  * ## The fixtures
  *
@@ -79,13 +98,15 @@
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
 import { assert, describe, it } from "@effect/vitest"
+import * as Cause from "effect/Cause"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Ref from "effect/Ref"
 import type * as Scope from "effect/Scope"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
-import type { HookSet } from "../src/Hook.ts"
+import type { HookBody, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
@@ -197,6 +218,74 @@ const emptyHooks: HookSet = {
   BeforeAllScenarios: [],
   AfterAllScenarios: []
 }
+
+/** `emptyHooks` with one or more kinds overridden — keeps each all-scenarios test's intent to one line. */
+const hooksWith = (overrides: Partial<HookSet>): HookSet => ({ ...emptyHooks, ...overrides })
+
+/**
+ * The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe
+ * blocks below reads: an append-only log of what ran, in run order.
+ *
+ * `test/ScenarioEffect.test.ts`'s own `Recorder` is per-BUILD by design — that is exactly what proves
+ * INV-EC-002 there. This file's claim is different and spans TWO Scenario thunk executions plus, in
+ * the `AfterAllScenarios` tests, a THIRD node's execution — an ordering a per-build log cannot express
+ * at all, since each of those runs its own `Effect.provide` and therefore builds its own Layer
+ * instance. So the `Ref` here is created ONCE, outside the Layer, and handed to `Layer.succeed` rather
+ * than `Layer.effect`: every build of this Layer, no matter how many, returns a service wrapping the
+ * SAME `Ref`. This deliberately gives up build-counting — `test/ScenarioEffect.test.ts`'s own
+ * `Recorder`/`makeRecording` still covers INV-EC-002 — because a per-build log cannot express a
+ * multi-Scenario ordering, which is exactly what the tests below need. Do not "fix" this back to
+ * `Layer.effect`.
+ */
+class Recorder extends Context.Service<Recorder, { readonly log: Ref.Ref<ReadonlyArray<string>> }>()("Recorder") {}
+
+/** A fresh `Recorder` Layer over a fresh, single, shared `Ref` — one per test, per the house factory convention. */
+const makeRecorderLayer = (): {
+  readonly layer: Layer.Layer<Recorder>
+  readonly log: Ref.Ref<ReadonlyArray<string>>
+} => {
+  const log = Ref.makeUnsafe<ReadonlyArray<string>>([])
+  return { layer: Layer.succeed(Recorder, Recorder.of({ log })), log }
+}
+
+/**
+ * A hook body that brackets a suspension with `${name}:start`/`${name}:end` — copies
+ * `test/ScenarioEffect.test.ts`'s `recordingHook` exactly, and for the identical reason: without a
+ * real suspension in the middle, an ordering assertion cannot tell sequential execution from
+ * concurrent execution that happens to finish in the same tick (07-PATTERNS.md's finding).
+ */
+const recordingHook = (name: string): HookBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
+  })
+
+/**
+ * A hook body that records its own `:start`, suspends, then fails with `error` — no `:end`. Mirrors
+ * `test/ScenarioEffect.test.ts`'s `failingHook`: it records before failing so the log proves the hook
+ * ran, and the error value stays available for a reference-identity assertion.
+ */
+const failingHook = (name: string, error: unknown): HookBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    return yield* Effect.fail(error)
+  })
+
+/**
+ * A step body that appends its own name to the SAME `Recorder` log the hooks above write to — no
+ * `:start`/`:end` bracketing, because this file only asserts MACRO-ordering (the once-cell versus a
+ * Scenario, one thunk versus another), never within-Scenario step interleaving, which is
+ * `test/ScenarioEffect.test.ts`'s job.
+ */
+const recordingStep = (name: string): StepBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, name])
+  })
 
 /** Parse an inline Feature the way a consumer would, so the fixtures are real contract values. */
 const parse = (source: string, uri: string) =>
@@ -312,6 +401,18 @@ const recordingDefinitions = (ran: Array<string>): ReadonlyArray<StepDefinition<
         })
     })
   )
+
+/**
+ * `checkout`'s three steps, with bodies that append their own step text to the SAME `Recorder` log
+ * `recordingHook`/`failingHook` write to — the fixture the `BeforeAllScenarios`/`AfterAllScenarios`
+ * describe blocks below use, so a hook's entries and a Scenario's own step entries land in one
+ * whole-log ordering assertion.
+ */
+const recorderCheckoutDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
+  define({ pattern: "the cart is empty", scope: featureScope("Checkout"), body: recordingStep("the cart is empty") }),
+  define({ pattern: "I pay", scope: featureScope("Checkout"), keyword: "When", body: recordingStep("I pay") }),
+  define({ pattern: "I refund", scope: featureScope("Checkout"), keyword: "When", body: recordingStep("I refund") })
+]
 
 /** Replace a real plan's warning list, keeping its real Feature and its real Scenario plans. */
 const withWarnings = (
@@ -557,6 +658,239 @@ describe("the recording fake itself", () => {
     assert.deepStrictEqual(shapeOf(records), [
       { kind: "describe", name: "throwing", depth: 0 },
       { kind: "effect", name: "after", depth: 0 }
+    ])
+  })
+})
+
+/**
+ * D-08's runtime proof: running the recorded thunks shows `BeforeAllScenarios` executes exactly once
+ * across N Scenarios, in either run order, and that its failure reaches every Scenario individually by
+ * reference identity — never only the first one to run.
+ */
+describe("BeforeAllScenarios runs exactly once across every Scenario in the Feature (D-08)", () => {
+  it.effect("runs ahead of both Scenarios' steps, exactly once, when run in document order (1 then 2)", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+      const hooks = hooksWith({ BeforeAllScenarios: [recordingHook("beforeAll")] })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      yield* thunkAt(records, 1)()
+      yield* thunkAt(records, 2)()
+
+      // ONE whole-log assertion carrying both halves at once: the hook's `:start`/`:end` pair appears
+      // exactly ONCE, ahead of both Scenarios' step entries — mutation K's target.
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "beforeAll:start",
+        "beforeAll:end",
+        "the cart is empty",
+        "I pay",
+        "the cart is empty",
+        "I refund"
+      ])
+    }))
+
+  it.effect("runs exactly once and still ahead of whichever Scenario runs first, in reverse order (2 then 1)", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+      const hooks = hooksWith({ BeforeAllScenarios: [recordingHook("beforeAll")] })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      yield* thunkAt(records, 2)()
+      yield* thunkAt(records, 1)()
+
+      // Proves the cell is order-independent rather than "the first emitted node happens to run
+      // first": the hook still runs once, ahead of whichever Scenario the test ran first.
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "beforeAll:start",
+        "beforeAll:end",
+        "the cart is empty",
+        "I refund",
+        "the cart is empty",
+        "I pay"
+      ])
+    }))
+
+  it.effect("fails both Scenario thunks with the SAME error by reference identity, and runs the hook once", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+      const boom = { why: "the BeforeAllScenarios hook's own error" }
+      const hooks = hooksWith({ BeforeAllScenarios: [failingHook("beforeAll", boom)] })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      const exit1 = yield* Effect.exit(thunkAt(records, 1)())
+      const exit2 = yield* Effect.exit(thunkAt(records, 2)())
+
+      assert.isTrue(Exit.isFailure(exit1))
+      assert.isTrue(Exit.isFailure(exit2))
+      // D-08's literal requirement: BOTH Scenario thunks fail, with the SAME error object — mutation
+      // L's target. `Cause.squash` is safe here: only one hook fails, so the cause is never combined.
+      assert.strictEqual(Exit.isFailure(exit1) ? Cause.squash(exit1.cause) : undefined, boom)
+      assert.strictEqual(Exit.isFailure(exit2) ? Cause.squash(exit2.cause) : undefined, boom)
+      // The hook body ran ONCE: one `:start`, no `:end` (it failed), and no Scenario step ran at all —
+      // `Effect.flatMap` short-circuits before `buildScenarioEffect`'s body is ever reached.
+      assert.deepStrictEqual(yield* Ref.get(log), ["beforeAll:start"])
+    }))
+
+  it.effect("runs before the Scenario's own Before hook, in the whole log's order", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+      const hooks = hooksWith({
+        BeforeAllScenarios: [recordingHook("beforeAll")],
+        Before: [recordingHook("before")]
+      })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      yield* thunkAt(records, 1)()
+
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "beforeAll:start",
+        "beforeAll:end",
+        "before:start",
+        "before:end",
+        "the cart is empty",
+        "I pay"
+      ])
+    }))
+})
+
+/**
+ * D-09's runtime proof: `AfterAllScenarios` is emitted as one constant-titled node, positioned after
+ * every Scenario and before every warning, and it runs — and succeeds — regardless of what failed
+ * before it.
+ */
+describe("AfterAllScenarios is emitted as one node after every Scenario and before every warning (D-09)", () => {
+  it("adds exactly one extra node, titled '⚙ AfterAllScenarios', after every Scenario and before every warning", () => {
+    const { api, records } = makeRecordingApi()
+    const hooks = hooksWith({ AfterAllScenarios: [recordingHook("afterAll")] })
+
+    emitFeature({
+      api,
+      plan: planFeature({
+        feature: checkout,
+        definitions: [
+          ...checkoutDefinitions,
+          define({ pattern: "I never happen", scope: featureScope("Checkout"), definedAt: site(9) })
+        ]
+      }),
+      layer,
+      hooks
+    })
+
+    // Positional, over the whole array — mutation M's target: emitted after the warnings instead of
+    // before them, this array's last two entries would swap.
+    assert.deepStrictEqual(shapeOf(records), [
+      { kind: "describe", name: "Checkout", depth: 0 },
+      { kind: "effect", name: "paying", depth: 1 },
+      { kind: "effect", name: "refunding", depth: 1 },
+      { kind: "effect", name: "⚙ AfterAllScenarios", depth: 1 },
+      {
+        kind: "effect",
+        name: `⚠ unused step definition: Given "I never happen" (/repo/test/runner.steps.ts:9:5)`,
+        depth: 1
+      }
+    ])
+  })
+
+  it.effect("runs and succeeds even when BeforeAllScenarios failed and a Scenario thunk failed (D-09)", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+      const boom = { why: "the BeforeAllScenarios hook's own error" }
+      const hooks = hooksWith({
+        BeforeAllScenarios: [failingHook("beforeAll", boom)],
+        AfterAllScenarios: [recordingHook("afterAll")]
+      })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
+      yield* Effect.exit(thunkAt(records, 1)())
+      yield* Effect.exit(thunkAt(records, 2)())
+
+      // Records: describe(0), paying(1), refunding(2), AfterAllScenarios(3) — no warnings here.
+      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)())
+
+      // Mutation N's target: composing the node's body to await the BeforeAllScenarios cell first
+      // would turn this into a failure.
+      assert.isTrue(Exit.isSuccess(afterAllExit))
+      assert.deepStrictEqual(yield* Ref.get(log), ["beforeAll:start", "afterAll:start", "afterAll:end"])
+    }))
+
+  it.effect("fails its own node by reference identity, and does not affect any Scenario thunk's exit", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer } = makeRecorderLayer()
+      const boom = { why: "the AfterAllScenarios hook's own error" }
+      const hooks = hooksWith({ AfterAllScenarios: [failingHook("afterAll", boom)] })
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
+        layer: recorderLayer,
+        hooks
+      })
+
+      const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)())
+      const scenario2Exit = yield* Effect.exit(thunkAt(records, 2)())
+      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)())
+
+      assert.isTrue(Exit.isSuccess(scenario1Exit))
+      assert.isTrue(Exit.isSuccess(scenario2Exit))
+      assert.isTrue(Exit.isFailure(afterAllExit))
+      assert.strictEqual(Exit.isFailure(afterAllExit) ? Cause.squash(afterAllExit.cause) : undefined, boom)
+    }))
+})
+
+describe("a Feature registering neither all-scenarios hook emits exactly what it emitted before this plan", () => {
+  it("adds no extra node, changes no title, changes no order", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
+      layer,
+      hooks: emptyHooks
+    })
+
+    // Identical to this file's very first assertion for this same fixture — a hookless Feature's
+    // emission is unchanged by this plan.
+    assert.deepStrictEqual(shapeOf(records), [
+      { kind: "describe", name: "Checkout", depth: 0 },
+      { kind: "effect", name: "paying", depth: 1 },
+      { kind: "effect", name: "refunding", depth: 1 }
     ])
   })
 })
