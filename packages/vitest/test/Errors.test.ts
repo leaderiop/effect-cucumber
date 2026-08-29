@@ -1,8 +1,15 @@
 /**
- * MATCH-03/04/05's two data shapes, proven to construct under `effect@4.0.0-rc.112`'s real
- * constraints and to carry full, unmodified content.
+ * MATCH-03/04/05's two data shapes plus RUN-05's two collection-time notices, proven to construct
+ * under `effect@4.0.0-rc.112`'s real constraints and to carry full, unmodified content.
  *
- * Three of the assertions below are written more strictly than they look like they need to be,
+ * `StepMatchError` and `UnusedStepDefinitionWarning` take their `message` from the caller, so their
+ * blocks assert that the string SURVIVES. `UndeclaredTagWarning` and `ExcludedScenariosNotice`
+ * BUILD theirs, so their blocks assert two further things the first two cannot: that every
+ * author-controlled component is `JSON.stringify`'d on the way in (`src/Errors.ts` note (f)), and
+ * that `makeExcludedScenariosNotice` DERIVES its `reason` from the two tag arrays rather than
+ * accepting one that could disagree with them.
+ *
+ * Five of the assertions below are written more strictly than they look like they need to be,
  * and each one defends a property that a weaker check would let rot silently.
  *
  * - **The untruncated-message assertion pins `message.length` against a HARD-CODED number, never a
@@ -28,7 +35,18 @@
  *   `packages/gherkin/test/expressions-pin.test.ts` — a cross-package test import is not a
  *   dependency this repo has, and the helper is six lines.
  *
- * Mutation-tested (both performed, then reverted, both confirmed failing):
+ * - **The two BUILT messages are pinned to a hard-coded total length, not to a lower bound.** They
+ *   are assembled by their factories rather than supplied, so "did it survive" is not a question that
+ *   can be asked of them — the only way note (d)'s no-truncation policy is enforceable on a built
+ *   string is an exact character count against a fixture carrying a 1000-character tag. Those two
+ *   numbers change whenever the wording changes, and that is the intended cost: a reworded message is
+ *   a deliberate edit and a truncated one is not.
+ *
+ * - **The forging assertions use ONE fixture tag carrying both a `"` and a real newline.** Splitting
+ *   them into two tags would let an escaping bug that handles quotes but not newlines pass half the
+ *   suite; a single tag carrying both makes the message either fully escaped or visibly wrong.
+ *
+ * Mutation-tested (each performed, then reverted, each confirmed failing):
  * - A. A `.slice(0, 200)` is introduced at the one construction site `src/Errors.ts` currently has
  *      — `makeUnusedStepDefinitionWarning`'s `message` — → the 4000-character length assertion on
  *      the warning fails. `StepMatchError` has no construction site in src yet (its plain-optionals
@@ -37,6 +55,14 @@
  * - B. `makeUnusedStepDefinitionWarning` returns `Option.some(args.definedAt)` unconditionally
  *      instead of `Option.fromUndefinedOr(args.definedAt)` → the omitted-`definedAt` test fails
  *      (`Option.some(undefined)` is not `Option.none()`).
+ * - C. `quotedList` drops its `.map(quoted)` and joins the raw tag strings → 6 failures, both
+ *      forging tests among them: the escaped form is absent and a raw newline appears in the
+ *      message.
+ * - D. `quoted` gains a `.slice(0, 200)` → 3 failures, both exact-length assertions among them.
+ * - E. `excludedScenariosNoticeReason` returns `"ExcludedByIncludeTags"` whenever `includeTags` is
+ *      non-empty (dropping the both-arrays arm) → 4 failures, the `ExcludedByBothTagFilters`
+ *      derivation test among them, while the OTHER TWO derivation tests still pass — which is why
+ *      all three combinations have their own named test rather than one parameterised sweep.
  *
  * ## Imports
  *
@@ -52,8 +78,12 @@
 import { describe, expect, it } from "@effect/vitest"
 import * as Option from "effect/Option"
 import {
+  type ExcludedScenariosNoticeReason,
+  makeExcludedScenariosNotice,
+  makeUndeclaredTagWarning,
   makeUnusedStepDefinitionWarning,
   StepMatchError,
+  type UndeclaredTagWarningReason,
   type UnusedStepDefinitionWarningReason
 } from "../src/Errors.ts"
 
@@ -308,5 +338,245 @@ describe("UnusedStepDefinitionWarning (MATCH-05)", () => {
     // Mutation A — a `.slice(0, 200)` in `makeUnusedStepDefinitionWarning` — fails exactly here.
     expect(unusedWarning().message.length).toBe(UNTRUNCATED_MESSAGE_LENGTH)
     expect(unusedWarning().message).toBe(untruncatedMessage)
+  })
+})
+
+/**
+ * A single 1000-character tag, long enough that any plausible truncation cap sits inside it.
+ *
+ * `@` plus 999 `a`s rather than a random string: the messages below are pinned by exact character
+ * count, so the fixture has to be reproducible from its own definition.
+ */
+const LONG_TAG_LENGTH = 1000
+const longTag = `@${"a".repeat(LONG_TAG_LENGTH - 1)}`
+
+/**
+ * ONE tag carrying BOTH of the characters a forged output line needs: a double quote to close this
+ * library's own quoting early, and a real newline to start what reads as a second warning line. The
+ * `⚠` prefix is `Runner.ts`'s own warning marker, so an unescaped render would be indistinguishable
+ * from output this library really produced (threats T-06-06-01 / T-06-07-01).
+ *
+ * Split across two tags it would let a half-correct escaping bug pass half the suite.
+ */
+const forgingTag = "@wip\"\n⚠ unused step definition: Then \"forged\""
+
+/**
+ * The exact rendered length of `undeclaredWarning()`'s message, hard-coded — see this module's doc
+ * comment. Any truncation, cap or ellipsis on the construction path moves it.
+ */
+const UNDECLARED_MESSAGE_LENGTH = 1361
+
+/**
+ * The exact rendered length of `bothFiltersNotice()`'s message, hard-coded for the same reason.
+ */
+const BOTH_FILTERS_MESSAGE_LENGTH = 1286
+
+const undeclaredWarning = () =>
+  makeUndeclaredTagWarning({
+    uri: "features/checkout.feature",
+    scenarioName: "a shopper fills a basket",
+    tags: ["@slow", longTag]
+  })
+
+const forgingUndeclaredWarning = () =>
+  makeUndeclaredTagWarning({
+    uri: "features/checkout.feature",
+    scenarioName: "a shopper fills a basket",
+    tags: [forgingTag]
+  })
+
+const includeOnlyNotice = () =>
+  makeExcludedScenariosNotice({
+    featureName: "Checkout",
+    uri: "features/checkout.feature",
+    count: 3,
+    includeTags: ["@slow"],
+    excludeTags: []
+  })
+
+const excludeOnlyNotice = () =>
+  makeExcludedScenariosNotice({
+    featureName: "Checkout",
+    uri: "features/checkout.feature",
+    count: 2,
+    includeTags: [],
+    excludeTags: ["@wip"]
+  })
+
+const bothFiltersNotice = () =>
+  makeExcludedScenariosNotice({
+    featureName: "Checkout",
+    uri: "features/checkout.feature",
+    count: 3,
+    includeTags: ["@slow"],
+    excludeTags: [longTag]
+  })
+
+const forgingNotice = () =>
+  makeExcludedScenariosNotice({
+    featureName: "Checkout",
+    uri: "features/checkout.feature",
+    count: 1,
+    includeTags: [],
+    excludeTags: [forgingTag]
+  })
+
+describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
+  it("carries the exact _tag and the one reason member", () => {
+    const { _tag } = undeclaredWarning()
+    const reason: UndeclaredTagWarningReason = "UndeclaredTag"
+    expect(_tag).toBe("UndeclaredTagWarning")
+    expect(undeclaredWarning().reason).toBe(reason)
+  })
+
+  it("is plain data, not an Error subclass", () => {
+    // src/Errors.ts note (c): the upstream event is a throw, but this is what the catch produces.
+    expect(undeclaredWarning()).not.toBeInstanceOf(Error)
+  })
+
+  it("round-trips uri, scenarioName and the offending tags unchanged", () => {
+    const warning = undeclaredWarning()
+    expect(warning.uri).toBe("features/checkout.feature")
+    expect(warning.scenarioName).toBe("a shopper fills a basket")
+    expect(warning.tags).toEqual(["@slow", longTag])
+  })
+
+  it("stores no field carrying the caught framework error's own text", () => {
+    // src/Errors.ts note (f), second half: upstream prose never becomes this library's contract.
+    // Asserted structurally, since there is no wording to assert the absence of.
+    expect(Object.keys(undeclaredWarning())).toEqual([
+      "_tag",
+      "reason",
+      "uri",
+      "scenarioName",
+      "tags",
+      "message"
+    ])
+  })
+
+  it("renders a message of exactly the expected length, truncating nothing", () => {
+    // Mutation D fails exactly here. Length, never a substring — a truncated message that keeps its
+    // prefix passes every `toContain` check ever written.
+    expect(undeclaredWarning().message.length).toBe(UNDECLARED_MESSAGE_LENGTH)
+    expect(undeclaredWarning().message).toContain(longTag)
+  })
+
+  it("names the file, the Scenario and every offending tag", () => {
+    const { message } = undeclaredWarning()
+    expect(message).toContain(JSON.stringify("features/checkout.feature"))
+    expect(message).toContain(JSON.stringify("a shopper fills a basket"))
+    expect(message).toContain(JSON.stringify("@slow"))
+    expect(message).toContain(JSON.stringify(longTag))
+  })
+
+  it("says the Scenario still ran and was emitted untagged, and points at the tag docs", () => {
+    // Without both facts the obvious reading is "my Scenario was skipped", which is the one thing
+    // that did not happen.
+    const { message } = undeclaredWarning()
+    expect(message).toContain("still ran")
+    expect(message).toContain("UNTAGGED")
+    expect(message).toContain("--tagsFilter")
+    expect(message.endsWith("https://vitest.dev/guide/test-tags")).toBe(true)
+  })
+
+  it("adds no ellipsis and caps no tag list", () => {
+    const manyTags = Array.from({ length: 50 }, (_, index) => `@tag-${index}`)
+    const { message } = makeUndeclaredTagWarning({
+      uri: "features/checkout.feature",
+      scenarioName: "a shopper fills a basket",
+      tags: manyTags
+    })
+    for (const tag of manyTags) {
+      expect(message).toContain(JSON.stringify(tag))
+    }
+    expect(message.includes("…")).toBe(false)
+  })
+
+  it("escapes a tag containing a quote and a newline instead of letting it forge a second line", () => {
+    // Mutation C fails exactly here. `JSON.stringify` renders the quote as `\"` and the newline as
+    // the two characters `\` and `n`, so the message stays one line and the forged `⚠` prefix is
+    // visibly inside a quoted span rather than at the start of one.
+    const { message } = forgingUndeclaredWarning()
+    expect(message).toContain(JSON.stringify(forgingTag))
+    expect(message.includes("\n")).toBe(false)
+    expect(message).not.toContain(forgingTag)
+  })
+})
+
+describe("ExcludedScenariosNotice derives its reason from the two arrays (RUN-05, D-10)", () => {
+  it("reports ExcludedByIncludeTags when only includeTags is non-empty", () => {
+    const reason: ExcludedScenariosNoticeReason = "ExcludedByIncludeTags"
+    expect(includeOnlyNotice().reason).toBe(reason)
+  })
+
+  it("reports ExcludedByExcludeTags when only excludeTags is non-empty", () => {
+    const reason: ExcludedScenariosNoticeReason = "ExcludedByExcludeTags"
+    expect(excludeOnlyNotice().reason).toBe(reason)
+  })
+
+  it("reports ExcludedByBothTagFilters when both are non-empty", () => {
+    // Mutation E fails exactly here while the other two arms still pass, which is why each
+    // combination has its own named test.
+    const reason: ExcludedScenariosNoticeReason = "ExcludedByBothTagFilters"
+    expect(bothFiltersNotice().reason).toBe(reason)
+  })
+
+  it("names the derived reason in the message, so the derivation is observable in the terminal", () => {
+    expect(includeOnlyNotice().message).toContain("ExcludedByIncludeTags")
+    expect(excludeOnlyNotice().message).toContain("ExcludedByExcludeTags")
+    expect(bothFiltersNotice().message).toContain("ExcludedByBothTagFilters")
+  })
+})
+
+describe("ExcludedScenariosNotice content (RUN-05, D-10)", () => {
+  it("carries the exact _tag", () => {
+    const { _tag } = includeOnlyNotice()
+    expect(_tag).toBe("ExcludedScenariosNotice")
+  })
+
+  it("is plain data, not an Error subclass", () => {
+    expect(includeOnlyNotice()).not.toBeInstanceOf(Error)
+  })
+
+  it("round-trips featureName, uri, count and both tag arrays unchanged", () => {
+    const notice = bothFiltersNotice()
+    expect(notice.featureName).toBe("Checkout")
+    expect(notice.uri).toBe("features/checkout.feature")
+    expect(notice.count).toBe(3)
+    expect(notice.includeTags).toEqual(["@slow"])
+    expect(notice.excludeTags).toEqual([longTag])
+  })
+
+  it("renders a message of exactly the expected length, truncating nothing", () => {
+    // Mutation D fails exactly here.
+    expect(bothFiltersNotice().message.length).toBe(BOTH_FILTERS_MESSAGE_LENGTH)
+    expect(bothFiltersNotice().message).toContain(longTag)
+  })
+
+  it("names the count, the Feature and the file, and says the Scenarios were never registered", () => {
+    // "excluded" alone reads as "skipped" to anyone used to `@skip`, and a skipped test at least
+    // appears in the reporter.
+    const { message } = excludeOnlyNotice()
+    expect(message).toContain("2 Scenario(s)")
+    expect(message).toContain(JSON.stringify("Checkout"))
+    expect(message).toContain(JSON.stringify("features/checkout.feature"))
+    expect(message).toContain("never registered")
+  })
+
+  it("names only the option that was in play, and both when both were", () => {
+    expect(includeOnlyNotice().message).toContain("includeTags")
+    expect(includeOnlyNotice().message).not.toContain("excludeTags")
+    expect(excludeOnlyNotice().message).not.toContain("includeTags")
+    expect(excludeOnlyNotice().message).toContain("excludeTags")
+    expect(bothFiltersNotice().message).toContain("includeTags")
+    expect(bothFiltersNotice().message).toContain("excludeTags")
+  })
+
+  it("escapes a tag containing a quote and a newline instead of letting it forge a second line", () => {
+    // Mutation C fails exactly here too — the same control, on the second factory.
+    const { message } = forgingNotice()
+    expect(message).toContain(JSON.stringify(forgingTag))
+    expect(message.includes("\n")).toBe(false)
+    expect(message).not.toContain(forgingTag)
   })
 })
