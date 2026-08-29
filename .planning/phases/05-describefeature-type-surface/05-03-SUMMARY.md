@@ -183,6 +183,27 @@ None — no external service configuration required.
 - **Ready for Phase 6 (RUN-01).** `collectFeature` returns `{ feature, layer, definitions }` and is the named join point. The one thing Phase 6 must preserve: `describeFeature` and its define callback stay 100% synchronous, or emission silently registers zero tests.
 - **Open debt, both tracked above, neither a blocker:** DSL-01/DSL-04 remain unchecked in REQUIREMENTS.md, and BEH-EC-002/BEH-EC-003's published signatures remain wrong until 05-06.
 
+## Self-Check: PASSED
+
+All five claimed files exist on disk; all four claimed commits are on
+`worktree-agent-a1ce4e30ed697fd35`, rooted on the wave base `b05a5b0`.
+
+| Claim | Result |
+|---|---|
+| `packages/vitest/src/describeFeature.ts` | FOUND |
+| `packages/vitest/test/describeFeature.test.ts` | FOUND |
+| `packages/vitest/src/index.ts` | FOUND |
+| `packages/gherkin/src/index.ts` | FOUND |
+| `.planning/phases/05-describefeature-type-surface/05-03-SUMMARY.md` | FOUND |
+| `348085c` Task 1 | FOUND |
+| `596402b` Task 2 | FOUND |
+| `ea8a2b0` Task 3 | FOUND |
+| `0acc045` plan metadata | FOUND |
+
+Shared orchestrator artifacts (`STATE.md`, `ROADMAP.md`) were not modified — the
+orchestrator owns those writes after the wave merges. `REQUIREMENTS.md` was also left
+untouched, deliberately; see "Issues Encountered".
+
 ---
 *Phase: 05-describefeature-type-surface*
 *Completed: 2026-08-29*
