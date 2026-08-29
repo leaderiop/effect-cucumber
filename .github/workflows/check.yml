@@ -77,6 +77,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # `pnpm test` exiting 0 does NOT prove any tag reached a real runner task.
+      # The gap is narrow: Runner.test.ts watches the TestApi seam against a
+      # recording fake, and emission.test.ts watches the undeclared-tag warning —
+      # neither can observe what the framework then DID with the tag, and a test
+      # cannot observe what its own run registered. Mutation-proven: with
+      # describeFeature.ts's adapter dropping one tag on its way into the
+      # framework, all 32 files and 741 tests stayed green and only this script
+      # went red. It also carries the reporter half of the @skip claim and the
+      # absent-vs-skipped distinction between excludeTags and a CLI filter. See
+      # scripts/verify-tags-filter.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before this
+      # narrower gate's output. Node 24 ONLY: this is a structural claim about
+      # what the runner registers, which does not vary by Node version, and the
+      # gate itself invokes vitest twice — running it on both matrix legs would
+      # double its cost to re-prove the identical fact.
+      - if: matrix.node-version == 24
+        run: pnpm verify:tags-filter
 
   package:
     name: Packaging and structure
