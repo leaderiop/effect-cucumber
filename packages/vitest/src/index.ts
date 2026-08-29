@@ -29,17 +29,22 @@
  * OWN Scenario with a located `StepMatchError` and leaves every other Scenario runnable. A
  * registered pattern that matched no step anywhere in the Feature is a warning rather than a
  * failure, surfaced on three channels: `console.warn` at collection time, an always-passing test
- * node last in the block, and a structured list on the plan.
+ * node last in the block, and a structured list on the plan. All six hooks — `Before`, `After`,
+ * `BeforeStep`, `AfterStep`, `BeforeAllScenarios`, `AfterAllScenarios` — are registered through the
+ * Feature-level dsl: `Before` gates the Scenario's steps, and every `Before` in a batch runs
+ * independently with their failures combined rather than the batch stopping at the first one; `After`
+ * and `AfterStep` are guaranteed to run whether the thing they guard succeeded or failed, and never
+ * mask its error; `BeforeAllScenarios` runs once per Feature and its failure reaches every Scenario;
+ * `AfterAllScenarios` runs as a trailing node regardless of what failed before it.
  *
- * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: hooks —
- * `Before`/`After`/`BeforeStep`/`AfterStep` and their all-Scenarios forms — are Phase 7 (DSL-07,
- * RUN-02); a `Rule` that extends the ambient Layer with its own per-Scenario Layer, and typed
- * `Scenario Outline` Examples, are Phase 8 (DSL-05, DSL-06) — a Rule's Scenarios run today and are
- * nested correctly, but nothing can REGISTER at Rule scope; tag routing, `@skip` and the `@only`
- * policy are Phase 9 (RUN-05), so a tag is currently inert; and the opt-in `shared` Layer built once
- * per Feature, together with the per-Scenario `TestClock` isolation that has to accompany it, is
- * Phase 10 (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is accepted and
- * type-checked today, but both halves are built per Scenario at runtime.
+ * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: a `Rule`
+ * that extends the ambient Layer with its own per-Scenario Layer, and typed `Scenario Outline`
+ * Examples, are Phase 8 (DSL-05, DSL-06) — a Rule's Scenarios run today and are nested correctly, but
+ * nothing can REGISTER at Rule scope; tag routing, `@skip` and the `@only` policy are Phase 9
+ * (RUN-05), so a tag is currently inert; and the opt-in `shared` Layer built once per Feature,
+ * together with the per-Scenario `TestClock` isolation that has to accompany it, is Phase 10
+ * (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is accepted and type-checked today,
+ * but both halves are built per Scenario at runtime.
  *
  * ## Export policy
  *
@@ -56,6 +61,12 @@
  * `describeFeature` with no standalone consumer contract, following `@effect-cucumber/gherkin`'s own
  * precedent, where `Parser`, `Pickles`, `Correlate`, `Source` and `Validate` are internal and only
  * `loadFeature` is published. This package's tests import them by relative path.
+ *
+ * The same is true of `registerHook`, `groupHooks` and `runHookBatch` from `Hook.ts`, `HookSet` and
+ * `HookBody` (also `Hook.ts` — `HookSet` appears in `FeatureCollection`, which is itself not
+ * exported), and `createHookRegistry` (with its `HookKind`/`HookDefinition`/`HookRegistryShape`
+ * types) from `HookRegistry.ts`. Each is an internal stage of `describeFeature` with no standalone
+ * consumer contract, exactly like the modules above it in this list.
  *
  * The omission is a decision, not an oversight, and the cost of getting it wrong is asymmetric: a
  * published internal stage is a contract this project then has to keep, through every change to the
@@ -76,8 +87,10 @@ export { describeFeature } from "./describeFeature.ts"
  * `ROut` type argument is the ambient Layer's output. `BackgroundDsl` is `Given`/`And` only, which
  * is the real Gherkin grammar and not an oversight
  * ([ADR-EC-017](../../../spec/decisions/017-background-and-scenario-are-step-definition-containers.md)).
+ * `HookRegistrar` is what a consumer annotates a hook body with when it is written as a named
+ * function rather than inline — the same reason `StepRegistrar` is exported for a step.
  */
-export type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+export type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
 
 /**
  * The two channels step drift reaches a consumer through (BEH-EC-013, ADR-EC-019).
