@@ -1,6 +1,6 @@
 # ADR-EC-020: `@skip`/`@only` and future custom tags map to vitest v4's native tag system
 
-> **Status:** Accepted
+> **Status:** Superseded by [ADR-EC-026](026-registration-time-tag-filtering-and-declared-tag-universe.md) — two parts no longer hold: the Decision's fourth bullet, which requires `excludeTags`-style filtering to be CLI-only and forbids a `describeFeature`-time registration filter (Phase 9 ships exactly that registration filter, additively, alongside CLI filtering), and the first Negative consequence's "config-time tag-declaration mechanics need confirming" — they were confirmed by execution, and the answer changes this ADR's own story, since a CLI tag filter requires the tag to be DECLARED in the runner config regardless of the strict-tags setting. Everything else still holds and is carried forward unchanged: native tag emission for every inherited tag, `@skip` additionally emitting a real skip, and `@only` never being routed to only-mode. The body below is left exactly as written, per ADR-EC-014's precedent of marking in place rather than rewriting.
 > **Date:** 2026-08-28
 > **Context:** GSD Stack/Pitfalls research found vitest v4 shipped a native tag mechanism after the original tag-routing decision was made
 
