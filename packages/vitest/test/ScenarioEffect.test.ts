@@ -25,7 +25,7 @@
  *   re-tags or reconstructs the failure, which is the actual defect: the value the reporter prints
  *   would no longer be the value the step author wrote.
  *
- * Mutation-tested (all three performed, then reverted, all three confirmed failing) — see the plan
+ * Mutation-tested (all seven performed, then reverted, all seven confirmed failing) — see the plan
  * summary for the recorded output:
  * - A. the `for` loop replaced with `Effect.forEach(args.plan.steps, …, { concurrency: "unbounded" })`
  *      → the ordering and fail-fast tests fail.
@@ -33,6 +33,16 @@
  *      test fails, because the Scenario succeeds.
  * - C. the Layer provided inside the loop, once per step → the freshness test sees four builds
  *      instead of two, and the ordering test's log stops accumulating.
+ * - D. `Effect.onExit` replaced with `Effect.ensuring` plus a widened hook type → the
+ *      step-fails-and-After-fails test fails, because the After hook's cause is dropped instead of
+ *      combined with the step's own.
+ * - E. the `Before` batch moved INSIDE the step loop → the Before-hooks-then-steps ordering test
+ *      fails.
+ * - F. the `Before` batch replaced with a first-wins fold → the three-Before independence test
+ *      fails, because only the first hook's `:start` (and none of the other two) appears in the log.
+ * - G. the `onExit` moved to wrap only the step loop instead of the whole generator → the
+ *      Before-failed-but-After-ran test fails, because the After hook's entries are absent from the
+ *      log.
  *
  * ## The plan values are built here, by hand, and never through `planFeature`
  *
@@ -64,7 +74,7 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { StepMatchError } from "../src/Errors.ts"
-import type { HookSet } from "../src/Hook.ts"
+import type { HookBody, HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
 import { buildScenarioEffect } from "../src/ScenarioEffect.ts"
 
@@ -148,6 +158,33 @@ const failingStep = (name: string, error: unknown): StepBody => () =>
     return yield* Effect.fail(error)
   })
 
+/**
+ * A hook body that brackets a SUSPENSION POINT with a `:start` and a `:end` entry, then succeeds —
+ * mirrors `recordingStep` exactly, for the identical reason recorded on that function's own doc
+ * comment: without a real suspension in the middle, the ordering assertions below are unfalsifiable
+ * against a concurrent implementation (07-PATTERNS.md's finding at this file's own L108-127).
+ */
+const recordingHook = (name: string): HookBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
+  })
+
+/**
+ * A hook body that records its own `:start`, suspends, and then fails with `error` — no `:end`.
+ * Mirrors `failingStep` exactly: it records before failing so the log proves the hook ran, and the
+ * error value stays available for a reference-identity assertion.
+ */
+const failingHook = (name: string, error: unknown): HookBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    return yield* Effect.fail(error)
+  })
+
 /** A `Resolved` planned step. `origin` is what says a step came from a Background. */
 const resolved = (
   name: string,
@@ -209,6 +246,19 @@ const emptyHooks: HookSet = {
   BeforeAllScenarios: [],
   AfterAllScenarios: []
 }
+
+/** `emptyHooks` with one or more kinds overridden — keeps each hook test's intent to one line. */
+const hooksWith = (overrides: Partial<HookSet>): HookSet => ({ ...emptyHooks, ...overrides })
+
+/**
+ * Every original error value inside `cause`, walked STRUCTURALLY via `cause.reasons` and
+ * `Cause.isFailReason` — never `Cause.squash`, which does not return either original by identity
+ * from a COMBINED cause (the plan's Verified API Constraints). Order matches `reasons`'s own order,
+ * which both `Hook.ts`'s `runHookBatch` fold and `Effect.onExit`'s merge preserve as encounter
+ * order — verified against the installed `effect@4.0.0-rc.112` build, not assumed.
+ */
+const failedErrors = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> =>
+  cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
 
 describe("a Scenario runs its steps in list order", () => {
   it.effect("runs a Background step first, then its own steps, each exactly once", () =>
@@ -378,4 +428,181 @@ describe("the composed Scenario is a value, not a running test", () => {
     // that returned early without composing anything.
     expect(scenario).toBeTypeOf("object")
   })
+})
+
+/**
+ * RUN-02 and INV-EC-004's runtime proof, plan 07-04's headline: `Before` gates the step loop
+ * structurally, its independent-and-collecting batch semantics (D-02/D-03) are proven at THIS layer
+ * (not re-proven from `Hook.ts`'s own suite, which already covers the batch mechanism in isolation —
+ * these tests prove the WEAVING), and `After` is guaranteed via `Effect.onExit` around the whole
+ * composed generator, on success, on a step failure, and even when `Before` itself failed.
+ */
+describe("Before gates the step loop, and After is guaranteed via Effect.onExit", () => {
+  it.effect("runs two Before hooks then the Scenario's own steps, in registration order (D-01)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        resolved("two", recordingStep("two"))
+      ])
+      const hooks = hooksWith({ Before: [recordingHook("before1"), recordingHook("before2")] })
+
+      yield* buildScenarioEffect({ plan, layer, hooks })
+
+      // Registration order, and BEFORE the steps: a Before batch run concurrently, or moved inside
+      // the step loop (mutation E), still records the same four names in a different arrangement.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before1:start",
+        "before1:end",
+        "before2:start",
+        "before2:end",
+        "one:start",
+        "one:end",
+        "two:start",
+        "two:end"
+      ])
+    }))
+
+  it.effect("runs the Scenario's own steps then two After hooks, in registration order, on success", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        resolved("two", recordingStep("two"))
+      ])
+      const hooks = hooksWith({ After: [recordingHook("after1"), recordingHook("after2")] })
+
+      yield* buildScenarioEffect({ plan, layer, hooks })
+
+      // INV-EC-004's success half: After runs, in registration order, after every step.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "one:start",
+        "one:end",
+        "two:start",
+        "two:end",
+        "after1:start",
+        "after1:end",
+        "after2:start",
+        "after2:end"
+      ])
+    }))
+
+  it.effect("guarantees the one After hook even when the first of two steps fails (RUN-02)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const boom = { why: "the first step's own error" }
+      const plan = planOf([
+        resolved("one", failingStep("one", boom)),
+        resolved("two", recordingStep("two"))
+      ])
+      const hooks = hooksWith({ After: [recordingHook("after")] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // THE load-bearing assertion of this block, and the roadmap's success criterion 3: the log
+      // ENDS with the After hook's entries, and the second step's `:start` is ABSENT. Asserting only
+      // `Exit.isFailure` passes against an implementation that ran the second step anyway.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "after:start", "after:end"])
+    }))
+
+  it.effect("runs all three Before hooks independently when the first fails, and no step runs (D-02, D-04)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const boom = { why: "the first Before hook's own error" }
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({
+        Before: [failingHook("before1", boom), recordingHook("before2"), recordingHook("before3")]
+      })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // ONE assertion carrying both halves at once: all three hooks' `:start` entries — the second
+      // and third also run their `:end`, proving the batch does NOT stop at the first failure (D-02,
+      // mutation F) — and ZERO step entries, because the Scenario's steps only run if every Before
+      // hook succeeded (D-04).
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before1:start",
+        "before2:start",
+        "before2:end",
+        "before3:start",
+        "before3:end"
+      ])
+    }))
+
+  it.effect("combines both Before hook failures into the reported cause, by reference identity (D-03)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const boom1 = { why: "the first Before hook's own error" }
+      const boom2 = { why: "the second Before hook's own error" }
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({ Before: [failingHook("before1", boom1), failingHook("before2", boom2)] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // Walked STRUCTURALLY via `cause.reasons`, never `Cause.squash`ed: squashing a COMBINED cause
+      // does not return either original error by identity, so a first-wins fold (mutation F) and a
+      // correct independent-and-collect batch both leave `Cause.squash` looking identical — only
+      // walking the reasons array tells them apart.
+      const errors = Exit.isFailure(exit) ? failedErrors(exit.cause) : []
+      assert.strictEqual(errors.length, 2)
+      assert.strictEqual(errors[0], boom1)
+      assert.strictEqual(errors[1], boom2)
+    }))
+
+  it.effect("combines the step's own failure and the After hook's failure, by reference identity (roadmap SC #4)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const stepBoom = { why: "the step's own error" }
+      const afterBoom = { why: "the After hook's own error" }
+      const plan = planOf([resolved("one", failingStep("one", stepBoom))])
+      const hooks = hooksWith({ After: [failingHook("after", afterBoom)] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // Both errors recoverable by reference identity — a failing After hook must not MASK or
+      // replace the step's own failure. `Effect.ensuring` cannot produce this: its finalizer's error
+      // channel is `never` in the installed `effect@4.0.0-rc.112` build, so a fallible After hook is
+      // not even assignable to it, and forcing it through by widening the type merges no causes
+      // (mutation D).
+      const errors = Exit.isFailure(exit) ? failedErrors(exit.cause) : []
+      assert.strictEqual(errors.length, 2)
+      assert.strictEqual(errors[0], stepBoom)
+      assert.strictEqual(errors[1], afterBoom)
+    }))
+
+  it.effect("still runs the one After hook when the one Before hook that gates it failed (D-07)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const boom = { why: "the Before hook's own error" }
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({ Before: [failingHook("before", boom)], After: [recordingHook("after")] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // The guarantee wraps the WHOLE Scenario, not just the step loop: the After hook's entries are
+      // present even though Before failed before any step ran. Wrapping `onExit` around only the step
+      // loop (mutation G) would leave this log with the Before hook's `:start` alone.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["before:start", "after:start", "after:end"])
+    }))
+
+  it.effect("emits exactly the pre-hook log when no hooks are registered at all", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        resolved("two", recordingStep("two"))
+      ])
+
+      yield* buildScenarioEffect({ plan, layer, hooks: emptyHooks })
+
+      // A regression guard: threading `hooks` through `buildScenarioEffect` changes nothing about a
+      // Scenario that registers none. Every describe block above this one already exercises this
+      // exact shape via `emptyHooks`; this test names the claim explicitly.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "one:end", "two:start", "two:end"])
+    }))
 })
