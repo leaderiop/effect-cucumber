@@ -253,3 +253,5 @@ export const registerUsers = Effect.fn("registerUsers")(function*(table: DataTab
 ---
 
 _Previous: [05 — Step matching and parameter types](./05-step-matching-and-parameter-types.md)_
+
+_Next: [07 — Hook ordering and guarantees](./07-hook-ordering-and-guarantees.md)_

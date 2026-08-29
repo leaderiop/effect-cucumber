@@ -3,11 +3,11 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-Three of these — INV-EC-001, INV-EC-002 and INV-EC-003 — are enforced by code
-today, and each entry names the mechanism and the assertions that back it.
+Four of these — INV-EC-001, INV-EC-002, INV-EC-003 and INV-EC-004 — are enforced by
+code today, and each entry names the mechanism and the assertions that back it.
 INV-EC-002 holds in full for the per-Scenario scope, which is the whole of what
 this milestone builds; the `shared` clause of its own wording waits on Phase 10,
-and its entry says so in place rather than here. The remaining three are not
+and its entry says so in place rather than here. The remaining two are not
 enforced at all: each still names the **planned** enforcement mechanism and says
 so in its `Source` label, per `AGENTS.md` §4 ("say only what is true").
 `spec/roadmap.md` is the single source of truth for what's actually built.
@@ -125,15 +125,26 @@ attempting to use it is caught at authoring time, not at test-run time.
 A Scenario's `After` hook executes whether every step in that Scenario
 succeeded or one of them failed.
 
-**Source (planned)**: the runner composes the scenario Effect as
-`scenarioEffect.pipe(Effect.ensuring(afterHookEffect))` — `Effect.ensuring`
-runs regardless of the wrapped Effect's exit.
+**Source**: `packages/vitest/src/ScenarioEffect.ts`'s `buildScenarioEffect` wraps the WHOLE composed
+Scenario Effect — the `Before` gate and the per-step `BeforeStep`/step/`AfterStep` loop included —
+with `Effect.onExit(() => runHookBatch(args.hooks.After))`, with `Effect.provide` still the last
+`.pipe` call. `Effect.ensuring` was the originally planned combinator (see BEH-EC-006's correction
+note) and cannot express this requirement: in the installed `effect@4.0.0-rc.112` build its
+finalizer's error channel is `never`, so a fallible `After` hook is not assignable to it, and forcing
+it through would merge no causes. `Effect.onExit`'s finalizer runs on success, on failure and on
+interruption, and merges both causes when the wrapped Effect and the finalizer both fail — which is
+what the do-not-mask half of this invariant needs. Asserted by
+`packages/vitest/test/ScenarioEffect.test.ts` (After on success, After on a step failure, After after
+a Before failure, and the failing-After-does-not-mask case) and
+`packages/vitest/test/Runner.test.ts` (the full six-hook ordering across a two-Scenario Feature). See
+[BEH-EC-017](behaviors/07-hook-ordering-and-guarantees.md) for the full ordering this guarantee is
+one piece of.
 
 **Implication**: resource cleanup written in `After` is reliable even for a
 failing Scenario; the hook body itself doesn't need to opt into that
 guarantee (it doesn't and can't — the runner applies it, not the author).
 
-**Related**: [BEH-EC-006](behaviors/02-shared-layers-and-tags.md).
+**Related**: [BEH-EC-006](behaviors/02-shared-layers-and-tags.md), [BEH-EC-017](behaviors/07-hook-ordering-and-guarantees.md).
 
 ---
 
