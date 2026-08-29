@@ -24,13 +24,29 @@
  *     here would put a test framework back into `Runner.ts`'s type graph and make that fake harder
  *     to write, not easier — so there is none.
  *
- * (b) **`skip` and `only` are deliberately absent.** `@effect/vitest`'s `Tester` has both, and
- *     ARCHITECTURE.md's Pattern 3 sketch shows both, but nothing in Phase 6 calls either: tag
- *     routing and `@skip` are RUN-05, which is Phase 9's job and the plan that adds them here.
- *     Declaring them now would put unreachable surface into the contract and force 06-06's
- *     recording fake to implement two members no assertion covers, which is how a fake starts
- *     drifting from the thing it fakes. This is an omission by decision, recorded per AGENTS.md
- *     §4, not a gap.
+ * (b) **`skip` is a FIELD on `EmitOptions`; `only` has no representation here at all.** The two
+ *     halves of this note are different KINDS of statement, and conflating them is the mistake it
+ *     exists to prevent: the first is a shape choice with a live alternative, the second is a
+ *     behavior decision with none.
+ *
+ *     `skip` could have been a second, skip-specific emission member beside `effect` — the test
+ *     framework's own tester exposes exactly that — and it is a field on the options object
+ *     instead, for two reasons. It keeps this interface at TWO members, so `Runner.ts` has one
+ *     emission call to reason about rather than a branch choosing between two calls that must stay
+ *     in step. And it makes 06-06's recording fake grow a recorded VALUE, comparable in an
+ *     assertion, rather than a second method whose only observable is whether it was called — a
+ *     fake carrying a member no assertion covers is how a fake starts drifting from the thing it
+ *     fakes.
+ *
+ *     `only` is absent permanently, and that is a behavior decision rather than a deferral to some
+ *     later plan. D-06 never routes `@only` to the test framework's only-mode: an `@only`-tagged
+ *     Scenario is emitted as a plain tagged test, indistinguishable in shape from an untagged one.
+ *     That is precisely what makes a committed `@only` unable to fail a CI run — the framework's
+ *     `allowOnly` check is reachable only from branches guarded by some task ALREADY being in
+ *     only-mode, so emitting no such task makes the check unreachable rather than merely
+ *     un-triggered. Running a single Scenario locally is a caller-side `--tagsFilter '@only'`
+ *     choice (ADR-EC-020), which is not something this seam could offer even if it wanted to.
+ *     `Tags.ts` note (c) is the same argument from the predicate side.
  *
  * (c) **`define` returns `void`, never `void | Promise<void>`.** An async block callback returns
  *     before registering anything, so the Feature emits zero tests and PASSES — the exact failure
@@ -61,6 +77,54 @@ import type * as Effect from "effect/Effect"
 import type * as Scope from "effect/Scope"
 
 /**
+ * How ONE emitted test node differs from a bare, untagged, running one — the library's own plain
+ * data, carried across the seam and translated into whatever the real test framework wants by the
+ * single adapter in `describeFeature.ts`.
+ *
+ * This type names no framework type and must not start to. Modelling the framework's own options
+ * type here would type-check, lint clean, pass every test in the repo, and quietly dissolve the seam
+ * note (a) exists to hold open — which is why `scripts/verify-testapi-seam.sh` now scans this file
+ * structurally rather than trusting the convention. `Errors.ts`'s plain-data warnings are the
+ * in-package precedent for the shape: every field `readonly`, arrays `ReadonlyArray`, one doc
+ * comment per field saying what the code cannot.
+ */
+export interface EmitOptions {
+  /**
+   * Every tag the Scenario carries, `@` prefixes intact, in feature → rule → scenario →
+   * examples-block order.
+   *
+   * The array arrives ALREADY FLATTENED. `@effect-cucumber/gherkin`'s `compile()` stacked the
+   * inheritance chain and `ScenarioPlan.tags` carried it here verbatim; nothing between the parse
+   * and this field re-derives, re-sorts, de-duplicates or strips a prefix. The literal `@` is the
+   * contract (D-04) — it is the exact byte sequence a `--tagsFilter '@slow'` invocation matches
+   * against, so normalising it away would silently break every filter a consumer writes.
+   *
+   * `ReadonlyArray`, matching `Model.ts` and `Plan.ts` all the way up the chain. The single
+   * widening to a mutable array happens in `describeFeature.ts`'s adapter, at the one point that
+   * already touches the test framework, and NOWHERE else: a mutable array declared further up would
+   * let any stage in between rewrite a Scenario's tags with nothing going red.
+   */
+  readonly tags: ReadonlyArray<string>
+  /**
+   * `true` for a `@skip`-tagged Scenario (D-05) — emitted as a real skipped test, never omitted and
+   * never quietly passed.
+   *
+   * A skipped test's `self` thunk is NEVER invoked. That single fact is what makes two of this
+   * phase's guarantees structural rather than arranged, and both are worth stating because both
+   * look like things somebody would otherwise have to arrange:
+   *
+   * - A `@skip` Scenario's `Before`/`After` hooks do not run. `ScenarioEffect.ts` weaves every hook
+   *   INSIDE the Effect `buildScenarioEffect` returns, and `Runner.ts` note (b) guarantees that
+   *   function is only ever called inside the thunk. Thunk never invoked ⇒ `buildScenarioEffect`
+   *   never called ⇒ no hook Effect is ever even constructed.
+   * - A `@skip` Scenario containing an unresolved step reports SKIPPED, not undefined-step.
+   *   `planFeature` does not throw on an unresolved step; it stores one, and its `StepMatchError` is
+   *   only reached at `yield*` time inside the Effect that is never built.
+   */
+  readonly skip: boolean
+}
+
+/**
  * The subset of a test framework's surface `Runner.ts` uses — two members, and no more.
  */
 export interface TestApi {
@@ -89,6 +153,17 @@ export interface TestApi {
    * reporter and nothing more.
    *
    * `Scope.Scope` is the whole of the remaining required context — note (d).
+   *
+   * `options` is REQUIRED, and there is no `EmitOptions | undefined`. `Runner.ts` computes a value
+   * for EVERY emission it makes, the synthetic `⚙ AfterAllScenarios` and `⚠` warning nodes
+   * included, so there is no call site that legitimately has nothing to say. An optional parameter
+   * would let a future call site simply forget the argument and emit an untagged, never-skipped test
+   * with nothing going red — the same reasoning `describeFeature.ts`'s required-fields comment and
+   * `Runner.ts`'s required maps already apply one layer up.
    */
-  readonly effect: (name: string, self: () => Effect.Effect<void, unknown, Scope.Scope>) => void
+  readonly effect: (
+    name: string,
+    self: () => Effect.Effect<void, unknown, Scope.Scope>,
+    options: EmitOptions
+  ) => void
 }
