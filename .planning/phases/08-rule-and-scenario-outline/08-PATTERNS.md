@@ -510,11 +510,17 @@ directly, per CONTEXT.md's own Integration Points note.
 
 ## No Analog Found
 
-None. Every file this phase touches is extending its own existing three-level (or two-level, for
-`HookRegistry.ts`) dispatch to a fourth (or a first) level, using a pattern already present
-elsewhere in the same file or in `Registry.ts`. There is no genuinely novel mechanism this phase
-introduces — ADR-EC-010's Layer composition (`Layer.provideMerge`) is new API usage but composes
-into existing call sites (`describeFeature.ts`'s `normalizeLayer`, `ScenarioEffect.ts`'s
+`packages/vitest/src/OutlineTitle.ts` (08-04) — a genuinely new module with no existing analog in
+either package: no prior code walks the raw `GherkinDocument` AST to read Examples column names and
+per-row values (`ParsedScenario`/`ScenarioPlan` do not carry them). Its house-style precedent is
+`packages/vitest/src/CallSite.ts` — a small, dependency-light, well-documented internal module not
+re-exported from `index.ts` — which 08-04 cites directly rather than relying on this document.
+
+Otherwise: none. Every other file this phase touches is extending its own existing three-level (or
+two-level, for `HookRegistry.ts`) dispatch to a fourth (or a first) level, using a pattern already
+present elsewhere in the same file or in `Registry.ts`. There is no other genuinely novel mechanism
+this phase introduces — ADR-EC-010's Layer composition (`Layer.provideMerge`) is new API usage but
+composes into existing call sites (`describeFeature.ts`'s `normalizeLayer`, `ScenarioEffect.ts`'s
 `Effect.provide` tail) rather than requiring a new architectural shape.
 
 ## Metadata
