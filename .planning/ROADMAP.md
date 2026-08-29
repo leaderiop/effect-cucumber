@@ -218,7 +218,7 @@ Plans:
 
 **Wave 3** *(blocked on 05-02)*
 
-- [ ] 05-03-PLAN.md — `describeFeature.ts`'s two overloads with the plain-Layer form declared LAST, D-03/D-04 layer normalization, the real `@effect-cucumber/vitest` barrel, and the retired Phase-1 placeholder contract
+- [x] 05-03-PLAN.md — `describeFeature.ts`'s two overloads with the plain-Layer form declared LAST, D-03/D-04 layer normalization, the real `@effect-cucumber/vitest` barrel, and the retired Phase-1 placeholder contract
 
 **Wave 4** *(blocked on 05-03)*
 
@@ -369,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
-| 5. `describeFeature` Type Surface | 2/6 | In Progress|  |
+| 5. `describeFeature` Type Surface | 3/6 | In Progress|  |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
