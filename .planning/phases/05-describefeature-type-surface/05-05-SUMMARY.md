@@ -249,6 +249,14 @@ None — no external service configuration required. No packages were installed 
 - **No blockers.** The remaining Phase 5 work is outside this plan's scope.
 - **One thing to re-run after a dependency bump:** RESEARCH.md dates the diagnostic-name and directive-syntax findings as valid to ~2026-09-05, because `@effect/tsgo` is on a fast release train. `TS377034`, `TS377004`, `TS377000` and the `@effect-diagnostics-next-line` syntax are all now load-bearing in committed assertions and fixtures. Re-run `pnpm verify:tsgo-gate` after any bump of `@effect/tsgo`, `typescript`, or `effect`.
 
+## Self-Check: PASSED
+
+All seven artifacts exist on disk (`world-undeclared-field.ts`, `layer-missing-rin.ts`,
+`step-expect-error.ts`, their three `tsconfig.*.json` siblings, and the modified
+`scripts/verify-tsgo-gate.sh`). All three task commits plus the two metadata commits are present in
+`git log`. `git diff --diff-filter=D` against the plan's base commit reports zero deletions — this
+plan is purely additive.
+
 ---
 *Phase: 05-describefeature-type-surface*
 *Completed: 2026-08-29*
