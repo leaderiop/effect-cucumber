@@ -31,6 +31,21 @@
  *      failing exit, breaking out of the loop) → the two-failure identity test fails, because only
  *      one original error is present in the reported cause, and the "runs every hook even when an
  *      earlier one fails" test fails too, because the batch stops after the first hook.
+ * - F. `mergeHookSets`'s `After`/`AfterStep` concatenated feature-first like `Before` (the copy-paste
+ *      defect) → the reversed-order tests fail. Note this is invisible to the type system and to
+ *      every length- or membership-based assertion: both orders produce a two-element array holding
+ *      the same two bodies, which is why the assertions below are positional AND by reference.
+ * - G. `mergeHookSets`'s `BeforeAllScenarios`/`AfterAllScenarios` concatenated rather than passed
+ *      through → the pass-through test fails, but ONLY because that test builds a `rule` set with
+ *      entries under those two keys. Against a rule set that is empty there (which is every real one
+ *      by construction) concatenation is an invisible no-op — do NOT "simplify" that fixture.
+ *
+ * ## `mergeHookSets`'s ordering is asserted twice, on purpose
+ *
+ * Once structurally (the merged arrays' contents, positionally, by reference) and once through
+ * `runHookBatch` on a real merged array with an append-only `Ref` log. The structural assertion
+ * pins the data; the log assertion is what proves concatenation order IS execution order, which is
+ * the actual claim D-02 makes and the only one a reader of `ScenarioEffect.ts` cares about.
  *
  * ## `expect` in the sync tests, `assert` inside every `it.effect`
  *
@@ -48,7 +63,15 @@ import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Ref from "effect/Ref"
-import { groupHooks, type HookBody, registerHook, runHookBatch } from "../src/Hook.ts"
+import {
+  emptyHookSet,
+  groupHooks,
+  type HookBody,
+  type HookSet,
+  mergeHookSets,
+  registerHook,
+  runHookBatch
+} from "../src/Hook.ts"
 import type { HookDefinition } from "../src/HookRegistry.ts"
 
 /**
@@ -72,6 +95,31 @@ const secondBefore: HookBody = () => Effect.succeed(undefined)
  * captures nothing (`unicorn/consistent-function-scoping`).
  */
 const succeedingHook: HookBody = () => Effect.succeed(undefined)
+
+/**
+ * A hook body whose only property is being a reference nothing else in the process shares — every
+ * call returns a fresh closure. `mergeHookSets`'s ordering is a claim about WHICH body sits at
+ * WHICH index, so the fixtures it is asserted against have to be distinguishable by identity and by
+ * nothing else; bodies that differ by name or by what they return would let a structural assertion
+ * stand in for the positional one this file actually needs.
+ */
+const distinctHook = (): HookBody => () => Effect.succeed(undefined)
+
+/**
+ * A `HookSet` carrying exactly one distinct body under every one of the six keys, so a merge's
+ * result can be read positionally (`merged.Before[0]` is `feature.Before[0]`, and so on).
+ *
+ * A factory and not a shared constant: two calls must produce twelve mutually distinct bodies, or
+ * "the Feature's hook came first" and "the Rule's hook came first" would be the same assertion.
+ */
+const oneOfEachKind = (): HookSet => ({
+  Before: [distinctHook()],
+  After: [distinctHook()],
+  BeforeStep: [distinctHook()],
+  AfterStep: [distinctHook()],
+  BeforeAllScenarios: [distinctHook()],
+  AfterAllScenarios: [distinctHook()]
+})
 
 describe("an already-wrapped hook function is accepted unchanged", () => {
   it("comes back as the identical reference, not a re-wrap", () => {
@@ -153,6 +201,170 @@ describe("groupHooks partitions a flat list by kind", () => {
     expect(grouped.BeforeAllScenarios).toEqual([])
     expect(grouped.AfterAllScenarios).toEqual([])
   })
+})
+
+describe("emptyHookSet is a complete HookSet, not a partial one", () => {
+  it("has all six keys present and empty", () => {
+    expect(emptyHookSet.Before).toEqual([])
+    expect(emptyHookSet.After).toEqual([])
+    expect(emptyHookSet.BeforeStep).toEqual([])
+    expect(emptyHookSet.AfterStep).toEqual([])
+    expect(emptyHookSet.BeforeAllScenarios).toEqual([])
+    expect(emptyHookSet.AfterAllScenarios).toEqual([])
+  })
+})
+
+describe("mergeHookSets orders a Feature's hooks against an enclosing Rule's (D-02)", () => {
+  it("runs the Feature's Before first, then the Rule's — outer to inner", () => {
+    const feature = oneOfEachKind()
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, rule)
+
+    expect(merged.Before).toHaveLength(2)
+    // Positional AND by reference. Length alone, or a membership check, passes against the reversed
+    // implementation (mutation F) — both orders hold exactly these two bodies.
+    expect(merged.Before[0]).toBe(feature.Before[0])
+    expect(merged.Before[1]).toBe(rule.Before[0])
+  })
+
+  it("runs the Feature's BeforeStep first, then the Rule's — the same ordering one level down", () => {
+    const feature = oneOfEachKind()
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, rule)
+
+    expect(merged.BeforeStep).toHaveLength(2)
+    expect(merged.BeforeStep[0]).toBe(feature.BeforeStep[0])
+    expect(merged.BeforeStep[1]).toBe(rule.BeforeStep[0])
+  })
+
+  it("runs the Rule's After first, then the Feature's — inner to outer, the reverse of Before", () => {
+    const feature = oneOfEachKind()
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, rule)
+
+    expect(merged.After).toHaveLength(2)
+    // THE assertion the whole of D-02 reduces to: `After` is NOT ordered like `Before`. An
+    // implementation that copy-pasted the `Before` line fails here and nowhere else.
+    expect(merged.After[0]).toBe(rule.After[0])
+    expect(merged.After[1]).toBe(feature.After[0])
+  })
+
+  it("runs the Rule's AfterStep first, then the Feature's — the same reversal", () => {
+    const feature = oneOfEachKind()
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, rule)
+
+    expect(merged.AfterStep).toHaveLength(2)
+    expect(merged.AfterStep[0]).toBe(rule.AfterStep[0])
+    expect(merged.AfterStep[1]).toBe(feature.AfterStep[0])
+  })
+})
+
+describe("emptyHookSet is an identity element for mergeHookSets", () => {
+  it("leaves the Rule's four Rule-scopeable arrays alone when the Feature side is empty", () => {
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(emptyHookSet, rule)
+
+    // Only the four kinds ADR-EC-010 makes Rule-scopeable are checked here. The two AllScenarios
+    // keys are deliberately NOT an identity case in this direction — they pass `feature`'s arrays
+    // through, so an empty Feature side correctly yields empty arrays for them (asserted below).
+    expect(merged.Before).toHaveLength(1)
+    expect(merged.Before[0]).toBe(rule.Before[0])
+    expect(merged.After).toHaveLength(1)
+    expect(merged.After[0]).toBe(rule.After[0])
+    expect(merged.BeforeStep).toHaveLength(1)
+    expect(merged.BeforeStep[0]).toBe(rule.BeforeStep[0])
+    expect(merged.AfterStep).toHaveLength(1)
+    expect(merged.AfterStep[0]).toBe(rule.AfterStep[0])
+  })
+
+  it("leaves all six of the Feature's arrays alone when the Rule side is empty", () => {
+    const feature = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, emptyHookSet)
+
+    // This is the Scenario-with-no-enclosing-Rule case, and it must be a true no-op: every one of
+    // the Feature's bodies, at index 0, by reference.
+    expect(merged.Before[0]).toBe(feature.Before[0])
+    expect(merged.After[0]).toBe(feature.After[0])
+    expect(merged.BeforeStep[0]).toBe(feature.BeforeStep[0])
+    expect(merged.AfterStep[0]).toBe(feature.AfterStep[0])
+    expect(merged.BeforeAllScenarios[0]).toBe(feature.BeforeAllScenarios[0])
+    expect(merged.AfterAllScenarios[0]).toBe(feature.AfterAllScenarios[0])
+  })
+
+  it("merges two empty sets into six empty arrays", () => {
+    const merged = mergeHookSets(emptyHookSet, emptyHookSet)
+
+    expect(merged.Before).toEqual([])
+    expect(merged.After).toEqual([])
+    expect(merged.BeforeStep).toEqual([])
+    expect(merged.AfterStep).toEqual([])
+    expect(merged.BeforeAllScenarios).toEqual([])
+    expect(merged.AfterAllScenarios).toEqual([])
+  })
+})
+
+describe("mergeHookSets never Rule-scopes BeforeAllScenarios/AfterAllScenarios", () => {
+  it("passes the Feature's arrays through by reference, ignoring the Rule's even when non-empty", () => {
+    const feature = oneOfEachKind()
+    // `oneOfEachKind` deliberately populates these two keys on the RULE side too, which no real
+    // `RuleDsl` can produce — that is the point. Against a rule set that is empty there,
+    // concatenation and pass-through are indistinguishable, so this fixture is what makes mutation
+    // G falsifiable at all. Do not "fix" it to match reality.
+    const rule = oneOfEachKind()
+
+    const merged = mergeHookSets(feature, rule)
+
+    // `toBe` on the ARRAY itself, not `toEqual` on its contents: pass-through means the very same
+    // array object, which no concatenating implementation can produce.
+    expect(merged.BeforeAllScenarios).toBe(feature.BeforeAllScenarios)
+    expect(merged.AfterAllScenarios).toBe(feature.AfterAllScenarios)
+    expect(merged.BeforeAllScenarios).toHaveLength(1)
+    expect(merged.AfterAllScenarios).toHaveLength(1)
+    expect(merged.BeforeAllScenarios).not.toContain(rule.BeforeAllScenarios[0])
+    expect(merged.AfterAllScenarios).not.toContain(rule.AfterAllScenarios[0])
+  })
+})
+
+describe("a merged HookSet's array order is its execution order", () => {
+  it.effect("runs the Feature's Before hook before the Rule's when handed to runHookBatch", () =>
+    Effect.gen(function*() {
+      const log = yield* Ref.make<ReadonlyArray<string>>([])
+      const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
+
+      const merged = mergeHookSets(
+        { ...emptyHookSet, Before: [recordingHook("feature:before")] },
+        { ...emptyHookSet, Before: [recordingHook("rule:before")] }
+      )
+
+      yield* runHookBatch(merged.Before)
+
+      // The end-to-end claim: concatenation order IS execution order. The positional assertions
+      // above pin the data structure; this pins what D-02 actually promises a test author.
+      assert.deepStrictEqual(yield* Ref.get(log), ["feature:before", "rule:before"])
+    }))
+
+  it.effect("runs the Rule's After hook before the Feature's when handed to runHookBatch", () =>
+    Effect.gen(function*() {
+      const log = yield* Ref.make<ReadonlyArray<string>>([])
+      const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
+
+      const merged = mergeHookSets(
+        { ...emptyHookSet, After: [recordingHook("feature:after")] },
+        { ...emptyHookSet, After: [recordingHook("rule:after")] }
+      )
+
+      yield* runHookBatch(merged.After)
+
+      // The unwind, observed rather than inferred from the merge's shape.
+      assert.deepStrictEqual(yield* Ref.get(log), ["rule:after", "feature:after"])
+    }))
 })
 
 describe("runHookBatch runs an independent batch of hooks (D-02, D-03)", () => {

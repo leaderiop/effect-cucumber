@@ -1,14 +1,15 @@
 /**
  * The hook-registration seam: turn whatever a test author passed to `Before`/`After`/`BeforeStep`/
  * `AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios` into the uniform `() => Effect` shape the
- * runner will execute, group a flat list of registered hooks by kind, and run one kind's hooks as an
- * INDEPENDENT batch (D-02/D-03) whose failures are combined, never dropped and never first-wins.
+ * runner will execute, group a flat list of registered hooks by kind, MERGE a Feature's `HookSet`
+ * with an enclosing Rule's in D-02's order, and run one kind's hooks as an INDEPENDENT batch
+ * (D-02/D-03) whose failures are combined, never dropped and never first-wins.
  *
  * ADR-EC-005 gives a hook body the same two accepted forms a step body has, and `Step.ts`'s
  * `register` already tells them apart — DELEGATING to it here is strictly less code than
  * reimplementing the discriminator, and needs no edit to `Step.ts` at all.
  *
- * Seven things about this module are not visible from the code.
+ * Eight things about this module are not visible from the code.
  *
  * (a) **Normalization is delegated to `Step.ts`'s `register`, with the hook's kind passed in the
  *     `pattern` position, rather than duplicating `isGeneratorFn`.** `register`'s `pattern`
@@ -63,6 +64,20 @@
  *     channel is `never` in `effect@4.0.0-rc.112`, so a hook that can fail is not even assignable to
  *     it, and it merges no causes. BEH-EC-006's literal "via `Effect.ensuring`" names the guarantee
  *     this phase's later plans build on `Effect.onExit` to provide, not the combinator used here.
+ *
+ * (h) **Why `mergeHookSets` needs no new finalizer nesting, and why its ORDER is the whole of it.**
+ *     The obvious way to give a Rule's `After` hooks their own guarantee is a second finalizer
+ *     wrapping the Feature's — a nested `Effect.onExit` per tier at the `ScenarioEffect.ts` call
+ *     site. That is not needed, and adding it would be actively worse. `runHookBatch` already treats
+ *     whatever array it is handed as ONE independent batch: every hook runs regardless of an earlier
+ *     one's failure, and every failing cause is combined. That is a property of `runHookBatch`
+ *     itself, not of how many logical tiers contributed entries to the array. So a merged array runs
+ *     with exactly the semantics two separately-wrapped batches would have had, minus a nesting
+ *     level whose only visible effect would be a second chance to get the unwind order wrong.
+ *     What `mergeHookSets` therefore has to get right is ORDER, and only order — which is why it is
+ *     pure array concatenation, and why D-02's ordering is spelled out once, here, rather than
+ *     reconstructed at each call site. Consumers merge once per Rule and hand the result to the SAME
+ *     `buildScenarioEffect`/`runHookBatch` call sites that already exist, unchanged.
  */
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
@@ -157,6 +172,60 @@ export const groupHooks = (definitions: ReadonlyArray<HookDefinition<HookBody>>)
     AfterAllScenarios: afterAllScenarios
   }
 }
+
+/**
+ * The `HookSet` of a Scenario with no enclosing Rule: all six keys present, every one empty.
+ *
+ * ONE shared instance rather than a factory, and that is safe rather than merely convenient:
+ * `HookSet`'s values are `ReadonlyArray`s, nothing in this package mutates a `HookSet`'s arrays in
+ * place (`groupHooks` builds fresh arrays, `mergeHookSets` concatenates into fresh ones, and
+ * `runHookBatch` only iterates), so no consumer can observe another consumer's use of it.
+ */
+export const emptyHookSet: HookSet = {
+  Before: [],
+  After: [],
+  BeforeStep: [],
+  AfterStep: [],
+  BeforeAllScenarios: [],
+  AfterAllScenarios: []
+}
+
+/**
+ * Combine a Feature's `HookSet` with that of the Rule enclosing the Scenario about to run, in the
+ * order D-02 requires. Pass `emptyHookSet` as `rule` for a Scenario with no enclosing Rule.
+ *
+ * Before-shaped kinds run OUTER-TO-INNER: the Feature's gate first, then that Rule's own, matching
+ * the `describe(feature) → describe(rule)` nesting `Runner.ts` already emits — general setup before
+ * specific setup. After-shaped kinds unwind INNER-TO-OUTER: the Rule's guarantee first, then the
+ * Feature's. That reversal is the same "outer wraps inner, and unwinds symmetrically" instinct
+ * `ScenarioEffect.ts` note (e) already applies to `Before`/`After` around a single Scenario, applied
+ * one level up the Rule/Feature nesting instead of the hook/step nesting.
+ *
+ * `BeforeAllScenarios`/`AfterAllScenarios` are NOT merged — `feature`'s arrays pass straight
+ * through. ADR-EC-010 makes only `Before`/`After`/`BeforeStep`/`AfterStep` Rule-scopeable, so
+ * `RuleDsl` never exposes those two registrars and `rule`'s arrays for them are empty by
+ * construction. Concatenating an always-empty array would be a no-op that WORKS, which is exactly
+ * the problem: it would leave nothing in the source saying those two kinds are Feature-only, and a
+ * later change that made `rule`'s arrays reachable would silently start merging them. The
+ * pass-through states the invariant instead of depending on it.
+ *
+ * Pure array composition, deliberately — see note (h) for why no second `Effect.onExit` tier is
+ * needed anywhere this is consumed, and why order is the entire contract of this function.
+ *
+ * The explicit return annotation is required, not stylistic: `composite: true` demands it for
+ * declaration emit on anything exported.
+ *
+ * @param feature - the Feature-level hooks (those whose `ruleId` is `null`)
+ * @param rule - the enclosing Rule's own hooks, or `emptyHookSet` if there is no enclosing Rule
+ */
+export const mergeHookSets = (feature: HookSet, rule: HookSet): HookSet => ({
+  Before: [...feature.Before, ...rule.Before],
+  After: [...rule.After, ...feature.After],
+  BeforeStep: [...feature.BeforeStep, ...rule.BeforeStep],
+  AfterStep: [...rule.AfterStep, ...feature.AfterStep],
+  BeforeAllScenarios: feature.BeforeAllScenarios,
+  AfterAllScenarios: feature.AfterAllScenarios
+})
 
 /**
  * Run every hook in `hooks`, in array order (registration order, D-01), independently: an earlier
