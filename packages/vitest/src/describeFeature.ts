@@ -248,6 +248,23 @@ const collect = (
         registry.popScope()
       }
     },
+    // TEMPORARY, and deliberately loud. Plan 08-03 landed `FeatureDsl.Rule`'s TYPE ahead of its
+    // runtime wiring, which plan 08-05a owns: a `"rule"` `RegistryScopeKind` to push/pop, the
+    // `ruleId`-keyed `Layer.provideMerge(featureLayer)(extraLayer)` map, and Rule-scoped hook
+    // registration. Until those exist, a `Rule(...)` call has nowhere to register anything.
+    //
+    // Throwing is the only honest stand-in, and both alternatives are worse in the same way. A
+    // no-op would emit a Feature whose Rule-nested Scenarios silently have zero step definitions;
+    // running `defineRule` against `scenarioDsl` would register the Rule's steps at Feature scope,
+    // making INV-EC-005's compile-time boundary decorative at runtime. Either one turns a
+    // `.feature` file with a `Rule:` block green while enforcing nothing, and neither would fail a
+    // single test in this repo — the false-green failure mode AGENTS.md §4 forbids papering over.
+    Rule: (name: string) => {
+      throw new Error(
+        `Rule("${name}") is not implemented yet. The DSL type surface for Rule-scoped extra Layers `
+          + "(ADR-EC-010) exists, but Rule-scope registration does not — see plan 08-05a."
+      )
+    },
     // Siblings of `Background`/`Scenario`, NOT spread into `scenarioDsl` — `scenarioDsl` is the same
     // object handed to every `Scenario(...)` callback and to `backgroundDsl`, and a hook member there
     // would leak into both (Dsl.ts note (f)).
