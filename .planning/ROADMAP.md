@@ -349,12 +349,12 @@ Plans:
 - [x] 08-01-PLAN.md — Registry.ts + Plan.ts: the "rule" scope kind, RegistryScope.ruleId, rule-aware isVisibleTo and a three-level scopeRank
 - [x] 08-02-PLAN.md — HookRegistry.ts + Hook.ts: a required ruleId on every stored hook, plus mergeHookSets/emptyHookSet for D-02's ordering
 - [x] 08-03-PLAN.md — Dsl.ts: RuleDsl<ROut>, FeatureDsl.Rule, and the Scenario extra-Layer overload (ScenarioRegistrar)
-- [ ] 08-04-PLAN.md — OutlineTitle.ts + Runner.ts: the D-03 column=value title format and the Pitfall-34 row-independence regression test
+- [x] 08-04-PLAN.md — OutlineTitle.ts + Runner.ts: the D-03 column=value title format and the Pitfall-34 row-independence regression test
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 08-05a-PLAN.md — describeFeature.ts: the Rule container, Rule-level Background (D-04), Rule-scoped hook registration, and per-Rule Layer merge
-- [ ] 08-06-PLAN.md — tsgo-gate fixture pair proving DSL-05's compile-time boundary (roadmap SC#1), gate assertions 12-13
+- [x] 08-05a-PLAN.md — describeFeature.ts: the Rule container, Rule-level Background (D-04), Rule-scoped hook registration, and per-Rule Layer merge
+- [x] 08-06-PLAN.md — tsgo-gate fixture pair proving DSL-05's compile-time boundary (roadmap SC#1), gate assertions 12-13
 
 **Wave 3** *(blocked on 08-05a)*
 
@@ -462,7 +462,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
-| 8. Rule and Scenario Outline | 3/9 | In Progress|  |
+| 8. Rule and Scenario Outline | 6/9 | In Progress|  |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
