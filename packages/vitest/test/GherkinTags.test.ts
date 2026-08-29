@@ -23,7 +23,7 @@ const fixtures = path.relative(process.cwd(), fileURLToPath(new URL("./fixtures"
   .split(path.sep)
   .join("/")
 
-/** Every tag written across the three fixtures, sorted ascending, minus the DocString's decoy. */
+/** Every tag written across the fixtures, sorted ascending, minus the DocStrings' decoys. */
 const allFixtureTags = [
   "@fixture-alpha",
   "@fixture-beta",
@@ -31,10 +31,11 @@ const allFixtureTags = [
   "@fixture-docstring",
   "@fixture-epsilon",
   "@fixture-gamma",
-  "@fixture-nested"
+  "@fixture-nested",
+  "@fixture-nested-fence"
 ]
 
-/** The same list without the tag only the nested fixture carries. */
+/** The same list without the tags only the nested-directory fixture carries. */
 const topLevelFixtureTags = allFixtureTags.filter((name) => name !== "@fixture-nested")
 
 const names = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray<string> => tags.map((tag) => tag.name)
@@ -56,6 +57,17 @@ describe("gherkinTags", () => {
     // The same file's real Feature tag IS collected, so the exclusion above is fence tracking rather
     // than the file being skipped wholesale.
     expect(result).toEqual(["@fixture-docstring"])
+  })
+
+  it("closes a DocString only on the SAME fence that opened it, not on an embedded fence of the other kind", () => {
+    // Regression for a real bug: treating "\"\"\"" and "```" as interchangeable toggles desyncs the
+    // scanner's in/out-of-DocString state on any DocString containing an odd count of the OTHER
+    // fence's lines, silently dropping every @tag for the rest of the file. This fixture's DocString
+    // is opened with """ and contains four bare ``` lines (an even count on its own, but each one
+    // toggled a shared boolean under the old implementation, so the state was wrong by the real closer).
+    const result = names(gherkinTags(`${fixtures}/tag-scan-docstring-nested-fence.feature`))
+
+    expect(result).toEqual(["@fixture-nested-fence"])
   })
 
   it("honours the pattern: a single-star pattern does not reach the nested fixture", () => {

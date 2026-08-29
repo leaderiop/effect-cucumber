@@ -102,8 +102,18 @@ export interface GherkinTagDefinition {
   readonly name: string
 }
 
-/** A line that opens or closes a DocString — see note (f). Both fences are legal Gherkin. */
-const isDocStringFence = (trimmed: string): boolean => trimmed.startsWith("\"\"\"") || trimmed.startsWith("```")
+/**
+ * Which fence, if any, currently opens a DocString — `null` means "not inside one". Both `"""` and
+ * `` ``` `` are legal Gherkin fences (see note (f)), but a DocString only closes on the SAME fence
+ * that opened it — a bare line of the other fence character (or the runner's own, unbalanced) inside
+ * the body is prose, not a closer. Treating either character as a toggle regardless of which one is
+ * open desyncs on any DocString containing an odd number of the other fence's lines, silently
+ * swallowing every real `@tag` for the rest of the file.
+ */
+type DocStringFence = "\"\"\"" | "```" | null
+
+const openingFence = (trimmed: string): Exclude<DocStringFence, null> | null =>
+  trimmed.startsWith("\"\"\"") ? "\"\"\"" : trimmed.startsWith("```") ? "```" : null
 
 /**
  * Expand `pattern`, scan every matched file for Gherkin tags, and return them de-duplicated and
@@ -127,16 +137,23 @@ export const gherkinTags = (pattern: string | ReadonlyArray<string>): ReadonlyAr
   const names = new Set<string>()
 
   for (const file of globSync(patterns, { dot: false, onlyFiles: true })) {
-    let insideDocString = false
+    let fence: DocStringFence = null
 
     for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
       const trimmed = line.trim()
 
-      if (isDocStringFence(trimmed)) {
-        insideDocString = !insideDocString
+      if (fence === null) {
+        const opened = openingFence(trimmed)
+        if (opened !== null) {
+          fence = opened
+          continue
+        }
+      } else if (trimmed.startsWith(fence)) {
+        fence = null
         continue
       }
-      if (insideDocString || !trimmed.startsWith("@")) continue
+
+      if (fence !== null || !trimmed.startsWith("@")) continue
 
       for (const token of trimmed.split(/\s+/)) {
         if (token.startsWith("@")) names.add(token)
