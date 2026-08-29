@@ -66,9 +66,10 @@
  * returns a plain value and runs no Effect. oxlint's `vitest/no-standalone-expect` is satisfied
  * because none of these is nested in an `it.effect`.
  */
-import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
+import { generateStepSnippet, ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
 import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
 import {
   planFeature,
   type PlannedStep,
@@ -82,11 +83,14 @@ import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from 
 const parse = (source: string, uri: string) =>
   Effect.runSync(parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default)))
 
+const checkoutUri = "test/plan-checkout.feature"
+
 /**
  * A Background step and two Scenario steps, one of which carries an `{int}`.
  *
- * The `{int}` is load-bearing for the happy-path test: it is the only way to observe that `args`
- * survives the join positionally and with its coercion intact.
+ * The `{int}` is load-bearing twice over: it is the only way to observe that `args` survives the
+ * join positionally and with its coercion intact, and it is what makes the undefined-step
+ * suggestion a GENERALISED pattern rather than the literal step text.
  */
 const checkout = parse(
   `Feature: Checkout
@@ -97,8 +101,10 @@ const checkout = parse(
     When I add 3 apples
     Then the total is 3
 `,
-  "test/plan-checkout.feature"
+  checkoutUri
 )
+
+const shopUri = "test/plan-two-scenarios.feature"
 
 /** Two Scenarios whose single step is worded IDENTICALLY — the scope-isolation fixture. */
 const twoScenarios = parse(
@@ -110,7 +116,22 @@ const twoScenarios = parse(
   Scenario: B
     Given I do the thing
 `,
-  "test/plan-two-scenarios.feature"
+  shopUri
+)
+
+/**
+ * A step written with the `*` keyword.
+ *
+ * `*` is legal Gherkin anywhere a step keyword is, and it is no registrar's name — which is the one
+ * case where the suggested snippet's keyword cannot be the step's own literal keyword.
+ */
+const starKeyword = parse(
+  `Feature: Star
+
+  Scenario: starred
+    * I do something
+`,
+  "test/plan-star.feature"
 )
 
 /**
@@ -139,6 +160,15 @@ const noop: StepBody = () => Effect.void
 const featureScope = (name: string): RegistryScope => ({ kind: "feature", name })
 const backgroundScope: RegistryScope = { kind: "background", name: null }
 const scenarioScope = (name: string): RegistryScope => ({ kind: "scenario", name })
+
+/**
+ * A definition site in one fixed file, so two sites differ only in their line.
+ *
+ * Lines 9 and 10 are the pair that matters: every lexicographic comparison — including one over the
+ * fully formatted `file:line:column` string — puts `10` before `9`, so an assertion built on them
+ * fails against a plausible string ordering and passes only against a numeric one.
+ */
+const site = (line: number): DefinitionSite => ({ file: "/repo/test/steps.ts", line, column: 5 })
 
 /** One `StepDefinition` literal, with every field a test might want to control exposed. */
 const define = (args: {
@@ -289,5 +319,130 @@ describe("planFeature — resolution and the scope chain", () => {
 
     expect(resolvedOf(plan.scenarios[0]?.steps[0])?.args).toEqual([1])
     expect(resolvedOf(plan.scenarios[1]?.steps[0])?.args).toEqual([2])
+  })
+})
+
+describe("planFeature — MATCH-03, the undefined step", () => {
+  /** No definitions at all, so every step of `checkout` is undefined. */
+  const nothingRegistered = () => planFeature({ feature: checkout, definitions: [] })
+
+  it("names the step, its Feature and its line, with an empty matchedPatterns list", () => {
+    const error = errorOf(nothingRegistered().scenarios[0]?.steps[1])
+
+    expect(error?.reason).toBe("UndefinedStep")
+    expect(error?.stepText).toBe("I add 3 apples")
+    expect(error?.scenarioName).toBe("paying")
+    expect(error?.uri).toBe(checkoutUri)
+    // Hard-coded: line 6 of the `checkout` source above. Moves if that fixture is edited above it.
+    expect(error?.line).toStrictEqual(Option.some(6))
+    expect(error?.matchedPatterns).toEqual([])
+  })
+
+  it("carries a suggested snippet whose first line is the step's own registrar keyword", () => {
+    const error = errorOf(nothingRegistered().scenarios[0]?.steps[1])
+    const suggestion = Option.getOrNull(error?.suggestion ?? Option.none())
+
+    expect(suggestion).not.toBeNull()
+    // The step is written `When`, so the suggestion must be a `When` registrar — not the `Given` a
+    // keywordType-first derivation would produce for a step whose type is `Action`.
+    expect(suggestion?.split("\n")[0]?.startsWith("When(")).toBe(true)
+    // Generalised, not literal: `3` became `{int}`. A literal-text suggestion matches one step and
+    // no other, which is a suggestion the developer has to rewrite before it is useful.
+    expect(suggestion).toContain("{int}")
+    expect(suggestion).not.toContain("I add 3 apples")
+  })
+
+  it("starts its message with the uri:line:reason prefix and quotes the step text", () => {
+    const error = errorOf(nothingRegistered().scenarios[0]?.steps[1])
+
+    expect(error?.message.startsWith(`${checkoutUri}:6: UndefinedStep: `)).toBe(true)
+    expect(error?.message).toContain(JSON.stringify("I add 3 apples"))
+    expect(error?.message).toContain(JSON.stringify("paying"))
+  })
+
+  it("embeds the generated snippet in the message VERBATIM, never summarised", () => {
+    const error = errorOf(nothingRegistered().scenarios[0]?.steps[1])
+    // Generated independently here, against the same registry, so the assertion pins the exact
+    // bytes rather than a shape this test also decides.
+    const expected = generateStepSnippet({
+      keyword: "When",
+      text: "I add 3 apples",
+      registry: checkout.parameterTypes
+    })
+
+    expect(error?.message).toContain(expected)
+    expect(Option.getOrNull(error?.suggestion ?? Option.none())).toBe(expected)
+  })
+
+  it("derives the registrar keyword from keywordType when the literal keyword is not one", () => {
+    const plan = planFeature({ feature: starKeyword, definitions: [] })
+    const suggestion = Option.getOrNull(errorOf(plan.scenarios[0]?.steps[0])?.suggestion ?? Option.none())
+
+    // `*` is a legal Gherkin keyword and is no registrar's name, so the suggestion has to come from
+    // somewhere. It must still be one of the five a test author can actually write.
+    expect(suggestion?.split("\n")[0]).toMatch(/^(Given|When|Then|And|But)\(/)
+  })
+})
+
+describe("planFeature — MATCH-04, the ambiguous step", () => {
+  /** Two Feature-scope patterns that both match `I do the thing`, at two known sites. */
+  const thing = define({
+    pattern: "I do the thing",
+    scope: featureScope("Shop"),
+    definedAt: site(10)
+  })
+  const word = define({
+    pattern: "I do the {word}",
+    scope: featureScope("Shop"),
+    definedAt: site(9)
+  })
+
+  const ambiguity = (definitions: ReadonlyArray<StepDefinition<StepBody>>) =>
+    errorOf(planFeature({ feature: twoScenarios, definitions }).scenarios[0]?.steps[0])
+
+  it("names every matching pattern rather than silently picking one", () => {
+    const error = ambiguity([thing, word])
+
+    expect(error?.reason).toBe("AmbiguousStep")
+    expect([...(error?.matchedPatterns ?? [])].toSorted()).toEqual(["I do the thing", "I do the {word}"])
+    expect(error?.stepText).toBe("I do the thing")
+    expect(error?.message.startsWith(`${shopUri}:4: AmbiguousStep: `)).toBe(true)
+  })
+
+  it("suggests nothing — the patterns already exist", () => {
+    expect(ambiguity([thing, word])?.suggestion).toStrictEqual(Option.none())
+  })
+
+  it("names each matching pattern together with its formatted definition site", () => {
+    const message = ambiguity([thing, word])?.message ?? ""
+
+    expect(message).toContain(
+      `${JSON.stringify("I do the {word}")} was registered as a Given at /repo/test/steps.ts:9:5.`
+    )
+    expect(message).toContain(
+      `${JSON.stringify("I do the thing")} was registered as a Given at /repo/test/steps.ts:10:5.`
+    )
+  })
+
+  it("orders line 9 before line 10 in the same file, numerically and not lexicographically", () => {
+    // A comparison over the formatted `file:line:column` strings puts `:10:` before `:9:`, so this
+    // is the one assertion in the repo that tells a numeric site order from a plausible string one.
+    expect(ambiguity([thing, word])?.matchedPatterns).toEqual(["I do the {word}", "I do the thing"])
+  })
+
+  it("produces a byte-identical list AND message when the two definitions are registered in reverse", () => {
+    const forward = ambiguity([thing, word])
+    const backward = ambiguity([word, thing])
+
+    expect(backward?.matchedPatterns).toEqual(forward?.matchedPatterns)
+    expect(backward?.message).toBe(forward?.message)
+  })
+
+  it("lists a definition with no recorded site, in words, after every located one", () => {
+    const anonymous = define({ pattern: "I do the {word}", scope: featureScope("Shop"), definedAt: null })
+    const error = ambiguity([anonymous, thing])
+
+    expect(error?.matchedPatterns).toEqual(["I do the thing", "I do the {word}"])
+    expect(error?.message).toContain("was registered as a Given at an unrecorded location.")
   })
 })
