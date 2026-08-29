@@ -25,9 +25,9 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 ### Registration DSL (`@effect-cucumber/vitest`)
 
 - [x] **DSL-01**: `describeFeature` takes a Layer (or `{ shared, perScenario }`); a step whose Effect requires a service the Layer doesn't provide fails to compile (ADR-EC-003), backed by `@effect/tsgo`'s `missingLayerContext`/`missingEffectContext` diagnostics failing the build (ADR-EC-016)
-- [ ] **DSL-02**: A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`/`And`/`But` accept a bare generator function, auto-wrapped with `Effect.fn(stepText)` internally (ADR-EC-001, ADR-EC-005)
+- [x] **DSL-02**: A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`/`And`/`But` accept a bare generator function, auto-wrapped with `Effect.fn(stepText)` internally (ADR-EC-001, ADR-EC-005)
 - [x] **DSL-03**: `World` is a typed `Context.Service`; a field is unreachable by a step unless it appears in World's declared type (ADR-EC-002)
-- [ ] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
+- [x] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
 - [ ] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
 - [ ] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
 - [ ] **DSL-07**: Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios`) accept a bare generator function, auto-wrapped with `Effect.fn(name)` (ADR-EC-005)
@@ -91,9 +91,9 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | MATCH-04 | Phase 6 | Pending |
 | MATCH-05 | Phase 6 | Pending |
 | DSL-01 | Phase 5 | Complete |
-| DSL-02 | Phase 5 | Pending |
+| DSL-02 | Phase 5 | Complete |
 | DSL-03 | Phase 5 | Complete |
-| DSL-04 | Phase 5 | Pending |
+| DSL-04 | Phase 5 | Complete |
 | DSL-05 | Phase 8 | Pending |
 | DSL-06 | Phase 8 | Pending |
 | DSL-07 | Phase 7 | Pending |
@@ -115,4 +115,4 @@ enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-28 after Phase 4 (DataTable / DocString) — PARSE-04 marked Complete in plan 04-04 and confirmed here by plan 04-05's spec reconciliation, which added ADR-EC-025 and BEH-EC-016 as its spec backing. No other requirement's status changed.*
+*Last updated: 2026-08-29 after Phase 5 (`describeFeature` type surface) — DSL-01 marked Complete in plan 05-04, DSL-03 in plan 05-05, and DSL-02/DSL-04 here in plan 05-06. Each is backed by a named automated assertion that fails if the requirement stops being true: DSL-01 by `scripts/verify-tsgo-gate.sh` assertions 5, 6 and 8; DSL-02 by `packages/vitest/test/Step.test.ts`; DSL-03 by assertion 7 (`TS2339`); DSL-04 by `packages/vitest/test/Registry.test.ts` and `describeFeature.test.ts`. See `.planning/phases/05-describefeature-type-surface/05-06-SUMMARY.md` for the per-requirement evidence, including which half of DSL-04 is structural and which lands with the runner in Phase 6. No requirement outside DSL-01..04 changed status.*

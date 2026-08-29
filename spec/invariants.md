@@ -3,9 +3,10 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-None of these are enforced by code yet — `@effect-cucumber/vitest` doesn't
-exist. Each entry names the **planned** enforcement mechanism, per
-`AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single
+One of these — INV-EC-003 — is enforced by code today, and its entry names the
+mechanism and the assertions that back it. The other five are not: each still
+names the **planned** enforcement mechanism and says so in its `Source` label,
+per `AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single
 source of truth for what's actually built.
 
 ---
@@ -53,13 +54,39 @@ A `Given`/`When`/`Then` written inside a `Rule` or `Scenario` that requires a
 service not present in that scope's Layer fails to compile — it is never a
 runtime "service not found."
 
-**Source (planned)**: TypeScript's structural checking of a step's
-`Effect<A, E, R>` against the `R` the enclosing `describeFeature`/`Rule`/
-`Scenario` Layer parameter actually provides, backed by a second, type-aware
-enforcement mechanism: `@effect/tsgo`'s `missingLayerContext`/
-`missingEffectContext` diagnostics, wired to fail the build (see
-[ADR-EC-016](decisions/016-effect-tsgo-language-service-plugin.md)) rather
-than relying on structural typing alone.
+**Boundary condition**: this holds for step bodies free of `any`. It is not a
+caveat that better types could remove. A bare `any`, and an
+`Effect<any, any, any>`, are assignable to everything, so a step body
+containing either compiles against _any_ ambient Layer — the requirement it
+would otherwise declare is erased before the check has anything to check. No
+DSL signature can prevent that, because the erasure happens in the author's own
+body, not at the boundary this invariant guards. Stated here rather than left
+implicit so the invariant claims only what a type system can actually deliver
+(`.planning/research/PITFALLS.md` Pitfall 6). The practical rule: an `any`
+reaching a step body's declared type is a defect in that step, not a permitted
+escape hatch — the compile-gate fixtures under
+`packages/vitest/test/tsgo-gate/` are asserted to contain none.
+
+**Source**: `packages/vitest/src/Dsl.ts`'s `StepRegistrar<ROut>`, which binds a
+step's required context to the ambient Layer's output type rather than leaving
+it a free per-call-site type parameter, so `describeFeature`'s Layer argument
+is what decides which services a step may reach. That structural check is
+backed by a second, type-aware mechanism: `@effect/tsgo`'s
+`missingEffectContext` (a step's required context) and `missingLayerContext`
+(the Layer argument's own unhandled `RIn`) diagnostics, wired to fail the build
+rather than merely advise — see
+[ADR-EC-016](decisions/016-effect-tsgo-language-service-plugin.md).
+
+Both are enforced on every push by `scripts/verify-tsgo-gate.sh` assertions 5,
+6 and 8. The three are a set, not a redundancy: 5 is the positive control (a
+satisfied step, plus a scoped and an already-wrapped one, compiling clean), 6
+is the starved twin of 5 — the same step body against a Layer that does not
+provide the service — and 8 is the Layer argument's own unsatisfied `RIn`.
+Asserting the satisfied and starved cases in the same run is what keeps the
+guarantee from decaying silently: every negative assertion checks the exit code
+**and** greps the diagnostic by name, because a step can keep being rejected
+for a plain shape reason long after the Effect diagnostic has stopped covering
+it.
 
 **Implication**: a Rule-scoped service (e.g. a `DiscountRegistry` declared only
 inside one `Rule`) is a real type boundary — a step outside that Rule
