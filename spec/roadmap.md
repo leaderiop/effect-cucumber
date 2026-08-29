@@ -22,8 +22,14 @@ whose Background steps lead, each against its own Layer build; a step matching
 zero or many registered patterns fails its own Scenario with a located
 `StepMatchError`, and a pattern matching no step is a warning on the terminal, in
 the reporter, and on the plan (MATCH-03/04/05, RUN-01 — see
-`.planning/REQUIREMENTS.md`). What is still an intended contract only: hooks and
-`Effect.ensuring`-backed `After` (Phase 7), Rule-scoped Layers and typed Scenario
+`.planning/REQUIREMENTS.md`). Hooks are built too, as of Phase 7: all six —
+`Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios`,
+`AfterAllScenarios` — run in a fixed order, with `Before` gating a Scenario's
+steps, `After`/`AfterStep`/`AfterAllScenarios` guaranteed via `Effect.onExit`,
+and independent hook batches whose failures combine rather than first-winning
+(DSL-07, RUN-02 — see
+[07 — Hook ordering and guarantees](behaviors/07-hook-ordering-and-guarantees.md)).
+What is still an intended contract only: Rule-scoped Layers and typed Scenario
 Outline Examples (Phase 8), tag routing and `@skip` (Phase 9), and the build-once
 `shared` Layer with its per-Scenario `TestClock` isolation (Phase 10) — the
 `{ shared, perScenario }` argument form is accepted and type-checked today, but
@@ -74,8 +80,12 @@ per-phase status. High-level shape:
    to), and **emit** (`ScenarioEffect.ts` composes each Scenario into one
    Effect, `Runner.ts` emits the `describe`/`it.effect` tree). Proven end to end
    against a hand-written `.feature` file in
-   `packages/vitest/test/emission.test.ts`. What remains on this package is
-   layered on top of the pipeline rather than inside it: hooks (Phase 7),
+   `packages/vitest/test/emission.test.ts`. Hooks (Phase 7) are also built, layered
+   on top of the pipeline rather than inside it: all six kinds run in a fixed
+   order around each Scenario, sharing one `BeforeAllScenarios`/`AfterAllScenarios`
+   execution per Feature and guaranteeing `After`/`AfterStep`/`AfterAllScenarios`
+   via `Effect.onExit`. What remains on this package is layered on top of the
+   pipeline the same way:
    Rule-scoped extra Layers and typed Scenario Outline Examples (Phase 8), tag
    routing and `@skip`/`@only` (Phase 9), and the build-once `shared` Layer with
    its per-Scenario `TestClock` isolation (Phase 10).

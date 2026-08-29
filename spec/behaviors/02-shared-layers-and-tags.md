@@ -48,6 +48,40 @@ REQUIREMENT: The After hook, if declared, MUST execute whether every step in
              fail-fast.
 ```
 
+> **Correction (2026-08-29, Phase 7 implementation, verified against the installed
+> `effect@4.0.0-rc.112` build and `packages/vitest/src/{Dsl,ScenarioEffect}.ts`):** two independent
+> corrections, filed together because both were surfaced by the same implementation pass.
+>
+> **(i) The four published free-standing signatures are not the export shape.** `Before`, `After`,
+> `BeforeStep` and `AfterStep` above are written as module-level `export const` functions. DSL-04
+> forbids exactly that — a module-level registry — for the identical reason BEH-EC-003's
+> free-standing `Given` signature was corrected in Phase 5 (see `spec/behaviors/01-steps-and-world.md`):
+> a hook is a `readonly` member of the `FeatureDsl<ROut>` object `describeFeature` hands its `define`
+> callback, typed `HookRegistrar<ROut>` (`packages/vitest/src/Dsl.ts`), reached as
+> `({ After, Before, ... }) => { ... }` inside that callback — never imported and called as a
+> top-level function. `packages/vitest/src/index.ts` exports `HookRegistrar` as a type for exactly
+> this reason, and exports no `Before`/`After`/etc. value.
+>
+> The published `BeforeStep`/`AfterStep` parameter `(stepText: string)` is also wrong. Every hook
+> body — `Before`, `After`, `BeforeStep` and `AfterStep` alike — receives NO arguments;
+> `BeforeStep`/`AfterStep` are not handed the step they bracket (ADR-EC-005's Negative consequence,
+> `HookRegistrar<ROut>`'s zero-parameter call signature). A hook wanting the current step's text
+> annotates its own span manually (`Effect.annotateCurrentSpan`), per ADR-EC-005.
+>
+> **(ii) The `Effect.ensuring` REQUIREMENT above names the GUARANTEE, not the combinator that
+> delivers it.** In the installed `effect@4.0.0-rc.112` build, `Effect.ensuring`'s finalizer is typed
+> `Effect<X, never, R1>` — its error channel is `never`, so a hook body that can itself fail is not
+> even assignable to it, and forcing it through by widening the type merges no causes: a failing
+> `After` hook would silently REPLACE the step's own failure rather than combining with it, which is
+> exactly the masking the do-not-mask requirement (see [BEH-EC-017](./07-hook-ordering-and-guarantees.md))
+> forbids. `Effect.onExit` is the combinator the runner actually uses, because its documented
+> behavior — the finalizer runs on success, on failure and on interruption, and BOTH causes are
+> merged when the wrapped Effect and the finalizer both fail — is what INV-EC-004 plus the
+> do-not-mask requirement together need. See
+> [BEH-EC-017](./07-hook-ordering-and-guarantees.md) for the full six-hook ordering this guarantee is
+> one piece of, and `packages/vitest/src/ScenarioEffect.ts` for where `Effect.onExit` is actually
+> composed.
+
 ## BEH-EC-007: A shared Layer is opt-in and built once
 
 > **See:** [ADR-EC-006](../decisions/006-two-layer-scopes-only.md)

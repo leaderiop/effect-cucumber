@@ -58,3 +58,20 @@ accepts either form.
 per invocation keeps `Effect.fn`'s contract simple (one name per definition) —
 the workaround (manual annotation) is a one-line cost paid only by the small
 minority of suites that need per-step-instance tracing detail on a hook.
+
+---
+
+> **Implementation note (2026-08-29, Phase 7):** the hook auto-wrap this decision describes is
+> delivered by `packages/vitest/src/Hook.ts`'s `registerHook`, which does not reimplement the
+> generator-vs-Effect discriminator — it delegates entirely to `packages/vitest/src/Step.ts`'s
+> `register`, passing the hook's own kind (`"Before"`, `"After"`, ...) in the pattern-string
+> position `register` normally takes a step's cucumber-expression pattern in. There is therefore
+> exactly ONE `isGeneratorFn`-style discriminator in this package, shared by both steps and hooks,
+> rather than a second copy maintained in parallel.
+>
+> The Negative consequence above — hooks receive no arguments, `BeforeStep`/`AfterStep` included —
+> is now enforced at the type level too: `packages/vitest/src/Dsl.ts`'s `HookRegistrar<ROut>` call
+> signature has no `Params` and no `pattern` parameter at all, unlike `StepRegistrar<ROut>`, so a
+> hook body written to accept a step-text argument fails to compile rather than merely receiving
+> `undefined` at runtime. See [BEH-EC-017](../behaviors/07-hook-ordering-and-guarantees.md) for the
+> full six-hook ordering and guarantee set this auto-wrap participates in.

@@ -26,3 +26,7 @@ entries:
     file: "06-datatable-and-docstring-arguments.md"
     title: "DataTable and DocString arguments"
     id_range: "016"
+  - id: "BEH-EC-017"
+    file: "07-hook-ordering-and-guarantees.md"
+    title: "Hook ordering and guarantees"
+    id_range: "017"
