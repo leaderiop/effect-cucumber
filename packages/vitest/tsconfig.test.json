@@ -12,21 +12,27 @@
     "incremental": false,
     "noEmit": true,
     // The base sets `${configDir}/src`, which would reject every file under test/.
-    "rootDir": "${configDir}"
+    "rootDir": "${configDir}",
     //
-    // NOTE — this config deliberately does NOT carry two overrides that its sibling
-    // packages/gherkin/tsconfig.test.json has. Neither is missing by accident:
+    // The base sets `types: []`, which puts NOTHING ambient in scope — `console` included.
+    // packages/vitest/src/describeFeature.ts calls `console.warn` once per unused step definition
+    // (06-CONTEXT.md D-02 channel 1, MATCH-05), and this config's `include` below covers `src` as
+    // well as `test`, so without this line every one of those calls is a TS2584 here even though
+    // packages/vitest/tsconfig.json compiles them fine. The dependency backing it is
+    // `"@types/node": "catalog:"` in packages/vitest/package.json — under pnpm's isolated layout
+    // the root workspace's copy is not hoisted, and `types: ["node"]` without that declaration is
+    // TS2688, not a resolution that quietly works.
+    "types": ["node"]
     //
-    //   "types": ["node"]          — gherkin's tests use node:fs, node:url and import.meta.url.
-    //                                Nothing under packages/vitest/test does, so the base's
-    //                                `types: []` stands. A later plan that genuinely needs node
-    //                                globals adds `types` here with its own reason.
+    // NOTE — this config still deliberately does NOT carry one override that its sibling
+    // packages/gherkin/tsconfig.test.json has, and it is not missing by accident:
+    //
     //   "moduleDetection": "auto"  — gherkin needs it so test/feature-raw.d.ts's
     //                                `declare module "*.feature?raw"` stays an AMBIENT declaration
     //                                instead of becoming a module augmentation. packages/vitest has
     //                                no such ambient .d.ts, so the base's "force" stands.
     //
-    // Do not copy them over "for parity" — each one is load-bearing where it lives and inert here.
+    // Do not copy it over "for parity" — it is load-bearing where it lives and inert here.
   },
   // src is included too, so the tests type-check against the real source rather
   // than against emitted declarations.
