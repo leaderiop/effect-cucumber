@@ -99,4 +99,12 @@ jobs:
       # and ADR-EC-015's mechanical guard against effect appearing in a
       # consumer-facing dependency field. See scripts/verify-no-runner-dep.sh.
       - run: pnpm verify:no-runner-dep
+      # `pnpm test` and `pnpm build` both exiting 0 do NOT prove that
+      # packages/vitest/src/Runner.ts and TestApi.ts are free of a test-framework
+      # import — a type-only import there type-checks, lints clean and passes
+      # every test while dissolving the injected TestApi seam those two modules'
+      # note (a) exists to protect. Mutation-proven: with such an import added,
+      # build and test stayed green and only this script went red. See
+      # scripts/verify-testapi-seam.sh.
+      - run: pnpm verify:testapi-seam
       - run: pnpm verify:spec

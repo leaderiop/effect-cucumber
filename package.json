@@ -19,7 +19,8 @@
     "verify:spec": "bash spec/scripts/verify-traceability.sh",
     "verify:tsgo-gate": "bash scripts/verify-tsgo-gate.sh",
     "verify:oxlint-plugin": "bash scripts/verify-oxlint-plugin.sh",
-    "verify:no-runner-dep": "bash scripts/verify-no-runner-dep.sh"
+    "verify:no-runner-dep": "bash scripts/verify-no-runner-dep.sh",
+    "verify:testapi-seam": "bash scripts/verify-testapi-seam.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",
