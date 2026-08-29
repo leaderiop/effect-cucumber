@@ -103,6 +103,7 @@ import { emitFeature } from "./Runner.ts"
 // one encoding instead of two that compile while disagreeing.
 import { scenarioKey } from "./ScenarioKey.ts"
 import { register } from "./Step.ts"
+import { noTagFilter } from "./Tags.ts"
 import type { TestApi } from "./TestApi.ts"
 
 /**
@@ -219,8 +220,19 @@ export type FeatureCollection = {
  * Effect-aware test constructor is that package's, and its `self` parameter is
  * `() => Effect<A, E, Scope>`, which is exactly what `TestApi.effect` declares (`TestApi.ts` note
  * (d), verified against the installed build rather than assumed).
+ *
+ * `effect` is a forwarding function rather than the bare method reference it used to be, for exactly
+ * one reason: `EmitOptions.tags` is a `ReadonlyArray<string>` — as it is in `Model.ts`, `Plan.ts` and
+ * `TestApi.ts`, all the way from the parse — while vitest's own options type wants a mutable
+ * `string[]`. `[...options.tags]` is THE single widening in this package, and it lives here because
+ * this is already the one module permitted to name a test framework at all. Widening
+ * `ScenarioPlan.tags` or `EmitOptions.tags` instead would "fix" the same assignment error by letting
+ * every stage upstream rewrite a Scenario's tags in place.
  */
-const vitestTestApi: TestApi = { describe, effect: it.effect }
+const vitestTestApi: TestApi = {
+  describe,
+  effect: (name, self, options) => it.effect(name, self, { tags: [...options.tags], skip: options.skip })
+}
 
 /**
  * Collapse the two accepted layer arguments into the one Layer the runner will provide.
@@ -693,13 +705,22 @@ export function describeFeature(
   // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
   // collection output rather than interleaved with it.
   //
-  // All SEVEN fields, and the last three are not optional extras: `hooks` is the FEATURE-level set
+  // All EIGHT fields, and the last four are not optional extras: `hooks` is the FEATURE-level set
   // alone (the `collect` return above filters it to `ruleId === null`), so an `emitFeature` call
   // passing only the first four would run every Rule-scoped hook nowhere at all and give every
   // Rule-nested Scenario the Feature's bare Layer. Every step would still resolve, every existing
   // assertion in this repo would still pass, and ADR-EC-010's whole guarantee would hold in the
   // type-checker and nowhere at runtime — which is why `emitFeature` declares them required rather
   // than defaulting a missing map to an empty one.
+  //
+  // The eighth, `tagFilter`, follows the same rule and for a sharper reason: an omitted filter that
+  // defaulted to "no filter" and an omitted filter that defaulted to "match nothing" are one
+  // keystroke apart and the second deletes a whole suite behind a green run. So the "filter nothing"
+  // case is a NAMED value the caller passes — `Tags.ts`'s sentinel, hard-coded here because this
+  // function still takes no options object. The plan that adds the public `includeTags`/`excludeTags`
+  // options replaces this one expression with `makeTagFilter(...)` and starts reading `emitFeature`'s
+  // returned `excludedScenarioCount` for D-10's collection-time notice; the return value is
+  // deliberately discarded until then rather than half-used.
   emitFeature({
     api: vitestTestApi,
     plan: collection.plan,
@@ -707,6 +728,7 @@ export function describeFeature(
     hooks: collection.hooks,
     ruleHooks: collection.ruleHooks,
     ruleLayers: collection.ruleLayers,
-    scenarioLayers: collection.scenarioLayers
+    scenarioLayers: collection.scenarioLayers,
+    tagFilter: noTagFilter
   })
 }

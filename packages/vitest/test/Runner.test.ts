@@ -30,6 +30,15 @@
  * - **The Scenario Outline case asserts BOTH rows' titles.** One row proves nothing: `astName` and
  *   `name` are the same string for every plain Scenario in every other fixture here, so titling with
  *   the wrong one is invisible until two rows of one Outline have to be told apart — mutation B.
+ * - **Every tag and skip assertion goes through `emissionOf`, never `shapeOf`.** The two projections
+ *   are siblings on purpose: a value absent from a projection is invisible to every assertion
+ *   comparing through it, so the fifteen `shapeOf` assertions written before plan 09-04 would all pass
+ *   against an implementation that emitted every Scenario untagged. They are left untouched precisely
+ *   so they keep meaning what they meant, and the tag claims are made separately.
+ * - **A filtered-out Scenario is asserted ABSENT BY TITLE, never by a smaller count.** D-03's claim is
+ *   that an excluded Scenario never becomes a node at all, while a CLI `--tagsFilter` leaves one as a
+ *   skipped node — a count comparison cannot tell those two outcomes apart, and telling them apart is
+ *   the entire point of the decision.
  *
  * Mutation-tested (every one performed against real source, run, confirmed to fail exactly the
  * intended test(s), then reverted) — see the plan summary for the recorded output:
@@ -85,6 +94,26 @@
  *      — the "both loops are the same three lines" tidy-up `Runner.ts` note (f) warns about → 1 of 25
  *      fails, the Feature-level-Scenario-sees-neither-Rule-hook test (threat T-08-07-03). Nothing
  *      about the emitted SHAPE changes, so every positional assertion in this file still passes.
+ * - V. the FEATURE-level loop's `continue` removed, so the filter counts an exclusion and emits the
+ *      Scenario anyway → 4 of 39 fail, and every one of them names the criterion it carries: the
+ *      excludeTags test, the includeTags test, the both-arrays test, and the filtered-out
+ *      `⚙ AfterAllScenarios` suppression test. This is the proof the filter is asserted by TITLE and
+ *      not merely by a count — the `excludedScenarioCount` half of each of those tests still passes
+ *      under this mutation, because the counter is exactly what the mutation leaves intact.
+ * - W. the filter moved OUT of the walk and into a pre-filter of `plan.scenarios` in
+ *      `src/describeFeature.ts` — RESEARCH Finding 12 reproduced on purpose → `test/emission.test.ts`
+ *      dies with `emitFeature: no ScenarioPlan for scenario id "…"`, reporting `Tests no tests` for
+ *      the whole file. Not a failed assertion: a thrown `Error` during collection, whose own message
+ *      blames `Plan.ts` for a filter written two modules away. This is why the placement is a lettered
+ *      note in `Runner.ts` rather than a comment on the `continue`.
+ * - X. the `runnableScenarioCount > 0` conjunct dropped from the `⚙ AfterAllScenarios` condition → 3
+ *      of 39 fail, one per way of reaching zero: every Scenario `@skip`-tagged, every Scenario
+ *      filtered out, and a Feature declaring no Scenario at all. Nothing else moves, which is what
+ *      makes the conjunct's three separate justifications each independently load-bearing.
+ * - Y. `Tags.ts`'s `isSkipped` made to always return `false` → 4 of 713 fail across the whole repo: in
+ *      this file the `@skip`-routes-to-skip test and the fully-skipped suppression test, and in
+ *      `test/Tags.test.ts` its own two `isSkipped` truth cases. Nothing in the SC1, SC3 or SC4 blocks
+ *      moves — the skip flag and the tag array are separate claims and are asserted separately.
  *
  * ## The fixtures
  *
@@ -138,7 +167,8 @@ import type { HookBody, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
-import type { TestApi } from "../src/TestApi.ts"
+import { makeTagFilter, noTagFilter, onlyTag, skipTag } from "../src/Tags.ts"
+import type { EmitOptions, TestApi } from "../src/TestApi.ts"
 
 /**
  * One call the fake received, with enough context to reconstruct the emitted tree.
@@ -151,12 +181,24 @@ import type { TestApi } from "../src/TestApi.ts"
  * wired to. `null` on a `describe` record, which has no thunk — a union of two record types would say
  * that more precisely, at the cost of a narrowing helper in every assertion, and every consumer here
  * already knows which kind it is looking at.
+ *
+ * `options` is the `EmitOptions` value `effect` was handed, and is `null` on a `describe` record for
+ * exactly the reason `self` is: `TestApi.describe` takes no options at all, and it must stay that way
+ * — `Runner.ts` note (g)'s last paragraph and the framework's own tag inheritance are why. Recording
+ * it as `null` rather than as an empty-and-unskipped value is deliberate: the two are indistinguishable
+ * in an assertion, and an implementation that started passing options to `describe` would then be
+ * invisible here. The SC1 test below asserts on this `null` directly.
+ *
+ * There is no `only` field, and the absence is the point rather than an omission — see the SC3 block
+ * far below. `EmitOptions` has no only channel, so this fake has nothing to record one on; an
+ * implementation that reached the framework's only-mode could not do it through this seam at all.
  */
 type EmissionRecord = {
   readonly kind: "describe" | "effect"
   readonly name: string
   readonly depth: number
   readonly self: (() => Effect.Effect<void, unknown, Scope.Scope>) | null
+  readonly options: EmitOptions | null
 }
 
 /**
@@ -182,7 +224,7 @@ const makeRecordingApi = (): {
   let depth = 0
   const api: TestApi = {
     describe: (name, define) => {
-      records.push({ kind: "describe", name, depth, self: null })
+      records.push({ kind: "describe", name, depth, self: null, options: null })
       depth += 1
       try {
         define()
@@ -190,8 +232,8 @@ const makeRecordingApi = (): {
         depth -= 1
       }
     },
-    effect: (name, self) => {
-      records.push({ kind: "effect", name, depth, self })
+    effect: (name, self, options) => {
+      records.push({ kind: "effect", name, depth, self, options })
     }
   }
   return { api, records }
@@ -202,6 +244,42 @@ const shapeOf = (
   records: ReadonlyArray<EmissionRecord>
 ): ReadonlyArray<{ readonly kind: string; readonly name: string; readonly depth: number }> =>
   records.map(({ depth, kind, name }) => ({ kind, name, depth }))
+
+/**
+ * `shapeOf` plus the emit options — a SIBLING projection, not a replacement, and every tag or skip
+ * assertion in this file goes through it.
+ *
+ * Two projections rather than one widened one, on purpose. `shapeOf` is what fifteen assertions
+ * written across plans 06-06, 07-06 and 08-07 compare through, and every one of them is a claim about
+ * emission SHAPE that this plan must leave exactly as it found it — widening the projection would have
+ * meant editing all fifteen expected arrays to carry tag data they say nothing about, which is how a
+ * regression gets committed inside a diff too large to read.
+ *
+ * The corollary is the reason this exists at all and is worth stating plainly: a value absent from a
+ * projection is INVISIBLE to every assertion comparing through it. Tags and the skip flag are absent
+ * from `shapeOf`, so no pre-existing assertion in this file can see them, and an implementation that
+ * emitted every Scenario untagged would pass all fifteen.
+ */
+const emissionOf = (
+  records: ReadonlyArray<EmissionRecord>
+): ReadonlyArray<{
+  readonly kind: string
+  readonly name: string
+  readonly depth: number
+  readonly tags: ReadonlyArray<string> | null
+  readonly skip: boolean | null
+}> =>
+  records.map(({ depth, kind, name, options }) => ({
+    kind,
+    name,
+    depth,
+    tags: options === null ? null : options.tags,
+    skip: options === null ? null : options.skip
+  }))
+
+/** Just the emitted test titles, in order — the projection an ABSENCE claim is asserted through. */
+const titlesOf = (records: ReadonlyArray<EmissionRecord>): ReadonlyArray<string> =>
+  records.filter(({ kind }) => kind === "effect").map(({ name }) => name)
 
 /**
  * The thunk recorded at `index`, or a thrown explanation.
@@ -271,6 +349,22 @@ const noRuleScope = {
   ruleLayers: new Map<string, Layer.Layer<any, any, never>>(),
   scenarioLayers: new Map<string, Layer.Layer<any, any, never>>()
 }
+
+/**
+ * `emitFeature`'s eighth field, set to the "filters nothing" sentinel — spread into EVERY call in
+ * this file that predates plan 09-04's signature change.
+ *
+ * The same backward-compatibility argument `noRuleScope` above makes, one plan later: every shape,
+ * ordering and hook-ordering assertion in this file was written before the tag filter existed, and
+ * every one of them must still hold BYTE-FOR-BYTE under `noTagFilter`. That is the whole of the claim
+ * "an absent filter changes nothing", and it is asserted here by the tests that already knew what the
+ * answer was rather than by a new test written after the change.
+ *
+ * ONE shared object, safe for `Hook.ts`'s `emptyHookSet` reason: `TagFilter`'s two fields are
+ * `ReadonlyArray`s, `emitFeature` only reads them, and nothing in `Runner.ts` mutates a filter — so no
+ * test can observe another test's use of this value.
+ */
+const unfiltered = { tagFilter: noTagFilter }
 
 /**
  * The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe
@@ -419,6 +513,128 @@ const outline = parse(
   "test/runner-outline.feature"
 )
 
+/**
+ * All four tag-inheritance levels at once, over a Rule-nested Outline — the SC1 fixture.
+ *
+ * The four tag names are `packages/gherkin/test/Correlate.test.ts:173`'s and `test/Plan.test.ts`'s,
+ * reused rather than invented so the expectation here and the already-verified one over there cannot
+ * drift apart. Nested inside a `Rule:` deliberately: `emitFeature` has TWO Scenario loops and the
+ * Rule-level one is the only place a `@ruletag` can reach, so a Feature-level Outline would leave half
+ * the walk unasserted.
+ *
+ * One Examples row, not two. `test/Plan.test.ts` needs two to prove every row carries the block's tag;
+ * that claim is asserted there, against `planFeature`, and re-asserting it here would test `Plan.ts`
+ * through `Runner.ts` — this fixture's job is that whatever `ScenarioPlan.tags` holds arrives at the
+ * emitted node in the same order with the same prefixes.
+ */
+const tagged = parse(
+  `@featuretag
+Feature: Tagged
+
+  @ruletag
+  Rule: a rule
+
+    @scenariotag
+    Scenario Outline: adding <count>
+      Given I add <count> apples
+
+      @exampletag
+      Examples:
+        | count |
+        | 1     |
+`,
+  "test/runner-tagged.feature"
+)
+
+/**
+ * Both reserved tags and an untagged control, in one Feature — the SC2 and SC3 fixture.
+ *
+ * The untagged `plain one` is what makes SC3's claim assertable at all: D-06 says an `@only` Scenario
+ * is emitted like any other, and "like any other" needs an any-other in the same emission to compare
+ * against, at the same depth, from the same walk.
+ */
+const reserved = parse(
+  `Feature: Reserved
+
+  @skip
+  Scenario: skipped one
+    When I browse
+
+  @only
+  Scenario: only one
+    When I browse
+
+  Scenario: plain one
+    When I browse
+`,
+  "test/runner-reserved.feature"
+)
+
+/**
+ * Five Scenarios across BOTH of `emitFeature`'s loops, tagged so every filter case has a hit and a
+ * miss at each nesting level — the SC4 fixture.
+ *
+ * Three at Feature level (`@slow`, `@wip`, untagged) and two more inside a Rule (`@slow`, `@wip`). The
+ * Rule half is not decoration: the filter is written out twice in `Runner.ts`, once per loop, and a
+ * fixture with no Rule would leave the second copy free to be deleted with every assertion still
+ * green.
+ */
+const filtering = parse(
+  `Feature: Filtering
+
+  @slow
+  Scenario: slow one
+    When I browse
+
+  @wip
+  Scenario: wip one
+    When I browse
+
+  Scenario: plain one
+    When I browse
+
+  Rule: nested
+
+    @slow
+    Scenario: slow nested
+      When I browse
+
+    @wip
+    Scenario: wip nested
+      When I browse
+`,
+  "test/runner-filtering.feature"
+)
+
+/** Every Scenario `@skip`-tagged — one of the three `⚙ AfterAllScenarios` suppression cases. */
+const allSkipped = parse(
+  `@skip
+Feature: All Skipped
+
+  Scenario: skipped one
+    When I browse
+
+  Scenario: skipped two
+    When I browse
+`,
+  "test/runner-all-skipped.feature"
+)
+
+/**
+ * A Feature declaring no Scenario at all — the third suppression case, and the one that is not about
+ * tags in the slightest.
+ *
+ * It falls out of the same condition for the same reason (`Runner.ts` note (e)): a Feature with
+ * nothing to run never reaches the `BeforeAllScenarios` once-cell either, so an `⚙ AfterAllScenarios`
+ * node would tear down what was never built. Asserted separately because a reader would otherwise
+ * reasonably assume the suppression is tag-specific and "fix" it by guarding on the filter alone.
+ */
+const emptyFeature = parse(
+  `Feature: Empty
+`,
+  "test/runner-empty.feature"
+)
+
 /** A step body that touches no service. */
 const noop: StepBody = () => Effect.void
 
@@ -447,6 +663,24 @@ const checkoutDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
   define({ pattern: "the cart is empty", scope: featureScope("Checkout") }),
   define({ pattern: "I pay", scope: featureScope("Checkout"), keyword: "When" }),
   define({ pattern: "I refund", scope: featureScope("Checkout"), keyword: "When" })
+]
+
+/**
+ * The one `When I browse` definition every tag fixture above resolves all of its steps through.
+ *
+ * A function of the Feature name because `RegistryScope` carries it and `Plan.ts` matches on it, so a
+ * shared module-scope array would resolve nothing for four of the five fixtures. Every step in
+ * `reserved`, `filtering` and `allSkipped` is worded identically on purpose: those fixtures are about
+ * which Scenarios get EMITTED, and giving each one distinct step text would add a second reason for a
+ * Scenario to be missing from a recording.
+ */
+const browseIn = (featureName: string): ReadonlyArray<StepDefinition<StepBody>> => [
+  define({ pattern: "I browse", scope: featureScope(featureName), keyword: "When" })
+]
+
+/** `tagged`'s single Outline step, cucumber-expression typed so both a 1 and a 2 row would resolve. */
+const taggedDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
+  define({ pattern: "I add {int} apples", scope: featureScope("Tagged") })
 ]
 
 /**
@@ -586,7 +820,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Positional, and over the WHOLE array: a search would pass against an implementation that
@@ -606,7 +841,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Exactly one record at the top level, and it is the Feature's block. An implementation that
@@ -623,7 +859,7 @@ describe("a Feature emits one block with one test per Scenario", () => {
     const plan: FeaturePlan = { feature: checkout, scenarios: [], warnings: [] }
 
     assert.throws(
-      () => emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope }),
+      () => emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered }),
       /no ScenarioPlan for scenario id/
     )
   })
@@ -645,7 +881,8 @@ describe("a Rule emits a nested block", () => {
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // The two Rule Scenarios sit at depth 2 beneath a block at depth 1. Emitted as siblings of the
@@ -672,7 +909,8 @@ describe("each recorded thunk is wired to its own Scenario", () => {
         plan: planFeature({ feature: checkout, definitions: recordingDefinitions(ran) }),
         layer,
         hooks: emptyHooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       // Nothing has run yet: `emitFeature` registers thunks, it does not execute them. An eager
@@ -701,7 +939,8 @@ describe("a Scenario Outline emits one distinctly-titled test per Examples row",
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // TWO properties in one comparison, and each fails on its own mutation.
@@ -736,7 +975,7 @@ describe("an unused step definition surfaces as a test node", () => {
   it("adds exactly one node, titled with the keyword, the pattern and the site, AFTER every Scenario", () => {
     const { api, records } = makeRecordingApi()
 
-    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
+    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
     // Last, not first. Hoisted to the top of the block the Feature's own Scenarios get pushed below a
     // variable-length list of footnotes — Runner.ts note (c).
@@ -756,7 +995,7 @@ describe("an unused step definition surfaces as a test node", () => {
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
 
-      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
       // ADR-EC-019 makes an unused pattern a warning and not a failure. Asserted on the Exit rather
       // than by the test simply not throwing, so a node that fails is reported as a failed assertion
@@ -779,7 +1018,8 @@ describe("an unused step definition surfaces as a test node", () => {
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Titled with the pattern alone, these two would be one string twice — two identically-named
@@ -806,7 +1046,7 @@ describe("an unused step definition surfaces as a test node", () => {
       })
     ])
 
-    emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope })
+    emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
     // The pattern is rendered with `JSON.stringify`, so the embedded quotes are escaped and cannot
     // forge the end of the quoted span in a reporter's output (threat T-06-06-01).
@@ -824,7 +1064,10 @@ describe("the recording fake itself", () => {
       api.describe("throwing", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
-    api.effect("after", () => Effect.void)
+    // The one place in this file that drives the fake directly rather than through `emitFeature`.
+    // The options are inert here — this test is about the depth counter and asserts nothing about
+    // tags — so they are the untagged, unskipped pair a synthetic node would carry.
+    api.effect("after", () => Effect.void, { tags: [], skip: false })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every
     // assertion that followed — the failure would surface in an unrelated test.
@@ -852,7 +1095,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -881,7 +1125,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 2)()
@@ -911,7 +1156,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       const exit1 = yield* Effect.exit(thunkAt(records, 1)())
@@ -942,7 +1188,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -979,7 +1226,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
       }),
       layer,
       hooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Positional, over the whole array — mutation M's target: emitted after the warnings instead of
@@ -1012,7 +1260,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
@@ -1040,7 +1289,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)())
@@ -1143,7 +1393,7 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
 
         const plan: FeaturePlan = { feature: checkout, scenarios: [scenario1, scenario2], warnings: [] }
 
-        emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope })
+        emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope, ...unfiltered })
 
         // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the
         // `⚙ AfterAllScenarios` node — run them in that same order.
@@ -1208,7 +1458,8 @@ describe("a Feature registering neither all-scenarios hook emits exactly what it
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Identical to this file's very first assertion for this same fixture — a hookless Feature's
@@ -1255,7 +1506,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         hooks: featureHooks(),
         ruleHooks: ruleScopedHooks(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       // Emission shape for `shop`, pinned by the Rule-nesting test far above: describe Shop (0),
@@ -1292,7 +1544,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         hooks: featureHooks(),
         ruleHooks: ruleScopedHooks(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       // Index 1 is `browsing`, declared before the `Rule:` block and therefore in no Rule at all.
@@ -1325,7 +1578,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         // EMPTY, so the Rule-nested loop takes its `?? emptyHookSet` miss branch.
         ruleHooks: new Map(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 3)()
@@ -1369,7 +1623,8 @@ describe("each Scenario is emitted with the innermost of the three Layer tiers (
         ruleLayers: new Map([[shopRule.id, withTier(recorderLayer, "rule")]]),
         // Only `refund denied` brings its own — `refund granted` sits in the same Rule with no entry,
         // so one emission covers the hit and the miss at the SAME nesting level.
-        scenarioLayers: new Map([[scenarioKeyIn(shopRule.id, "refund denied"), withTier(recorderLayer, "scenario")]])
+        scenarioLayers: new Map([[scenarioKeyIn(shopRule.id, "refund denied"), withTier(recorderLayer, "scenario")]]),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -1406,7 +1661,8 @@ describe("each Scenario is emitted with the innermost of the three Layer tiers (
         ruleLayers: new Map(),
         // The UN-INTERPOLATED name, which is what the author passed to `Scenario(...)` and therefore
         // the only key `describeFeature.ts` could have written. One entry for the whole Outline.
-        scenarioLayers: new Map([[scenarioKeyIn(null, "adding <count>"), withTier(recorderLayer, "scenario")]])
+        scenarioLayers: new Map([[scenarioKeyIn(null, "adding <count>"), withTier(recorderLayer, "scenario")]]),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -1419,4 +1675,351 @@ describe("each Scenario is emitted with the innermost of the three Layer tiers (
       // is the only place in the file where that mutation is visible at all.
       assert.deepStrictEqual(yield* Ref.get(log), ["tier=scenario", "tier=scenario"])
     }))
+})
+
+/**
+ * Roadmap success criterion 1: every tag a Scenario inherits reaches the emitted node, in order, with
+ * its `@` prefix intact — and reaches the TEST node only, never the enclosing block.
+ *
+ * Everything below this line goes through `emissionOf`, never `shapeOf`. That is the whole reason the
+ * sibling projection exists (see its comment): tags and the skip flag are invisible to `shapeOf`, so
+ * an implementation emitting every Scenario untagged passes every assertion written above this point.
+ */
+describe("every inherited tag reaches the emitted test node, in order (roadmap SC #1)", () => {
+  it("carries all four inheritance levels onto the node, @ prefixes intact, in document order", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: tagged, definitions: taggedDefinitions }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // Positional over the whole array, like every shape assertion in this file, so a tag arriving on
+    // the wrong node fails here rather than passing a `.find(...)`.
+    //
+    // The ORDER is asserted, not the membership: feature, then rule, then scenario, then examples. It
+    // is the order `compile()` produced and `ScenarioPlan.tags` carried through, and a set-style
+    // comparison would pass against an implementation that sorted or reversed it. The `@` prefixes are
+    // part of every expected string for the same reason D-04 keeps them: they are the bytes a
+    // `--tagsFilter '@slow'` invocation matches against.
+    assert.deepStrictEqual(emissionOf(records), [
+      { kind: "describe", name: "Tagged", depth: 0, tags: null, skip: null },
+      { kind: "describe", name: "a rule", depth: 1, tags: null, skip: null },
+      {
+        kind: "effect",
+        name: "adding 1 (count=1)",
+        depth: 2,
+        tags: ["@featuretag", "@ruletag", "@scenariotag", "@exampletag"],
+        skip: false
+      }
+    ])
+  })
+
+  it("puts NO emit options on either describe — the Feature's block or the Rule's", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: tagged, definitions: taggedDefinitions }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // `Runner.ts` note (g): the framework already merges and de-duplicates a parent suite's tags onto
+    // each test, so emitting on both is redundant — and suite tags are separately validated, which is
+    // one more site that can throw on a Feature author's typo. Both blocks, not just the Feature's:
+    // the Rule's is emitted from the other loop and could gain them independently.
+    assert.deepStrictEqual(records.filter(({ kind }) => kind === "describe").map(({ options }) => options), [
+      null,
+      null
+    ])
+  })
+})
+
+/**
+ * Roadmap success criterion 2's emission half, and criterion 3 entire.
+ *
+ * The RUNTIME half of criterion 2 — that a skipped Scenario's hooks do not run — is not asserted here
+ * and cannot be: it is a property of the real framework never invoking the thunk (`TestApi.ts`'s
+ * `skip` field comment), and this fake records a thunk it never runs. What is assertable here, and is
+ * the only thing that could go wrong on this side of the seam, is that the flag reaches the node.
+ */
+describe("@skip routes to a real skip and @only routes to nothing at all (D-05, D-06)", () => {
+  const emitReserved = (): ReadonlyArray<EmissionRecord> => {
+    const { api, records } = makeRecordingApi()
+    emitFeature({
+      api,
+      plan: planFeature({ feature: reserved, definitions: browseIn("Reserved") }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+    return records
+  }
+
+  it("emits a @skip Scenario with skip true, its tags still present, and an untagged one with skip false", () => {
+    const records = emitReserved()
+
+    // Both halves in one comparison. `skip: true` on the tagged one is D-05; `skip: false` on the
+    // untagged one is what stops "skip is hard-coded true" from passing, which a single-Scenario
+    // fixture could not tell apart. The `@skip` Scenario keeps its tags: routing to a real skip is
+    // ADDITIONAL to tag emission, not instead of it, so `--tagsFilter '@skip'` still selects it.
+    assert.deepStrictEqual(emissionOf(records), [
+      { kind: "describe", name: "Reserved", depth: 0, tags: null, skip: null },
+      { kind: "effect", name: "skipped one", depth: 1, tags: [skipTag], skip: true },
+      { kind: "effect", name: "only one", depth: 1, tags: [onlyTag], skip: false },
+      { kind: "effect", name: "plain one", depth: 1, tags: [], skip: false }
+    ])
+  })
+
+  it("emits an @only Scenario as a plain tagged test, differing from an untagged one ONLY in its tags", () => {
+    const records = emitReserved()
+    const only = records[2]
+    const plain = records[3]
+    if (only === undefined || plain === undefined) {
+      throw new Error("fixture `reserved` must emit `only one` at index 2 and `plain one` at index 3")
+    }
+
+    // Same record count as an emission with no `@only` in it — index 3 is the last record, so nothing
+    // extra was registered alongside the `@only` node.
+    assert.strictEqual(records.length, 4)
+    // Every recorded dimension except the tag array itself is identical to the untagged control's.
+    assert.strictEqual(only.kind, plain.kind)
+    assert.strictEqual(only.depth, plain.depth)
+    assert.strictEqual(only.options?.skip, plain.options?.skip)
+    assert.strictEqual(only.options?.skip, false)
+  })
+
+  it("puts @only in options.tags and NOWHERE else in the whole recording", () => {
+    const records = emitReserved()
+
+    // The structural half of criterion 3, and it is worth being explicit about what makes it
+    // structural rather than merely observed. `EmitOptions` has no only channel — so this fake, which
+    // implements `TestApi` exactly, has nothing to record an only-marking ON. There is no assertion
+    // that could fail if the library "started emitting only", because the seam gives it no way to.
+    // What IS assertable, and is asserted here, is the weaker sibling claim: the string never leaks
+    // into a node title (where a reporter would show it) and appears in exactly one tag array.
+    assert.deepStrictEqual(records.filter(({ name }) => name.includes(onlyTag)), [])
+    assert.strictEqual(
+      records.filter(({ options }) => options !== null && options.tags.includes(onlyTag)).length,
+      1
+    )
+  })
+})
+
+/**
+ * Roadmap success criterion 4: a Scenario the filter removes produces NO emission record — it is
+ * absent, not skipped.
+ *
+ * That distinction is the entire point of D-03 and it is real and observable in the framework:
+ * `--tagsFilter` sets a non-matching test's mode to "skip", so a CLI-filtered Scenario appears in the
+ * report as a skipped node, while a Scenario excluded here was never registered and appears nowhere.
+ * Every assertion below therefore compares the whole emitted title list, so a Scenario that reappeared
+ * as a skipped node would fail rather than merely change a count.
+ */
+describe("a filtered-out Scenario produces no emission record at all (roadmap SC #4, D-03)", () => {
+  const filteringPlan = planFeature({ feature: filtering, definitions: browseIn("Filtering") })
+
+  const emitFiltered = (tagFilter: Parameters<typeof emitFeature>[0]["tagFilter"]) => {
+    const { api, records } = makeRecordingApi()
+    const outcome = emitFeature({
+      api,
+      plan: filteringPlan,
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      tagFilter
+    })
+    return { records, outcome }
+  }
+
+  it("emits every Scenario, in both loops, under noTagFilter — the control the rest of this block reads against", () => {
+    const { outcome, records } = emitFiltered(noTagFilter)
+
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "wip one", "plain one", "slow nested", "wip nested"])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0 })
+  })
+
+  it("excludeTags removes the excluded Scenarios ENTIRELY — absent by title, not present-and-skipped", () => {
+    const { outcome, records } = emitFiltered(makeTagFilter({ excludeTags: ["@wip"] }))
+
+    // Whole-list comparison: a `@wip` Scenario emitted as a skipped node would appear here and fail,
+    // which a length check alone would not distinguish from this passing.
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "plain one", "slow nested"])
+    // Stated a second time as a bare absence, because that is the claim D-03 actually makes and a
+    // reader should not have to derive it from the positional array above.
+    assert.isFalse(titlesOf(records).includes("wip one"))
+    assert.isFalse(titlesOf(records).includes("wip nested"))
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 2 })
+  })
+
+  it("includeTags restricts emission to matching Scenarios, across the Rule's nested loop too", () => {
+    const { outcome, records } = emitFiltered(makeTagFilter({ includeTags: ["@slow"] }))
+
+    // `slow nested` is what proves the Rule-level loop got its own filter: the two loops are written
+    // out separately in `Runner.ts` on purpose, so a filter added to only one of them leaves the other
+    // emitting everything. The untagged `plain one` is excluded — an include filter is a whitelist,
+    // and "carries no tags" is not a match.
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "slow nested"])
+    // Three excluded: `wip one` and `plain one` from the Feature-level loop, `wip nested` from the
+    // Rule's. One counter, both loops.
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 3 })
+  })
+
+  it("excludes a tag named in BOTH arrays — exclude wins the author's self-contradiction", () => {
+    const { outcome, records } = emitFiltered(makeTagFilter({ includeTags: ["@slow"], excludeTags: ["@slow"] }))
+
+    // Nothing survives, and the blocks are still emitted: `Runner.ts` note (g) records that as a
+    // decision, not an oversight — a Feature the reader can find and see is empty beats one that
+    // silently is not there. So this is the emission shape, not an empty array.
+    assert.deepStrictEqual(shapeOf(records), [
+      { kind: "describe", name: "Filtering", depth: 0 },
+      { kind: "describe", name: "nested", depth: 1 }
+    ])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 5 })
+  })
+})
+
+/**
+ * Pitfall 4, and the ONLY assertion in this repository that can see it.
+ *
+ * If the tag filter were ever moved earlier — into `planFeature`, or into a pre-filter of
+ * `plan.scenarios` — every step definition used exclusively by an excluded Scenario would newly report
+ * as unused, on all three of D-02's warning channels at once. Warning nodes always pass, so nothing
+ * would go red anywhere else in this suite. This block is the regression guard for that, and it is
+ * labelled so nobody deletes it as redundant with the SC4 block above.
+ */
+describe("a tag filter cannot change which step definitions are reported unused (Pitfall 4)", () => {
+  const planWithUnused = planFeature({
+    feature: filtering,
+    definitions: [
+      ...browseIn("Filtering"),
+      define({ pattern: "I never happen", scope: featureScope("Filtering"), definedAt: site(9) })
+    ]
+  })
+
+  const warningTitlesOf = (records: ReadonlyArray<EmissionRecord>): ReadonlyArray<string> =>
+    titlesOf(records).filter((title) => title.startsWith("⚠"))
+
+  const emitWith = (tagFilter: Parameters<typeof emitFeature>[0]["tagFilter"]): ReadonlyArray<EmissionRecord> => {
+    const { api, records } = makeRecordingApi()
+    emitFeature({ api, plan: planWithUnused, layer, hooks: emptyHooks, ...noRuleScope, tagFilter })
+    return records
+  }
+
+  it("emits identical ⚠ nodes with no filter and with a filter that excludes every Scenario", () => {
+    // Captured BEFORE either emission, so the second comparison below can see `emitFeature` mutating
+    // the plan it was handed — which it must never do.
+    const warningsBefore = planWithUnused.warnings.map(({ message }) => message)
+
+    const unfilteredRecords = emitWith(noTagFilter)
+    // `@exampletag` is a declared tag that no Scenario in `filtering` carries, so this include-filter
+    // excludes all five without naming any of them.
+    const fullyExcludedRecords = emitWith(makeTagFilter({ includeTags: ["@exampletag"] }))
+
+    // Not vacuous: there IS a warning to compare. Without this line the two empty arrays below would
+    // match each other forever, including under the plan-time filtering this test exists to forbid.
+    assert.strictEqual(warningTitlesOf(unfilteredRecords).length, 1)
+
+    // The warning nodes survive full exclusion, byte for byte. They describe REGISTRATION, not
+    // execution, and a filtered run that dropped them would claim this Feature has no unused
+    // definitions — a different and false statement.
+    assert.deepStrictEqual(warningTitlesOf(fullyExcludedRecords), warningTitlesOf(unfilteredRecords))
+    // And the structured list itself is untouched by either call.
+    assert.deepStrictEqual(planWithUnused.warnings.map(({ message }) => message), warningsBefore)
+  })
+})
+
+/**
+ * `Runner.ts` note (e)'s new conjunct: the `⚙ AfterAllScenarios` node is suppressed exactly when no
+ * runnable Scenario was emitted.
+ *
+ * "Runnable" is both halves — survived the filter AND not `@skip` — because a skipped test's thunk is
+ * never invoked either, so it reaches the `BeforeAllScenarios` once-cell no more than an excluded
+ * Scenario does. All three ways of reaching zero get their own test, because a reader would otherwise
+ * reasonably assume the condition is about tags and guard on the filter alone.
+ */
+describe("the AfterAllScenarios node is suppressed when nothing runnable was emitted (D-09, Pitfall 6)", () => {
+  const afterAllHooks = (): HookSet => hooksWith({ AfterAllScenarios: [recordingHook("afterAll")] })
+
+  it("still emits the node when at least one emitted Scenario is not skipped", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: reserved, definitions: browseIn("Reserved") }),
+      layer,
+      hooks: afterAllHooks(),
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // `skipped one` is skipped; `only one` and `plain one` are not. One runnable Scenario is the
+    // threshold, and this fixture clears it while containing a skipped Scenario — so it also rules out
+    // the wrong reading "suppress whenever ANY Scenario is skipped".
+    assert.deepStrictEqual(titlesOf(records), ["skipped one", "only one", "plain one", "⚙ AfterAllScenarios"])
+  })
+
+  it("suppresses the node when EVERY Scenario is @skip-tagged — the Scenarios still emit", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: allSkipped, definitions: browseIn("All Skipped") }),
+      layer,
+      hooks: afterAllHooks(),
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // Both Scenarios ARE emitted, as skipped tests — that is D-05 and it is unchanged. What is absent
+    // is the teardown node: `BeforeAllScenarios` is a once-cell reached only from inside a Scenario
+    // thunk, and no thunk here will ever be invoked, so it structurally cannot have run.
+    assert.deepStrictEqual(emissionOf(records), [
+      { kind: "describe", name: "All Skipped", depth: 0, tags: null, skip: null },
+      { kind: "effect", name: "skipped one", depth: 1, tags: [skipTag], skip: true },
+      { kind: "effect", name: "skipped two", depth: 1, tags: [skipTag], skip: true }
+    ])
+  })
+
+  it("suppresses the node when EVERY Scenario is filtered out", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: filtering, definitions: browseIn("Filtering") }),
+      layer,
+      hooks: afterAllHooks(),
+      ...noRuleScope,
+      tagFilter: makeTagFilter({ includeTags: ["@exampletag"] })
+    })
+
+    assert.deepStrictEqual(titlesOf(records), [])
+  })
+
+  it("suppresses the node for a Feature that declares no Scenario at all", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      // No definitions: a Feature with no steps to resolve also has no definition that could go
+      // unused, so this recording contains the `describe` and nothing else.
+      plan: planFeature({ feature: emptyFeature, definitions: [] }),
+      layer,
+      hooks: afterAllHooks(),
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // Not a tag case at all, and it falls out of the same conjunct for the same reason — which is why
+    // the condition counts RUNNABLE EMISSIONS rather than inspecting the filter.
+    assert.deepStrictEqual(shapeOf(records), [{ kind: "describe", name: "Empty", depth: 0 }])
+  })
 })
