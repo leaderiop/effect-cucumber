@@ -389,7 +389,7 @@ unconditionally, even when the Outline's own title already differs by interpolat
   3. A Feature containing an `@only`-tagged Scenario passes a CI-mode run (the mode where `.only` fails by design) — proving `@only` is emitted as a plain tag and never `it.effect.only` (RUN-05).
   4. A tag filter selects exactly the tagged Scenarios, and `excludeTags` on `describeFeature`'s options object excludes them (RUN-05; `excludeTags`' exact signature location is decided in this phase — currently unspecified in the spec).
 
-**Plans:** 3/9 plans executed
+**Plans:** 4/9 plans executed
 
 Plans:
 **Wave 1**
@@ -400,7 +400,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-04-PLAN.md — `EmitOptions` on the `TestApi` seam; registration filtering, skip routing and teardown suppression inside `emitFeature`
+- [x] 09-04-PLAN.md — `EmitOptions` on the `TestApi` seam; registration filtering, skip routing and teardown suppression inside `emitFeature`
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -491,7 +491,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
-| 9. Tags | 3/9 | In Progress|  |
+| 9. Tags | 4/9 | In Progress|  |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
