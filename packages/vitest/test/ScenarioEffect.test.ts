@@ -43,6 +43,15 @@
  * - G. the `onExit` moved to wrap only the step loop instead of the whole generator → the
  *      Before-failed-but-After-ran test fails, because the After hook's entries are absent from the
  *      log.
+ * - H. the per-step `onExit` narrowed to wrap only `planned.step.body`, leaving `BeforeStep` outside
+ *      it → the BeforeStep-fails-and-AfterStep-still-ran test fails, because the AfterStep hook's
+ *      entries are absent from the log.
+ * - I. the per-step unit hoisted out of the `for` loop into `Effect.forEach(args.plan.steps, …, {
+ *      concurrency: "unbounded" })` → the four-step (second fails) test fails, because steps three
+ *      and four's hook entries appear in the log despite the second step's failure.
+ * - J. the `AfterStep` batch moved to run before the `BeforeStep` batch inside the per-step unit → the
+ *      one-BeforeStep/one-AfterStep ordering test fails, because the log records the AfterStep hook
+ *      before the step body ever ran.
  *
  * ## The plan values are built here, by hand, and never through `planFeature`
  *
@@ -603,6 +612,190 @@ describe("Before gates the step loop, and After is guaranteed via Effect.onExit"
       // A regression guard: threading `hooks` through `buildScenarioEffect` changes nothing about a
       // Scenario that registers none. Every describe block above this one already exercises this
       // exact shape via `emptyHooks`; this test names the claim explicitly.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "one:end", "two:start", "two:end"])
+    }))
+})
+
+/**
+ * D-05, D-06, D-07's runtime proof — plan 07-05's headline: every resolved step, Background steps
+ * included, runs inside its own `BeforeStep` → body unit, and `AfterStep` is guaranteed across the
+ * WHOLE unit — on success, on the step's own failure, and even when the paired `BeforeStep` itself
+ * failed before the step body ever ran. The `Unresolved` branch stays outside the unit entirely: an
+ * unresolved step never runs, so it gets no hook entries at all.
+ */
+describe("BeforeStep/AfterStep bracket every step, including Background, and AfterStep is guaranteed", () => {
+  it.effect("brackets every step, Background included, with the one BeforeStep/AfterStep pair (ADR-EC-004)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("background", recordingStep("background"), "feature-background"),
+        resolved("one", recordingStep("one")),
+        resolved("two", recordingStep("two"))
+      ])
+      const hooks = hooksWith({ BeforeStep: [recordingHook("before")], AfterStep: [recordingHook("after")] })
+
+      yield* buildScenarioEffect({ plan, layer, hooks })
+
+      // A partitioning implementation that treats the Background step specially fails HERE and
+      // nowhere else — `ParsedScenario.steps` already carries it ahead of the Scenario's own
+      // (ADR-EC-004), so it is wrapped by the identical unit as "one" and "two".
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before:start",
+        "before:end",
+        "background:start",
+        "background:end",
+        "after:start",
+        "after:end",
+        "before:start",
+        "before:end",
+        "one:start",
+        "one:end",
+        "after:start",
+        "after:end",
+        "before:start",
+        "before:end",
+        "two:start",
+        "two:end",
+        "after:start",
+        "after:end"
+      ])
+    }))
+
+  it.effect("runs both BeforeStep hooks then the body then both AfterStep hooks, in registration order (D-01)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({
+        BeforeStep: [recordingHook("before1"), recordingHook("before2")],
+        AfterStep: [recordingHook("after1"), recordingHook("after2")]
+      })
+
+      yield* buildScenarioEffect({ plan, layer, hooks })
+
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before1:start",
+        "before1:end",
+        "before2:start",
+        "before2:end",
+        "one:start",
+        "one:end",
+        "after1:start",
+        "after1:end",
+        "after2:start",
+        "after2:end"
+      ])
+    }))
+
+  it.effect("ends with the failing step's AfterStep, and no later BeforeStep/step/AfterStep runs (D-06)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const boom = { why: "the second step's own error" }
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        resolved("two", failingStep("two", boom)),
+        resolved("three", recordingStep("three")),
+        resolved("four", recordingStep("four"))
+      ])
+      const hooks = hooksWith({ BeforeStep: [recordingHook("before")], AfterStep: [recordingHook("after")] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // THE load-bearing assertion of this test: steps three and four, and their BeforeStep/AfterStep
+      // entries, are entirely absent — the Scenario stopped advancing, and the failing step's own
+      // AfterStep is still the last thing to run.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before:start",
+        "before:end",
+        "one:start",
+        "one:end",
+        "after:start",
+        "after:end",
+        "before:start",
+        "before:end",
+        "two:start",
+        "after:start",
+        "after:end"
+      ])
+    }))
+
+  it.effect("still runs AfterStep when the paired BeforeStep failed, and the step body never ran (D-07)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const boom = { why: "the BeforeStep hook's own error" }
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({ BeforeStep: [failingHook("before", boom)], AfterStep: [recordingHook("after")] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // "one:start" is ABSENT — the step body never ran — and the AfterStep hook's entries are
+      // PRESENT. This is the assertion that discriminates a whole-unit wrap (correct) from a
+      // body-only wrap (mutation H): a body-only wrap would leave this log with no entries at all.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["before:start", "after:start", "after:end"])
+    }))
+
+  it.effect("combines a step's own failure and its AfterStep's failure, by reference identity (D-06)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const stepBoom = { why: "the step's own error" }
+      const afterStepBoom = { why: "the AfterStep hook's own error" }
+      const plan = planOf([resolved("one", failingStep("one", stepBoom))])
+      const hooks = hooksWith({ AfterStep: [failingHook("afterStep", afterStepBoom)] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // Walked STRUCTURALLY via `cause.reasons`, never `Cause.squash`ed — squashing a COMBINED cause
+      // does not return either original error by identity. Both original error objects must stay
+      // recoverable, proving the AfterStep failure does not MASK the step's own.
+      const errors = Exit.isFailure(exit) ? failedErrors(exit.cause) : []
+      assert.strictEqual(errors.length, 2)
+      assert.strictEqual(errors[0], stepBoom)
+      assert.strictEqual(errors[1], afterStepBoom)
+    }))
+
+  it.effect("fails the unresolved step in position with no hook entries for it (the deliberate asymmetry)", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        unresolved("I am not registered anywhere", undefinedStepError),
+        resolved("three", recordingStep("three"))
+      ])
+      const hooks = hooksWith({ BeforeStep: [recordingHook("before")], AfterStep: [recordingHook("after")] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.strictEqual(
+        Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the Scenario unexpectedly succeeded",
+        undefinedStepError
+      )
+      // Step one's hook pair ran; the unresolved step gets NO hook entry at all, and step three never
+      // runs. This pins the deliberate asymmetry from task 1's `isUnresolved` branch — a later "make
+      // it uniform" edit fails this test rather than passing silently.
+      assert.deepStrictEqual(yield* Ref.get(builds[0]!), [
+        "before:start",
+        "before:end",
+        "one:start",
+        "one:end",
+        "after:start",
+        "after:end"
+      ])
+    }))
+
+  it.effect("emits exactly the pre-BeforeStep/AfterStep log when no per-step hooks are registered", () =>
+    Effect.gen(function*() {
+      const { builds, layer } = makeRecording()
+      const plan = planOf([
+        resolved("one", recordingStep("one")),
+        resolved("two", recordingStep("two"))
+      ])
+
+      yield* buildScenarioEffect({ plan, layer, hooks: emptyHooks })
+
+      // The unconditional-wrap regression guard: threading BeforeStep/AfterStep through every step
+      // changes nothing about a Scenario that registers neither.
       assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "one:end", "two:start", "two:end"])
     }))
 })

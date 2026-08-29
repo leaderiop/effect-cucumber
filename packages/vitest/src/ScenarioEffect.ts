@@ -97,6 +97,18 @@
  *     cannot produce that. Plan 07-08 corrects BEH-EC-006's stale text; this module does not compile
  *     against it.
  *
+ * (f) **The `AfterStep` guarantee spans the WHOLE per-step unit, `BeforeStep` included — the identical
+ *     shape note (e) already establishes for `Before`/`After`, one level down.** The plausible tidy-up
+ *     is "wrap only the step body — that is what `AfterStep` means", and it compiles, still passes
+ *     every "did the Scenario fail" assertion, and silently drops the diagnostic hook in the ONE case
+ *     `AfterStep` exists for (D-05): a `BeforeStep` hook that itself fails before the step body ever
+ *     runs (D-07). `test/ScenarioEffect.test.ts`'s BeforeStep-fails-and-AfterStep-still-ran test is
+ *     what goes red. Background steps are wrapped identically to the Scenario's own, because
+ *     `ParsedScenario.steps` already carries them ahead of it (ADR-EC-004, note (c) above) —
+ *     partitioning on `origin` to give them different treatment is forbidden for the same reason note
+ *     (c) already gives for the `Unresolved` verdict. The `isUnresolved` branch stays OUTSIDE this
+ *     unit: an unresolved step never runs, so there is no step for an `AfterStep` to follow.
+ *
  * The three `any`s in `Layer.Layer<any, any, never>` are erased detail rather than a widening of any
  * contract, and the reasoning is `describeFeature.ts`'s verbatim — its `FeatureCollection.layer`
  * carries the identical declaration for the identical reason. `Dsl.ts`'s `StepRegistrar<ROut>` has
@@ -141,9 +153,11 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
  * failure ends the Scenario, because a generator that has failed does not advance. Every `Before`
  * hook runs first, gating the step loop structurally (D-04, note (d)); every `After` hook is
  * guaranteed to run — on success, on a step failure, and even when a `Before` hook itself failed —
- * via `Effect.onExit` wrapped around the whole composed generator (note (e)). The Feature's Layer is
- * supplied around the whole thing, so what comes back requires only `Scope.Scope`, which is precisely
- * what `@effect/vitest`'s `it.effect` supplies and what `TestApi.effect` declares.
+ * via `Effect.onExit` wrapped around the whole composed generator (note (e)). Every resolved step runs
+ * inside its own `BeforeStep` → body unit, guaranteed an `AfterStep` across the whole unit including a
+ * failing `BeforeStep` (D-05/D-06/D-07, note (f)). The Feature's Layer is supplied around the whole
+ * thing, so what comes back requires only `Scope.Scope`, which is precisely what `@effect/vitest`'s
+ * `it.effect` supplies and what `TestApi.effect` declares.
  *
  * The result is UNEXECUTED. `Runner.ts` passes it to `TestApi.effect` as a thunk, and every
  * execution builds the Layer again — note (b).
@@ -174,16 +188,30 @@ export const buildScenarioEffect = (
     // below is the absence of a next iteration, not a check anyone maintains. Note (a).
     for (const planned of args.plan.steps) {
       if (isUnresolved(planned)) {
-        // In position, after the steps before it have already run. Note (c).
+        // In position, after the steps before it have already run. Note (c). NOT part of the
+        // BeforeStep/AfterStep unit below — an unresolved step never runs, so there is no step for
+        // an AfterStep to follow. Note (f).
         return yield* Effect.fail(planned.error)
       }
-      // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at registration time
-      // (ADR-EC-005), and wrapping it again is not a compile error and not a test failure — it is a
-      // duplicated span, which only `Step.ts`'s reference-identity assertion can see.
-      //
-      // `args` is spread positionally and unmodified, `null`s from non-participating optional groups
-      // included: dropping one shifts every later argument by a place.
-      yield* planned.step.body(...planned.step.args)
+      // The per-step unit: BeforeStep, then the step body — one `Effect.gen` of exactly two
+      // `yield*`s — wrapped in `Effect.onExit` so AfterStep is guaranteed across the WHOLE unit,
+      // BeforeStep included, unconditionally (note (f)). The wrap is not narrowed to the step body
+      // alone even when both batches are empty: `runHookBatch([])` succeeds immediately, and a
+      // conditional wrap would create a code path only Features with hooks exercise.
+      yield* Effect.gen(function*() {
+        yield* runHookBatch(args.hooks.BeforeStep)
+        // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at registration time
+        // (ADR-EC-005), and wrapping it again is not a compile error and not a test failure — it is a
+        // duplicated span, which only `Step.ts`'s reference-identity assertion can see.
+        //
+        // `args` is spread positionally and unmodified, `null`s from non-participating optional groups
+        // included: dropping one shifts every later argument by a place.
+        yield* planned.step.body(...planned.step.args)
+      }).pipe(
+        // The finalizer ignores its `exit` argument on purpose, same as note (e)'s Scenario-level
+        // `After`: AfterStep hooks receive no arguments (ADR-EC-005's Negative consequence).
+        Effect.onExit(() => runHookBatch(args.hooks.AfterStep))
+      )
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.
   }).pipe(
