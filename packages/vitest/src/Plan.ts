@@ -100,6 +100,7 @@
  */
 import {
   createStepMatcher,
+  generateStepSnippet,
   type ParsedFeature,
   type ParsedScenario,
   type ParsedStep,
@@ -107,6 +108,7 @@ import {
 } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import { compareCallSites, formatCallSite } from "./CallSite.ts"
 import { StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
 import type { RegistryScopeKind, StepDefinition } from "./Registry.ts"
 
@@ -229,6 +231,40 @@ const at = (uri: string, line: number): string => `${uri}:${line}: `
  */
 const quoted = (value: string): string => JSON.stringify(value)
 
+/** The five registrar names a test author can actually write. */
+const registrarKeywords: ReadonlySet<string> = new Set(["Given", "When", "Then", "And", "But"])
+
+/** The registrar name to fall back on when a step's literal keyword is not one of the five. */
+const registrarKeywordByKeywordType: Readonly<Record<string, string>> = {
+  Context: "Given",
+  Action: "When",
+  Outcome: "Then",
+  Conjunction: "And"
+}
+
+/**
+ * The registrar name a test author would write for this step, for the suggested snippet only.
+ *
+ * The step's own literal keyword is preferred whenever it is one of the five, which covers every
+ * English-language Feature. The `keywordType` fallback exists for the two cases where it cannot be:
+ * a localized Feature, whose keyword reads `Etant donné` or `Angenommen`, and the `*` keyword, which
+ * Gherkin permits anywhere a step keyword goes and which is no registrar's name. `Unknown` — and
+ * anything else a future dialect produces — lands on `Given`, because a suggestion has to name some
+ * registrar and `Given` is the one that reads least wrong in front of an unclassified step.
+ *
+ * ARCHITECTURE.md Anti-Pattern 7 forbids inferring the REPORTED keyword from `keywordType`, because
+ * `And` and `But` collapse into the preceding step's type, so the mapping is lossy and a step
+ * written `And` would be reported as `Given`. This is not that, and the difference is worth being
+ * precise about. Nothing here changes what is reported: `ResolvedStep.keyword` and every message
+ * carry the literal keyword, always. This is a best-effort SUGGESTION, it is consulted ONLY on the
+ * path where the literal keyword provably cannot be a registrar name, and a slightly-wrong registrar
+ * in a snippet the developer is about to paste and edit costs one keystroke.
+ */
+const registrarKeywordOf = (step: ParsedStep): string =>
+  registrarKeywords.has(step.keyword)
+    ? step.keyword
+    : registrarKeywordByKeywordType[step.keywordType] ?? "Given"
+
 /**
  * MATCH-03. A step whose text matched no definition visible to it.
  *
@@ -236,6 +272,13 @@ const quoted = (value: string): string => JSON.stringify(value)
  * form. ADR-EC-019 requires this failure to land in the containing Scenario's Effect error channel;
  * a throw from here would become a vitest COLLECTION error for the whole file, taking every other
  * Scenario down with it, which is the exact regression that ADR exists to prevent.
+ *
+ * The suggestion is 06-CONTEXT.md D-01, and it is generated against `feature.parameterTypes` so a
+ * custom parameter type the author registered is generalised alongside the built-ins. It is embedded
+ * in the message WHOLE: no truncation, no elision, no summary. `Errors.ts` note (d) locks that
+ * policy for every message in this package, and it is doubly binding here, because a snippet that
+ * has been shortened is no longer copy-pasteable and being copy-pasteable is the only property it
+ * has.
  */
 const undefinedStep = (args: {
   readonly feature: ParsedFeature
@@ -243,6 +286,19 @@ const undefinedStep = (args: {
   readonly step: ParsedStep
 }): StepMatchError => {
   const { feature, scenario, step } = args
+  const suggestion = generateStepSnippet({
+    keyword: registrarKeywordOf(step),
+    text: step.text,
+    registry: feature.parameterTypes
+  })
+  const sentences = [
+    `the step ${quoted(step.text)} in Scenario ${quoted(scenario.name)} matched none of the step`,
+    "definitions visible to it.",
+    "An unmatched step cannot run, so this Scenario fails rather than passing with a step that",
+    "silently did nothing.",
+    "Register a definition for it:",
+    suggestion
+  ]
   return new StepMatchError({
     reason: "UndefinedStep",
     uri: feature.uri,
@@ -250,9 +306,8 @@ const undefinedStep = (args: {
     stepText: step.text,
     scenarioName: scenario.name,
     matchedPatterns: [],
-    suggestion: Option.none(),
-    message: `${at(feature.uri, step.line)}UndefinedStep: the step ${quoted(step.text)} in Scenario `
-      + `${quoted(scenario.name)} matched none of the step definitions visible to it.`,
+    suggestion: Option.some(suggestion),
+    message: `${at(feature.uri, step.line)}UndefinedStep: ${sentences.join(" ")}`,
     cause: Option.none()
   })
 }
@@ -260,7 +315,22 @@ const undefinedStep = (args: {
 /**
  * MATCH-04. A step whose text matched more than one definition at the same scope level.
  *
- * Returns rather than throws, for `undefinedStep`'s reason.
+ * Returns rather than throws, for `undefinedStep`'s reason. No suggestion: the patterns already
+ * exist, and suggesting a new one would be actively wrong.
+ *
+ * The list is ordered by DEFINITION SITE — `compareCallSites` over each definition's `definedAt` —
+ * and deliberately not alphabetically by pattern and not by registration order (06-CONTEXT.md D-03).
+ * The list's job is to point the reader at the places to go and reconcile, so it is sorted by where
+ * those places ARE. Alphabetical order would scatter two neighbouring registrations to opposite ends
+ * of the list; registration order would make the message itself change under an unrelated refactor,
+ * which is the very defect this error exists to report, and it would make the error's own output
+ * depend on which module vitest happened to import first. A definition whose site was not captured
+ * sorts last and renders in words rather than as an empty `:` pair.
+ *
+ * `toSorted` and not the mutating in-place form: `unicorn(no-array-sort)` rejects that one, and
+ * `packages/gherkin/src/StepArguments.ts` is the in-repo precedent for the non-mutating spelling.
+ * The comparator is `CallSite.ts`'s and not a comparison over `formatCallSite`'s output, which would
+ * be the tempting one-liner and which puts line 10 before line 9.
  */
 const ambiguousStep = (args: {
   readonly feature: ParsedFeature
@@ -269,16 +339,31 @@ const ambiguousStep = (args: {
   readonly matches: ReadonlyArray<StepDefinition<StepBody>>
 }): StepMatchError => {
   const { feature, matches, scenario, step } = args
+  const ordered = matches.toSorted((left, right) => compareCallSites(left.definedAt, right.definedAt))
+  const sites = ordered.map((definition) =>
+    `${quoted(definition.pattern)} was registered as a ${definition.keyword} at `
+    + `${formatCallSite(definition.definedAt)}.`
+  )
+  const sentences = [
+    `the step ${quoted(step.text)} in Scenario ${quoted(scenario.name)} matched ${ordered.length} step`,
+    "definitions, all registered at the same scope, listed here in definition-site order.",
+    ...sites,
+    "Resolving this by registration order would make the step's argument types and behaviour depend",
+    "on the order the definitions happen to be written in, so an unrelated refactor that reorders two",
+    "registrations would silently change what this test asserts:",
+    "`I have {int} apples` and `I have {word} apples` both match `I have 5 apples`, yielding the",
+    "number 5 from one and the string \"5\" from the other.",
+    "Delete all but one of them, or narrow their patterns so only one can match this step."
+  ]
   return new StepMatchError({
     reason: "AmbiguousStep",
     uri: feature.uri,
     line: Option.some(step.line),
     stepText: step.text,
     scenarioName: scenario.name,
-    matchedPatterns: matches.map((definition) => definition.pattern),
+    matchedPatterns: ordered.map((definition) => definition.pattern),
     suggestion: Option.none(),
-    message: `${at(feature.uri, step.line)}AmbiguousStep: the step ${quoted(step.text)} in Scenario `
-      + `${quoted(scenario.name)} matched ${matches.length} step definitions.`,
+    message: `${at(feature.uri, step.line)}AmbiguousStep: ${sentences.join(" ")}`,
     cause: Option.none()
   })
 }
