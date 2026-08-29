@@ -11,7 +11,7 @@
  * [ADR-EC-016](../../../spec/decisions/016-effect-tsgo-language-service-plugin.md) is the gate that
  * keeps the enforcement honest.
  *
- * Five things about this module are not visible from the code, and every one of them shares a
+ * Six things about this module are not visible from the code, and every one of them shares a
  * failure mode: the broken form still compiles, still rejects the negative case, and still leaves
  * every test in this repo green. There is no loud signal for any of them. Each note therefore names
  * the plausible tidy-up that would cause it.
@@ -66,9 +66,19 @@
  *     are wrong. `unknown[]` does not accept a generator's inferred parameter tuple cleanly, and a
  *     vacuous `any` yield type makes a step requiring an unprovided service compile clean, exit 0 —
  *     INV-EC-003 becomes decorative under the spec's own text (RESEARCH.md Finding 4, reproduced).
- *     Do not copy BEH-EC-003 as written; plan 05-06 corrects the spec to match this file. The one
- *     `any` below is the ONLY one permitted in this module: one `any` anywhere in a step body's
- *     declared type is assignable to everything and disables the whole guarantee.
+ *     Do not copy BEH-EC-003 as written; plan 05-06 corrects the spec to match this file. That
+ *     `Params` constraint is the ONLY `any` permitted anywhere in a STEP OR HOOK BODY's declared
+ *     type: one more `any` in that position is assignable to everything and disables the whole
+ *     guarantee.
+ *
+ *     The `any` in `Layer.Layer<R2, E2, any>` — the `extraLayer` parameter of `FeatureDsl.Rule` and
+ *     of `ScenarioRegistrar`'s three-argument signature — is a DIFFERENT position and is not covered
+ *     by that prohibition. It sits in a Layer's `RIn` (what the Layer itself still needs), not in a
+ *     body's required context, and it is what lets an extra Layer be built on top of the ambient one
+ *     rather than only alongside it — ADR-EC-010 requires exactly that ("`extraLayer` can itself
+ *     depend on ambient services"). Narrowing it to `never` would reject the ADR's own worked
+ *     example; widening a body's `ROut` to `any` would silently delete INV-EC-003. Do not conflate
+ *     the two by "making the `any` policy consistent."
  *
  * (e) **`R` is bound to the enclosing `describeFeature`'s `ROut` through `StepRegistrar<ROut>`; it
  *     is not a free type parameter of the registrar's call signature.** A per-call-site `R` would
@@ -78,17 +88,43 @@
  *     the call signature's type parameter list. 07-CONTEXT.md's canonical_refs says this reasoning
  *     "applies to hooks too" — `HookRegistrar<ROut>` binds `R` the identical way.
  *
- * (f) **The six hook members (`Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios`,
- *     `AfterAllScenarios`) live on `FeatureDsl` ONLY, and nowhere else.** The plausible tidy-up is
- *     "make the containers consistent" — lifting a hook member onto `ScenarioDsl` so a `Scenario`
- *     could register its own `Before`. `FeatureDsl extends ScenarioDsl`, so a hook member added to
- *     `ScenarioDsl` would silently leak into every `Scenario(...)` container callback and into
- *     `BackgroundDsl`'s siblings — a leak the type system does not object to on its own. The
- *     behavioral proof is plan 07-03's `test/tsgo-gate/src/hook-satisfied.ts`, which carries a
+ *     `ScenarioRegistrar`'s three-argument signature and `FeatureDsl.Rule` both introduce a
+ *     per-call-site `R2`, and that is NOT the trap this note warns about. `R2` is inferred from an
+ *     argument the author writes (`extraLayer`), so it is pinned by a real value the way `Params`
+ *     already is, and it UNIONS with `ROut` (`ScenarioDsl<ROut | R2>`) rather than replacing it —
+ *     `ROut` stays bound to the enclosing `describeFeature`, so nothing the ambient Layer guarantees
+ *     is given up. The vacuous-generic trap is a type parameter inferred from the BODY's own needs,
+ *     which is what a per-call-site `R` in the step position would be. Do not "fix" `R2` by hoisting
+ *     it onto the interface, and do not read this paragraph as licence to hoist `R`.
+ *
+ * (f) **No hook member appears on `ScenarioDsl` or `BackgroundDsl`, ever. Four of the six appear on
+ *     `RuleDsl` as well as `FeatureDsl`; the other two are Feature-only.** Two separate rules live
+ *     here, and only the first is a guard:
+ *
+ *     The guard: `FeatureDsl extends ScenarioDsl` and `RuleDsl extends ScenarioDsl`, so a hook
+ *     member added to `ScenarioDsl` would silently leak into every `Scenario(...)` container
+ *     callback and into `BackgroundDsl`'s siblings — a leak the type system does not object to on
+ *     its own, arrived at by the plausible tidy-up "make the containers consistent." The behavioral
+ *     proof is plan 07-03's `test/tsgo-gate/src/hook-satisfied.ts`, which carries a
  *     `@ts-expect-error` directive on a `Scenario` callback reaching for `Before`: a leak turns that
  *     directive into an unused-directive error, which fails `verify-tsgo-gate.sh`'s gate assertion
- *     10. Hooks are Feature-scoped only — 07-CONTEXT.md's Phase Boundary is explicit that there is no
- *     Rule-scoped or Scenario-scoped hook narrowing in this roadmap.
+ *     10. That argument is unchanged and still fully binding. Hooks are declared as SIBLINGS of the
+ *     five step registrars on each container that has them, never spread into `ScenarioDsl`.
+ *
+ *     The placement, which is NOT a guard: `Before`, `After`, `BeforeStep` and `AfterStep` are on
+ *     `RuleDsl` too, deliberately and by design — ADR-EC-010 makes exactly those four Rule-scopeable
+ *     (a hook declared inside a `Rule`'s dsl applies only to Scenarios within that Rule), and
+ *     08-CONTEXT.md's D-02 fixes their ordering relative to the Feature's own. This is new
+ *     capability, not a leak the type system failed to prevent. `BeforeAllScenarios` and
+ *     `AfterAllScenarios` remain on `FeatureDsl` ONLY: ADR-EC-010's Rule-scopeable list does not
+ *     include them, and "once per Feature" (07-CONTEXT.md's D-08/D-09) does not narrow to "once per
+ *     Rule" without its own design pass. Do not add them to `RuleDsl` for symmetry, and do not
+ *     delete the four from `RuleDsl` on the strength of this note's older Feature-only wording.
+ *
+ *     Plan 08-06's tsgo-gate fixture pair is this half's behavioral proof, mirroring exactly how
+ *     07-03's pair proved the original six-on-`FeatureDsl`-only claim: a satisfied fixture using a
+ *     Rule-scoped `Before`, and a `@ts-expect-error` on a `RuleDsl` callback reaching for
+ *     `BeforeAllScenarios`.
  *
  * This module contains types only: no `const`, no function, no runtime value at all. Both imports
  * are `import type`, so the emitted `dist/Dsl.js` carries zero statements. If a runtime statement
@@ -101,6 +137,7 @@
  * (RESEARCH.md Finding 8, "Variance context").
  */
 import type * as Effect from "effect/Effect"
+import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 
 /**
@@ -189,8 +226,81 @@ export interface BackgroundDsl<ROut> {
 }
 
 /**
+ * One `Scenario(...)` container declaration, in either of the two forms ADR-EC-010 documents:
+ * `Scenario(name, define)` and `Scenario(name, extraLayer, define)`.
+ *
+ * TWO CALL SIGNATURES on one object, not a union of two function types on a `readonly` property.
+ * The distinction is load-bearing and is the same one `StepRegistrar` is a callable interface for:
+ * a union does not give overload resolution across a VARYING ARGUMENT COUNT — the checker picks a
+ * member and reports against it, so a correct three-argument call is reported against the
+ * two-argument member ("Expected 2 arguments, but got 3") and the author is told the extra Layer
+ * form does not exist. Multiple call signatures on one object type is the construct that actually
+ * resolves by arity.
+ *
+ * The two-argument signature is FIRST and is byte-for-byte the shape `FeatureDsl.Scenario` had
+ * before this type existed. That is deliberate: it is the overwhelmingly common form, TypeScript
+ * resolves overloads top-down, and keeping it first and unchanged is what lets every existing
+ * `Scenario("...", (dsl) => {...})` call site in this repo keep compiling with no edit.
+ *
+ * The extra Layer is genuinely OPTIONAL — two signatures — rather than always-required-but-possibly
+ * `Layer.empty`. That is the opposite of the call `describeFeature`'s `{ shared, perScenario }`
+ * object makes (05-CONTEXT.md's D-03), and the reason the two differ is that D-03's required key
+ * documents something: `shared` and `perScenario` MAY name the same service, and which one wins is a
+ * precedence rule the author needs forced in front of them. `Scenario` has no second slot and so no
+ * collision to disclose; an always-required `Layer.empty` here would document nothing, buy no
+ * compile-time guarantee, and tax every ordinary Scenario with ceremony.
+ *
+ * `extraLayer` is always per-Scenario scope, built fresh for every Scenario, on the same lifecycle
+ * as the Feature's default Layer (ADR-EC-010, ADR-EC-006) — there is no third "shared" tier hiding
+ * in the three-argument form. `R2` is per-call-site and unions with `ROut`; see note (e).
+ */
+export interface ScenarioRegistrar<ROut> {
+  /** The two-argument form. Unchanged from before this interface existed — no call site needs an edit. */
+  (name: string, define: (dsl: ScenarioDsl<ROut>) => void): void
+  /** The three-argument form: `extraLayer` extends the ambient Layer for THIS Scenario only. */
+  <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: ScenarioDsl<ROut | R2>) => void): void
+}
+
+/**
+ * The dsl a `Rule(name, extraLayer, define)` callback receives — `ScenarioDsl`'s five registrars for
+ * steps declared at Rule level, plus this Rule's own `Background` and `Scenario` containers and the
+ * four hooks ADR-EC-010 scopes to a Rule.
+ *
+ * `extends ScenarioDsl<ROut>` mirrors `FeatureDsl<ROut>` rather than restating the five registrars:
+ * a Rule is a step-definition container in the same sense a Feature is, and a `Given` means the same
+ * thing at both levels. Nothing about a Rule argues for a fresh interface, so this follows the
+ * established extension precedent.
+ *
+ * The `ROut` here is NOT the Feature's `ROut`. `FeatureDsl.Rule` instantiates it as `ROut | R2` —
+ * the Feature's ambient services unioned with what the Rule's `extraLayer` contributes — which is
+ * the whole compile-time boundary INV-EC-005 asks for: a step written inside this callback may use
+ * the extra service, and the identical step written outside it cannot. The runtime merge
+ * (`Layer.provideMerge(ambient)(extraLayer)`, ADR-EC-010) belongs to `describeFeature.ts`; this file
+ * only spells the boundary.
+ *
+ * `Background` reuses `BackgroundDsl<ROut>` verbatim rather than introducing a Rule-flavoured copy
+ * (D-04). The `Given`/`And`-only omission note (c) documents is a Gherkin grammar restriction, and
+ * the grammar does not change one nesting level down; a second interface with identical members
+ * would be a synonym, not a distinction.
+ *
+ * There is deliberately no `BeforeAllScenarios` and no `AfterAllScenarios` — note (f).
+ */
+export interface RuleDsl<ROut> extends ScenarioDsl<ROut> {
+  // `Background` and `Scenario` are the `FeatureDsl` members' shapes verbatim — a Rule is a
+  // step-definition container on identical terms, and D-04 asks for no new type.
+  readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
+  readonly Scenario: ScenarioRegistrar<ROut>
+  // Exactly the four hooks ADR-EC-010 scopes to a Rule, and no others — note (f). The Feature's own
+  // hooks of the same kind still apply to every Scenario in here; these nest inside them (D-02).
+  readonly Before: HookRegistrar<ROut>
+  readonly After: HookRegistrar<ROut>
+  readonly BeforeStep: HookRegistrar<ROut>
+  readonly AfterStep: HookRegistrar<ROut>
+}
+
+/**
  * The dsl `describeFeature` hands its define callback: `ScenarioDsl`'s five registrars for steps
- * declared at Feature level, plus the two containers.
+ * declared at Feature level, plus the containers.
  *
  * Both container callbacks return `void`, never `void | Promise<void>`. An async define callback
  * would return before registering anything, and the Feature would emit zero tests while passing —
@@ -206,12 +316,37 @@ export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
    */
   readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
   /**
-   * Declare the step definitions for the Scenario named `name`.
+   * Declare the step definitions for the Scenario named `name`, optionally extending the ambient
+   * Layer with an extra Layer visible only inside this one Scenario (ADR-EC-010).
    *
-   * Receives a full `ScenarioDsl<ROut>`. The `ROut` is the same one the Feature was given, so a
-   * registrar destructured here shadows the outer one without changing what it accepts.
+   * The callback receives a full `ScenarioDsl<ROut>` — or `ScenarioDsl<ROut | R2>` in the
+   * three-argument form. In the two-argument form the `ROut` is the same one the Feature was given,
+   * so a registrar destructured here shadows the outer one without changing what it accepts.
    */
-  readonly Scenario: (name: string, define: (dsl: ScenarioDsl<ROut>) => void) => void
+  readonly Scenario: ScenarioRegistrar<ROut>
+  /**
+   * Declare the step definitions for the Rule named `name`, extending the ambient Layer with
+   * `extraLayer` for the Scenarios inside it — BEH-EC-009.
+   *
+   * The callback receives a `RuleDsl<ROut | R2>`, and that union is the point: a step written in
+   * here may use both the Feature's ambient services (`ROut`) and the ones `extraLayer` contributes
+   * (`R2`), while the identical step written at Feature level or inside a different Rule still only
+   * sees `ROut` and fails to compile. That is INV-EC-005 as a type, not a convention.
+   *
+   * `R2` and `E2` are per-call-site because they genuinely vary per Rule, exactly as `Params`/`A`/`E`
+   * do for `StepRegistrar`; `ROut` stays bound to the enclosing `describeFeature` and is unioned
+   * with, never replaced by, `R2` — note (e). `extraLayer`'s own `RIn` is `any` so a Rule Layer may
+   * build on top of ambient services rather than only alongside them, which ADR-EC-010 requires —
+   * note (d) on why that `any` is a different position from a step body's.
+   *
+   * A sibling of `Background`/`Scenario`, never spread into `ScenarioDsl`, for the identical leak
+   * reason note (f) gives for the hooks.
+   */
+  readonly Rule: <R2, E2>(
+    name: string,
+    extraLayer: Layer.Layer<R2, E2, any>,
+    define: (dsl: RuleDsl<ROut | R2>) => void
+  ) => void
   /** Register a hook that runs before each Scenario, after any `BeforeAllScenarios` hooks. */
   readonly Before: HookRegistrar<ROut>
   /** Register a hook that runs after each Scenario, whether it succeeded or failed. */
