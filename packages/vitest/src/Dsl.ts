@@ -29,6 +29,12 @@
  *     and do not collapse them onto one line in a way that obscures which is first. The behavioral
  *     proof lives in `test/tsgo-gate/` — a reorder must make that fixture's assertion fail.
  *
+ *     This rule now has THREE copies in the repo — this file, `Step.ts`'s `register`, and `Hook.ts`'s
+ *     `registerHook` — and `HookRegistrar` below is what proves the rule for hooks: plan 07-03's
+ *     `test/tsgo-gate/src/hook-missing-service.ts` fixture is the behavioral proof that a hook
+ *     reaching for an unprovided service is rejected FOR THE RIGHT REASON, the same way the existing
+ *     step fixtures prove it for `StepRegistrar`. If you change one copy, change all three.
+ *
  * (b) **`Scope.Scope` appears ONLY in the step function's required-context position, as
  *     `ROut | Scope.Scope`.** It must not appear on `FeatureDsl`, `ScenarioDsl`, `BackgroundDsl`, or
  *     on any Layer type. `ROut` is exactly the ambient Layer's output — the thing the test author
@@ -69,7 +75,20 @@
  *     infer to whatever the body happens to need and constrain nothing — the vacuous-generic trap.
  *     `Params`, `A` and `E` are per-call-site because they genuinely vary per step; `ROut` is not,
  *     because it is the property being enforced. Do not "make it symmetric" by hoisting `R` into
- *     the call signature's type parameter list.
+ *     the call signature's type parameter list. 07-CONTEXT.md's canonical_refs says this reasoning
+ *     "applies to hooks too" — `HookRegistrar<ROut>` binds `R` the identical way.
+ *
+ * (f) **The six hook members (`Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios`,
+ *     `AfterAllScenarios`) live on `FeatureDsl` ONLY, and nowhere else.** The plausible tidy-up is
+ *     "make the containers consistent" — lifting a hook member onto `ScenarioDsl` so a `Scenario`
+ *     could register its own `Before`. `FeatureDsl extends ScenarioDsl`, so a hook member added to
+ *     `ScenarioDsl` would silently leak into every `Scenario(...)` container callback and into
+ *     `BackgroundDsl`'s siblings — a leak the type system does not object to on its own. The
+ *     behavioral proof is plan 07-03's `test/tsgo-gate/src/hook-satisfied.ts`, which carries a
+ *     `@ts-expect-error` directive on a `Scenario` callback reaching for `Before`: a leak turns that
+ *     directive into an unused-directive error, which fails `verify-tsgo-gate.sh`'s gate assertion
+ *     10. Hooks are Feature-scoped only — 07-CONTEXT.md's Phase Boundary is explicit that there is no
+ *     Rule-scoped or Scenario-scoped hook narrowing in this roadmap.
  *
  * This module contains types only: no `const`, no function, no runtime value at all. Both imports
  * are `import type`, so the emitted `dist/Dsl.js` carries zero statements. If a runtime statement
@@ -106,6 +125,33 @@ export interface StepRegistrar<ROut> {
     fn:
       | ((...p: Params) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
       | ((...p: Params) => Effect.Effect<A, E, ROut | Scope.Scope>)
+  ): void
+}
+
+/**
+ * One hook — `Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios` or
+ * `AfterAllScenarios` — as the test author calls it.
+ *
+ * A callable interface rather than a type alias for a function, for the identical reason
+ * `StepRegistrar<ROut>` is one — note (e): the call signature is generic per CALL SITE in `A`/`E`
+ * while `ROut` stays fixed by the enclosing `describeFeature`. Unlike `StepRegistrar`, there is no
+ * `Params` and no `pattern`: a hook takes no arguments (ADR-EC-005's Negative consequence —
+ * `BeforeStep`/`AfterStep` do not receive the step), so this interface contains no `any` at all.
+ */
+export interface HookRegistrar<ROut> {
+  /**
+   * Register `fn` as one more hook body of this kind. Two or more registrations of the same kind
+   * run in registration order (D-01), never sorted.
+   *
+   * `fn` may be a bare generator function (auto-wrapped with `Effect.fn(kind)` — ADR-EC-005) or an
+   * already-wrapped function returning an Effect. `Hook.ts`'s `registerHook` tells them apart.
+   *
+   * The generator branch MUST stay first — note (a).
+   */
+  <A, E>(
+    fn:
+      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
+      | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
   ): void
 }
 
@@ -166,4 +212,16 @@ export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
    * registrar destructured here shadows the outer one without changing what it accepts.
    */
   readonly Scenario: (name: string, define: (dsl: ScenarioDsl<ROut>) => void) => void
+  /** Register a hook that runs before each Scenario, after any `BeforeAllScenarios` hooks. */
+  readonly Before: HookRegistrar<ROut>
+  /** Register a hook that runs after each Scenario, whether it succeeded or failed. */
+  readonly After: HookRegistrar<ROut>
+  /** Register a hook that runs before each step, Background steps included. */
+  readonly BeforeStep: HookRegistrar<ROut>
+  /** Register a hook that runs after each step, even when the step failed. */
+  readonly AfterStep: HookRegistrar<ROut>
+  /** Register a hook that runs once, before any Scenario in this Feature. */
+  readonly BeforeAllScenarios: HookRegistrar<ROut>
+  /** Register a hook that runs once, after every Scenario in this Feature, always. */
+  readonly AfterAllScenarios: HookRegistrar<ROut>
 }

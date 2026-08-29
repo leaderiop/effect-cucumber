@@ -79,7 +79,9 @@ import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import { describe, it } from "@effect/vitest"
 import * as Layer from "effect/Layer"
 import { captureCallSite } from "./CallSite.ts"
-import type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+import type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
+import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
 // is imported FROM there INTO this module, so an edge pointing back the other way would be an
 // `import/no-cycle` violation and a `pnpm circular` failure. See that module's closing paragraph.
@@ -122,6 +124,19 @@ export type FeatureCollection = {
    * stage adds its own field at the join seam rather than a later stage recomputing it.
    */
   readonly plan: FeaturePlan
+  /**
+   * Every registered hook, grouped by kind and in registration order within each kind (D-01).
+   *
+   * REQUIRED, not optional — same reasoning as `ParsedFeature.parameterTypes` (03-05's recorded
+   * decision): an optional field would let a later consumer forget hooks exist. Grouped HERE, in the
+   * shared `collect` implementation, for the same reason planning happens here rather than being
+   * duplicated in `describeFeature`'s own body: `describeFeature` and `collectFeature` must not
+   * drift into two behaviours.
+   *
+   * Collected only — nothing consumes this field yet. Plan 07-04 threads it into `ScenarioEffect.ts`
+   * and `Runner.ts`; the emission stage's own entry point is untouched by this plan.
+   */
+  readonly hooks: HookSet
 }
 
 /**
@@ -164,6 +179,12 @@ const collect = (
   // two Features in one file resolve each other's steps, and no content assertion can see it.
   const registry = createRegistry<StepBody>(feature.name)
 
+  // ONE fresh hook registry per invocation, for the identical reason — HookRegistry.ts note (a)'s
+  // Pitfall 14 argument applies unchanged. Never hoisted to module scope, never memoised: two
+  // `describeFeature` calls in one file sharing a hook store would make the second Feature run the
+  // first Feature's `Before` hooks.
+  const hookRegistry = createHookRegistry<HookBody>()
+
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
   // it under the scope that is current right now, together with where the author wrote it. The
@@ -178,6 +199,19 @@ const collect = (
     // suite. That defect compiles, type-checks, lints, and produces a perfectly well-formed site —
     // it just names `describeFeature.ts` in the ambiguous-step error D-03 exists to make readable.
     registry.register(keyword, pattern, register(pattern, fn), captureCallSite())
+  }
+
+  // Mirrors `registrar` above, minus `pattern` and minus a call-site capture. The body is normalised
+  // through `Hook.ts`'s `registerHook` at REGISTRATION time, exactly as a step body is normalised
+  // through `Step.ts`'s `register` — so nothing downstream ever re-wraps it, and a hook already
+  // wrapped by the author keeps its single span.
+  //
+  // No `captureCallSite()` call here, deliberately: `HookRegistry.ts` note (e) gave `HookDefinition`
+  // no `definedAt` field, because ADR-EC-005's named span (`Effect.fn(kind)`) is the attribution
+  // channel for a hook failure. Capturing a site nothing downstream reads would be the "say only
+  // what is true" violation AGENTS.md §4 names.
+  const hookRegistrar = (kind: HookKind): HookRegistrar<any> => (fn) => {
+    hookRegistry.register(kind, registerHook(kind, fn))
   }
 
   const scenarioDsl: ScenarioDsl<any> = {
@@ -212,7 +246,16 @@ const collect = (
       } finally {
         registry.popScope()
       }
-    }
+    },
+    // Siblings of `Background`/`Scenario`, NOT spread into `scenarioDsl` — `scenarioDsl` is the same
+    // object handed to every `Scenario(...)` callback and to `backgroundDsl`, and a hook member there
+    // would leak into both (Dsl.ts note (f)).
+    Before: hookRegistrar("Before"),
+    After: hookRegistrar("After"),
+    BeforeStep: hookRegistrar("BeforeStep"),
+    AfterStep: hookRegistrar("AfterStep"),
+    BeforeAllScenarios: hookRegistrar("BeforeAllScenarios"),
+    AfterAllScenarios: hookRegistrar("AfterAllScenarios")
   }
 
   define(dsl)
@@ -228,7 +271,12 @@ const collect = (
     feature,
     layer: normalizeLayer(layer),
     definitions,
-    plan: planFeature({ feature, definitions })
+    plan: planFeature({ feature, definitions }),
+    // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
+    // the `hooks` field's own doc comment on `FeatureCollection`. Plan 07-04 is what threads this
+    // into the emission stage; the call inside `describeFeature`'s own body below is untouched by
+    // this plan.
+    hooks: groupHooks(hookRegistry.hooks())
   }
 }
 

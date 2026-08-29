@@ -38,7 +38,7 @@
  *   registrar that captures its own frame inside `src/describeFeature.ts`, which is the actual
  *   defect and the one nothing else in the repo can see.
  *
- * Mutation-tested (all four performed, then reverted, all four confirmed failing) — see the plan
+ * Mutation-tested (all six performed, then reverted, all six confirmed failing) — see the plan
  * summary for the recorded output:
  * - A. `createRegistry` hoisted to module scope → the cross-contamination test fails.
  * - B. `Layer.merge`'s two arguments swapped → the D-04 test fails.
@@ -49,6 +49,9 @@
  *      test in `test/emission.test.ts` reports zero tests and fails. Recorded here because it is the
  *      defect this file structurally cannot see, and a reader who assumed otherwise would stop
  *      looking.
+ * - E. `hookRegistry` hoisted to module scope → the two-collections hook isolation test fails.
+ * - F. the six hook members spread into `scenarioDsl` instead of left as `dsl` siblings → the
+ *      Scenario-callback-has-no-`Before`-key assertion fails.
  *
  * ## The `ParsedFeature` argument
  *
@@ -254,7 +257,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 259
+    const givenLine = 262
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -393,5 +396,118 @@ describe("the collection carries the plan the definitions were joined into", () 
     expect(tagsOf(first.plan.scenarios[0]?.steps ?? [])).toEqual(
       tagsOf(second.plan.scenarios[0]?.steps ?? [])
     )
+  })
+})
+
+describe("the collection carries every registered hook, grouped by kind", () => {
+  it("registers all six kinds and lands each one under its own kind", () => {
+    const collected = collectFeature(
+      feature,
+      Layer.empty,
+      ({ After, AfterAllScenarios, AfterStep, Before, BeforeAllScenarios, BeforeStep }) => {
+        Before(noop)
+        After(noop)
+        BeforeStep(noop)
+        AfterStep(noop)
+        BeforeAllScenarios(noop)
+        AfterAllScenarios(noop)
+      }
+    )
+
+    expect(collected.hooks.Before).toHaveLength(1)
+    expect(collected.hooks.After).toHaveLength(1)
+    expect(collected.hooks.BeforeStep).toHaveLength(1)
+    expect(collected.hooks.AfterStep).toHaveLength(1)
+    expect(collected.hooks.BeforeAllScenarios).toHaveLength(1)
+    expect(collected.hooks.AfterAllScenarios).toHaveLength(1)
+  })
+
+  it("keeps two Before hooks in registration order (D-01), by reference identity", () => {
+    // Already-wrapped bodies, not bare generators: `registerHook` returns an already-wrapped body
+    // BY IDENTITY (it delegates to `Step.ts`'s `register`), so each of these two survives
+    // registration as the exact same reference — which is what lets this assertion discriminate on
+    // ORDER rather than merely on length. Two bare generators would each be wrapped into a NEW
+    // function, and reference identity would prove nothing.
+    const first = Effect.fn("first Before")(function*() {
+      yield* Effect.void
+    })
+    const second = Effect.fn("second Before")(function*() {
+      yield* Effect.void
+    })
+
+    const collected = collectFeature(feature, Layer.empty, ({ Before }) => {
+      Before(first)
+      Before(second)
+    })
+
+    // THE load-bearing order assertion — reference identity in position, not just a length-2 check.
+    expect(collected.hooks.Before[0]).toBe(first)
+    expect(collected.hooks.Before[1]).toBe(second)
+  })
+
+  it("reports an empty array, not an absent key, for a kind nobody registered", () => {
+    const collected = collectFeature(feature, Layer.empty, () => {})
+
+    // All six keys present even though nothing was registered — HookSet's own contract.
+    expect(collected.hooks).toHaveProperty("Before")
+    expect(collected.hooks).toHaveProperty("After")
+    expect(collected.hooks).toHaveProperty("BeforeStep")
+    expect(collected.hooks).toHaveProperty("AfterStep")
+    expect(collected.hooks).toHaveProperty("BeforeAllScenarios")
+    expect(collected.hooks).toHaveProperty("AfterAllScenarios")
+    expect(collected.hooks.Before).toHaveLength(0)
+    expect(collected.hooks.After).toHaveLength(0)
+    expect(collected.hooks.BeforeStep).toHaveLength(0)
+    expect(collected.hooks.AfterStep).toHaveLength(0)
+    expect(collected.hooks.BeforeAllScenarios).toHaveLength(0)
+    expect(collected.hooks.AfterAllScenarios).toHaveLength(0)
+  })
+
+  it("shares no hook state between two collectFeature calls in one test", () => {
+    const first = collectFeature(feature, Layer.empty, ({ Before }) => {
+      Before(noop)
+    })
+    const second = collectFeature(feature, Layer.empty, () => {})
+
+    // THE load-bearing isolation assertion — mutation E fails it. Reference inequality between the
+    // two `hooks` objects proves nothing on its own (see the analogous step-registry note above);
+    // the second call's Before array being non-empty is the only thing a hoisted hookRegistry
+    // cannot hide from.
+    expect(first.hooks.Before).toHaveLength(1)
+    expect(second.hooks.Before).toHaveLength(0)
+  })
+
+  it("reaches collection.hooks by reference identity for an already-Effect.fn-wrapped hook", () => {
+    const alreadyWrapped = Effect.fn("my own Before span")(function*() {
+      yield* Effect.void
+    })
+
+    const collected = collectFeature(feature, Layer.empty, ({ Before }) => {
+      Before(alreadyWrapped)
+    })
+
+    // The registration path normalises once and does not re-wrap: `registerHook` delegates to
+    // `Step.ts`'s `register`, which returns an already-wrapped function BY IDENTITY.
+    expect(collected.hooks.Before[0]).toBe(alreadyWrapped)
+  })
+
+  it("gives a Scenario callback's dsl no Before key at runtime", () => {
+    let scenarioDslKeys: ReadonlyArray<string> = []
+
+    collectFeature(feature, Layer.empty, ({ Scenario }) => {
+      Scenario("checkout", (dsl) => {
+        scenarioDslKeys = Object.keys(dsl)
+      })
+    })
+
+    // The type-level half of this claim is covered by Task 1 (HookRegistrar only on FeatureDsl) and
+    // by plan 07-03's `@ts-expect-error` fixture. This is the runtime half: mutation F (spreading
+    // the six hook members into `scenarioDsl`) makes this assertion fail.
+    expect(scenarioDslKeys).not.toContain("Before")
+    expect(scenarioDslKeys).not.toContain("After")
+    expect(scenarioDslKeys).not.toContain("BeforeStep")
+    expect(scenarioDslKeys).not.toContain("AfterStep")
+    expect(scenarioDslKeys).not.toContain("BeforeAllScenarios")
+    expect(scenarioDslKeys).not.toContain("AfterAllScenarios")
   })
 })

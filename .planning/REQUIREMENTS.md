@@ -30,7 +30,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 - [x] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
 - [ ] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
 - [ ] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
-- [ ] **DSL-07**: Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios`) accept a bare generator function, auto-wrapped with `Effect.fn(name)` (ADR-EC-005)
+- [x] **DSL-07**: Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios`) accept a bare generator function, auto-wrapped with `Effect.fn(name)` (ADR-EC-005)
 
 ### Execution semantics
 
@@ -96,7 +96,7 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | DSL-04 | Phase 5 | Complete |
 | DSL-05 | Phase 8 | Pending |
 | DSL-06 | Phase 8 | Pending |
-| DSL-07 | Phase 7 | Pending |
+| DSL-07 | Phase 7 | Complete |
 | RUN-01 | Phase 6 | Complete |
 | RUN-02 | Phase 7 | Pending |
 | RUN-03 | Phase 10 | Pending |
