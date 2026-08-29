@@ -135,14 +135,3 @@ export type {
   StepKeywordType,
   StepOwner
 } from "./Model.ts"
-
-/**
- * Internal build-graph exports, not public API.
- *
- * `packages/vitest/src/index.ts` reads `Gherkin.packageName` and `Gherkin.PackageName` so that
- * the cross-package project reference is exercised by `tsc -b`. Removing either one fails the
- * CI `types` job. Phase 5 owns that file and will retire both when it lands a real surface.
- */
-export const packageName = "@effect-cucumber/gherkin" as const
-
-export type PackageName = typeof packageName
