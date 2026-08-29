@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema` (completed 2026-08-28)
 - [x] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first (completed 2026-08-29)
 - [x] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly (completed 2026-08-29)
-- [ ] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.ensuring`
+- [x] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.ensuring` (completed 2026-08-29)
 - [ ] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples
 - [ ] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI
 - [ ] **Phase 10: Layer Scopes (per-Scenario default + `shared`)** - Both scopes work, and `TestClock` stays per-Scenario even on the shared path
@@ -321,7 +321,7 @@ Plans:
 
 **Wave 6** *(blocked on 07-07)*
 
-- [ ] 07-08-PLAN.md — Spec: BEH-EC-017, BEH-EC-006's two-part correction, INV-EC-004's real source, traceability §1-§4, both READMEs, and DSL-07/RUN-02 marked Complete
+- [x] 07-08-PLAN.md — Spec: BEH-EC-017, BEH-EC-006's two-part correction, INV-EC-004's real source, traceability §1-§4, both READMEs, and DSL-07/RUN-02 marked Complete
 
 Decisions locked before planning (`07-CONTEXT.md`): multiple hooks of one kind are allowed and run in registration order (D-01); a hook batch is independent and every failure in it is combined into one reported failure (D-02/D-03); a Scenario's steps run only if every `Before` succeeded (D-04); `AfterStep` is guaranteed across the whole `BeforeStep`+step unit (D-05/D-06/D-07); a failing `BeforeAllScenarios` is reported by every Scenario individually (D-08); `AfterAllScenarios` always runs (D-09).
 
@@ -429,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 7/8 | In Progress|  |
+| 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
