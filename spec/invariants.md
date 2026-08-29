@@ -3,10 +3,12 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-One of these — INV-EC-003 — is enforced by code today, and its entry names the
-mechanism and the assertions that back it. The other five are not: each still
-names the **planned** enforcement mechanism and says so in its `Source` label,
-per `AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single
+Two of these — INV-EC-001 and INV-EC-003 — are enforced by code today, and each
+entry names the mechanism and the assertions that back it. INV-EC-002's
+mechanism is real but only half its claim is asserted, and its entry says which
+half. The remaining three are not enforced at all: each still names the
+**planned** enforcement mechanism and says so in its `Source` label, per
+`AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single
 source of truth for what's actually built.
 
 ---
@@ -16,10 +18,13 @@ source of truth for what's actually built.
 Once a step's Effect fails, no later step in the same Scenario (or Rule)
 executes.
 
-**Source (planned)**: `@effect-cucumber/vitest`'s scenario-Effect builder —
+**Source**: `packages/vitest/src/ScenarioEffect.ts`'s `buildScenarioEffect` —
 Background and Scenario steps are compiled to sequential `yield*`s inside one
-`Effect.gen`. Effect's own error channel short-circuits the generator; there
-is no separate "has a prior step failed" flag to get out of sync.
+`Effect.gen`, by a `for` loop over the plan's step list. Effect's own error
+channel short-circuits the generator; there is no separate "has a prior step
+failed" flag to get out of sync. Asserted by
+`packages/vitest/test/ScenarioEffect.test.ts`, which proves the short-circuit by
+a recorded execution order rather than by the absence of an exception.
 
 **Implication**: a step author never has to write cleanup-on-failure logic
 into every subsequent step — a failing `Given` simply prevents the `When`/`Then`
@@ -34,9 +39,13 @@ that follow it from running at all.
 Unless a Layer is explicitly declared `shared`, no state built by that Layer
 for one Scenario is visible to any other Scenario.
 
-**Source (planned)**: `Effect.provide(perScenarioLayer)` applied fresh to each
-generated `it.effect(...)` call — never memoized or reused across Scenarios,
-mirroring `@effect/vitest`'s own `it.effect` semantics.
+**Source (half built)**: `packages/vitest/src/ScenarioEffect.ts` supplies the
+Feature's Layer once around each Scenario Effect and never memoizes it, so every
+execution rebuilds it — asserted by `packages/vitest/test/ScenarioEffect.test.ts`
+running one Scenario Effect twice and observing two independent service
+instances. The other half is still **planned**: nothing emits two Scenarios yet,
+so isolation ACROSS Scenarios is not asserted until the Runner generates one
+`it.effect(...)` per Scenario.
 
 **Implication**: a `Given`/`When`/`Then` author can rely on a clean World for
 every Scenario without writing manual reset logic, _unless_ that Scenario

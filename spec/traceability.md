@@ -18,15 +18,16 @@ planned locations and this note is what tells them apart.
 
 `packages/gherkin/src` and `packages/gherkin/test` are entirely real.
 `packages/vitest/src` now has real source too — `describeFeature.ts`, `Dsl.ts`,
-`Step.ts`, `Registry.ts`, `CallSite.ts`, `Errors.ts`, `TestApi.ts`, `Plan.ts`
-and the `index.ts` barrel — and
+`Step.ts`, `Registry.ts`, `CallSite.ts`, `Errors.ts`, `TestApi.ts`, `Plan.ts`,
+`ScenarioEffect.ts` and the `index.ts` barrel — and
 `packages/vitest/test` has real suites. Everything else this document names under `packages/vitest`
 remains **planned** and does not exist on disk: `Hooks.ts`,
 `Rule.ts`, `Tags.ts`, `SharedLayer.ts`, `ScenarioOutline.ts`,
 `Background.ts` and the `Runner.ts` that will consume a `FeaturePlan`.
-`Plan.ts` is real but is not reachable from any user-facing call yet:
-`describeFeature` still discards its collection rather than planning and
-emitting it. §4's rows name only real files. See `spec/roadmap.md` for
+`Plan.ts` and `ScenarioEffect.ts` are real but neither is reachable from any
+user-facing call yet: `describeFeature` still discards its collection rather
+than planning and emitting it, and nothing yet calls `buildScenarioEffect`.
+§4's rows name only real files. See `spec/roadmap.md` for
 what's actually built.
 
 ## §1 Behavior to source
@@ -34,7 +35,7 @@ what's actually built.
 | Behavior file                                                                                | Range                      | Source module (real and planned — see the preamble)                                                                                |
 | -------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | [01 — Steps and World](behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, BEH-EC-013 | `packages/gherkin/src/{loadFeature,Snippet}.ts`, `packages/vitest/src/{describeFeature,Dsl,Step,Registry,CallSite,Errors,Plan}.ts` |
-| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                                                       |
+| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{ScenarioEffect,Background,Hooks,SharedLayer,Tags}.ts`                                                        |
 | [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                                    |
 | [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                                      |
 | [05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015                 | `packages/gherkin/src/{ParameterTypes,StepMatcher,StepArgs,Errors}.ts`                                                             |
@@ -42,18 +43,20 @@ what's actually built.
 
 ## §2 Invariant traceability
 
-INV-EC-003 is enforced today, by the assertions its **Test** column names.
-Every other row's **Enforced by** entry is still a planned mechanism, and its
-**Test** column ("Not yet written") is what says so.
+INV-EC-001 and INV-EC-003 are enforced today, by the assertions their **Test**
+columns name. INV-EC-002's mechanism is real, but only the per-execution half of
+its claim is asserted — its row says which half. Every remaining row's
+**Enforced by** entry is still a planned mechanism, and its **Test** column
+("Not yet written") is what says so.
 
-| Invariant                                                                                              | Description                   | Enforced by                                                                           | Test                                           |
-| ------------------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [INV-EC-001](invariants.md#inv-ec-001-fail-fast-is-structural-not-bookkept)                            | Fail-fast is structural       | Sequential `yield*` in the scenario-Effect builder                                    | Not yet written                                |
-| [INV-EC-002](invariants.md#inv-ec-002-a-per-scenario-layer-is-fresh-every-scenario)                    | Per-Scenario Layer is fresh   | `Effect.provide` applied fresh per `it.effect` call                                   | Not yet written                                |
-| [INV-EC-003](invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides) | Step deps are compile-checked | `StepRegistrar<ROut>` + `@effect/tsgo`'s `missingEffectContext`/`missingLayerContext` | `scripts/verify-tsgo-gate.sh` assertions 5/6/8 |
-| [INV-EC-004](invariants.md#inv-ec-004-after-hooks-run-even-when-a-step-fails)                          | `After` always runs           | `Effect.ensuring` around the scenario Effect                                          | Not yet written                                |
-| [INV-EC-005](invariants.md#inv-ec-005-a-rule-scoped-layer-is-invisible-outside-that-rule)              | Rule-scoped Layer isolation   | `Layer.provideMerge` scoped to the Rule's dsl closure                                 | Not yet written (type-level test)              |
-| [INV-EC-006](invariants.md#inv-ec-006-cross-step-scenario-data-survives-only-via-a-layer-provided-ref) | Cross-step state via Ref only | Convention (ADR-EC-009) — no automated enforcement yet                                | None yet — candidate lint rule                 |
+| Invariant                                                                                              | Description                   | Enforced by                                                                           | Test                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [INV-EC-001](invariants.md#inv-ec-001-fail-fast-is-structural-not-bookkept)                            | Fail-fast is structural       | A `for` loop of `yield*` in `ScenarioEffect.ts`'s `buildScenarioEffect`               | `packages/vitest/test/ScenarioEffect.test.ts`                                                                                                        |
+| [INV-EC-002](invariants.md#inv-ec-002-a-per-scenario-layer-is-fresh-every-scenario)                    | Per-Scenario Layer is fresh   | The Layer supplied once per Scenario Effect, rebuilt on every execution               | `packages/vitest/test/ScenarioEffect.test.ts` — per-execution freshness only; isolation ACROSS two Scenarios stays untested until a Runner emits two |
+| [INV-EC-003](invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides) | Step deps are compile-checked | `StepRegistrar<ROut>` + `@effect/tsgo`'s `missingEffectContext`/`missingLayerContext` | `scripts/verify-tsgo-gate.sh` assertions 5/6/8                                                                                                       |
+| [INV-EC-004](invariants.md#inv-ec-004-after-hooks-run-even-when-a-step-fails)                          | `After` always runs           | `Effect.ensuring` around the scenario Effect                                          | Not yet written                                                                                                                                      |
+| [INV-EC-005](invariants.md#inv-ec-005-a-rule-scoped-layer-is-invisible-outside-that-rule)              | Rule-scoped Layer isolation   | `Layer.provideMerge` scoped to the Rule's dsl closure                                 | Not yet written (type-level test)                                                                                                                    |
+| [INV-EC-006](invariants.md#inv-ec-006-cross-step-scenario-data-survives-only-via-a-layer-provided-ref) | Cross-step state via Ref only | Convention (ADR-EC-009) — no automated enforcement yet                                | None yet — candidate lint rule                                                                                                                       |
 
 ## §3 Decision traceability
 
@@ -121,6 +124,7 @@ found".
 | `packages/vitest/test/Errors.test.ts`                  | BEH-EC-013, BEH-EC-014 | The drift-detection data shapes: `StepMatchError`'s two reason tags and nine fields round-tripping, and `UnusedStepDefinitionWarning`'s factory, both with the no-truncation policy asserted by exact message length                                                                |
 | `packages/vitest/test/Plan.test.ts`                    | BEH-EC-013             | `planFeature`: the Background/Scenario/Feature scope chain with inner-shadows-outer precedence, the `UndefinedStep` error and its suggested snippet, the `AmbiguousStep` error ordered by definition site and independent of registration order, and the unused-pattern warnings    |
 | `packages/vitest/test/Registry.test.ts`                | BEH-EC-002, BEH-EC-003 | Per-instance step registration: two registries in one process share no state, `definitions()` is a snapshot, the scope stack refuses to underflow, and a definition carries the scope and the definition site current when registered                                               |
+| `packages/vitest/test/ScenarioEffect.test.ts`          | BEH-EC-003, BEH-EC-005 | `buildScenarioEffect`: a Background step leads and the Scenario's own follow in document order, a failing step provably stops the ones after it, an unresolved step fails in position, and the Layer is built once per Scenario and afresh on every execution                       |
 | `packages/vitest/test/Step.test.ts`                    | BEH-EC-003             | The `Effect.fn(stepText)` auto-wrap: an already-wrapped step passes through BY IDENTITY, a bare generator is wrapped and takes the step text as its span name, and a failure inside a wrapped step keeps that span                                                                  |
 | `packages/vitest/test/describeFeature.test.ts`         | BEH-EC-002, BEH-EC-004 | Collection through `collectFeature`: one registry per call, the container a step was registered inside (ADR-EC-017), the define callback's synchrony, the definition site recorded end to end, and both Layer forms normalising to one Layer with `perScenario` winning a collision |
 
