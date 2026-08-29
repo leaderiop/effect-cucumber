@@ -64,6 +64,7 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { StepMatchError } from "../src/Errors.ts"
+import type { HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
 import { buildScenarioEffect } from "../src/ScenarioEffect.ts"
 
@@ -195,6 +196,20 @@ const undefinedStepError = new StepMatchError({
   cause: Option.none()
 })
 
+/**
+ * All six `HookKind` keys present, every one an empty array — the regression-guard value for every
+ * test in this file that is not itself about hooks. Module scope and capture-free, per
+ * `unicorn/consistent-function-scoping`'s house convention for a repeated call-site literal.
+ */
+const emptyHooks: HookSet = {
+  Before: [],
+  After: [],
+  BeforeStep: [],
+  AfterStep: [],
+  BeforeAllScenarios: [],
+  AfterAllScenarios: []
+}
+
 describe("a Scenario runs its steps in list order", () => {
   it.effect("runs a Background step first, then its own steps, each exactly once", () =>
     Effect.gen(function*() {
@@ -206,7 +221,7 @@ describe("a Scenario runs its steps in list order", () => {
         resolved("three", recordingStep("three"))
       ])
 
-      yield* buildScenarioEffect({ plan, layer })
+      yield* buildScenarioEffect({ plan, layer, hooks: emptyHooks })
 
       // ADR-EC-004's "Background inlined as the leading yield*s", asserted as an ORDER and not as a
       // membership: a concurrent or reordered implementation records the same four names. Each step
@@ -234,7 +249,7 @@ describe("a Scenario runs its steps in list order", () => {
         resolved("four", recordingStep("four"))
       ])
 
-      yield* buildScenarioEffect({ plan, layer })
+      yield* buildScenarioEffect({ plan, layer, hooks: emptyHooks })
 
       // Provided per step instead, this is 4, and every step gets its own World — a silent
       // behavioural bug with an identical type and an identical pass/fail result (mutation C).
@@ -245,7 +260,7 @@ describe("a Scenario runs its steps in list order", () => {
     Effect.gen(function*() {
       const { layer } = makeRecording()
 
-      const exit = yield* Effect.exit(buildScenarioEffect({ plan: planOf([]), layer }))
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan: planOf([]), layer, hooks: emptyHooks }))
 
       assert.isTrue(Exit.isSuccess(exit))
     }))
@@ -262,7 +277,7 @@ describe("a failing step stops the Scenario", () => {
         resolved("four", recordingStep("four"))
       ])
 
-      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer }))
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
 
       assert.isTrue(Exit.isFailure(exit))
       // THE load-bearing assertion of this file, and the roadmap's success criterion 2. Asserting
@@ -281,7 +296,7 @@ describe("a failing step stops the Scenario", () => {
         resolved("two", failingStep("two", boom))
       ])
 
-      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer }))
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
 
       // Through Exit, never a try/catch on a promise: a step that unexpectedly SUCCEEDS is reported
       // as the wrong value rather than silently passing an absent-throw check (Step.test.ts).
@@ -303,7 +318,7 @@ describe("an unresolved step fails the Scenario in position", () => {
         resolved("four", recordingStep("four"))
       ])
 
-      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer }))
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
 
       // Reference identity: the error `Plan.ts` built is the error the reporter prints, with no
       // re-wrap and no reconstruction in between.
@@ -325,7 +340,8 @@ describe("the Feature's Layer is built fresh on every execution", () => {
       const { builds, layer } = makeRecording()
       const scenario = buildScenarioEffect({
         plan: planOf([resolved("one", recordingStep("one"))]),
-        layer
+        layer,
+        hooks: emptyHooks
       })
 
       yield* scenario
@@ -348,7 +364,11 @@ describe("the composed Scenario is a value, not a running test", () => {
     // Bound rather than discarded: `@effect/tsgo`'s `effect(floatingEffect)` rejects an
     // Effect-valued expression statement, which is the diagnostic that exists to catch a composed
     // Effect nobody ever runs — and an unrun Effect is precisely what this test is about.
-    const scenario = buildScenarioEffect({ plan: planOf([resolved("one", recordingStep("one"))]), layer })
+    const scenario = buildScenarioEffect({
+      plan: planOf([resolved("one", recordingStep("one"))]),
+      layer,
+      hooks: emptyHooks
+    })
 
     // `Runner.ts` hands the result to `TestApi.effect` as a thunk, and the framework decides when —
     // and how many times — to run it. A `buildScenarioEffect` that ran anything eagerly would build

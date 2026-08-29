@@ -97,6 +97,7 @@ import * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
+import type { HookSet } from "./Hook.ts"
 import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import type { TestApi } from "./TestApi.ts"
@@ -128,15 +129,19 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
  * @param args.api - the test framework surface, injected — note (a)
  * @param args.plan - one Feature, already planned by `planFeature`
  * @param args.layer - the Feature's single merged Layer, passed straight to each Scenario
+ * @param args.hooks - the Feature's registered hooks, grouped by kind, passed straight to each
+ *   `buildScenarioEffect` call inside the emission walk below — this module does not weave them
+ *   itself, `ScenarioEffect.ts` does
  */
 export const emitFeature = (
   args: {
     readonly api: TestApi
     readonly plan: FeaturePlan
     readonly layer: Layer.Layer<any, any, never>
+    readonly hooks: HookSet
   }
 ): void => {
-  const { api, layer, plan } = args
+  const { api, hooks, layer, plan } = args
 
   // Built once, before anything is emitted, and not per lookup: the walk below visits every Scenario
   // exactly once, so a linear search per visit would be quadratic in a Feature's Scenario count for
@@ -165,7 +170,7 @@ export const emitFeature = (
     // Feature-level Scenarios first, in the order the document has them.
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
-      api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer }))
+      api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks }))
     }
 
     // Then the Rules, each opening its own nested block. Written out rather than shared with the
@@ -175,7 +180,7 @@ export const emitFeature = (
       api.describe(rule.name, () => {
         for (const scenario of rule.scenarios) {
           const scenarioPlan = planFor(scenario)
-          api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer }))
+          api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks }))
         }
       })
     }

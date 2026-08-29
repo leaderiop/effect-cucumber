@@ -73,6 +73,30 @@
  *     here at all. `Plan.ts` did the matching, at plan time, against a registry this module never
  *     sees; all that is deferred to run time is delivering the verdict at the position it belongs to.
  *
+ * (d) **`Before` is a GATE built out of one `yield*` and nothing else.** The plausible tidy-up is an
+ *     explicit "if any Before failed, skip the steps" check — a boolean this generator would have to
+ *     maintain and could get out of sync with the loop it guards, which is exactly the bookkeeping
+ *     INV-EC-001 exists to forbid. There is no such flag: `runHookBatch(args.hooks.Before)`'s own
+ *     failure simply stops the generator from advancing to the `for` loop below it, the identical
+ *     structural short-circuit note (a) already relies on for a step's own failure. The test that goes
+ *     red if this is "tidied" into an explicit flag is `test/ScenarioEffect.test.ts`'s three-failing-
+ *     Before test: the flag compiles, still gates correctly in the passing case, and only a bug in the
+ *     flag's own bookkeeping would ever surface — precisely the invisible failure mode INV-EC-001 rules
+ *     out by construction rather than by discipline. D-02/D-03's independence and cause-combining for
+ *     the batch itself live entirely inside `Hook.ts`'s `runHookBatch` and are not re-implemented here.
+ *
+ * (e) **`After` is guaranteed via `Effect.onExit`, never `Effect.ensuring`.** BEH-EC-006's literal text
+ *     says "via `Effect.ensuring`", and the plausible tidy-up is "match the spec, use `ensuring`" — it
+ *     does not compile: `Effect.ensuring`'s finalizer error channel is `never` in the installed
+ *     `effect@4.0.0-rc.112` build (verified against `Effect.d.ts`, not assumed), so a fallible `After`
+ *     hook is not even assignable to it. Widening the hook type to force it through would compile, but
+ *     `ensuring` merges no causes — a failing `After` hook would then silently replace the step's own
+ *     failure instead of combining with it, exactly the masking roadmap SC #4 forbids.
+ *     `test/ScenarioEffect.test.ts`'s step-fails-and-After-fails test is what goes red: both original
+ *     error objects must stay recoverable by reference identity from the reported cause, and `ensuring`
+ *     cannot produce that. Plan 07-08 corrects BEH-EC-006's stale text; this module does not compile
+ *     against it.
+ *
  * The three `any`s in `Layer.Layer<any, any, never>` are erased detail rather than a widening of any
  * contract, and the reasoning is `describeFeature.ts`'s verbatim — its `FeatureCollection.layer`
  * carries the identical declaration for the identical reason. `Dsl.ts`'s `StepRegistrar<ROut>` has
@@ -81,15 +105,18 @@
  * check is behind it. This type never appears in a position a caller writes against. If one of the
  * two declarations is ever narrowed, narrow both: they describe the same value.
  *
- * `./Plan.ts` is the only local import, and it is type-only. This module is INTERNAL and is not
- * re-exported from `packages/vitest/src/index.ts` — `Runner.ts` is its one caller, a consumer never
- * builds a Scenario Effect by hand, and publishing it would freeze an internal stage into the
+ * `./Plan.ts` is a local, type-only import. `./Hook.ts` is a local import too, both a value
+ * (`runHookBatch`) and a type (`HookSet`) — the module that groups a Feature's registered hooks by
+ * kind and runs one kind's batch independently, D-02/D-03's own home. This module is INTERNAL and is
+ * not re-exported from `packages/vitest/src/index.ts` — `Runner.ts` is its one caller, a consumer
+ * never builds a Scenario Effect by hand, and publishing it would freeze an internal stage into the
  * package's contract. `Registry.ts`, `collectFeature`, `TestApi.ts` and `Plan.ts` all set the same
  * precedent.
  */
 import * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
+import { type HookSet, runHookBatch } from "./Hook.ts"
 import type { PlannedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
 
 /**
@@ -111,9 +138,12 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
  * Compose one Scenario's planned steps into the single Effect that runs it.
  *
  * The steps run in list order — Background first, because the list already says so — and the first
- * failure ends the Scenario, because a generator that has failed does not advance. The Feature's
- * Layer is supplied around the whole thing, so what comes back requires only `Scope.Scope`, which is
- * precisely what `@effect/vitest`'s `it.effect` supplies and what `TestApi.effect` declares.
+ * failure ends the Scenario, because a generator that has failed does not advance. Every `Before`
+ * hook runs first, gating the step loop structurally (D-04, note (d)); every `After` hook is
+ * guaranteed to run — on success, on a step failure, and even when a `Before` hook itself failed —
+ * via `Effect.onExit` wrapped around the whole composed generator (note (e)). The Feature's Layer is
+ * supplied around the whole thing, so what comes back requires only `Scope.Scope`, which is precisely
+ * what `@effect/vitest`'s `it.effect` supplies and what `TestApi.effect` declares.
  *
  * The result is UNEXECUTED. `Runner.ts` passes it to `TestApi.effect` as a thunk, and every
  * execution builds the Layer again — note (b).
@@ -128,14 +158,18 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
  *
  * @param args.plan - one Scenario's steps, already resolved by `Plan.ts` and already in run order
  * @param args.layer - the Feature's single merged Layer, from `FeatureCollection.layer`
+ * @param args.hooks - the Feature's registered hooks, grouped by kind, from `FeatureCollection.hooks`
  */
 export const buildScenarioEffect = (
   args: {
     readonly plan: ScenarioPlan
     readonly layer: Layer.Layer<any, any, never>
+    readonly hooks: HookSet
   }
 ): Effect.Effect<void, unknown, Scope.Scope> =>
   Effect.gen(function*() {
+    // The Before GATE — one `yield*` and nothing else. Note (d).
+    yield* runHookBatch(args.hooks.Before)
     // A loop of `yield*` inside ONE generator, and not a combinator over the list: the short-circuit
     // below is the absence of a next iteration, not a check anyone maintains. Note (a).
     for (const planned of args.plan.steps) {
@@ -152,4 +186,11 @@ export const buildScenarioEffect = (
       yield* planned.step.body(...planned.step.args)
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.
-  }).pipe(Effect.provide(args.layer))
+  }).pipe(
+    // Wraps the WHOLE generator, Before gate included, so After also runs when a Before hook failed
+    // (D-07's "the guarantee wraps the whole unit" principle). The finalizer ignores its `exit`
+    // argument on purpose: After hooks receive no arguments (ADR-EC-005's Negative consequence), and
+    // giving them the exit would be a signature this phase deliberately does not have. Note (e).
+    Effect.onExit(() => runHookBatch(args.hooks.After)),
+    Effect.provide(args.layer)
+  )

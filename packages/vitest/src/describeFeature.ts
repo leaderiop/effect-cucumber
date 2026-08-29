@@ -133,8 +133,9 @@ export type FeatureCollection = {
    * duplicated in `describeFeature`'s own body: `describeFeature` and `collectFeature` must not
    * drift into two behaviours.
    *
-   * Collected only — nothing consumes this field yet. Plan 07-04 threads it into `ScenarioEffect.ts`
-   * and `Runner.ts`; the emission stage's own entry point is untouched by this plan.
+   * Consumed by `emitFeature` (below, `describeFeature`'s own body) — `ScenarioEffect.ts`'s
+   * `buildScenarioEffect` is where `Before` gates the step loop and `After` is guaranteed via
+   * `Effect.onExit`, plan 07-04's headline change.
    */
   readonly hooks: HookSet
 }
@@ -273,9 +274,7 @@ const collect = (
     definitions,
     plan: planFeature({ feature, definitions }),
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
-    // the `hooks` field's own doc comment on `FeatureCollection`. Plan 07-04 is what threads this
-    // into the emission stage; the call inside `describeFeature`'s own body below is untouched by
-    // this plan.
+    // the `hooks` field's own doc comment on `FeatureCollection`.
     hooks: groupHooks(hookRegistry.hooks())
   }
 }
@@ -393,5 +392,5 @@ export function describeFeature(
 
   // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
   // collection output rather than interleaved with it.
-  emitFeature({ api: vitestTestApi, plan: collection.plan, layer: collection.layer })
+  emitFeature({ api: vitestTestApi, plan: collection.plan, layer: collection.layer, hooks: collection.hooks })
 }
