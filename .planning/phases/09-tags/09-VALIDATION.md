@@ -54,7 +54,7 @@ updated: 2026-08-29
 | 13 | 09-06 T1 | 4 | RUN-05 / SC1, SC3 | T-09-06-03, T-09-06-04 | A four-level-tagged Feature collects and runs under `--allowOnly=false` | integration | `pnpm exec vitest run packages/vitest/test/emission.test.ts` | ✅ extend | ⬜ pending |
 | 14 | 09-06 T2 | 4 | RUN-05 / SC2 (Pitfall 15) | T-09-06-03 | `@skip` runs no step and no hook; unmatched step harmless; no teardown | integration | `pnpm exec vitest run packages/vitest/test/emission.test.ts` | ✅ extend | ⬜ pending |
 | 15 | 09-06 T3 | 4 | RUN-05 (D-08, D-10) | T-09-06-01, T-09-06-02, T-09-06-05 | Undeclared tag degrades with a quoted located warning; one exclusion notice; `[]` prints none | integration | `pnpm exec vitest run packages/vitest/test/emission.test.ts && pnpm test` | ✅ extend | ⬜ pending |
-| 16 | 09-07 T1 | 4 | RUN-05 (D-09) | T-09-07-01, T-09-07-02, T-09-07-04 | `gherkinTags` scans only explicit paths, throws on empty/missing, adds no dependency | build | `pnpm build && pnpm lint && pnpm circular` | ✅ created here | ⬜ pending |
+| 16 | 09-07 T1 | 4 | RUN-05 (D-09) | T-09-07-01, T-09-07-02, T-09-07-04 | `gherkinTags` accepts a glob pattern (or array of patterns) via `tinyglobby`'s `globSync`, throws on empty pattern, adds `tinyglobby` as one audited direct dependency | build | `pnpm build && pnpm lint && pnpm circular` | ✅ created here | ⬜ pending |
 | 17 | 09-07 T2 | 4 | RUN-05 (D-09) | T-09-07-03 | Scanner behaviour on real fixtures; config compatibility proven at compile time | unit + type | `pnpm exec vitest run packages/vitest/test/GherkinTags.test.ts && pnpm typecheck:test && pnpm verify:spec` | ✅ created here | ⬜ pending |
 | 18 | 09-07 T3 | 4 | RUN-05 | T-09-07-05 | Barrel exports this phase's surface; no stale "tag is inert" claim | build+pack | `pnpm build && pnpm verify:pack && pnpm test` | ✅ extend | ⬜ pending |
 | 19 | 09-08 T1 | 5 | RUN-05 / SC2, SC4 | T-09-08-01..05 | CLI filter selects the tagged Scenario; `@skip` reports skipped; excluded is ABSENT | script | `bash scripts/verify-tags-filter.sh` | ✅ created here | ⬜ pending |
@@ -85,9 +85,12 @@ updated: 2026-08-29
       `console.warn` capture asserts the located warning (plan 09-06 Task 3). No second config file and
       no new test infrastructure. The same probe doubles as the positive control proving the tag path
       is live rather than silently dropped.
-- [x] **Framework install:** none needed. `vitest`, `@vitest/runner` and `@effect/vitest` are already
-      installed at the versions the research verified against, and no plan in this phase installs a
-      package — including plan 09-07, which asserts `pnpm-lock.yaml` is unchanged.
+- [x] **Framework install:** `vitest`, `@vitest/runner` and `@effect/vitest` are already installed at
+      the versions the research verified against — no install needed for the core tag/skip/only path.
+      Plan 09-07 DOES add one new, user-approved direct dependency of `packages/vitest`:
+      `tinyglobby@^0.2.17` (already present transitively in `pnpm-lock.yaml`; 09-07 promotes it to a
+      declared dependency and runs `pnpm install`, asserted by the lockfile gaining a `packages/vitest`
+      importer edge for it — see 09-RESEARCH.md's amended Package Legitimacy Audit).
 
 *Verify RESEARCH assumption A5: plan 09-01 Task 1's acceptance criteria require quoting `pnpm test`'s
 "Test Files" and "Tests" counts from before and after the config lands, and they must be identical.*
