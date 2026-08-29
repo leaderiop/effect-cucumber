@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first (completed 2026-08-29)
 - [x] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly (completed 2026-08-29)
 - [x] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.onExit` (completed 2026-08-29)
-- [ ] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples
+- [x] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples (completed 2026-08-29)
 - [ ] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI
 - [ ] **Phase 10: Layer Scopes (per-Scenario default + `shared`)** - Both scopes work, and `TestClock` stays per-Scenario even on the shared path
 - [ ] **Phase 11: Composition Root and Dogfooded Acceptance Suite** - The spec's worked examples run green end to end, closing traceability
@@ -366,7 +366,7 @@ Plans:
 
 **Wave 5** *(blocked on 08-07)*
 
-- [ ] 08-08-PLAN.md — Spec: BEH-EC-018, INV-EC-005's real source, traceability §1-§4, both READMEs, and DSL-05/DSL-06 marked Complete
+- [x] 08-08-PLAN.md — Spec: BEH-EC-018, INV-EC-005's real source, traceability §1-§4, both READMEs, and DSL-05/DSL-06 marked Complete
 
 Decisions locked at planning time (no CONTEXT.md re-litigation needed): a Rule/Scenario name that
 matches no real `ParsedRule` resolves to a sentinel `ruleId` that can never match any Scenario, making
@@ -462,7 +462,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
-| 8. Rule and Scenario Outline | 8/9 | In Progress|  |
+| 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
