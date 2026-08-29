@@ -249,3 +249,8 @@ whichever plan makes their runtime halves reachable.**
 | `pnpm lint` | clean (oxlint + dprint check) |
 
 No stubs. No new security surface — the fixtures are compiled and discarded; they never execute.
+
+## Self-Check: PASSED
+
+All four created files present on disk; all four commits (`00b13ed`, `ff4c98f`, `2f0744f`,
+`8f0be25`) present in `git log`. Working tree clean, no unintended deletions in any commit.
