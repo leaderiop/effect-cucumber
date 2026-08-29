@@ -35,7 +35,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 ### Execution semantics
 
 - [x] **RUN-01**: Each Scenario compiles to exactly one `it.effect` call; Background and Scenario steps run as sequential `yield*`s inside one `Effect.gen`, short-circuiting on the first failure (ADR-EC-004, INV-EC-001)
-- [ ] **RUN-02**: A Scenario's `After` hook runs whether every step succeeded or one failed, via `Effect.ensuring` (ADR-EC-005, INV-EC-004)
+- [x] **RUN-02**: A Scenario's `After` hook runs whether every step succeeded or one failed, via `Effect.ensuring` (ADR-EC-005, INV-EC-004)
 - [ ] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
 - [ ] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
 - [ ] **RUN-05**: Every tag on a Scenario is emitted as a native vitest tag; `@skip` additionally routes to `it.effect.skip`; `@only` is never routed to `it.effect.only` (which fails CI) — running just one Scenario locally is a `--tagsFilter` choice (ADR-EC-020, BEH-EC-008)
@@ -98,7 +98,7 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | DSL-06 | Phase 8 | Pending |
 | DSL-07 | Phase 7 | Complete |
 | RUN-01 | Phase 6 | Complete |
-| RUN-02 | Phase 7 | Pending |
+| RUN-02 | Phase 7 | Complete |
 | RUN-03 | Phase 10 | Pending |
 | RUN-04 | Phase 10 | Pending |
 | RUN-05 | Phase 9 | Pending |

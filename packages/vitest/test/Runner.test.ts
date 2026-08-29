@@ -85,6 +85,7 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
+import type { HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
@@ -181,6 +182,21 @@ class Marker extends Context.Service<Marker, { readonly who: string }>()("Marker
  * `buildScenarioEffect` without inspecting it, so nothing here can observe what it provides.
  */
 const layer = Layer.succeed(Marker, Marker.of({ who: "runner-test" }))
+
+/**
+ * All six `HookKind` keys present, every one an empty array — the `hooks` argument every test in
+ * this file hands `emitFeature`. This file asserts emission SHAPE; hook weaving is
+ * `test/ScenarioEffect.test.ts`'s, and this constant is the regression guard that `emptyHooks`
+ * changes nothing here.
+ */
+const emptyHooks: HookSet = {
+  Before: [],
+  After: [],
+  BeforeStep: [],
+  AfterStep: [],
+  BeforeAllScenarios: [],
+  AfterAllScenarios: []
+}
 
 /** Parse an inline Feature the way a consumer would, so the fixtures are real contract values. */
 const parse = (source: string, uri: string) =>
@@ -310,7 +326,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
     emitFeature({
       api,
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
-      layer
+      layer,
+      hooks: emptyHooks
     })
 
     // Positional, and over the WHOLE array: a search would pass against an implementation that
@@ -328,7 +345,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
     emitFeature({
       api,
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
-      layer
+      layer,
+      hooks: emptyHooks
     })
 
     // Exactly one record at the top level, and it is the Feature's block. An implementation that
@@ -345,7 +363,7 @@ describe("a Feature emits one block with one test per Scenario", () => {
     const plan: FeaturePlan = { feature: checkout, scenarios: [], warnings: [] }
 
     assert.throws(
-      () => emitFeature({ api, plan, layer }),
+      () => emitFeature({ api, plan, layer, hooks: emptyHooks }),
       /no ScenarioPlan for scenario id/
     )
   })
@@ -365,7 +383,8 @@ describe("a Rule emits a nested block", () => {
           define({ pattern: "I keep the goods", scope: featureScope("Shop"), keyword: "When" })
         ]
       }),
-      layer
+      layer,
+      hooks: emptyHooks
     })
 
     // The two Rule Scenarios sit at depth 2 beneath a block at depth 1. Emitted as siblings of the
@@ -390,7 +409,8 @@ describe("each recorded thunk is wired to its own Scenario", () => {
       emitFeature({
         api,
         plan: planFeature({ feature: checkout, definitions: recordingDefinitions(ran) }),
-        layer
+        layer,
+        hooks: emptyHooks
       })
 
       // Nothing has run yet: `emitFeature` registers thunks, it does not execute them. An eager
@@ -417,7 +437,8 @@ describe("a Scenario Outline emits one distinctly-titled test per Examples row",
         feature: outline,
         definitions: [define({ pattern: "I add {int} apples", scope: featureScope("Outline") })]
       }),
-      layer
+      layer,
+      hooks: emptyHooks
     })
 
     // Titled with `astName`, both rows read `adding <count>` — two identically-named tests, which
@@ -442,7 +463,7 @@ describe("an unused step definition surfaces as a test node", () => {
   it("adds exactly one node, titled with the keyword, the pattern and the site, AFTER every Scenario", () => {
     const { api, records } = makeRecordingApi()
 
-    emitFeature({ api, plan: unusedPlan, layer })
+    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks })
 
     // Last, not first. Hoisted to the top of the block the Feature's own Scenarios get pushed below a
     // variable-length list of footnotes — Runner.ts note (c).
@@ -462,7 +483,7 @@ describe("an unused step definition surfaces as a test node", () => {
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
 
-      emitFeature({ api, plan: unusedPlan, layer })
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks })
 
       // ADR-EC-019 makes an unused pattern a warning and not a failure. Asserted on the Exit rather
       // than by the test simply not throwing, so a node that fails is reported as a failed assertion
@@ -483,7 +504,8 @@ describe("an unused step definition surfaces as a test node", () => {
           define({ pattern: "I never happen", scope: featureScope("Checkout"), definedAt: site(10) })
         ]
       }),
-      layer
+      layer,
+      hooks: emptyHooks
     })
 
     // Titled with the pattern alone, these two would be one string twice — two identically-named
@@ -510,7 +532,7 @@ describe("an unused step definition surfaces as a test node", () => {
       })
     ])
 
-    emitFeature({ api, plan, layer })
+    emitFeature({ api, plan, layer, hooks: emptyHooks })
 
     // The pattern is rendered with `JSON.stringify`, so the embedded quotes are escaped and cannot
     // forge the end of the quoted span in a reporter's output (threat T-06-06-01).
