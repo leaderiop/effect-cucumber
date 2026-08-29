@@ -40,7 +40,8 @@ findings:
   warning: 1
   info: 0
   total: 2
-status: issues_found
+status: fixed
+resolution: "CR-01 fixed in commit 302bbeb (fence-matching DocString tracking + regression test/fixture). WR-01 closed by the same commit's added test coverage."
 ---
 
 # Phase 09-tags: Code Review Report
