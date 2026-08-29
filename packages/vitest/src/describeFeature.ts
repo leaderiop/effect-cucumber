@@ -211,8 +211,11 @@ const collect = (
   // no `definedAt` field, because ADR-EC-005's named span (`Effect.fn(kind)`) is the attribution
   // channel for a hook failure. Capturing a site nothing downstream reads would be the "say only
   // what is true" violation AGENTS.md §4 names.
+  // `ruleId: null` — this registrar is the FEATURE-level one, and `null` is `HookRegistry.ts`'s
+  // spelling of "registered through the Feature-level dsl", not a placeholder awaiting a value. A
+  // Rule's own dsl builds its own registrar with that Rule's id.
   const hookRegistrar = (kind: HookKind): HookRegistrar<any> => (fn) => {
-    hookRegistry.register(kind, registerHook(kind, fn))
+    hookRegistry.register(kind, null, registerHook(kind, fn))
   }
 
   const scenarioDsl: ScenarioDsl<any> = {
