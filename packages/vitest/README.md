@@ -1,14 +1,15 @@
 # @effect-cucumber/vitest
 
-The package most consumers install directly. It provides `describeFeature`, the
-Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, the hooks, and the `it.effect`-based runner that turns a
-Gherkin `.feature` file into ordinary vitest `describe`/`it` calls — no plugin and no custom reporter. It depends on
+The package most consumers install directly. It provides `describeFeature`, the Given/When/Then/Background/Scenario
+DSL, and the `it.effect`-based runner that turns a Gherkin `.feature` file into ordinary vitest `describe`/`it` calls —
+no plugin and no custom reporter. The `ScenarioOutline` and `Rule` containers and the hooks are specified but not yet
+built; "## Status" below says which phase each is waiting on. It depends on
 [`@effect-cucumber/gherkin`](../gherkin). A wrapped, `ManagedRuntime`-backed `loadFeature`
 (ADR-EC-024) is planned but not yet exported — see "## Status" below.
 
 ## Status
 
-**Nothing is published to npm yet.** The registration surface has shipped, the runner has not.
+**Nothing is published to npm yet.** The registration surface and the runner have both shipped.
 
 `describeFeature(feature, layer, define)` is real. It takes either a plain `Layer` or
 `{ shared, perScenario }` (`perScenario` is a required key — write `perScenario: Layer.empty` for a Feature with no
@@ -24,10 +25,20 @@ declared type (`TS2339`). `pnpm verify:tsgo-gate` asserts all of that on every p
 satisfied/starved fixture pairs, checking the exit code _and_ the diagnostic name, so the guarantee cannot decay into a
 rejection that no longer proves anything.
 
-**There is no runner yet.** `describeFeature` collects step definitions and emits **zero** vitest tests — no
-`it.effect`, no hooks, no tags, no `Rule`, no `ScenarioOutline`. A Feature file written against this package today
-type-checks and runs nothing. See [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only
-specified.
+**A Feature file runs.** `describeFeature` emits one `describe` named after the Feature, containing one `it.effect` per
+Scenario titled with its interpolated name — nested inside a further `describe` per `Rule` where the Feature has them.
+Each Scenario's Background steps run first, as leading `yield*`s inside the same `Effect.gen`, so the first failure
+short-circuits every step after it. A step matching no registered pattern, or more than one, fails its own Scenario
+with a located `StepMatchError` — the ambiguous case naming every matching pattern with the file and line it was
+defined at, in a deterministic order — and a registered pattern that matches no step in the Feature is a non-fatal
+warning on three channels: the terminal, the reporter, and the collected plan.
+
+**What is not built yet**, each waiting on its own phase: hooks — `Before`/`After`/`BeforeStep`/`AfterStep` and the
+`Effect.ensuring`-backed guarantee that `After` runs even when a step fails (Phase 7); `Rule`-scoped extra Layers and
+typed `Scenario Outline` Examples (Phase 8); tag routing and `@skip`/`@only` (Phase 9); and the build-once `shared`
+Layer with its per-Scenario `TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted
+and type-checked today, but both halves are currently built per Scenario at runtime. See
+[`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
 
 ## Install
 

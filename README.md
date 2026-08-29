@@ -12,10 +12,15 @@ error channel rather than from bookkeeping.
 
 ## Status
 
-Pre-release, and earlier than that phrase usually implies: **nothing is published to npm yet, and no library code has
-shipped.** `@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are scaffolding with no implementation behind them.
-What exists today is [`spec/`](./spec) — a normative specification of the intended contract — plus the workspace
-toolchain that will enforce it.
+Pre-release: **nothing is published to npm yet**, but both packages have working implementations and a `.feature` file
+runs as vitest tests today. `@effect-cucumber/gherkin` parses and validates `.feature` files, matches step text through
+cucumber-expressions, and wraps data tables and doc strings. `@effect-cucumber/vitest` emits one `describe` per Feature
+and one `it.effect` per Scenario, runs each Scenario's Background steps first inside the same `Effect.gen`, and fails
+loudly on a step that matches no registered pattern or more than one.
+
+Still specified rather than built, each waiting on its own phase: hooks and the `Effect.ensuring`-backed `After`
+guarantee (Phase 7), `Rule`-scoped extra Layers and typed `Scenario Outline` Examples (Phase 8), tag routing and
+`@skip`/`@only` (Phase 9), and the build-once `shared` Layer with its per-Scenario `TestClock` isolation (Phase 10).
 
 [`spec/roadmap.md`](./spec/roadmap.md) is the single source of truth for what is built versus what is only specified.
 The install instructions below describe the intended shape; they will not work until the first release.
@@ -36,10 +41,10 @@ Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=4.1.0 <5.0.0`. Node `
 
 ## Packages
 
-| Package                                          | Role                                                                                                                              |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| [`@effect-cucumber/vitest`](./packages/vitest)   | `describeFeature`, the Given/When/Then DSL, hooks, and the `it.effect`-based runner. The package most consumers install directly. |
-| [`@effect-cucumber/gherkin`](./packages/gherkin) | `.feature` parsing and step-text matching, wrapping the official `@cucumber/*` packages. Parsing only.                            |
+| Package                                          | Role                                                                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@effect-cucumber/vitest`](./packages/vitest)   | `describeFeature`, the Given/When/Then DSL, and the `it.effect`-based runner (hooks are specified, not yet built). The package most consumers install directly. |
+| [`@effect-cucumber/gherkin`](./packages/gherkin) | `.feature` parsing and step-text matching, wrapping the official `@cucumber/*` packages. Parsing only.                                                          |
 
 ## Documentation
 
