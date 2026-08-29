@@ -47,6 +47,16 @@
  * structurally against a recording fake by recording a nesting DEPTH; this proves it against the
  * real framework, which is the half a fake cannot.
  *
+ * ## The Scenario Outline block is here rather than in a value-asserting file
+ *
+ * Pitfall 34 — every generated Outline test observing the LAST row's data — is a RUNTIME property,
+ * and `test/Runner.test.ts`'s recording fake cannot see it: the fake records the thunks and never
+ * executes them, so an implementation that hands all three thunks one shared, still-mutating
+ * structure records three perfectly correct-looking entries. Only a real run can tell three
+ * independent tests from three tests that happen to have three different titles. That is the same
+ * fake-cannot-run-anything argument the `AfterAllScenarios` block below already makes, applied to
+ * per-row data instead of to hook execution. See `outlineRowValues`.
+ *
  * ## Why the terminal-channel block stubs at MODULE scope and asserts inside an `it`
  *
  * `describeFeature` REGISTERS test nodes, and vitest rejects a registration made while a test is
@@ -357,9 +367,9 @@ describe("describeFeature emitted tests that actually ran", () => {
 })
 
 /**
- * Task 2: all six hooks, through a REAL `describeFeature` call — the second (and last) real call in
- * this file, against its own fixture, so the happy-path Feature above and its assertions stay
- * completely untouched.
+ * Task 2: all six hooks, through a REAL `describeFeature` call — the second real call in this file,
+ * against its own fixture, so the happy-path Feature above and its assertions stay completely
+ * untouched. (The third and last is the Pitfall 34 Outline below.)
  *
  * `hookLog` is a plain module-scope array, not a `Recorder`-style `Context.Service` — deliberately.
  * The happy-path Feature above already proves per-Scenario Layer freshness (INV-EC-002); this block
@@ -405,7 +415,7 @@ const hooksFeature = Effect.runSync(
   ).pipe(Effect.provide(ParameterTypeStore.Default))
 )
 
-// THE second and LAST real `describeFeature` call in this file. Registers only succeeding hooks and
+// THE second real `describeFeature` call in this file. Registers only succeeding hooks and
 // steps — the header's founding constraint — and asserts entirely from inside the emitted bodies and
 // the final sync block below, never by re-deriving the plan's expectations here.
 describeFeature(
@@ -506,6 +516,83 @@ describeFeature(
 )
 
 /**
+ * Pitfall 34, proved against a real run: three Outline rows, three independent tests, each observing
+ * only its OWN row's value.
+ *
+ * The bug this exists for is not the naive `for (const row of rows)` capture — `const` in a
+ * `for...of` is per-iteration in modern JS and that form is safe. The live shape for this project is
+ * the one PITFALLS.md calls a direct cousin of ADR-EC-009: a single mutable structure that
+ * registration keeps appending to, read at EXECUTION time by every emitted test, so all N tests see
+ * whatever the last registration pass left behind. `@amiceli/vitest-cucumber` shipped exactly that
+ * ([PR #32](https://github.com/amiceli/vitest-cucumber/pull/32)) and its Outline `context` object is
+ * still constructed once and shared across rows.
+ *
+ * PITFALLS.md's recommended regression test is verbatim what this block is: "a 3-row Outline where
+ * each row's step asserts on its own value. If all three tests see row 3's data, this is the bug."
+ * Three rows and not two, because two rows cannot distinguish "every test sees the LAST row" from
+ * "every test sees ITS OWN row" whenever the shared value happens to be row 2's — with three, the
+ * shared-structure implementation fails on at least two of the three.
+ *
+ * Each row's expected value is written into the `.feature` file TWICE, in two different columns
+ * (`value` and `expected`), and the step compares them. That is what makes the assertion self-
+ * contained: it needs no module-scope table of what row N should see, so it cannot be satisfied by a
+ * runner that hands every test the same pair as long as the pair is internally consistent — the two
+ * columns come from the same ROW, so a runner that leaked row 3's `value` into row 1's test leaks
+ * row 1's `expected` alongside it only if it also got the row right.
+ *
+ * `outlineRowValues` is the outer half, and it is here for `completedScenarios`'s reason: an
+ * implementation that emitted ZERO tests for the Outline passes every in-body assertion vacuously,
+ * because nothing runs to assert. The final block below counts the rows from the inside.
+ *
+ * The ambient Layer is `logLayer` again — the plain, per-Scenario-fresh form — so each row also gets
+ * its own `Log` build, and a row reading another row's `Ref` would show up here too.
+ */
+const outlineRowValues: Array<string> = []
+
+/** A three-row Outline whose every row states its own expected value in a second column. */
+const outlineFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Outline rows are independent
+
+  Scenario Outline: row carrying <value>
+    When I record the row value <value>
+    Then the row I ran was <expected>
+
+    Examples:
+      | value | expected |
+      | alpha | alpha    |
+      | beta  | beta     |
+      | gamma | gamma    |
+`,
+    "test/outline-rows.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE THIRD and last real `describeFeature` call in this file. Its three emitted tests are RUN by
+// this suite; the block below reads what they recorded.
+describeFeature(outlineFeature, logLayer, ({ Then, When }) => {
+  When("I record the row value {word}", function*(value: string) {
+    // Into the ambient `Log`, which is rebuilt per Scenario — so the `Then` below can only read a
+    // value its OWN row's `When` put there.
+    yield* append(value)
+  })
+
+  Then("the row I ran was {word}", function*(expected: string) {
+    const { entries } = yield* Log
+    const observed = yield* Ref.get(entries)
+
+    // Exactly ONE entry: a shared `Ref` across rows would accumulate three, and a `.at(-1)` check
+    // would not notice.
+    assert.deepStrictEqual(observed, [expected])
+
+    // The row's own title, recorded for the outer block. 08-04's D-03 suffix is what makes these
+    // three names distinguishable at all — the Outline's title text does reference `<value>` here,
+    // so the base names differ too, but the suffix names both columns explicitly.
+    outlineRowValues.push(currentTestName())
+  })
+})
+
+/**
  * DECLARED LAST ON PURPOSE, after every other `describe` block in this file — the identical
  * "vitest runs a file's suites in declaration order" reasoning `completedScenarios`'s own last block
  * uses. Both hook Scenarios above, and the `⚙ AfterAllScenarios` node emitted after them, have already
@@ -524,5 +611,25 @@ describe("the hook Feature's real-run AfterAllScenarios proof", () => {
     // Exactly once — not "at least once", which the position check above already implies but does not
     // by itself rule out a stray extra pair earlier in the log.
     expect(hookLog.filter((entry) => entry === "afterAllScenarios:start")).toHaveLength(1)
+  })
+})
+
+/**
+ * The outer half of the Pitfall 34 proof — see `outlineRowValues`. Declared after the block that
+ * registered the Outline, for the same declaration-order reason as every other reader in this file.
+ */
+describe("three Outline rows ran as three independent tests", () => {
+  it("emitted one test per row, each titled with its own row's values", () => {
+    // ONE positional comparison over the WHOLE array. Three separate properties, three silent
+    // failure modes: that the Outline emitted three tests rather than one (Pitfall 9's
+    // `Map<astNodeIds[0], Pickle>` collapse), that they ran in Examples-row order, and that each
+    // carries 08-04's D-03 suffix naming BOTH of its own row's columns. The in-body assertions above
+    // already proved each row observed only its own value; this proves there were three of them to
+    // observe anything at all.
+    expect(outlineRowValues).toEqual([
+      `Outline rows are independent${nameSeparator}row carrying alpha (value=alpha, expected=alpha)`,
+      `Outline rows are independent${nameSeparator}row carrying beta (value=beta, expected=beta)`,
+      `Outline rows are independent${nameSeparator}row carrying gamma (value=gamma, expected=gamma)`
+    ])
   })
 })
