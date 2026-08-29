@@ -29,10 +29,10 @@
  *
  * (b) **Level precedence: an INNER registration shadows an outer one, and two matches at the same
  *     level is the ambiguity.** A visible match is ranked `0` when its scope is `background` or
- *     `scenario` and `1` when it is `feature`; the lowest rank with at least one match wins and the
- *     rest are discarded. That is ARCHITECTURE.md Pattern 5's "walk up the chain, first match wins",
- *     written as a rank rather than as a loop because the matcher already returned every match at
- *     once.
+ *     `scenario`, `1` when it is `rule` and `2` when it is `feature`; the lowest rank with at least
+ *     one match wins and the rest are discarded. That is ARCHITECTURE.md Pattern 5's "walk up the
+ *     chain, first match wins", written as a rank rather than as a loop because the matcher already
+ *     returned every match at once.
  *
  *     The plausible wrong reading is to treat ANY two matches as ambiguous. It fails on the exact
  *     arrangement Pattern 5 exists to support: a Feature-level default pattern with a Scenario-level
@@ -65,13 +65,30 @@
  *     registry INSTANCE precisely because a fresh registry is a different registry — would then
  *     serve that wrong compilation without complaint.
  *
- * (e) **There is no `rule` scope kind, and this module does not pretend there is one.**
- *     `RegistryScopeKind` is `feature | background | scenario`; a `Rule:` block as a DSL container is
- *     Phase 8's DSL-05. ARCHITECTURE.md Pattern 5 describes a three-level chain (Scenario → Rule →
- *     Feature) and this module implements the two levels that exist today. A Scenario nested inside a
- *     `Rule:` is still planned correctly, because its steps are visible to Feature-scope and
- *     Background-scope registrations exactly as a top-level Scenario's are; what is missing is only
- *     the ability to REGISTER at Rule scope, which no DSL surface offers yet.
+ * (e) **`rule` is a real scope kind, and Rule membership is decided by a CALLER-RESOLVED id — never
+ *     by a Rule NAME.** ARCHITECTURE.md Pattern 5's three-level chain (Scenario → Rule → Feature) is
+ *     implemented here in full: `isVisibleTo` has a `"rule"` arm, and `scopeRank` has three levels
+ *     with `rule` in the middle.
+ *
+ *     Every one of those comparisons is plain `===` between `Option.getOrNull(scenario.ruleId)` and
+ *     `definition.scope.ruleId`, two `string | null`s. Comparing `ParsedRule.name` instead would be
+ *     the plausible mistake and it is a real defect, not a stylistic one: `Validate.ts`'s
+ *     `uniquenessKey` is `${ruleId}\0${name}`, and its own
+ *     `duplicate-scenario-name-across-rules.feature` fixture is the executable proof that two
+ *     DIFFERENT Rules may legally share a name AND each contain a same-named Scenario. Name equality
+ *     would let one Rule's registrations resolve inside the other's Scenarios, which is exactly the
+ *     leak INV-EC-005 forbids.
+ *
+ *     `null` is reserved EXCLUSIVELY for "not nested in any Rule" — Registry.ts note (e) states the
+ *     invariant on the producing side, and this module is the reason it has to hold. A Rule-scope
+ *     registration therefore never carries `null`: it carries either the real `ParsedRule.id` the
+ *     author's Rule name resolved to, or a sentinel that can never equal any real scenario's
+ *     `ruleId`. That is why the `"rule"` arm needs no `Option.isSome` guard and no
+ *     different-Rule branch — one equality decides "same Rule", "different Rule" and "no Rule at
+ *     all" correctly.
+ *
+ *     This module performs NO resolution of its own. The single place a Rule NAME becomes an id, or
+ *     falls back to that sentinel, is `describeFeature.ts`'s `Rule(...)` container.
  *
  * (f) **Two `effect@4.0.0-rc.112` constraints govern this module, both already discovered and
  *     recorded at `packages/gherkin/src/Validate.ts`.** They are stated here as constraints, not
@@ -430,44 +447,59 @@ const unusedStepDefinition = (args: {
  * Background half.
  *
  * - `feature` scope is visible to every step of every Scenario. It is the shared default.
- * - `background` scope is visible ONLY to a step that came from a Background. ADR-EC-017 makes a
- *   `Background` a step-definition CONTAINER — its registrations exist to give the Background's own
- *   step text something to match, and a Scenario step reaching into them would resolve against a
- *   definition written for a different block.
- * - `scenario` scope is visible ONLY to a step of THAT Scenario, matched by `astName`. Note (c) is
- *   why the comparison is against `astName` and never `name`.
- *
- * - `rule` scope exists as a kind but is not yet reachable: no DSL surface pushes a `rule` frame, so
- *   no definition can carry one. The arm returns `false` rather than being omitted, because the
- *   switch is exhaustive by return type and because `false` is the only safe default for a scope
- *   whose matching rule is not written — a `true` here would make an unreachable case leak every
- *   registration to every step the moment the case became reachable.
+ * - `rule` scope is visible to every step of every Scenario nested in THAT Rule, and to no other —
+ *   the middle level of Pattern 5's chain, and the Rule-level analogue of the Feature-level default.
+ *   Note (e) is why the comparison is a plain `===` over ids and never over Rule names.
+ * - `background` scope is visible ONLY to a step that came from a Background, and only to one from
+ *   the SAME Background block. ADR-EC-017 makes a `Background` a step-definition CONTAINER — its
+ *   registrations exist to give the Background's own step text something to match, and a Scenario
+ *   step reaching into them would resolve against a definition written for a different block. The
+ *   two Background origins are now checked separately, which is a deliberate behavior CHANGE from
+ *   the pre-Phase-8 code and not a bug fix: before Rule-scoped Backgrounds existed, one arm covering
+ *   both origins was correct because there was only one Background container a registration could
+ *   have come from. Now that a Rule has its own `Background`, a Feature-level Background definition
+ *   blanketing every Rule's Background steps would be the same cross-Rule leak the `"rule"` arm
+ *   exists to prevent — so `feature-background` steps see only `ruleId === null` registrations, and
+ *   `rule-background` steps see only registrations carrying their own Rule's id (D-04).
+ * - `scenario` scope is visible ONLY to a step of THAT Scenario, matched by `astName` AND by
+ *   `ruleId`. Note (c) is why the comparison is against `astName` and never `name`. The `ruleId`
+ *   half is new and is not redundant: `Validate.ts`'s own
+ *   `duplicate-scenario-name-across-rules.feature` fixture proves two DIFFERENT Rules may each
+ *   legally contain a Scenario with the same name, so `astName` alone would let a registration
+ *   written inside one Rule's Scenario also resolve against the other Rule's same-named one.
  */
 const isVisibleTo = (
   definition: StepDefinition<StepBody>,
   scenario: ParsedScenario,
   step: ParsedStep
 ): boolean => {
+  const scenarioRuleId = Option.getOrNull(scenario.ruleId)
   switch (definition.scope.kind) {
     case "feature":
       return true
-    case "background":
-      return step.origin === "feature-background" || step.origin === "rule-background"
-    case "scenario":
-      return step.origin === "scenario" && definition.scope.name === scenario.astName
     case "rule":
-      return false
+      return scenarioRuleId === definition.scope.ruleId
+    case "background":
+      return step.origin === "feature-background"
+        ? definition.scope.ruleId === null
+        : step.origin === "rule-background" && scenarioRuleId === definition.scope.ruleId
+    case "scenario":
+      return step.origin === "scenario"
+        && definition.scope.name === scenario.astName
+        && scenarioRuleId === definition.scope.ruleId
   }
 }
 
 /**
- * How far up the scope chain a registration sits: `0` for the inner level, `1` for the Feature.
+ * How far up the scope chain a registration sits: `0` for the inner level, `1` for a Rule, `2` for
+ * the Feature. Three levels, matching ARCHITECTURE.md Pattern 5's Scenario → Rule → Feature chain.
  *
  * `background` and `scenario` share rank `0` and cannot compete with each other, because
  * `isVisibleTo` already makes them mutually exclusive for any one step — a step's `origin` is either
- * a Background one or a Scenario one, never both.
+ * a Background one or a Scenario one, never both. That holds for a Rule's own Background too: its
+ * steps carry `origin: "rule-background"`, which no `scenario`-scope registration is visible to.
  */
-const scopeRank = (kind: RegistryScopeKind): number => kind === "feature" ? 1 : 0
+const scopeRank = (kind: RegistryScopeKind): number => kind === "feature" ? 2 : kind === "rule" ? 1 : 0
 
 /**
  * Resolve one Pickle step against the whole visible definition set.
@@ -486,8 +518,20 @@ const planStep = (args: {
   }>
 }): PlannedStep => {
   const { feature, matches, scenario, step } = args
-  const inner = matches.filter((match) => scopeRank(match.definition.scope.kind) === 0)
-  const winning = inner.length > 0 ? inner : matches
+
+  // The LOWEST rank present wins, computed rather than tested against a literal `0`. With two levels
+  // a "rank 0, else everything else" split was equivalent; with three it is not — a `rule` match and
+  // a `feature` match would both survive that split and be reported as an ambiguity, which is the
+  // precise opposite of Pattern 5's "walk up the chain, first match wins" and would make a
+  // Feature-level default impossible to override at Rule level.
+  //
+  // An empty `matches` leaves `innermost` at Infinity, so `winning` is empty and the caller below
+  // produces an `UndefinedStep` — the same outcome the old shape gave for the same input.
+  const innermost = matches.reduce(
+    (rank, match) => Math.min(rank, scopeRank(match.definition.scope.kind)),
+    Number.POSITIVE_INFINITY
+  )
+  const winning = matches.filter((match) => scopeRank(match.definition.scope.kind) === innermost)
 
   const only = winning.length === 1 ? winning[0] : undefined
   if (only !== undefined) {

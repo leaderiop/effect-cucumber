@@ -36,6 +36,30 @@
  * - **The two-definitions-one-pattern case** registers the identical pattern string at two different
  *   scopes and asserts each is tracked independently. A used-set keyed on the pattern string passes
  *   every other test in this file.
+ * - **Every Rule-scope case** runs against the `rules` fixture, in which all THREE Scenarios are
+ *   named `shared` and worded identically and only their `ruleId` differs. A fixture with distinct
+ *   Scenario names would let a name-based comparison pass every isolation assertion below, which is
+ *   the one defect those assertions exist to catch. `Validate.ts`'s `uniquenessKey` is
+ *   `${ruleId}\0${name}`, so that document is legal Gherkin and legal here — this is a real
+ *   arrangement an author can write, not a contrived one.
+ * - **The cross-Rule isolation case** asserts BODY REFERENCE and not the pattern string, because it
+ *   registers one identical pattern in each of two Rules. The pattern cannot name the winner, and
+ *   two matches at one rank that were never visible to each other must not become an ambiguity.
+ *
+ * ## Mutation-tested — the Rule level of the scope chain (DSL-05)
+ *
+ * All four performed against the implementation, observed failing, then reverted:
+ * - A. `isVisibleTo`'s `background` arm is restored to the pre-Phase-8
+ *      `origin === "feature-background" || origin === "rule-background"` → both Background-isolation
+ *      tests fail. This is the mutation that proves the behavior CHANGE is asserted rather than
+ *      assumed; no pre-existing test in the repo notices it.
+ * - B. `scopeRank` collapses `rule` back into `feature`'s rank → the rule-beats-feature precedence
+ *      test fails with an `AmbiguousStep` instead of a resolution.
+ * - C. the `ruleId` conjunct is dropped from the `scenario` arm → the same-named-Scenario-across-two-
+ *      Rules test fails, and so does the Feature-level-Scenario one.
+ * - D. `planStep`'s lowest-rank selection is restored to the two-level `rank === 0, else everything`
+ *      split → the rule-beats-feature test fails. Rank values alone are not enough; the selection has
+ *      to read them.
  *
  * ## Mutation-tested — the drift errors (MATCH-03 / MATCH-04)
  *
@@ -66,15 +90,17 @@
  * returns a plain value and runs no Effect. oxlint's `vitest/no-standalone-expect` is satisfied
  * because none of these is nested in an `it.effect`.
  */
-import { generateStepSnippet, ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
+import { generateStepSnippet, ParameterTypeStore, type ParsedFeature, parseFeature } from "@effect-cucumber/gherkin"
 import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import type { UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import {
+  type FeaturePlan,
   planFeature,
   type PlannedStep,
   type ResolvedPlannedStep,
+  type ScenarioPlan,
   type StepBody,
   type UnresolvedPlannedStep
 } from "../src/Plan.ts"
@@ -183,12 +209,110 @@ const outline = parse(
   "test/plan-outline.feature"
 )
 
+const rulesUri = "test/plan-rules.feature"
+
+/**
+ * Two Rules and a Feature-level Scenario, all THREE Scenarios named `shared` and all three worded
+ * identically.
+ *
+ * `Validate.ts`'s `uniquenessKey` is `${ruleId}\0${name}`, so this document is legal Gherkin and
+ * legal under this repo's own validation — which is the whole point. `astName` alone cannot tell
+ * these three apart, so every isolation claim about Rule scope has to be made against a fixture
+ * where the name genuinely collides, or it is being proved by the name and not by the `ruleId`.
+ */
+const rules = parse(
+  `Feature: Rules
+
+  Scenario: shared
+    Given I do the thing
+
+  Rule: first
+    Scenario: shared
+      Given I do the thing
+
+  Rule: second
+    Scenario: shared
+      Given I do the thing
+`,
+  rulesUri
+)
+
+/**
+ * A Feature-level `Background` and a Rule with its OWN `Background`.
+ *
+ * The Scenario inside the Rule carries three steps with two different Background origins —
+ * `feature-background` then `rule-background` then `scenario` — which is the only arrangement in
+ * which the two halves of `isVisibleTo`'s `background` arm can be told apart.
+ */
+const ruleBackgrounds = parse(
+  `Feature: Backgrounds
+  Background:
+    Given the feature is ready
+
+  Scenario: top level
+    Given I do the thing
+
+  Rule: r
+    Background:
+      Given the rule is ready
+
+    Scenario: inside
+      Given I do the thing
+`,
+  "test/plan-rule-backgrounds.feature"
+)
+
 /** A step body that touches no service. Never called here; only its identity is asserted. */
 const noop: StepBody = () => Effect.void
 
-const featureScope = (name: string): RegistryScope => ({ kind: "feature", name })
-const backgroundScope: RegistryScope = { kind: "background", name: null }
-const scenarioScope = (name: string): RegistryScope => ({ kind: "scenario", name })
+/**
+ * Two more of the same, distinguishable ONLY by reference.
+ *
+ * The cross-Rule isolation test registers one identical pattern string in each of two Rules, so the
+ * pattern cannot say which definition won and the body has to. Declared here rather than inside that
+ * test because `unicorn(consistent-function-scoping)` rejects a nested function that captures
+ * nothing from its enclosing scope.
+ */
+const inFirstRule: StepBody = () => Effect.void
+const inSecondRule: StepBody = () => Effect.void
+
+/**
+ * `ruleId` defaults to `null` on all three, because a Feature-level frame genuinely is not nested in
+ * a Rule — Registry.ts note (e) reserves `null` for exactly that and for nothing else. The default
+ * is not a convenience for the existing call sites; it is the correct value at every one of them.
+ */
+const featureScope = (name: string, ruleId: string | null = null): RegistryScope => ({
+  kind: "feature",
+  name,
+  ruleId
+})
+const backgroundScope = (ruleId: string | null = null): RegistryScope => ({ kind: "background", name: null, ruleId })
+const scenarioScope = (name: string, ruleId: string | null = null): RegistryScope => ({
+  kind: "scenario",
+  name,
+  ruleId
+})
+/** `ruleId` is REQUIRED here: a Rule-scope frame carrying `null` would read as Feature-level. */
+const ruleScope = (name: string, ruleId: string): RegistryScope => ({ kind: "rule", name, ruleId })
+
+/**
+ * The real `ParsedRule.id` a fixture's Rule was parsed with.
+ *
+ * Read from the parse rather than hard-coded, because the id is `Correlate.ts`'s to mint and a
+ * literal here would be asserting against this test's guess at that format instead of against the
+ * value `planFeature` actually receives.
+ */
+const ruleIdOf = (feature: ParsedFeature, name: string): string => {
+  const rule = feature.rules.find((candidate) => candidate.name === name)
+  if (rule === undefined) {
+    throw new Error(`the fixture has no Rule named ${JSON.stringify(name)}`)
+  }
+  return rule.id
+}
+
+/** The planned Scenario belonging to `ruleId` — `null` for the Feature-level one. */
+const scenarioIn = (plan: FeaturePlan, ruleId: string | null): ScenarioPlan | undefined =>
+  plan.scenarios.find((candidate) => Option.getOrNull(candidate.ruleId) === ruleId)
 
 /**
  * A definition site in one fixed file, so two sites differ only in their line.
@@ -257,7 +381,7 @@ describe("planFeature — resolution and the scope chain", () => {
     const plan = planFeature({
       feature: checkout,
       definitions: [
-        define({ pattern: "the cart is empty", scope: backgroundScope }),
+        define({ pattern: "the cart is empty", scope: backgroundScope() }),
         define({ pattern: "I add {int} apples", scope: scenarioScope("paying"), keyword: "When" }),
         define({ pattern: "the total is {int}", scope: scenarioScope("paying"), keyword: "Then" })
       ]
@@ -289,9 +413,9 @@ describe("planFeature — resolution and the scope chain", () => {
     const plan = planFeature({
       feature: checkout,
       definitions: [
-        define({ pattern: "the cart is empty", scope: backgroundScope }),
+        define({ pattern: "the cart is empty", scope: backgroundScope() }),
         // Registered inside the Background, but the step it matches lives in the Scenario.
-        define({ pattern: "I add {int} apples", scope: backgroundScope, keyword: "And" })
+        define({ pattern: "I add {int} apples", scope: backgroundScope(), keyword: "And" })
       ]
     })
 
@@ -353,6 +477,186 @@ describe("planFeature — resolution and the scope chain", () => {
 
     expect(resolvedOf(plan.scenarios[0]?.steps[0])?.args).toEqual([1])
     expect(resolvedOf(plan.scenarios[1]?.steps[0])?.args).toEqual([2])
+  })
+})
+
+describe("planFeature — the Rule level of the scope chain", () => {
+  const firstRuleId = ruleIdOf(rules, "first")
+  const secondRuleId = ruleIdOf(rules, "second")
+
+  it("parses two distinct Rule ids for two Rules, so the fixture can discriminate at all", () => {
+    // Not a tautology: every isolation assertion below is `===` between two ids, and all of them
+    // would pass vacuously against a parse that minted one id for both Rules.
+    expect(firstRuleId).not.toBe(secondRuleId)
+    expect(scenarioIn(planFeature({ feature: rules, definitions: [] }), null)?.astName).toBe("shared")
+  })
+
+  it("lets a Rule-scope pattern resolve steps inside that Rule and nowhere else", () => {
+    const plan = planFeature({
+      feature: rules,
+      definitions: [define({ pattern: "I do the thing", scope: ruleScope("first", firstRuleId) })]
+    })
+
+    expect(tagsOf(scenarioIn(plan, firstRuleId)?.steps ?? [])).toEqual(["Resolved"])
+    // The other Rule's Scenario is worded IDENTICALLY and named IDENTICALLY. Only the id differs.
+    expect(tagsOf(scenarioIn(plan, secondRuleId)?.steps ?? [])).toEqual(["Unresolved"])
+    // And a Feature-level Scenario is not inside any Rule, so it does not see a Rule's default.
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved"])
+  })
+
+  it("never lets one Rule's registration serve another Rule's Scenario, even under one pattern text", () => {
+    const plan = planFeature({
+      feature: rules,
+      definitions: [
+        define({ pattern: "I do the thing", scope: ruleScope("first", firstRuleId), body: inFirstRule }),
+        define({ pattern: "I do the thing", scope: ruleScope("second", secondRuleId), body: inSecondRule })
+      ]
+    })
+
+    // NOT an ambiguity, even though both carry the same pattern at the same rank: neither was ever
+    // VISIBLE to the other Rule's Scenario, so each Scenario saw exactly one match. Body identity is
+    // the assertion and not the pattern string, because the pattern strings are indistinguishable —
+    // which is precisely the case a name-based comparison would get wrong.
+    expect(resolvedOf(scenarioIn(plan, firstRuleId)?.steps[0])?.body).toBe(inFirstRule)
+    expect(resolvedOf(scenarioIn(plan, secondRuleId)?.steps[0])?.body).toBe(inSecondRule)
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved"])
+  })
+
+  it("does not let a Scenario-scope pattern cross into a same-named Scenario in a different Rule", () => {
+    const plan = planFeature({
+      feature: rules,
+      // All three Scenarios in this fixture have astName `shared`, so `astName` alone selects all
+      // three. `Validate.ts`'s duplicate-scenario-name-across-rules fixture is the proof that this
+      // document is legal, which is what makes the `ruleId` half of the check load-bearing.
+      definitions: [define({ pattern: "I do the thing", scope: scenarioScope("shared", firstRuleId) })]
+    })
+
+    expect(tagsOf(scenarioIn(plan, firstRuleId)?.steps ?? [])).toEqual(["Resolved"])
+    expect(tagsOf(scenarioIn(plan, secondRuleId)?.steps ?? [])).toEqual(["Unresolved"])
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved"])
+  })
+
+  it("still scopes a Feature-level Scenario registration to the Feature level and not into a Rule", () => {
+    const plan = planFeature({
+      feature: rules,
+      definitions: [define({ pattern: "I do the thing", scope: scenarioScope("shared") })]
+    })
+
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Resolved"])
+    expect(tagsOf(scenarioIn(plan, firstRuleId)?.steps ?? [])).toEqual(["Unresolved"])
+    expect(tagsOf(scenarioIn(plan, secondRuleId)?.steps ?? [])).toEqual(["Unresolved"])
+  })
+
+  it("keeps a Feature-scope registration visible everywhere, inside every Rule included", () => {
+    const plan = planFeature({
+      feature: rules,
+      definitions: [define({ pattern: "I do the thing", scope: featureScope("Rules") })]
+    })
+
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Resolved"])
+    expect(tagsOf(scenarioIn(plan, firstRuleId)?.steps ?? [])).toEqual(["Resolved"])
+    expect(tagsOf(scenarioIn(plan, secondRuleId)?.steps ?? [])).toEqual(["Resolved"])
+  })
+})
+
+describe("planFeature — three-level precedence, Scenario over Rule over Feature", () => {
+  const firstRuleId = ruleIdOf(rules, "first")
+
+  // Three DIFFERENT pattern strings that all match `I do the thing`, so the winner can be named.
+  const atScenario = define({ pattern: "I do the thing", scope: scenarioScope("shared", firstRuleId) })
+  const atRule = define({ pattern: "I do the {word}", scope: ruleScope("first", firstRuleId) })
+  const atFeature = define({ pattern: "I {word} the thing", scope: featureScope("Rules") })
+
+  const winnerInFirstRule = (definitions: ReadonlyArray<StepDefinition<StepBody>>): string | null =>
+    patternOf(scenarioIn(planFeature({ feature: rules, definitions }), firstRuleId)?.steps[0])
+
+  it("picks the Scenario-scope match when all three levels match the same step", () => {
+    expect(winnerInFirstRule([atFeature, atRule, atScenario])).toBe("I do the thing")
+  })
+
+  it("picks the Rule-scope match over the Feature-scope one when the Scenario level is absent", () => {
+    // The load-bearing half of the three-level rank. A rank that still collapsed `rule` into
+    // `feature` would see two matches at one level here and report an AmbiguousStep instead.
+    expect(winnerInFirstRule([atFeature, atRule])).toBe("I do the {word}")
+  })
+
+  it("falls back to the Feature-scope match when neither inner level matches", () => {
+    expect(winnerInFirstRule([atFeature])).toBe("I {word} the thing")
+  })
+
+  it("does not report the shadowed Rule- and Feature-level patterns as unused", () => {
+    // Both matched; both then lost to an inner level. Note (g)'s visible-and-matched reading, one
+    // level deeper than the test that already asserts it for Feature-over-Scenario.
+    const plan = planFeature({ feature: rules, definitions: [atFeature, atRule, atScenario] })
+
+    expect(plan.warnings).toEqual([])
+  })
+})
+
+describe("planFeature — a Rule's own Background", () => {
+  const ruleId = ruleIdOf(ruleBackgrounds, "r")
+
+  it("gives the Rule's Scenario a feature-background, a rule-background and a scenario step", () => {
+    const plan = planFeature({
+      feature: ruleBackgrounds,
+      definitions: [
+        define({ pattern: "the feature is ready", scope: backgroundScope() }),
+        define({ pattern: "the rule is ready", scope: backgroundScope(ruleId) }),
+        define({ pattern: "I do the thing", scope: featureScope("Backgrounds") })
+      ]
+    })
+
+    const inside = scenarioIn(plan, ruleId)
+    expect(tagsOf(inside?.steps ?? [])).toEqual(["Resolved", "Resolved", "Resolved"])
+    expect(resolvedOf(inside?.steps[0])?.origin).toBe("feature-background")
+    expect(resolvedOf(inside?.steps[1])?.origin).toBe("rule-background")
+    expect(resolvedOf(inside?.steps[2])?.origin).toBe("scenario")
+
+    // The Feature-level Scenario has no rule-background step of its own, so it is served entirely by
+    // the Feature-level registrations — nothing regressed for the pre-Phase-8 arrangement.
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Resolved", "Resolved"])
+    expect(plan.warnings).toEqual([])
+  })
+
+  it("no longer lets a Feature-level Background registration resolve a rule-background step", () => {
+    const plan = planFeature({
+      feature: ruleBackgrounds,
+      // Registered in the FEATURE's Background (`ruleId: null`) but worded to match the RULE's
+      // Background step. This RESOLVED before this phase, because one `background` arm covered both
+      // origins — a deliberate behavior change, not a bug fix, and one no pre-existing test can see.
+      definitions: [define({ pattern: "the rule is ready", scope: backgroundScope() })]
+    })
+
+    expect(tagsOf(scenarioIn(plan, ruleId)?.steps ?? [])).toEqual(["Unresolved", "Unresolved", "Unresolved"])
+    expect(errorOf(scenarioIn(plan, ruleId)?.steps[1])?.reason).toBe("UndefinedStep")
+    // Never visible to any step anywhere, so it is also genuinely dead code — MATCH-05 agrees.
+    expect(patternsOfWarnings(plan.warnings)).toEqual(["the rule is ready"])
+  })
+
+  it("does not let a rule-background registration resolve the Feature's own Background step", () => {
+    const plan = planFeature({
+      feature: ruleBackgrounds,
+      definitions: [define({ pattern: "the feature is ready", scope: backgroundScope(ruleId) })]
+    })
+
+    // The mirror of the test above. The Feature's Background step keeps `origin:
+    // "feature-background"` in BOTH Scenarios, including the one nested in the Rule.
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved", "Unresolved"])
+    expect(tagsOf(scenarioIn(plan, ruleId)?.steps ?? [])).toEqual(["Unresolved", "Unresolved", "Unresolved"])
+    expect(patternsOfWarnings(plan.warnings)).toEqual(["the feature is ready"])
+  })
+
+  it("serves a rule-background step from a Rule-scope registration, the Rule-level default", () => {
+    const plan = planFeature({
+      feature: ruleBackgrounds,
+      // `rule` scope is the Rule-level analogue of `feature` scope: visible to EVERY step of every
+      // Scenario in that Rule, Background steps included. It is not a second Background container.
+      definitions: [define({ pattern: "the rule is ready", scope: ruleScope("r", ruleId) })]
+    })
+
+    expect(patternOf(scenarioIn(plan, ruleId)?.steps[1])).toBe("the rule is ready")
+    // ...and still not visible outside the Rule.
+    expect(tagsOf(scenarioIn(plan, null)?.steps ?? [])).toEqual(["Unresolved", "Unresolved"])
   })
 })
 
@@ -501,7 +805,7 @@ describe("planFeature — MATCH-05, the unused step definition", () => {
     const plan = planFeature({
       feature: checkout,
       definitions: [
-        define({ pattern: "the cart is empty", scope: backgroundScope }),
+        define({ pattern: "the cart is empty", scope: backgroundScope() }),
         define({ pattern: "I add {int} apples", scope: scenarioScope("paying"), keyword: "When" }),
         define({ pattern: "the total is {int}", scope: scenarioScope("paying"), keyword: "Then" })
       ]
