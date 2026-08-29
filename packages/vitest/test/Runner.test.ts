@@ -382,7 +382,7 @@ const outline = parse(
 /** A step body that touches no service. */
 const noop: StepBody = () => Effect.void
 
-const featureScope = (name: string): RegistryScope => ({ kind: "feature", name })
+const featureScope = (name: string): RegistryScope => ({ kind: "feature", name, ruleId: null })
 
 /** A definition site in one fixed file, so two sites differ only in their line. */
 const site = (line: number): DefinitionSite => ({ file: "/repo/test/runner.steps.ts", line, column: 5 })

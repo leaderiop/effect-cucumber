@@ -231,7 +231,11 @@ const collect = (
     Background: (defineBackground) => {
       // `name: null` and not the feature's name: a Background genuinely has none (Registry.ts's
       // note on RegistryScope).
-      registry.pushScope({ kind: "background", name: null })
+      //
+      // `ruleId: null` is not a placeholder — it is the truthful value. This file offers no `Rule`
+      // container yet (that is 08-05a's job), so every frame it pushes is genuinely NOT nested in a
+      // Rule, which is exactly what Registry.ts note (e) reserves `null` for.
+      registry.pushScope({ kind: "background", name: null, ruleId: null })
       try {
         defineBackground(backgroundDsl)
       } finally {
@@ -241,7 +245,7 @@ const collect = (
       }
     },
     Scenario: (name, defineScenario) => {
-      registry.pushScope({ kind: "scenario", name })
+      registry.pushScope({ kind: "scenario", name, ruleId: null })
       try {
         defineScenario(scenarioDsl)
       } finally {

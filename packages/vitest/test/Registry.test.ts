@@ -29,7 +29,7 @@ import { createRegistry, type DefinitionSite, type RegistryScope } from "../src/
 /** A step body's real type belongs to the DSL; this file only needs something identifiable. */
 type Body = () => string
 
-const scenario = (name: string): RegistryScope => ({ kind: "scenario", name })
+const scenario = (name: string): RegistryScope => ({ kind: "scenario", name, ruleId: null })
 
 /**
  * A stand-in site for the tests that are not about the site.
@@ -69,8 +69,8 @@ describe("two registries built in the same process share no state", () => {
     a.pushScope(scenario("a scenario in A"))
 
     // The scope-stack half of the same claim. A hoisted `stack` makes b report A's scenario.
-    expect(a.currentScope()).toEqual({ kind: "scenario", name: "a scenario in A" })
-    expect(b.currentScope()).toEqual({ kind: "feature", name: "feature B" })
+    expect(a.currentScope()).toEqual({ kind: "scenario", name: "a scenario in A", ruleId: null })
+    expect(b.currentScope()).toEqual({ kind: "feature", name: "feature B", ruleId: null })
   })
 })
 
@@ -105,7 +105,7 @@ describe("the scope stack refuses to underflow", () => {
 
     registry.pushScope(scenario("a scenario"))
     expect(() => registry.popScope()).not.toThrow()
-    expect(registry.currentScope()).toEqual({ kind: "feature", name: "a feature" })
+    expect(registry.currentScope()).toEqual({ kind: "feature", name: "a feature", ruleId: null })
     expect(() => registry.popScope()).toThrow("scope stack underflow")
   })
 })
@@ -121,19 +121,50 @@ describe("a step definition carries the scope that was current when it was regis
 
     const [inner, outer] = registry.definitions()
 
-    expect(inner?.scope).toEqual({ kind: "scenario", name: "a scenario" })
+    expect(inner?.scope).toEqual({ kind: "scenario", name: "a scenario", ruleId: null })
     expect(inner?.keyword).toBe("When")
-    expect(outer?.scope).toEqual({ kind: "feature", name: "a feature" })
+    expect(outer?.scope).toEqual({ kind: "feature", name: "a feature", ruleId: null })
     expect(outer?.keyword).toBe("Then")
   })
 
   it("records a background scope with a null name", () => {
     const registry = createRegistry<Body>("a feature")
 
-    registry.pushScope({ kind: "background", name: null })
+    registry.pushScope({ kind: "background", name: null, ruleId: null })
     registry.register("Given", "a background step", () => "background", elsewhere)
 
-    expect(registry.definitions()[0]?.scope).toEqual({ kind: "background", name: null })
+    expect(registry.definitions()[0]?.scope).toEqual({ kind: "background", name: null, ruleId: null })
+  })
+
+  it("records a rule scope with the caller-supplied ruleId, name and all", () => {
+    const registry = createRegistry<Body>("a feature")
+
+    registry.pushScope({ kind: "rule", name: "a rule", ruleId: "r1" })
+    registry.register("Given", "a step inside the rule", () => "rule", elsewhere)
+
+    // The WHOLE object, `ruleId` included. Asserting only `kind`/`name` would pass against a
+    // `pushScope` that dropped the field, which is the one thing Plan.ts cannot recover from:
+    // a rule frame whose `ruleId` went missing reads as Feature-level everywhere downstream.
+    expect(registry.definitions()[0]?.scope).toEqual({ kind: "rule", name: "a rule", ruleId: "r1" })
+  })
+
+  it("keeps a rule-nested background frame distinct from the Feature's own background frame", () => {
+    const registry = createRegistry<Body>("a feature")
+
+    registry.pushScope({ kind: "background", name: null, ruleId: null })
+    registry.register("Given", "a feature background step", () => "feature-background", elsewhere)
+    registry.popScope()
+
+    registry.pushScope({ kind: "background", name: null, ruleId: "r1" })
+    registry.register("Given", "a rule background step", () => "rule-background", elsewhere)
+
+    const [featureLevel, ruleLevel] = registry.definitions()
+
+    // Same `kind`, same `null` name — `ruleId` is the ONLY thing that tells these two apart, which
+    // is exactly why Registry.ts records it rather than leaving Plan.ts to re-derive the nesting.
+    expect(featureLevel?.scope).toEqual({ kind: "background", name: null, ruleId: null })
+    expect(ruleLevel?.scope).toEqual({ kind: "background", name: null, ruleId: "r1" })
+    expect(featureLevel?.scope).not.toEqual(ruleLevel?.scope)
   })
 })
 
