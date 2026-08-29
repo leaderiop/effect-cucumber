@@ -270,7 +270,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 06-06-PLAN.md — `Runner.ts`: describe/it.effect emission through the seam, plus D-02's reporter node
+- [x] 06-06-PLAN.md — `Runner.ts`: describe/it.effect emission through the seam, plus D-02's reporter node
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -397,7 +397,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
-| 6. Plan, Scenario-Effect, Runner, Drift Detection | 5/8 | In Progress|  |
+| 6. Plan, Scenario-Effect, Runner, Drift Detection | 6/8 | In Progress|  |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
