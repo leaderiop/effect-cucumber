@@ -48,6 +48,25 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       reordering the `StepRegistrar` union and the `describeFeature` overloads
       and observing the named diagnostic (not just the exit code) drop out.
       9/9 gate assertions; 427 tests passing; full `check.yml` gate green.
+- [x] `Background` and `Scenario` are step-definition containers — a
+      Background's literal Gherkin text is matched against a registered
+      `Given`/`And` pattern exactly like any other step, not run
+      unconditionally — ADR-EC-017. Background steps are inlined as the
+      first `yield*`s of every Scenario's Effect, not a separate vitest hook
+      — ADR-EC-004. Container shapes shipped in Phase 5; the literal-text-
+      matching half validated in Phase 6 (Plan, Scenario-Effect, Runner
+      Emission, and Drift Detection): `Plan.ts`'s scope-chain resolution
+      matches every Pickle step (Background included) against the registry,
+      and `ScenarioEffect.ts` composes Background steps first, then the
+      Scenario's own, as sequential `yield*`s inside one `Effect.gen`.
+- [x] A Pickle step matching zero or more-than-one registered pattern fails
+      loudly, naming the step text and every ambiguous match; a registered
+      pattern matching zero steps in the Feature is a warning — ADR-EC-019,
+      BEH-EC-013. Validated in Phase 6: `StepMatchError`'s `UndefinedStep`/
+      `AmbiguousStep` variants and `UnusedStepDefinitionWarning` are wired
+      through `describeFeature`'s Register → Plan → Warn → Emit pipeline —
+      RUN-01, MATCH-03, MATCH-04, MATCH-05. 526 tests passing; full
+      `check.yml` gate green.
 - [x] A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`
       accept a bare generator, auto-wrapped with `Effect.fn` — ADR-EC-001,
       ADR-EC-005. Validated in Phase 5: `Step.ts`'s `isGeneratorFn` guard
@@ -64,15 +83,6 @@ authoring time, never a runtime failure discovered when the Scenario runs.
 Derived from `spec/behaviors/` (BEH-EC-001 through BEH-EC-013). Each maps to
 one or more ADRs in `spec/decisions/` for full rationale.
 
-- [ ] `Background` and `Scenario` are step-definition containers — a
-      Background's literal Gherkin text is matched against a registered
-      `Given`/`And` pattern exactly like any other step, not run
-      unconditionally — ADR-EC-017. Background steps are inlined as the
-      first `yield*`s of every Scenario's Effect, not a separate vitest hook
-      — ADR-EC-004. Container shapes shipped in Phase 5 (`Background`'s dsl
-      exposes only `{ Given, And }`, `Scenario`'s the full set; two `Registry`
-      instances share no state, mutation-proven) — the literal-text-matching
-      half is Phase 6's job once a runner consumes a `FeatureCollection`.
 - [ ] Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/
       `AfterAllScenarios`) are Effects; `After` always runs via
       `Effect.ensuring` — ADR-EC-005
@@ -94,10 +104,6 @@ one or more ADRs in `spec/decisions/` for full rationale.
       reading `Clock` sees `@effect/vitest`'s simulated clock with zero
       test-specific code, confirmed against real `effect@4.0.0-rc.112` —
       BEH-EC-012, ADR-EC-018
-- [ ] A Pickle step matching zero or more-than-one registered pattern fails
-      loudly, naming the step text and every ambiguous match; a registered
-      pattern matching zero steps in the Feature is a warning — ADR-EC-019,
-      BEH-EC-013
 
 ### Out of Scope
 
@@ -148,7 +154,9 @@ one or more ADRs in `spec/decisions/` for full rationale.
   verified working). `packages/gherkin` now has real source
   (`Source`/`Parser`/`Pickles`/`Correlate`/`Validate`/`loadFeature`, shipped
   in Phase 2) and no longer has "no source files yet" — `packages/vitest`
-  still does.
+  shipped its own real source across Phases 5-6 (`Registry`/`describeFeature`/
+  `TestApi`/`Errors`/`Plan`/`ScenarioEffect`/`Runner`) and no longer has "no
+  source files yet" either.
 - `effect` and `@effect/vitest` are `peerDependencies` of
   `@effect-cucumber/vitest` (ADR-EC-015), not hard dependencies — avoids a
   verified duplicate-package risk to `Context.Service` identity.
@@ -185,9 +193,9 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | GSD execution flow chosen over a plain coding session or a second wayfinder map | Wanted phase-based planning with a verification loop, on top of (not replacing) the existing spec | ✓ Good — GSD's own 4-dimension research pass found the spec's three critical bugs, which a plain coding session likely wouldn't have surfaced before implementation started |
 | Build order: `@effect-cucumber/gherkin` before `@effect-cucumber/vitest` | No Effect-specific logic in gherkin, lower-risk to get right standalone; vitest package depends on it | ✓ Good — corroborated independently by GSD Architecture research's dependency-graph analysis |
 | Adopt the `excludeTestServices` shared-Layer TestClock fix (ADR-EC-018) rather than a documented carve-out | Fully verified working, costs nothing but isolated internal complexity in the `shared`-Layer runner path | — Pending |
-| Fold step-drift detection (BEH-EC-013) into this milestone rather than deferring | Table stakes across every comparable library; the one failure-mode gap the Layer check doesn't cover; low-medium cost since it reuses ADR-EC-014's correlation data | — Pending |
+| Fold step-drift detection (BEH-EC-013) into this milestone rather than deferring | Table stakes across every comparable library; the one failure-mode gap the Layer check doesn't cover; low-medium cost since it reuses ADR-EC-014's correlation data | ✓ Good — shipped in Phase 6 as `StepMatchError`/`UnusedStepDefinitionWarning`, wired through `describeFeature`'s Plan → Warn → Emit sequence |
 | Defer reusable step definitions (Gap 2) to a later milestone | Genuinely harder here than in any comparable library — a shared step's `R` must reconcile against every consuming Layer, no ecosystem precedent | — Pending |
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
 
 ---
-*Last updated: 2026-08-29 after Phase 5 (`describeFeature` Type Surface) completion*
+*Last updated: 2026-08-29 after Phase 6 (Plan, Scenario-Effect, Runner Emission, and Drift Detection) completion*
