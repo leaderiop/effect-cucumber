@@ -341,7 +341,39 @@ Resolved at planning time against the installed `effect@4.0.0-rc.112`: the guara
   3. An Outline whose Examples columns are consumed by `{int}`/`{float}` patterns hands the step body already-coerced `number` arguments, with no separate typed-example-row mechanism — verified by both a type test and a runtime assertion (DSL-06).
   4. Each Outline row produces a distinct, `-t`-filterable test title, and two rows provably share no mutable state (regression test for the loop-variable-capture bug `@amiceli/vitest-cucumber` shipped — Pitfall 34, Gap 4).
 
-**Plans**: TBD — set by `/gsd:plan-phase 8`
+**Plans**: 9 plans (5 waves — three independent leaf modules plus an independent titling plan in wave 1, the Rule composition root and its tsgo-gate proof in wave 2, the Scenario-layer extension in wave 3, Runner.ts's final wiring in wave 4, spec reconciliation last)
+
+Plans:
+**Wave 1**
+
+- [ ] 08-01-PLAN.md — Registry.ts + Plan.ts: the "rule" scope kind, RegistryScope.ruleId, rule-aware isVisibleTo and a three-level scopeRank
+- [ ] 08-02-PLAN.md — HookRegistry.ts + Hook.ts: a required ruleId on every stored hook, plus mergeHookSets/emptyHookSet for D-02's ordering
+- [ ] 08-03-PLAN.md — Dsl.ts: RuleDsl<ROut>, FeatureDsl.Rule, and the Scenario extra-Layer overload (ScenarioRegistrar)
+- [ ] 08-04-PLAN.md — OutlineTitle.ts + Runner.ts: the D-03 column=value title format and the Pitfall-34 row-independence regression test
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 08-05a-PLAN.md — describeFeature.ts: the Rule container, Rule-level Background (D-04), Rule-scoped hook registration, and per-Rule Layer merge
+- [ ] 08-06-PLAN.md — tsgo-gate fixture pair proving DSL-05's compile-time boundary (roadmap SC#1), gate assertions 12-13
+
+**Wave 3** *(blocked on 08-05a)*
+
+- [ ] 08-05b-PLAN.md — describeFeature.ts: Scenario's own extra-Layer form (D-01's second half), shared with RuleDsl via one factory
+
+**Wave 4** *(blocked on 08-05b, 08-04, 08-02)*
+
+- [ ] 08-07-PLAN.md — Runner.ts: per-Rule merged hooks/Layer and per-Scenario Layer override threaded into emission, plus the real end-to-end proof
+
+**Wave 5** *(blocked on 08-07)*
+
+- [ ] 08-08-PLAN.md — Spec: BEH-EC-018, INV-EC-005's real source, traceability §1-§4, both READMEs, and DSL-05/DSL-06 marked Complete
+
+Decisions locked at planning time (no CONTEXT.md re-litigation needed): a Rule/Scenario name that
+matches no real `ParsedRule` resolves to a sentinel `ruleId` that can never match any Scenario, making
+the registration provably inert rather than silently misattributed; `RuleDsl` extends `ScenarioDsl` and
+exposes exactly `Before`/`After`/`BeforeStep`/`AfterStep` (never `BeforeAllScenarios`/
+`AfterAllScenarios`); Outline row titles append every column's value in Examples-table column order,
+unconditionally, even when the Outline's own title already differs by interpolation.
 
 **Research flag**: Skip — standard.
 
@@ -430,7 +462,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
-| 8. Rule and Scenario Outline | 0/TBD | Not started | - |
+| 8. Rule and Scenario Outline | 0/9 | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
