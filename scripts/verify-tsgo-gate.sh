@@ -15,6 +15,14 @@
 #   is the EXIT CODE of a file whose sole defect is an Effect diagnostic.
 #   That is what assertion 3 does, and it is the load-bearing assertion here.
 #
+#   The converse holds too, and assertions 4 and 6 are why the rule is
+#   "exit code AND a specific diagnostic name", never output text alone and
+#   never an exit code alone. An exit code proves only that SOMETHING was
+#   rejected; a step can keep failing to compile for a plain shape reason
+#   long after the Effect diagnostic has stopped covering it. Every negative
+#   assertion below therefore checks the exit code first and then greps for
+#   the diagnostic it is actually about, by name.
+#
 # Usage: bash scripts/verify-tsgo-gate.sh
 
 set -euo pipefail
@@ -27,6 +35,8 @@ cd "$ROOT_DIR"
 NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.json"
 OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.ok.json"
 FLOATING_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.floating.json"
+STEP_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-ok.json"
+STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
@@ -40,7 +50,7 @@ fail() {
   exit 1
 }
 
-for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG"; do
+for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -115,6 +125,70 @@ if ! grep -q "effect(missingLayerContext)" <<<"$NEG_OUTPUT"; then
   fail "build failed, but not for the Layer-context reason — check whether the diagnostic was renamed or downgraded."
 fi
 echo "✓ an unprovided Layer requirement is rejected by name: effect(missingLayerContext)"
+
+# ---------------------------------------------------------------------------
+# Assertions 5 and 6: THE SATISFIED/STARVED FLIP PAIR.
+#
+# Assertions 1-4 cover the Layer type in isolation. These two cover the thing a
+# test author actually writes: a step registered through `describeFeature`'s dsl.
+#
+# step-satisfied.ts and step-missing-service.ts are deliberate near-twins. The
+# satisfied one registers `yield* (yield* Db).clear` against
+# `{ shared: Db.layer, perScenario: World.layer }`; the starved one registers the
+# same body against a plain `World.layer`. Whether the ambient Layer provides the
+# service the step needs is the ONLY substantive difference between them.
+#
+# So asserting both in the same run is what proves roadmap success criterion 1 —
+# that removing a service from an ambient Layer flips a previously-passing case to
+# failing. It is deliberately a committed PAIR rather than a script that edits a
+# file and recompiles: there is no mutable working tree, no cleanup path that can
+# leave the repo dirty, and the flip is re-proven on every CI run instead of once
+# at authoring time. A pair cannot silently decay into a no-op the way a
+# self-mutating script can.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Assertion 5: the DSL positive control compiles clean.
+# Discriminates a working guarantee from a dsl that simply rejects everything —
+# the same role assertion 1 plays for the Layer fixtures.
+# ---------------------------------------------------------------------------
+STEP_OK_OUTPUT="$($TSC -p "$STEP_OK_CONFIG" 2>&1)" && STEP_OK_EXIT=0 || STEP_OK_EXIT=$?
+
+if [[ "$STEP_OK_EXIT" -ne 0 ]]; then
+  echo "$STEP_OK_OUTPUT"
+  fail "the DSL positive control failed to compile — a scoped step (Effect.acquireRelease) or an already-Effect.fn-wrapped step was wrongly rejected. Either the fixture is broken, or Scope.Scope left the step type in Dsl.ts (note (b)): a step using acquireRelease must still compile against a PLAIN Layer, because the runner provides the Scope. Do not add \`any\` to the fixture to make this pass — one \`any\` in a step body is assignable to everything and disables the whole guarantee."
+fi
+echo "✓ DSL positive control compiles clean (scoped + wrapped steps, both containers, both Layer forms)"
+
+# ---------------------------------------------------------------------------
+# Assertion 6: THE DSL-01 GUARANTEE — the project's core value, by name.
+#
+# A step whose Effect requires a service the ambient Layer does not provide must
+# be a type error where the step is written. Two checks, never one: the exit code
+# proves it was rejected, the diagnostic name proves it was rejected FOR THE RIGHT
+# REASON. Dropping the second check leaves an assertion that keeps passing while
+# covering nothing, which is the exact decay this whole script exists to prevent.
+# ---------------------------------------------------------------------------
+STEP_NEG_OUTPUT="$($TSC -p "$STEP_NEG_CONFIG" 2>&1)" && STEP_NEG_EXIT=0 || STEP_NEG_EXIT=$?
+
+if [[ "$STEP_NEG_EXIT" -eq 0 ]]; then
+  echo "$STEP_NEG_OUTPUT"
+  fail "a step requiring an unprovided service COMPILED — INV-EC-003 is decorative and this project's core value is not enforced. Most likely cause: the step-parameter generic in Dsl.ts degraded to a vacuous \`any\` (PITFALLS Pitfall 4) — e.g. the generator branch written as Generator<any, A, any>, which accepts a body requiring anything."
+fi
+
+# NOTE: missingEffectContext, NOT missingLayerContext. These are different
+# diagnostics on different fixtures and must not be "harmonized" with assertion
+# 4's grep above. Assertion 4 is about the LAYER ARGUMENT's unhandled RIn;
+# this one is about a STEP's required context. Copying assertion 4's name here
+# produces an assertion that fails for the wrong reason, which then invites
+# someone to weaken the grep until it passes. RESEARCH.md Finding 1 reproduced
+# both, and the negative fixture's output contains TS377004 and no
+# missingLayerContext at all.
+if ! grep -q "effect(missingEffectContext)" <<<"$STEP_NEG_OUTPUT"; then
+  echo "$STEP_NEG_OUTPUT"
+  fail "the step was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the StepRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST. TypeScript then reports the generator against that member as a plain shape mismatch ('missing the following properties: toJSON, ...'), which the plugin has no reason to read as a context problem. See Dsl.ts note (a) and RESEARCH.md Finding 2."
+fi
+echo "✓ a step requiring an unprovided service is rejected by name: effect(missingEffectContext)"
 
 echo ""
 echo "tsgo gate: ENFORCED"

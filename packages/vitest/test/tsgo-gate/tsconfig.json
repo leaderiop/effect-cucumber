@@ -5,7 +5,19 @@
     "declaration": false,
     "declarationMap": false,
     "incremental": false,
-    "noEmit": true
+    "noEmit": true,
+    // Widened to the repo root, overriding tsconfig.base.json's `${configDir}/src`.
+    //
+    // The DSL fixtures import `@effect-cucumber/vitest` the way a real consumer writes it. That
+    // self-reference resolves through this package's own `exports["."]` to packages/vitest/src/,
+    // which is outside this directory — so the inherited rootDir rejects the whole program with
+    // TS6059 before a single Effect diagnostic is reached. (`@effect-cucumber/gherkin` does not
+    // trip it, because it resolves through node_modules and rootDir does not police those.)
+    //
+    // `noEmit: true` above makes this inert: rootDir only controls output layout, and nothing here
+    // emits. It is set to the repo root rather than to packages/vitest so that a later fixture
+    // reaching for another workspace package does not have to reopen this shared file.
+    "rootDir": "${configDir}/../../../.."
   },
   "include": [],
   // This file is BOTH the shared parent that tsconfig.ok.json / tsconfig.floating.json extend
