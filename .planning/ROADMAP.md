@@ -299,7 +299,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — `HookRegistry.ts` and `Hook.ts`: the per-call hook store, the `Effect.fn(kind)` auto-wrap reusing `Step.ts`'s discriminator, per-kind grouping, and `runHookBatch`'s independent-and-combine semantics (D-01/D-02/D-03)
+- [x] 07-01-PLAN.md — `HookRegistry.ts` and `Hook.ts`: the per-call hook store, the `Effect.fn(kind)` auto-wrap reusing `Step.ts`'s discriminator, per-kind grouping, and `runHookBatch`'s independent-and-combine semantics (D-01/D-02/D-03)
 
 **Wave 2** *(blocked on 07-01)*
 
@@ -429,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 0/8 | Not started | - |
+| 7. Hooks | 1/8 | In Progress|  |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
