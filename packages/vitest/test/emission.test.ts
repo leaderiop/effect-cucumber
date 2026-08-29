@@ -21,8 +21,17 @@
  * `Plan.test.ts` for the resolution outcome and the message text, `ScenarioEffect.test.ts` for the
  * failure landing in the Scenario's error channel at the position the step occupies.
  *
- * The one deviation from happy-path is the unused pattern in the drift block below, and it is safe
- * for the same reason: ADR-EC-019 makes an unused pattern a WARNING, so its emitted node PASSES.
+ * There are exactly TWO deviations from happy-path, and each is safe for a reason that has to be
+ * stated rather than assumed, because "a step that resolves to nothing" is otherwise the one thing
+ * this file forbids.
+ *
+ * - The unused pattern in the drift block below. ADR-EC-019 makes an unused pattern a WARNING, so its
+ *   emitted node PASSES.
+ * - The unmatched STEP inside a `@skip`-tagged Scenario in Phase 9's skip block. `planFeature` stores
+ *   an unresolved step rather than throwing, and its `StepMatchError` is only reached at `yield*` time
+ *   inside the Scenario's Effect — which a skipped test never builds, because its handler is never
+ *   invoked. So the node reports SKIPPED, never undefined and never failed. That block's own comment
+ *   has the full chain; this bullet exists so the rule above is not read as having been broken.
  *
  * ## What the emitted tests assert, and why they are written this way
  *
@@ -1128,5 +1137,196 @@ describe("a Feature tagged at all four levels collects and runs through the real
     // EMPTY set of warnings for this Feature's uri is the assertion, not a green count. `toEqual([])`
     // rather than a length check, so a failure prints the offending warning instead of `1 !== 0`.
     expect(warningsFor("test/four-level-tags.feature")).toEqual([])
+  })
+})
+
+/**
+ * Plan 09-06, Task 2 — `@skip` runs NOTHING: no step body, no hook, and no failure from a step no
+ * definition matches. The SIXTH and SEVENTH real `describeFeature` calls in this file.
+ *
+ * ## Why this is a runtime block and not a `Runner.test.ts` one
+ *
+ * `Runner.test.ts` already proves, against a recording fake, that a `@skip` Scenario is emitted with
+ * `skip: true`. That is the whole of what a fake can see: it records the thunks and never invokes
+ * them, so an implementation that ran every hook regardless of the skip flag would record exactly the
+ * same thing. "The hooks did not run" is a claim about EXECUTION, and only a real run has any.
+ *
+ * ## The chain that makes this structural rather than arranged (RESEARCH Finding 5)
+ *
+ * Every hook in this package is woven INSIDE the Scenario's Effect by `ScenarioEffect.ts` —
+ * `runHookBatch(hooks.Before)` at the head, `Effect.onExit(... hooks.After)` around the whole thing —
+ * and there is no vitest `beforeEach`/`afterEach` anywhere under `packages/vitest/src`. `Runner.ts`
+ * note (b) additionally guarantees `buildScenarioEffect` is called only INSIDE the thunk handed to
+ * `TestApi.effect`, never eagerly during the walk. A skipped test's handler is never invoked, so the
+ * thunk is never called, so `buildScenarioEffect` is never reached, so no hook Effect is ever
+ * CONSTRUCTED — let alone run. The counters below cannot move for a skipped Scenario without one of
+ * those three links breaking, which is why they are the assertion.
+ *
+ * That is also why the arrangement is worth protecting from the obvious tidy-up: moving hooks to
+ * vitest's own `beforeEach`/`afterEach` would compile, would keep every ordering assertion in this
+ * file green, and would run a skipped Scenario's `Before` and `After` anyway — because those hooks
+ * belong to the SUITE, not to the skipped task.
+ *
+ * ## The unmatched step is deliberate, and it is Pitfall 15
+ *
+ * The second Scenario contains a step text NO registered definition matches, which the file header
+ * otherwise forbids. It is safe, and the reason is the same chain: `Plan.ts` stores an unresolved
+ * step rather than throwing at plan time, and the `StepMatchError` it carries is only reached at
+ * `yield*` time inside the composed Effect. A skipped test never builds that Effect, so the error is
+ * never reached and the node reports SKIPPED — not undefined, not failed. Written down because the
+ * safety is entirely non-obvious: read at registration time, this looks exactly like the broken-suite
+ * arrangement the header rules out.
+ *
+ * It also means the `@skip` is what carries the property, not the absence of a definition. Making
+ * `isSkipped` always return `false` turns this Scenario RED — the mutation is recorded in this plan's
+ * summary.
+ *
+ * ## The untagged Scenario beside them is what makes the counters non-vacuous
+ *
+ * Hook counters that must be zero prove nothing on their own: they are also zero for a Feature whose
+ * hooks were never registered, for one whose Scenarios never ran, and for one this file forgot to
+ * emit at all. One RUNNABLE Scenario in the same Feature, with a known step count, turns each counter
+ * into an exact number — greater than zero, and no larger than that Scenario's own contribution.
+ */
+const skipHookCounts = {
+  before: 0,
+  after: 0,
+  beforeStep: 0,
+  afterStep: 0,
+  skippedBodies: 0,
+  runnableBodies: 0
+}
+
+/** A bare generator that increments one `skipHookCounts` key. */
+const countSkipHook = (key: keyof typeof skipHookCounts) =>
+  function*() {
+    skipHookCounts[key] += 1
+    yield* Effect.void
+  }
+
+/**
+ * Two `@skip` Scenarios and one runnable one, in ONE Feature so they share the same hook
+ * registrations — which is the whole point: the hooks are declared once and must fire for exactly one
+ * of the three Scenarios.
+ *
+ * The runnable Scenario has TWO steps, deliberately. `BeforeStep`/`AfterStep` wrap every resolved step
+ * rather than every Scenario, so a per-Scenario count of 2 and a per-step count of 2 would be
+ * indistinguishable with one step, and the two hook kinds would stop being told apart.
+ */
+const skipFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Skip runs nothing
+
+  @skip
+  Scenario: a skipped Scenario runs none of its own step bodies
+    When the skipped scenario's first step body runs
+    Then the skipped scenario's second step body runs
+
+  @skip
+  Scenario: a skipped Scenario whose step matches no definition is still just skipped
+    When no registered definition anywhere in this file matches this step
+
+  Scenario: the one runnable Scenario in the skip Feature
+    When the skip Feature's runnable first step runs
+    Then the skip Feature's runnable second step runs
+`,
+    "test/skip-runs-nothing.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE SIXTH real `describeFeature` call in this file. Note there is NO registration for
+// "no registered definition anywhere in this file matches this step" — that omission is the Pitfall 15
+// arrangement and is the one thing in this block that must not be "fixed".
+describeFeature(skipFeature, Layer.empty, ({ After, AfterStep, Before, BeforeStep, Then, When }) => {
+  Before(countSkipHook("before"))
+  After(countSkipHook("after"))
+  BeforeStep(countSkipHook("beforeStep"))
+  AfterStep(countSkipHook("afterStep"))
+
+  When("the skipped scenario's first step body runs", countSkipHook("skippedBodies"))
+  Then("the skipped scenario's second step body runs", countSkipHook("skippedBodies"))
+
+  When("the skip Feature's runnable first step runs", countSkipHook("runnableBodies"))
+  Then("the skip Feature's runnable second step runs", countSkipHook("runnableBodies"))
+})
+
+/**
+ * The second Feature: EVERY Scenario is `@skip`, so nothing runnable is emitted at all.
+ *
+ * This is the runtime half of plan 09-04's `AfterAllScenarios` suppression, and `Runner.ts` note (e)
+ * has the argument it makes true. `BeforeAllScenarios` is a once-cell reachable ONLY from inside a
+ * Scenario thunk, and a skipped test never invokes its thunk — so in this state the setup hook
+ * structurally CANNOT have run. An unconditional teardown node would therefore tear down resources
+ * that were never set up, which is why the emission condition carries a runnable-count conjunct
+ * alongside the "are there any AfterAllScenarios hooks" one.
+ *
+ * Both counters are asserted, not just the teardown's. `beforeAllScenarios` staying at zero is what
+ * makes `afterAllScenarios` staying at zero mean "teardown was correctly suppressed" rather than
+ * "teardown happened to be skipped along with everything else" — the pairing is the claim.
+ */
+const allSkippedCounts = { beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 }
+
+const allSkippedFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Every Scenario in this Feature is skipped
+
+  @skip
+  Scenario: the only Scenario here, and it is skipped
+    When the all-skipped Feature's step body runs
+`,
+    "test/all-skipped.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE SEVENTH real `describeFeature` call in this file.
+describeFeature(allSkippedFeature, Layer.empty, ({ AfterAllScenarios, BeforeAllScenarios, When }) => {
+  BeforeAllScenarios(function*() {
+    allSkippedCounts.beforeAllScenarios += 1
+    yield* Effect.void
+  })
+  AfterAllScenarios(function*() {
+    allSkippedCounts.afterAllScenarios += 1
+    yield* Effect.void
+  })
+  When("the all-skipped Feature's step body runs", function*() {
+    allSkippedCounts.body += 1
+    yield* Effect.void
+  })
+})
+
+/**
+ * DECLARED AFTER both blocks that registered these Features, for the declaration-order reason every
+ * other reader in this file uses. Every Scenario above — the skipped ones included, since a skipped
+ * node still resolves before the next suite runs — has been reported by the time these execute.
+ */
+describe("a @skip Scenario runs no step and no hook (09-06)", () => {
+  it("ran every hook exactly the number of times the ONE runnable Scenario accounts for", () => {
+    // ONE comparison over the WHOLE record rather than six separate expectations, so a failure prints
+    // every counter at once and the shape of the deviation is readable — a hook that fired for all
+    // three Scenarios reads 3/3/6/6, and one that fired for none reads 0/0/0/0. Those are different
+    // defects and a per-key assertion would report whichever happened to be checked first.
+    //
+    // The numbers: ONE runnable Scenario with TWO steps. `Before`/`After` are per Scenario, so 1 each;
+    // `BeforeStep`/`AfterStep` wrap every resolved step, so 2 each. `skippedBodies` covers BOTH steps
+    // of the first `@skip` Scenario and must be 0 — that is the headline. `runnableBodies` at 2 is
+    // what proves the whole Feature was not simply skipped wholesale, which would zero every counter
+    // here and pass a naive "the skipped bodies did not run" check.
+    expect(skipHookCounts).toEqual({
+      before: 1,
+      after: 1,
+      beforeStep: 2,
+      afterStep: 2,
+      skippedBodies: 0,
+      runnableBodies: 2
+    })
+  })
+
+  it("emitted no teardown for a Feature in which every Scenario is skipped", () => {
+    // `body` at 0 is the ordinary skip claim. The other two are 09-04's suppression conjunct: the
+    // once-cell was never reached because no thunk was ever invoked, so a teardown node would run
+    // against resources nothing set up. Dropping the runnable-count conjunct from `Runner.ts` makes
+    // `afterAllScenarios` 1 while leaving `beforeAllScenarios` at 0 — the asymmetry IS the bug, and
+    // asserting the pair together is what shows it.
+    expect(allSkippedCounts).toEqual({ beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 })
   })
 })
