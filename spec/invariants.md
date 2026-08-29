@@ -3,13 +3,14 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-Two of these — INV-EC-001 and INV-EC-003 — are enforced by code today, and each
-entry names the mechanism and the assertions that back it. INV-EC-002's
-mechanism is real but only half its claim is asserted, and its entry says which
-half. The remaining three are not enforced at all: each still names the
-**planned** enforcement mechanism and says so in its `Source` label, per
-`AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single
-source of truth for what's actually built.
+Three of these — INV-EC-001, INV-EC-002 and INV-EC-003 — are enforced by code
+today, and each entry names the mechanism and the assertions that back it.
+INV-EC-002 holds in full for the per-Scenario scope, which is the whole of what
+this milestone builds; the `shared` clause of its own wording waits on Phase 10,
+and its entry says so in place rather than here. The remaining three are not
+enforced at all: each still names the **planned** enforcement mechanism and says
+so in its `Source` label, per `AGENTS.md` §4 ("say only what is true").
+`spec/roadmap.md` is the single source of truth for what's actually built.
 
 ---
 
