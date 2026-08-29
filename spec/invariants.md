@@ -43,9 +43,13 @@ for one Scenario is visible to any other Scenario.
 Feature's Layer once around each Scenario Effect and never memoizes it, so every
 execution rebuilds it — asserted by `packages/vitest/test/ScenarioEffect.test.ts`
 running one Scenario Effect twice and observing two independent service
-instances. The other half is still **planned**: nothing emits two Scenarios yet,
-so isolation ACROSS Scenarios is not asserted until the Runner generates one
-`it.effect(...)` per Scenario.
+instances. `packages/vitest/src/Runner.ts` now completes the MECHANISM: it emits
+one test per Scenario, each handed its own unexecuted Effect, so no two
+Scenarios can share a build. The other half of the CLAIM is still **planned**,
+and the gap is a test rather than a module — nothing yet runs two emitted
+Scenarios against a state-carrying Layer and observes that neither sees the
+other's state, because `describeFeature` does not yet wire the pipeline end to
+end and `Runner.test.ts` asserts emission shape against a trivial Layer.
 
 **Implication**: a `Given`/`When`/`Then` author can rely on a clean World for
 every Scenario without writing manual reset logic, _unless_ that Scenario
