@@ -37,6 +37,9 @@ OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.ok.json"
 FLOATING_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.floating.json"
 STEP_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-ok.json"
 STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
+WORLD_FIELD_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.world-field.json"
+LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
+STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-error.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
@@ -50,7 +53,8 @@ fail() {
   exit 1
 }
 
-for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG"; do
+for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
+  "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -189,6 +193,84 @@ if ! grep -q "effect(missingEffectContext)" <<<"$STEP_NEG_OUTPUT"; then
   fail "the step was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the StepRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST. TypeScript then reports the generator against that member as a plain shape mismatch ('missing the following properties: toJSON, ...'), which the plugin has no reason to read as a context problem. See Dsl.ts note (a) and RESEARCH.md Finding 2."
 fi
 echo "✓ a step requiring an unprovided service is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertion 7: DSL-03 — a World field absent from the declared type.
+#
+# The only assertion in this script whose fixture fails on PLAIN TypeScript.
+# Reading a property that is not in a Context.Service's declared shape is a
+# TS2339 and nothing else; @effect/tsgo has no diagnostic for it, because there
+# is no context problem — World is provided, the Layer is correct, and the sole
+# defect is one property read (RESEARCH.md Finding 10).
+# ---------------------------------------------------------------------------
+WORLD_FIELD_OUTPUT="$($TSC -p "$WORLD_FIELD_CONFIG" 2>&1)" && WORLD_FIELD_EXIT=0 || WORLD_FIELD_EXIT=$?
+
+if [[ "$WORLD_FIELD_EXIT" -eq 0 ]]; then
+  echo "$WORLD_FIELD_OUTPUT"
+  fail "a World field absent from the declared type was REACHABLE from a step — ADR-EC-002's typed-context guarantee is decorative and World is an untyped bag with extra ceremony. BEH-EC-004 requires that there be no way to read a field that \"doesn't exist yet\". Most likely cause: the fixture was edited to read a field that IS declared, or a widening assertion was added to the step body (PITFALLS Pitfall 6)."
+fi
+
+# NOTE: TS2339, and deliberately NOT an `effect(` grep. Do not "harmonize" this
+# with assertions 4, 6 or 8. This fixture produces a plain TypeScript error and
+# no TS377xxx code at all (RESEARCH.md Finding 10), so an `effect(` grep here
+# could only ever fail — which would then invite weakening or deleting the check
+# rather than reading this note. If an Effect diagnostic DOES start appearing in
+# this fixture's output, the fixture has acquired a second defect: narrow the
+# fixture until TS2339 is its only error, do not relax the assertion.
+if ! grep -q "TS2339" <<<"$WORLD_FIELD_OUTPUT"; then
+  echo "$WORLD_FIELD_OUTPUT"
+  fail "the World-field fixture was rejected, but not by TS2339 — so it is no longer failing because an undeclared field is unreachable. The exit code above proves only that SOMETHING was wrong with the file; DSL-03 is no longer under assertion. Check whether an unrelated defect (a bad import, a broken Layer) is now failing the file first."
+fi
+echo "✓ a World field absent from the declared type is unreachable: TS2339"
+
+# ---------------------------------------------------------------------------
+# Assertion 8: the LAYER ARGUMENT's own unsatisfied RIn — and, by construction,
+# describeFeature's overload ORDER.
+#
+# Assertion 4 greps this same diagnostic on a different fixture, and the two are
+# NOT redundant. Assertion 4 compiles a bare `Layer.merge` misannotation: it
+# guards the compiler plugin itself — that missingLayerContext exists, fires, and
+# counts toward the exit code. Assertion 8 compiles a Layer passed as an ARGUMENT
+# to this project's own DSL: it guards describeFeature's overload order. Delete
+# either and the other still passes while covering half of what it did.
+# ---------------------------------------------------------------------------
+LAYER_RIN_OUTPUT="$($TSC -p "$LAYER_RIN_CONFIG" 2>&1)" && LAYER_RIN_EXIT=0 || LAYER_RIN_EXIT=$?
+
+if [[ "$LAYER_RIN_EXIT" -eq 0 ]]; then
+  echo "$LAYER_RIN_OUTPUT"
+  fail "an INCOMPLETE Layer was accepted as describeFeature's layer argument — a Layer<World, never, Db> whose own RIn names an unprovided Db compiled. Every Scenario using it would fail at run time with a service-not-found, which is precisely the failure ADR-EC-003 moves to authoring time. Most likely cause: the layer parameter's third type argument stopped being pinned to \`never\` in packages/vitest/src/describeFeature.ts."
+fi
+
+if ! grep -q "effect(missingLayerContext)" <<<"$LAYER_RIN_OUTPUT"; then
+  echo "$LAYER_RIN_OUTPUT"
+  fail "the Layer argument was rejected, but NOT by name — effect(missingLayerContext) did not fire, so ADR-EC-016's gate has stopped covering describeFeature's layer argument while CI stays green. Most likely cause: the two overloads in packages/vitest/src/describeFeature.ts were reordered so the plain-Layer form is no longer LAST. TypeScript reports a failed overloaded call against the last overload, so with the object form last the message becomes \"Type 'Layer<World, never, Db>' is missing the following properties from type '{ shared; perScenario }'\" — which names the wrong problem entirely and produces no Effect diagnostic. The call is still rejected, which is why nothing else in this repo goes red. See describeFeature.ts note (a) and RESEARCH.md Finding 6."
+fi
+echo "✓ an unsatisfied Layer argument is rejected by name: effect(missingLayerContext) — overload order intact"
+
+# ---------------------------------------------------------------------------
+# Assertion 9: the supplementary stacked-directive fixture.
+#
+# DELIBERATELY WEAKER THAN ASSERTION 6, and not a substitute for it. This one
+# exists to honor the roadmap's literal "@ts-expect-error-based negative
+# type-test file" wording. An exit-0-because-suppressed fixture proves that AN
+# error occurred on the marked line; it cannot prove WHICH. A regression that
+# downgraded effect(missingEffectContext) to a plain shape mismatch would pass
+# here with no output change at all — that is what assertion 6 is for. Both, per
+# RESEARCH.md Open Question 1. Do not delete assertion 6 believing this covers it.
+#
+# Exit code only: the fixture prints nothing when it is healthy, and the two
+# codes it can fail with (TS377000 for a dead plugin directive, TS2578 for a dead
+# @ts-expect-error) both mean the same thing, so pinning to either one would make
+# the assertion silent for the other.
+# ---------------------------------------------------------------------------
+STEP_EXPECT_ERROR_OUTPUT="$($TSC -p "$STEP_EXPECT_ERROR_CONFIG" 2>&1)" && STEP_EXPECT_ERROR_EXIT=0 ||
+  STEP_EXPECT_ERROR_EXIT=$?
+
+if [[ "$STEP_EXPECT_ERROR_EXIT" -ne 0 ]]; then
+  echo "$STEP_EXPECT_ERROR_OUTPUT"
+  fail "the suppressed-directive fixture stopped compiling clean. Two causes, and the output above says which. (1) 'TS2578: Unused @ts-expect-error directive' or 'TS377000: @effect-diagnostics directive has no effect' means NO error occurs on the marked line any more — the DSL type was loosened, or the fixture's ambient Layer now provides Db, and DSL-01's guarantee is gone. (2) An unsuppressed TS377004 alongside TS377000 means the two directive comment lines were REORDERED: '@effect-diagnostics-next-line' must be the line IMMEDIATELY above the code, with '@ts-expect-error' above it. TypeScript skips intervening comment lines when resolving \"next line\"; the plugin does not. See the fixture's own header and RESEARCH.md Finding 3(A)."
+fi
+echo "✓ the supplementary suppressed-directive fixture compiles clean (exit 0)"
 
 echo ""
 echo "tsgo gate: ENFORCED"
