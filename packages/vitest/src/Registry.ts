@@ -49,13 +49,30 @@
  *     it is written. This follows `@effect-cucumber/gherkin`'s own precedent, where `Parser`,
  *     `Pickles` and `Correlate` are all internal and only `loadFeature` is published. Plan 05-03
  *     owns that barrel and should leave this out of it.
+ *
+ * (e) **`RegistryScope.ruleId` is `null` if AND ONLY IF the scope is not nested inside any
+ *     `Rule(...)` call.** Every scope pushed from inside a `Rule` call carries a non-null string —
+ *     either the real `ParsedRule.id` the author's Rule name resolved to, or a sentinel that can
+ *     never equal a real Rule's id — NEVER `null`. The invariant is not decorative: `Plan.ts`
+ *     compares `ruleId` with plain string equality and reserves `null` to mean "Feature level", so
+ *     a Rule-scoped frame that left the field `null` would make its registrations visible to every
+ *     Feature-level Scenario in the document, which is the exact leak the field exists to prevent.
+ *
+ *     This module performs NO resolution of its own. It has zero imports (note (c)) and therefore
+ *     no access to a `ParsedFeature`, a `ParsedRule` or anything that could turn a Rule NAME into
+ *     an id. The caller — `describeFeature.ts` — is the sole place a Rule name is resolved to an id
+ *     or falls back to a sentinel, and this module records whatever string it is handed.
+ *
+ *     `ruleId` is a REQUIRED field for the same `exactOptionalPropertyTypes` reason spelled out for
+ *     `name` below: an optional `ruleId?: string` would make "absent" and "present but undefined"
+ *     two spellings of one idea, and the reader would have to handle both.
  */
 
 /**
- * The three Gherkin constructs that can own step definitions. A string-literal union rather than
+ * The four Gherkin constructs that can own step definitions. A string-literal union rather than
  * an enum: `erasableSyntaxOnly` is on workspace-wide, and an enum emits runtime code.
  */
-export type RegistryScopeKind = "feature" | "background" | "scenario"
+export type RegistryScopeKind = "feature" | "background" | "scenario" | "rule"
 
 /**
  * A frame of the scope stack.
@@ -65,10 +82,17 @@ export type RegistryScopeKind = "feature" | "background" | "scenario"
  * distinct states for one idea. A `Background` genuinely has no name while a `Scenario` always
  * does, so the absence is real data worth spelling — `null` says it once, and every reader has to
  * handle it.
+ *
+ * `ruleId` identifies the enclosing `Rule`, and `null` means there is none — note (e) states the
+ * invariant that every reader downstream depends on. A Feature root frame is
+ * `{ kind: "feature", name: "Checkout", ruleId: null }`; a Background nested inside a Rule is
+ * `{ kind: "background", name: null, ruleId: "rule-3" }`, which is what tells it apart from the
+ * Feature's own `{ kind: "background", name: null, ruleId: null }`.
  */
 export type RegistryScope = {
   readonly kind: RegistryScopeKind
   readonly name: string | null
+  readonly ruleId: string | null
 }
 
 /** The Gherkin step keywords a definition can be registered under. */
@@ -124,7 +148,8 @@ export type StepDefinition<Fn> = {
  * before any container callback has run and there is no "empty stack" state to represent.
  */
 export const createRegistry = <Fn>(featureName: string) => {
-  const stack: Array<RegistryScope> = [{ kind: "feature", name: featureName }]
+  // The root frame is Feature-level by construction, so `ruleId` is `null` — note (e).
+  const stack: Array<RegistryScope> = [{ kind: "feature", name: featureName, ruleId: null }]
   const records: Array<StepDefinition<Fn>> = []
 
   /** The frame steps registered right now would be attributed to. */

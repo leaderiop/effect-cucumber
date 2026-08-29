@@ -437,7 +437,11 @@ const unusedStepDefinition = (args: {
  * - `scenario` scope is visible ONLY to a step of THAT Scenario, matched by `astName`. Note (c) is
  *   why the comparison is against `astName` and never `name`.
  *
- * There is no `rule` case because there is no `rule` scope kind — note (e).
+ * - `rule` scope exists as a kind but is not yet reachable: no DSL surface pushes a `rule` frame, so
+ *   no definition can carry one. The arm returns `false` rather than being omitted, because the
+ *   switch is exhaustive by return type and because `false` is the only safe default for a scope
+ *   whose matching rule is not written — a `true` here would make an unreachable case leak every
+ *   registration to every step the moment the case became reachable.
  */
 const isVisibleTo = (
   definition: StepDefinition<StepBody>,
@@ -451,6 +455,8 @@ const isVisibleTo = (
       return step.origin === "feature-background" || step.origin === "rule-background"
     case "scenario":
       return step.origin === "scenario" && definition.scope.name === scenario.astName
+    case "rule":
+      return false
   }
 }
 

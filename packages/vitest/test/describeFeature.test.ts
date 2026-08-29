@@ -187,12 +187,22 @@ describe("a step definition carries the container it was registered inside", () 
       Given("a step back at the feature root", noop)
     })
 
-    expect(scopeOf(collected, "a feature-level step")).toEqual({ kind: "feature", name: "Checkout" })
+    // `ruleId: null` on every frame: this file's DSL has no `Rule` container yet, so nothing here is
+    // nested in one — which is the only thing Registry.ts note (e) lets `null` mean.
+    expect(scopeOf(collected, "a feature-level step")).toEqual({
+      kind: "feature",
+      name: "Checkout",
+      ruleId: null
+    })
     // A Background has no name of its own — `null`, not the feature's name and not undefined.
-    expect(scopeOf(collected, "a background given")).toEqual({ kind: "background", name: null })
-    expect(scopeOf(collected, "a background and")).toEqual({ kind: "background", name: null })
-    expect(scopeOf(collected, "a scenario step")).toEqual({ kind: "scenario", name: "checkout" })
-    expect(scopeOf(collected, "a step back at the feature root")).toEqual({ kind: "feature", name: "Checkout" })
+    expect(scopeOf(collected, "a background given")).toEqual({ kind: "background", name: null, ruleId: null })
+    expect(scopeOf(collected, "a background and")).toEqual({ kind: "background", name: null, ruleId: null })
+    expect(scopeOf(collected, "a scenario step")).toEqual({ kind: "scenario", name: "checkout", ruleId: null })
+    expect(scopeOf(collected, "a step back at the feature root")).toEqual({
+      kind: "feature",
+      name: "Checkout",
+      ruleId: null
+    })
   })
 
   it("records the keyword the author wrote rather than the one it continues", () => {
@@ -226,7 +236,11 @@ describe("a step definition carries the container it was registered inside", () 
 
     // Without the `finally` around popScope, the "explodes" frame is still on the stack and this
     // step is attributed to a scenario the author never put it in.
-    expect(scopeOf(collected, "a step after the throw")).toEqual({ kind: "feature", name: "Checkout" })
+    expect(scopeOf(collected, "a step after the throw")).toEqual({
+      kind: "feature",
+      name: "Checkout",
+      ruleId: null
+    })
   })
 
   it("returns to the feature root after a Background callback throws", () => {
@@ -246,7 +260,8 @@ describe("a step definition carries the container it was registered inside", () 
 
     expect(scopeOf(collected, "a step after the background throw")).toEqual({
       kind: "feature",
-      name: "Checkout"
+      name: "Checkout",
+      ruleId: null
     })
   })
 })
@@ -257,7 +272,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 262
+    const givenLine = 277
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
