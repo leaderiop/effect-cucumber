@@ -331,3 +331,11 @@ evidence paths; T-08-08-04 by cross-checking both READMEs against that same evid
 | 1 | `150b2dc` | BEH-EC-018, the `id_range` widening, INV-EC-005's real source, ADR-EC-010's implementation note |
 | 2 | `1ee49c4` | traceability §1–§4, the §1 preamble's retired modules, `spec/roadmap.md`'s status and counts |
 | 3 | `01a113c` | both READMEs, DSL-05/DSL-06 Complete with the footer evidence trail |
+| — | `edc85a3` | this summary |
+
+## Self-Check: PASSED
+
+All 10 files this plan claims to have created or modified are present on disk, and all four commit
+hashes resolve in `git log`. No file was deleted by any commit
+(`git diff --diff-filter=D HEAD~1 HEAD` empty at each of the three task commits), and the working
+tree is clean.
