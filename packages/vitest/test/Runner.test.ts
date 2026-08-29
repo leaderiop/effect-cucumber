@@ -557,7 +557,7 @@ describe("each recorded thunk is wired to its own Scenario", () => {
 })
 
 describe("a Scenario Outline emits one distinctly-titled test per Examples row", () => {
-  it("titles each row with its interpolated name, not the shared AST name", () => {
+  it("titles each row with its interpolated name plus 08-04's column=value suffix", () => {
     const { api, records } = makeRecordingApi()
 
     emitFeature({
@@ -570,12 +570,22 @@ describe("a Scenario Outline emits one distinctly-titled test per Examples row",
       hooks: emptyHooks
     })
 
-    // Titled with `astName`, both rows read `adding <count>` — two identically-named tests, which
-    // `vitest/no-identical-title` cannot catch because it only sees literals (mutation B).
+    // TWO properties in one comparison, and each fails on its own mutation.
+    //
+    // The BASE of each title is the row's own interpolated `name`: titled with `astName` instead,
+    // both rows read `adding <count>` — two identically-named tests, which `vitest/no-identical-title`
+    // cannot catch because it only sees literals (mutation B).
+    //
+    // The SUFFIX is 08-04's D-03 format, added by `OutlineTitle.ts` on top of that name rather than
+    // in place of it. `emitFeature` reverted to passing `scenarioPlan.name` straight through still
+    // produces two distinct, plausible titles here — `adding 1` and `adding 2` — and fails only on
+    // the parenthesised half. That the suffix is UNCONDITIONAL, i.e. present even on an Outline
+    // whose title text already interpolated, is exactly what this fixture pins: it is the case
+    // where the suffix is redundant for uniqueness and required anyway.
     assert.deepStrictEqual(shapeOf(records), [
       { kind: "describe", name: "Outline", depth: 0 },
-      { kind: "effect", name: "adding 1", depth: 1 },
-      { kind: "effect", name: "adding 2", depth: 1 }
+      { kind: "effect", name: "adding 1 (count=1)", depth: 1 },
+      { kind: "effect", name: "adding 2 (count=2)", depth: 1 }
     ])
   })
 })

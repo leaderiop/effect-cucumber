@@ -66,12 +66,22 @@
  *     Feature, Rule and Scenario names are deliberately NOT escaped — they must render exactly the
  *     way the author wrote them, which is the entire job of a test title.
  *
- * (d) **`ScenarioPlan.name` is the title; `astName` never is.** `name` is the interpolated Pickle
- *     name, so a Scenario Outline's two Examples rows read `adding 1` and `adding 2`; `astName` is
- *     the un-interpolated `adding <count>` that every row of one Outline shares. Titling with
- *     `astName` compiles, type-checks, and works perfectly on every plain Scenario in a suite before
- *     collapsing an Outline's rows into N identically-named tests. `Plan.ts` note (c) records the
- *     mirrored trap on the other side: `astName` is the scope-match key and `name` never is.
+ * (d) **`ScenarioPlan.name` is the BASE of the title; `astName` never is.** `name` is the
+ *     interpolated Pickle name, so a Scenario Outline's two Examples rows read `adding 1` and
+ *     `adding 2`; `astName` is the un-interpolated `adding <count>` that every row of one Outline
+ *     shares. Titling with `astName` compiles, type-checks, and works perfectly on every plain
+ *     Scenario in a suite before collapsing an Outline's rows into N identically-named tests.
+ *     `Plan.ts` note (c) records the mirrored trap on the other side: `astName` is the scope-match
+ *     key and `name` never is.
+ *
+ *     What actually reaches `api.effect` is `OutlineTitle.ts`'s `buildScenarioTitles` result, which
+ *     is that same `name` for a plain Scenario and `name` plus D-03's `(col=value, ...)` suffix for
+ *     an Outline row. The suffix is not cosmetic and `name` alone is not a substitute for it:
+ *     interpolation only substitutes placeholders the TITLE TEXT actually references, so an Outline
+ *     titled with no `<placeholder>` at all gives every one of its rows a byte-identical `name` —
+ *     the same N-identically-named-tests outcome `astName` produces, arrived at from the other
+ *     direction. `OutlineTitle.ts` note (a) has the empirical verification. Only Scenario titles go
+ *     through it; `warningTitle` and `afterAllScenariosTitle` are untouched by D-03.
  *
  * (e) **`BeforeAllScenarios`/`AfterAllScenarios` share one Feature-wide execution through a
  *     synchronous `Deferred`, computed and composed entirely inside this module — `TestApi.ts` gains
@@ -114,7 +124,8 @@
  * paragraph has the argument verbatim. If one of the declarations is ever narrowed, narrow all of
  * them: they describe the same value.
  *
- * Local imports are `./Plan.ts` and `./TestApi.ts` (both type-only) and `./ScenarioEffect.ts`. This
+ * Local imports are `./Plan.ts` and `./TestApi.ts` (both type-only), `./ScenarioEffect.ts` and
+ * `./OutlineTitle.ts`. This
  * module is INTERNAL and is not re-exported from `packages/vitest/src/index.ts` — a consumer calls
  * `describeFeature`, never a runner, and publishing an emission walk would freeze an internal stage
  * into the package's contract. `Registry.ts`, `collectFeature`, `TestApi.ts`, `Plan.ts` and
@@ -128,6 +139,7 @@ import * as Option from "effect/Option"
 import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
 import { type HookSet, runHookBatch } from "./Hook.ts"
+import { buildScenarioTitles } from "./OutlineTitle.ts"
 import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import type { TestApi } from "./TestApi.ts"
@@ -222,6 +234,21 @@ export const emitFeature = (
     planById.set(scenarioPlan.scenarioId, scenarioPlan)
   }
 
+  // Built once, before anything is emitted, for the same reason and at the same place as `planById`
+  // above: one walk over the document's Examples tables serves every Scenario the loops below visit.
+  // Keyed by `ScenarioPlan.scenarioId` (== `ParsedScenario.id` == `Pickle.id`) — note (d).
+  const titles = buildScenarioTitles(plan.feature)
+
+  /**
+   * The emitted title of one planned Scenario — note (d).
+   *
+   * The `??` is defensive only: `buildScenarioTitles` is total over `feature.allScenarios`, which is
+   * the union of the two arrays this walk reads, so the fallback branch is structurally unreachable.
+   * It is an explicit fallback rather than a `!`, mirroring `planFor`'s own preference for saying
+   * what happens on a miss over asserting one cannot occur under `noUncheckedIndexedAccess`.
+   */
+  const titleFor = (scenarioPlan: ScenarioPlan): string => titles.get(scenarioPlan.scenarioId) ?? scenarioPlan.name
+
   const planFor = (scenario: ParsedScenario): ScenarioPlan => {
     const found = planById.get(scenario.id)
     if (found === undefined) {
@@ -249,7 +276,7 @@ export const emitFeature = (
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
       api.effect(
-        scenarioPlan.name,
+        titleFor(scenarioPlan),
         beforeAllScenariosCell === null
           ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
           : () =>
@@ -268,7 +295,7 @@ export const emitFeature = (
         for (const scenario of rule.scenarios) {
           const scenarioPlan = planFor(scenario)
           api.effect(
-            scenarioPlan.name,
+            titleFor(scenarioPlan),
             beforeAllScenariosCell === null
               ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
               : () =>
