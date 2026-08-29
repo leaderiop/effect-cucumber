@@ -72,6 +72,23 @@
  *     other, which is precisely why the choice belongs at a call site and not in an import
  *     statement. `TestApi.ts` note (a) is the other half of the argument.
  *
+ *     Because this module is the only one that can SEE the framework, it is also the only one that
+ *     can see the framework FAIL — so it owns one more translation than the seam's shape suggests.
+ *     `vitest@4.1.11`'s `strictTags` check THROWS on a tag no `vitest.config.ts` declares, and the
+ *     throw is caught here and turned into a library-owned, located `UndeclaredTagWarning` plus an
+ *     untagged re-emission (D-08; the factory below has the whole argument). That placement is not
+ *     convenience: it is what lets `Runner.ts` go on not knowing the failure mode exists at all,
+ *     which is the same property the rest of this note is about. A `try`/`catch` one layer up in
+ *     `emitFeature` would compile and behave identically today, and would put a framework-specific
+ *     recovery path in the module whose entire design premise is that it has never heard of the
+ *     framework.
+ *
+ *     The acceptance grep this note refers to above is real and runnable:
+ *     `scripts/verify-testapi-seam.sh` (`pnpm verify:testapi-seam`), added by plan 09-01 for exactly
+ *     this phase's pressure — tags end up inside a framework option object, which makes
+ *     `import type { TestOptions } from "vitest"` in `TestApi.ts` or `Runner.ts` the plausible,
+ *     type-checking, lint-clean way to undo the seam.
+ *
  * Neither `collectFeature` nor the registry behind it is re-exported from
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
@@ -88,7 +105,7 @@ import type {
   ScenarioRegistrar,
   StepRegistrar
 } from "./Dsl.ts"
-import { makeExcludedScenariosNotice } from "./Errors.ts"
+import { makeExcludedScenariosNotice, makeUndeclaredTagWarning } from "./Errors.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
@@ -259,7 +276,13 @@ export type FeatureCollection = {
 }
 
 /**
- * The concrete `TestApi`, built once at module scope — note (e).
+ * The concrete `TestApi`, built once PER FEATURE by this factory — note (e).
+ *
+ * It used to be a module-scope constant and is not one any more, for exactly one reason: `featureUri`.
+ * D-08's warning has to name the `.feature` file it came from, a uri is per-Feature data, and module
+ * scope is the one place in this file where no Feature exists yet. What did NOT change is the part
+ * note (e) is actually about — the concrete framework objects are still constructed HERE and nowhere
+ * else, and `pnpm verify:testapi-seam` still enforces that. A factory is not a second seam.
  *
  * `describe` is vitest's own and is re-exported by the package this module imports it from; the
  * Effect-aware test constructor is that package's, and its `self` parameter is
@@ -269,15 +292,87 @@ export type FeatureCollection = {
  * `effect` is a forwarding function rather than the bare method reference it used to be, for exactly
  * one reason: `EmitOptions.tags` is a `ReadonlyArray<string>` — as it is in `Model.ts`, `Plan.ts` and
  * `TestApi.ts`, all the way from the parse — while vitest's own options type wants a mutable
- * `string[]`. `[...options.tags]` is THE single widening in this package, and it lives here because
- * this is already the one module permitted to name a test framework at all. Widening
+ * `string[]`. `[...options.tags]` is THE single tag-array widening in this package, and it lives here
+ * because this is already the one module permitted to name a test framework at all. Widening
  * `ScenarioPlan.tags` or `EmitOptions.tags` instead would "fix" the same assignment error by letting
  * every stage upstream rewrite a Scenario's tags in place.
+ *
+ * ## The `try`/`catch`: D-08's catch-and-degrade
+ *
+ * `vitest@4.1.11`'s `strictTags` defaults to `true`, so emitting a tag no `vitest.config.ts` declares
+ * THROWS. Left alone, that throw escapes collection and the ENTIRE `.feature` file reports zero tests
+ * collected — one undeclared tag on one Scenario deleting every Scenario in the file, which is the
+ * failure mode this block exists to convert into one warning about one Scenario.
+ *
+ * Four facts here were established by RUNNING it (RESEARCH Finding 3), not by reading the framework
+ * or reasoning about it, and each one is load-bearing for the shape below:
+ *
+ * - the throw is SYNCHRONOUS from the emission call, so an ordinary `try`/`catch` around that one
+ *   statement actually catches it — nothing is on a promise or an event loop turn;
+ * - nothing is left half-registered by it, so the catch path is not cleaning up after a partial
+ *   registration and does not need to;
+ * - the tagless re-emission registers CLEANLY from inside the catch block; and
+ * - every later sibling in the same file still collects afterwards, which is the whole point —
+ *   degradation is local to the Scenario rather than to the file.
+ *
+ * The consequence a reader needs, and the reason this warns rather than staying silent: the Scenario
+ * RUNS, but its tags do not exist as far as the runner is concerned, so a `--tagsFilter` invocation
+ * naming any of them cannot select it. The `.feature` file still says the tag is there and the runner
+ * disagrees. That is a discrepancy no test failure will ever surface, so the warning names the file,
+ * the Scenario, every offending tag, and where to declare them.
+ *
+ * ## Why the failure is discriminated STRUCTURALLY, and never by message, name or class
+ *
+ * Not every throw from an emission call is about tags, and swallowing an unrelated one behind an
+ * untagged re-emission would be a silent loss of signal (T-09-05-03). The obvious discriminator is
+ * the caught value's `message`, its `name`, or an `instanceof` against a framework error type, and
+ * all three are refused here. This repo's rule since plan 03-01 is that upstream PROSE never becomes
+ * a contract — a wording change in a dependency's patch release would silently turn this branch off,
+ * and the framework's own message for this case is additionally known to contain a typo, so matching
+ * it would mean encoding somebody else's bug as our condition.
+ *
+ * The discriminator used instead is an OUTCOME, and it is exact rather than heuristic: the fallback
+ * emission carries NO tags at all, so `strictTags` has nothing to reject in it. If the fallback
+ * throws too, the failure was categorically not about tags — and in that case the ORIGINAL caught
+ * value is re-thrown, unmodified and unwrapped, because it is the one that describes what actually
+ * went wrong. Replacing it with the fallback's throw, or with an error of ours, would name the
+ * recovery attempt instead of the defect.
+ *
+ * ## Order inside the catch: re-emit FIRST, then warn
+ *
+ * The two statements read equally well in either order and only one is correct. `console.warn` is a
+ * call into a host object a consumer's setup file is free to have replaced, so it can throw; if it
+ * did, and it ran first, the Scenario would be left unregistered — silently absent from the run,
+ * which is precisely the file-level disappearance this whole block exists to prevent, narrowed to one
+ * Scenario. Registration is the guarantee and the warning is the report, so the guarantee goes first.
+ *
+ * @param featureUri - the `.feature` file every warning from this adapter is located against
  */
-const vitestTestApi: TestApi = {
+const vitestTestApi = (featureUri: string): TestApi => ({
   describe,
-  effect: (name, self, options) => it.effect(name, self, { tags: [...options.tags], skip: options.skip })
-}
+  effect: (name, self, options) => {
+    try {
+      it.effect(name, self, { tags: [...options.tags], skip: options.skip })
+    } catch (cause) {
+      try {
+        // The SAME name and the SAME thunk, so the Scenario a reader is looking for is still the one
+        // that appears — and `skip` preserved, because a `@skip` Scenario whose tags were undeclared
+        // is still a skipped Scenario. Only `tags` is dropped, and it is OMITTED rather than passed
+        // as an empty array: an empty array is a value `strictTags` would have to validate, and the
+        // one thing this call must not do is reach the check that just threw.
+        it.effect(name, self, { skip: options.skip })
+      } catch {
+        // Structural discrimination, and the only branch that reaches it: an emission with no tags
+        // cannot fail `strictTags`, so whatever is wrong here was never about tags. `cause` and not
+        // the inner throw — the original is the one that describes the defect.
+        throw cause
+      }
+      console.warn(
+        makeUndeclaredTagWarning({ uri: featureUri, scenarioName: name, tags: options.tags }).message
+      )
+    }
+  }
+})
 
 /**
  * Collapse the two accepted layer arguments into the one Layer the runner will provide.
@@ -793,7 +888,10 @@ export function describeFeature(
   const tagFilter = makeTagFilter(options ?? {})
 
   const outcome = emitFeature({
-    api: vitestTestApi,
+    // ONE adapter per `describeFeature` call, built here rather than at module scope, because
+    // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
+    // Two Features in one file get two adapters, each located against its own uri.
+    api: vitestTestApi(collection.plan.feature.uri),
     plan: collection.plan,
     layer: collection.layer,
     hooks: collection.hooks,
