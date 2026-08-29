@@ -312,8 +312,8 @@ Plans:
 
 **Wave 4** *(blocked on 07-04)*
 
-- [ ] 07-05-PLAN.md — the per-step `BeforeStep`/step/`AfterStep` unit, guaranteed across the whole unit (D-05/D-06/D-07)
-- [ ] 07-06-PLAN.md — `BeforeAllScenarios` shared once through a synchronous `Deferred` and `AfterAllScenarios` as a trailing always-run node, with `TestApi.ts` unchanged (D-08/D-09)
+- [x] 07-05-PLAN.md — the per-step `BeforeStep`/step/`AfterStep` unit, guaranteed across the whole unit (D-05/D-06/D-07)
+- [x] 07-06-PLAN.md — `BeforeAllScenarios` shared once through a synchronous `Deferred` and `AfterAllScenarios` as a trailing always-run node, with `TestApi.ts` unchanged (D-08/D-09)
 
 **Wave 5** *(blocked on 07-05 and 07-06)*
 
@@ -429,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 4/8 | In Progress|  |
+| 7. Hooks | 6/8 | In Progress|  |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
