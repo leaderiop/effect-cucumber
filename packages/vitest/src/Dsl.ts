@@ -88,6 +88,15 @@
  *     the call signature's type parameter list. 07-CONTEXT.md's canonical_refs says this reasoning
  *     "applies to hooks too" — `HookRegistrar<ROut>` binds `R` the identical way.
  *
+ *     `ScenarioRegistrar`'s three-argument signature and `FeatureDsl.Rule` both introduce a
+ *     per-call-site `R2`, and that is NOT the trap this note warns about. `R2` is inferred from an
+ *     argument the author writes (`extraLayer`), so it is pinned by a real value the way `Params`
+ *     already is, and it UNIONS with `ROut` (`ScenarioDsl<ROut | R2>`) rather than replacing it —
+ *     `ROut` stays bound to the enclosing `describeFeature`, so nothing the ambient Layer guarantees
+ *     is given up. The vacuous-generic trap is a type parameter inferred from the BODY's own needs,
+ *     which is what a per-call-site `R` in the step position would be. Do not "fix" `R2` by hoisting
+ *     it onto the interface, and do not read this paragraph as licence to hoist `R`.
+ *
  * (f) **No hook member appears on `ScenarioDsl` or `BackgroundDsl`, ever. Four of the six appear on
  *     `RuleDsl` as well as `FeatureDsl`; the other two are Feature-only.** Two separate rules live
  *     here, and only the first is a guard:
@@ -217,6 +226,42 @@ export interface BackgroundDsl<ROut> {
 }
 
 /**
+ * One `Scenario(...)` container declaration, in either of the two forms ADR-EC-010 documents:
+ * `Scenario(name, define)` and `Scenario(name, extraLayer, define)`.
+ *
+ * TWO CALL SIGNATURES on one object, not a union of two function types on a `readonly` property.
+ * The distinction is load-bearing and is the same one `StepRegistrar` is a callable interface for:
+ * a union does not give overload resolution across a VARYING ARGUMENT COUNT — the checker picks a
+ * member and reports against it, so a correct three-argument call is reported against the
+ * two-argument member ("Expected 2 arguments, but got 3") and the author is told the extra Layer
+ * form does not exist. Multiple call signatures on one object type is the construct that actually
+ * resolves by arity.
+ *
+ * The two-argument signature is FIRST and is byte-for-byte the shape `FeatureDsl.Scenario` had
+ * before this type existed. That is deliberate: it is the overwhelmingly common form, TypeScript
+ * resolves overloads top-down, and keeping it first and unchanged is what lets every existing
+ * `Scenario("...", (dsl) => {...})` call site in this repo keep compiling with no edit.
+ *
+ * The extra Layer is genuinely OPTIONAL — two signatures — rather than always-required-but-possibly
+ * `Layer.empty`. That is the opposite of the call `describeFeature`'s `{ shared, perScenario }`
+ * object makes (05-CONTEXT.md's D-03), and the reason the two differ is that D-03's required key
+ * documents something: `shared` and `perScenario` MAY name the same service, and which one wins is a
+ * precedence rule the author needs forced in front of them. `Scenario` has no second slot and so no
+ * collision to disclose; an always-required `Layer.empty` here would document nothing, buy no
+ * compile-time guarantee, and tax every ordinary Scenario with ceremony.
+ *
+ * `extraLayer` is always per-Scenario scope, built fresh for every Scenario, on the same lifecycle
+ * as the Feature's default Layer (ADR-EC-010, ADR-EC-006) — there is no third "shared" tier hiding
+ * in the three-argument form. `R2` is per-call-site and unions with `ROut`; see note (e).
+ */
+export interface ScenarioRegistrar<ROut> {
+  /** The two-argument form. Unchanged from before this interface existed — no call site needs an edit. */
+  (name: string, define: (dsl: ScenarioDsl<ROut>) => void): void
+  /** The three-argument form: `extraLayer` extends the ambient Layer for THIS Scenario only. */
+  <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: ScenarioDsl<ROut | R2>) => void): void
+}
+
+/**
  * The dsl a `Rule(name, extraLayer, define)` callback receives — `ScenarioDsl`'s five registrars for
  * steps declared at Rule level, plus this Rule's own `Background` and `Scenario` containers and the
  * four hooks ADR-EC-010 scopes to a Rule.
@@ -244,7 +289,7 @@ export interface RuleDsl<ROut> extends ScenarioDsl<ROut> {
   // `Background` and `Scenario` are the `FeatureDsl` members' shapes verbatim — a Rule is a
   // step-definition container on identical terms, and D-04 asks for no new type.
   readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
-  readonly Scenario: (name: string, define: (dsl: ScenarioDsl<ROut>) => void) => void
+  readonly Scenario: ScenarioRegistrar<ROut>
   // Exactly the four hooks ADR-EC-010 scopes to a Rule, and no others — note (f). The Feature's own
   // hooks of the same kind still apply to every Scenario in here; these nest inside them (D-02).
   readonly Before: HookRegistrar<ROut>
@@ -271,12 +316,14 @@ export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
    */
   readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
   /**
-   * Declare the step definitions for the Scenario named `name`.
+   * Declare the step definitions for the Scenario named `name`, optionally extending the ambient
+   * Layer with an extra Layer visible only inside this one Scenario (ADR-EC-010).
    *
-   * Receives a full `ScenarioDsl<ROut>`. The `ROut` is the same one the Feature was given, so a
-   * registrar destructured here shadows the outer one without changing what it accepts.
+   * The callback receives a full `ScenarioDsl<ROut>` — or `ScenarioDsl<ROut | R2>` in the
+   * three-argument form. In the two-argument form the `ROut` is the same one the Feature was given,
+   * so a registrar destructured here shadows the outer one without changing what it accepts.
    */
-  readonly Scenario: (name: string, define: (dsl: ScenarioDsl<ROut>) => void) => void
+  readonly Scenario: ScenarioRegistrar<ROut>
   /**
    * Declare the step definitions for the Rule named `name`, extending the ambient Layer with
    * `extraLayer` for the Scenarios inside it — BEH-EC-009.

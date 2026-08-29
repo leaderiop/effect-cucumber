@@ -79,7 +79,7 @@ import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import { describe, it } from "@effect/vitest"
 import * as Layer from "effect/Layer"
 import { captureCallSite } from "./CallSite.ts"
-import type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+import type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, ScenarioRegistrar, StepRegistrar } from "./Dsl.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
@@ -226,6 +226,39 @@ const collect = (
   // ADR-EC-017: a Background gets `Given` and `And` only. The omission is the contract, not a gap.
   const backgroundDsl: BackgroundDsl<any> = { Given: scenarioDsl.Given, And: scenarioDsl.And }
 
+  // ONE implementation covering BOTH arities of `Dsl.ts`'s `ScenarioRegistrar<ROut>`, because that is
+  // what an overloaded call signature requires: a two-parameter function is not assignable to a type
+  // whose second signature takes a Layer in that position, so the arity check has to be real even
+  // while one branch is unimplemented.
+  //
+  // The three-argument form's runtime — merging `extraLayer` onto whichever Layer is ambient at the
+  // call site and recording the result on `FeatureCollection.scenarioLayers` — belongs to plan
+  // 08-05b's `makeScenarioRegistrar`. Until that lands it throws, for the same reason the `Rule`
+  // member below does: pushing the scope and running `define` while dropping `extraLayer` on the
+  // floor would let a Scenario that type-checks against the extra service fail at RUNTIME with the
+  // "service not found" this package exists to make impossible — a green build, a green suite, and
+  // the one guarantee INV-EC-003 sells, gone (AGENTS.md §4).
+  const scenarioRegistrar: ScenarioRegistrar<any> = (
+    name: string,
+    extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: ScenarioDsl<any>) => void),
+    maybeDefine?: (dsl: ScenarioDsl<any>) => void
+  ): void => {
+    if (maybeDefine !== undefined) {
+      throw new Error(
+        `Scenario("${name}", extraLayer, define) is not implemented yet. The DSL type surface for `
+          + "Scenario-scoped extra Layers (ADR-EC-010) exists, but the runtime merge does not — see "
+          + "plan 08-05b."
+      )
+    }
+    const defineScenario = extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void
+    registry.pushScope({ kind: "scenario", name })
+    try {
+      defineScenario(scenarioDsl)
+    } finally {
+      registry.popScope()
+    }
+  }
+
   const dsl: FeatureDsl<any> = {
     ...scenarioDsl,
     Background: (defineBackground) => {
@@ -240,14 +273,7 @@ const collect = (
         registry.popScope()
       }
     },
-    Scenario: (name, defineScenario) => {
-      registry.pushScope({ kind: "scenario", name })
-      try {
-        defineScenario(scenarioDsl)
-      } finally {
-        registry.popScope()
-      }
-    },
+    Scenario: scenarioRegistrar,
     // TEMPORARY, and deliberately loud. Plan 08-03 landed `FeatureDsl.Rule`'s TYPE ahead of its
     // runtime wiring, which plan 08-05a owns: a `"rule"` `RegistryScopeKind` to push/pop, the
     // `ruleId`-keyed `Layer.provideMerge(featureLayer)(extraLayer)` map, and Rule-scoped hook
