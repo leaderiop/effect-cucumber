@@ -70,6 +70,7 @@ import { generateStepSnippet, ParameterTypeStore, parseFeature } from "@effect-c
 import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import type { UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import {
   planFeature,
   type PlannedStep,
@@ -117,6 +118,34 @@ const twoScenarios = parse(
     Given I do the thing
 `,
   shopUri
+)
+
+/**
+ * ONE Scenario and ONE step.
+ *
+ * The shadowing test needs a Feature in which a shadowed Feature-level pattern has no OTHER Scenario
+ * to be used by — otherwise "not reported unused" would be satisfied by the wrong reason.
+ */
+const single = parse(
+  `Feature: Single
+
+  Scenario: A
+    Given I do the thing
+`,
+  "test/plan-single.feature"
+)
+
+/** Two Scenarios whose steps are worded DIFFERENTLY — the never-visible-to-a-match fixture. */
+const split = parse(
+  `Feature: Split
+
+  Scenario: A
+    Given only in A
+
+  Scenario: B
+    Given only in B
+`,
+  "test/plan-split.feature"
 )
 
 /**
@@ -217,6 +246,11 @@ const errorOf = (planned: PlannedStep | undefined): UnresolvedPlannedStep["error
 
 /** Every step's discriminant, in document order. */
 const tagsOf = (steps: ReadonlyArray<PlannedStep>): ReadonlyArray<string> => steps.map(({ _tag }) => _tag)
+
+/** Every warning's pattern, in the order the plan returned them. */
+const patternsOfWarnings = (
+  warnings: ReadonlyArray<UnusedStepDefinitionWarning>
+): ReadonlyArray<string> => warnings.map((warning) => warning.pattern)
 
 describe("planFeature — resolution and the scope chain", () => {
   it("resolves a Background step and both Scenario steps, in document order, with coerced args", () => {
@@ -444,5 +478,122 @@ describe("planFeature — MATCH-04, the ambiguous step", () => {
 
     expect(error?.matchedPatterns).toEqual(["I do the thing", "I do the {word}"])
     expect(error?.message).toContain("was registered as a Given at an unrecorded location.")
+  })
+})
+
+describe("planFeature — MATCH-05, the unused step definition", () => {
+  it("reports a Feature-scope pattern that matched nothing, without disturbing any Scenario", () => {
+    const plan = planFeature({
+      feature: twoScenarios,
+      definitions: [
+        define({ pattern: "I do the thing", scope: featureScope("Shop") }),
+        define({ pattern: "I never appear anywhere", scope: featureScope("Shop") })
+      ]
+    })
+
+    expect(patternsOfWarnings(plan.warnings)).toEqual(["I never appear anywhere"])
+    // Non-fatal by decision (ADR-EC-019): the plan is still completely usable.
+    expect(tagsOf(plan.scenarios[0]?.steps ?? [])).toEqual(["Resolved"])
+    expect(tagsOf(plan.scenarios[1]?.steps ?? [])).toEqual(["Resolved"])
+  })
+
+  it("emits nothing when every registered pattern resolved at least one step", () => {
+    const plan = planFeature({
+      feature: checkout,
+      definitions: [
+        define({ pattern: "the cart is empty", scope: backgroundScope }),
+        define({ pattern: "I add {int} apples", scope: scenarioScope("paying"), keyword: "When" }),
+        define({ pattern: "the total is {int}", scope: scenarioScope("paying"), keyword: "Then" })
+      ]
+    })
+
+    expect(plan.warnings).toEqual([])
+  })
+
+  it("reports a Scenario-scope pattern whose text only ever appears in a different Scenario", () => {
+    const plan = planFeature({
+      feature: split,
+      // Registered inside Scenario A, but `only in B` is a step of Scenario B — so this pattern was
+      // never once VISIBLE to a step it could have matched.
+      definitions: [define({ pattern: "only in B", scope: scenarioScope("A") })]
+    })
+
+    expect(patternsOfWarnings(plan.warnings)).toEqual(["only in B"])
+  })
+
+  it("does NOT report a pattern that matched but lost to an inner-scope registration", () => {
+    const plan = planFeature({
+      feature: single,
+      definitions: [
+        // Matches the only step in the Feature, and is then shadowed by the Scenario-scope override
+        // below. That is the Feature-level-default arrangement Pattern 5 exists to support, not dead
+        // code: ADR-EC-019's own wording is "matches zero steps across the whole Feature".
+        define({ pattern: "I do the {word}", scope: featureScope("Single") }),
+        define({ pattern: "I do the thing", scope: scenarioScope("A") })
+      ]
+    })
+
+    expect(plan.warnings).toEqual([])
+    expect(patternOf(plan.scenarios[0]?.steps[0])).toBe("I do the thing")
+  })
+
+  it("tracks two definitions sharing one pattern string at two scopes independently", () => {
+    const plan = planFeature({
+      feature: single,
+      definitions: [
+        // Resolves the step.
+        define({ pattern: "I do the thing", scope: featureScope("Single"), definedAt: site(10) }),
+        // Scoped to a Scenario this Feature does not have, so it is never visible to anything.
+        define({ pattern: "I do the thing", scope: scenarioScope("nonexistent"), definedAt: site(9) })
+      ]
+    })
+
+    // A used-set keyed on the pattern STRING marks both as used and reports nothing here.
+    expect(plan.warnings).toHaveLength(1)
+    expect(plan.warnings[0]?.definedAt).toStrictEqual(Option.some("/repo/test/steps.ts:9:5"))
+  })
+
+  it("carries the pattern, keyword, Feature name, uri and site, and says what to do", () => {
+    const plan = planFeature({
+      feature: twoScenarios,
+      definitions: [
+        define({ pattern: "I do the thing", scope: featureScope("Shop") }),
+        define({
+          pattern: "I never appear anywhere",
+          scope: featureScope("Shop"),
+          keyword: "Then",
+          definedAt: site(9)
+        })
+      ]
+    })
+
+    const warning = plan.warnings[0]
+    expect(warning?.reason).toBe("UnusedStepDefinition")
+    expect(warning?.pattern).toBe("I never appear anywhere")
+    expect(warning?.keyword).toBe("Then")
+    expect(warning?.featureName).toBe("Shop")
+    expect(warning?.uri).toBe(shopUri)
+    expect(warning?.definedAt).toStrictEqual(Option.some("/repo/test/steps.ts:9:5"))
+
+    const message = warning?.message ?? ""
+    // No line number in the prefix: the Feature has no single line for this finding, so the
+    // definition site carries the location instead and appears in the sentences.
+    expect(message.startsWith(`${shopUri}: UnusedStepDefinition: `)).toBe(true)
+    expect(message).toContain(JSON.stringify("I never appear anywhere"))
+    expect(message).toContain("registered as a Then at /repo/test/steps.ts:9:5")
+    expect(message).toContain(JSON.stringify("Shop"))
+    expect(message).toContain("Delete it")
+  })
+
+  it("returns warnings in an order that does not depend on the registration order", () => {
+    const later = define({ pattern: "unused later", scope: featureScope("Shop"), definedAt: site(10) })
+    const earlier = define({ pattern: "unused earlier", scope: featureScope("Shop"), definedAt: site(9) })
+    const used = define({ pattern: "I do the thing", scope: featureScope("Shop") })
+
+    const forward = planFeature({ feature: twoScenarios, definitions: [used, later, earlier] }).warnings
+    const backward = planFeature({ feature: twoScenarios, definitions: [earlier, later, used] }).warnings
+
+    expect(patternsOfWarnings(forward)).toEqual(["unused earlier", "unused later"])
+    expect(backward).toEqual(forward)
   })
 })
