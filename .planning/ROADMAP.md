@@ -254,13 +254,30 @@ Resolved by research, not re-opened at planning time: two `describeFeature` **ov
 **Plans**: 8 plans (6 waves — three independent leaf modules in wave 1, then a sequential Register→Plan→Emit pipeline)
 
 Plans:
+**Wave 1**
+
 - [ ] 06-01-PLAN.md — Call-site capture and `StepDefinition.definedAt`, the D-03 ordering key
 - [ ] 06-02-PLAN.md — `generateStepSnippet` in `@effect-cucumber/gherkin` (D-01; also resolves the pnpm isolated-layout blocker)
 - [ ] 06-03-PLAN.md — `StepMatchError`, the unused-pattern warning type, and the `TestApi` seam
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 06-04-PLAN.md — `Plan.ts`: scope-chain resolution and MATCH-03/04/05 drift detection
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 06-05-PLAN.md — `ScenarioEffect.ts`: one fail-fast `Effect.gen` per Scenario (RUN-01, INV-EC-001)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 06-06-PLAN.md — `Runner.ts`: describe/it.effect emission through the seam, plus D-02's reporter node
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 06-07-PLAN.md — Composition root, `console.warn` channel, public barrel, end-to-end emission proof
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 06-08-PLAN.md — Spec and README reconciliation (traceability §1/§3/§4, INV-EC-001, three Status sections)
 
 **Research flag**: Skip — standard once Phase 5's types are settled.
