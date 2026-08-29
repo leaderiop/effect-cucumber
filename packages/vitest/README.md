@@ -3,8 +3,8 @@
 The package most consumers install directly. It provides `describeFeature`, the Given/When/Then/Background/Scenario
 DSL, the six-hook `Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios` surface, and the
 `it.effect`-based runner that turns a Gherkin `.feature` file into ordinary vitest `describe`/`it` calls — no plugin
-and no custom reporter. The `ScenarioOutline` and `Rule` containers are specified but not yet built; "## Status" below
-says which phase each is waiting on. It depends on
+and no custom reporter. `Rule` containers, their own `Background` and hooks, and per-row-titled Scenario Outlines all
+ship; "## Status" below says what is still waiting on a later phase. It depends on
 [`@effect-cucumber/gherkin`](../gherkin). A wrapped, `ManagedRuntime`-backed `loadFeature`
 (ADR-EC-024) is planned but not yet exported — see "## Status" below.
 
@@ -44,8 +44,33 @@ and `AfterAllScenarios` each run whether the thing they guard succeeded or faile
 `BeforeAllScenarios` runs once per Feature, shared across every Scenario, and its failure is reported by every
 Scenario individually.
 
-**What is not built yet**, each waiting on its own phase: `Rule`-scoped extra Layers and typed `Scenario Outline`
-Examples (Phase 8); tag routing and `@skip`/`@only` (Phase 9); and the build-once `shared` Layer with its per-Scenario
+**A `Rule` can extend the ambient Layer, and so can a single `Scenario`.** `Rule(name, extraLayer, define)` merges
+`extraLayer` onto the Feature's Layer with `Layer.provideMerge`, so the Rule's Layer may itself depend on the Feature's
+services rather than merely sit beside them — and a step inside that Rule can use the extra service while the identical
+step written outside it does not compile, by name (`effect(missingEffectContext)`, asserted by
+`pnpm verify:tsgo-gate`). `Scenario(name, extraLayer, define)` does the same thing for one Scenario, onto whatever was
+ambient where it was written, so a Scenario inside a Rule reaches all three tiers. Both are always per-Scenario scope,
+built fresh for every Scenario — there is no "shared within a Rule" tier, and the two-argument
+`Scenario(name, define)` form is unchanged.
+
+A Rule scopes more than its Layer. `Before`, `After`, `BeforeStep` and `AfterStep` declared inside a Rule apply to that
+Rule's Scenarios only, and compose with the Feature's own: the Feature's Before-shaped hooks run first and then the
+Rule's, while the Rule's After-shaped hooks run first and then the Feature's — outer setup before inner, inner
+guarantee before outer, matching the emitted `describe`/`describe` nesting. `BeforeAllScenarios` and `AfterAllScenarios`
+stay Feature-only and are a compile error on a Rule's dsl. A Rule also gets its own `Background` (`Given`/`And` only,
+like the Feature's), so a `.feature` file with a `Rule:`-level `Background:` has somewhere to register its steps; Rule-
+and Feature-level registrations never resolve each other's steps, and the innermost matching scope wins.
+
+**Scenario Outline rows are typed for free and individually filterable.** An Examples value consumed by an `{int}` or
+`{float}` pattern reaches the step body already coerced to `number` — the pattern's own cucumber-expression coercion
+does it, with no separate typed-example-row mechanism. Each row emits its own test, titled with the row's interpolated
+name plus every Examples column and that row's value for it —
+`Applying a valid discount code (code=SAVE10, percent=10, expected=31.50)` — appended whether or not the title text
+already referenced a placeholder, so `-t` can filter on any column value. Two rows of one Outline share no mutable
+state: each is its own test against its own Layer build, and observes only its own row's values.
+
+**What is not built yet**, each waiting on its own phase: tag routing and `@skip`/`@only` (Phase 9); and the build-once
+`shared` Layer with its per-Scenario
 `TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted and type-checked today, but
 both halves are currently built per Scenario at runtime. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.

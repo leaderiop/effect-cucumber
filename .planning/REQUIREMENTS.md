@@ -28,8 +28,8 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 - [x] **DSL-02**: A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`/`And`/`But` accept a bare generator function, auto-wrapped with `Effect.fn(stepText)` internally (ADR-EC-001, ADR-EC-005)
 - [x] **DSL-03**: `World` is a typed `Context.Service`; a field is unreachable by a step unless it appears in World's declared type (ADR-EC-002)
 - [x] **DSL-04**: `Background` and `Scenario` are step-definition containers — `Background` receives `{ Given, And }`, `Scenario` receives `{ Given, When, Then, And, But }` — and a Background's literal Gherkin text is matched against a registered pattern exactly like any other step (ADR-EC-017)
-- [ ] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
-- [ ] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
+- [x] **DSL-05**: A `Rule` can extend the ambient Layer with an extra per-Scenario Layer visible only to Scenarios defined inside that Rule (ADR-EC-010)
+- [x] **DSL-06**: A `ScenarioOutline`'s Examples values are typed for free by the step pattern's own cucumber-expression coercion (`{int}`, `{float}`) — no separate typed "example row" mechanism (ADR-EC-007)
 - [x] **DSL-07**: Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios`) accept a bare generator function, auto-wrapped with `Effect.fn(name)` (ADR-EC-005)
 
 ### Execution semantics
@@ -94,8 +94,8 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | DSL-02 | Phase 5 | Complete |
 | DSL-03 | Phase 5 | Complete |
 | DSL-04 | Phase 5 | Complete |
-| DSL-05 | Phase 8 | Pending |
-| DSL-06 | Phase 8 | Pending |
+| DSL-05 | Phase 8 | Complete |
+| DSL-06 | Phase 8 | Complete |
 | DSL-07 | Phase 7 | Complete |
 | RUN-01 | Phase 6 | Complete |
 | RUN-02 | Phase 7 | Complete |
@@ -115,7 +115,59 @@ enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-29 after Phase 7 (hooks) — DSL-07 and RUN-02 are Complete, each backed by a
+*Last updated: 2026-08-29 after Phase 8 (Rule and Scenario Outline) — DSL-05 and DSL-06 are Complete,
+each backed by a named automated assertion that fails if the requirement stops being true.*
+
+*DSL-05 by `packages/vitest/test/Plan.test.ts`'s cross-rule isolation tests ("never lets one Rule's
+registration serve another Rule's Scenario, even under one pattern text", "does not let a
+Scenario-scope pattern cross into a same-named Scenario in a different Rule") and its three-level
+Scenario-over-Rule-over-Feature precedence tests; by `packages/vitest/test/describeFeature.test.ts`'s
+per-Rule Layer resolution tests ("provides both the Feature's ambient service and the Rule's own from
+the Rule's Layer", "leaves the Feature's own Layer unable to provide the Rule's extra service",
+"builds a Rule Layer whose own requirements the Feature's ambient Layer satisfies") and its
+Rule/Scenario composition test ("reaches the Feature's, the Rule's and the Scenario's own service
+from one merged Layer"); by `scripts/verify-tsgo-gate.sh` assertions 12 and 13 — the compile-time
+boundary, where assertion 13's `rule-missing-service.ts` is assertion 12's `rule-satisfied.ts` Rule-scoped
+step body byte-for-byte, registered at Feature level with no Rule in the file, checked for a non-zero
+exit AND for `effect(missingEffectContext)` by name; and by `packages/vitest/test/emission.test.ts`'s
+real end-to-end Rule run, whose Rule tier is a `Layer.effect`-built service DERIVED from the Feature's,
+so it resolves at runtime only if `Layer.provideMerge` really composed the two.*
+
+*DSL-06 by two separate halves, because Roadmap Phase 8 states them as two separate success criteria.*
+
+*The TITLING half (D-03, roadmap SC#4) by `packages/vitest/test/OutlineTitle.test.ts`'s
+exact-title-format tests — the placeholder-FREE Outline whose rows are otherwise byte-identical, the
+standing assertion that they really are identical without the suffix, the already-interpolated
+Outline where the suffix is ADDED rather than substituted, and the plain Scenario left exactly as
+written — plus `packages/vitest/test/Runner.test.ts`'s `adding 1 (count=1)` / `adding 2 (count=2)`
+positional assertion, and `packages/vitest/test/emission.test.ts`'s real three-row independence proof
+(Pitfall 34): three rows emitted as three running tests, each asserting from inside its own step body
+the value its own row carried.*
+
+*The COERCION half — "typed for free", which Roadmap Phase 8 success criterion #3 states separately
+("An Outline whose Examples columns are consumed by `{int}`/`{float}` patterns hands the step body
+already-coerced `number` arguments, with no separate typed-example-row mechanism — verified by both a
+type test and a runtime assertion") — rests on two PRE-EXISTING assertions that predate Phase 8 and
+required no new test, both named here so the requirement is not marked Complete on the titling
+evidence alone:*
+
+*(i) the RUNTIME half is `packages/vitest/test/Plan.test.ts`'s test
+`"resolves every Examples row of a Scenario Outline, proving astName is the scope key"` (lines
+466-480), whose assertions `expect(resolvedOf(plan.scenarios[0]?.steps[0])?.args).toEqual([1])` and
+its `[2]` equivalent for row 2 (lines 478-479) are the proof that an Outline row's Examples STRING
+value `"1"` arrives at the step already coerced to the `number` `1` by the `{int}` pattern, per row,
+with no separate typed-row mechanism anywhere in the codebase.*
+
+*(ii) the TYPE half is `packages/gherkin/test/StepArgs.types.ts` line 48
+(`export const intIsNumber = expectTrue(equality<StepArgs<"I have {int} cukes">, [number]>())`)
+together with its `@ts-expect-error` negative at line 145 (`intIsNotString`), which prove `{int}`
+resolves to `number` and never to `string` (MATCH-01). That file is compiled by
+`pnpm typecheck:test` and is deliberately never collected by vitest.*
+
+*No requirement outside DSL-05 and DSL-06 changed status. See
+`.planning/phases/08-rule-and-scenario-outline/08-08-SUMMARY.md` for the per-requirement evidence.*
+
+*The previous entry covered Phase 7 — DSL-07 and RUN-02 are Complete, each backed by a
 named automated assertion that fails if the requirement stops being true: DSL-07 by
 `packages/vitest/test/Hook.test.ts` (the span-name and reference-identity normalization assertions),
 `scripts/verify-tsgo-gate.sh` assertions 10 and 11 (a hook requiring an unprovided service is rejected
