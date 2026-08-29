@@ -178,6 +178,12 @@ None. `generateStepSnippet` introduces no network endpoint, no auth path, no fil
 - Note for the caller: the returned string has **no trailing newline** and no surrounding punctuation, by design — the error-message builder adds its own, matching `StepPatternMessages.ts`'s `sentences.join(" ")` convention.
 - No blockers. No shared orchestrator artifacts (`STATE.md`, `ROADMAP.md`) were touched, per the parallel-execution contract.
 
+## Self-Check: PASSED
+
+Files verified present: `packages/gherkin/src/Snippet.ts`, `packages/gherkin/test/Snippet.test.ts`, `packages/gherkin/src/index.ts`, `.planning/phases/06-plan-scenario-effect-runner-emission-and-drift-detection/06-02-SUMMARY.md`.
+
+Commits verified on `worktree-agent-a52f869bae8036753`: `6cf282a`, `505bbdb`, `d376b72`, `3b25ca8` — all four descend from the plan base `18f7b10`.
+
 ---
 *Phase: 06-plan-scenario-effect-runner-emission-and-drift-detection*
 *Completed: 2026-08-29*
