@@ -96,6 +96,12 @@ import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 import { type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
 import { emitFeature } from "./Runner.ts"
+// The composite `scenarioLayers` key, in a LEAF module both this file and `Runner.ts` import rather
+// than private to either — `ScenarioKey.ts`'s own header has the argument. `Runner.ts` reads back
+// what the `Scenario` container below writes, and it cannot import this file (that edge would close a
+// cycle with the `emitFeature` import above), so a shared leaf is the only way both sides can build
+// one encoding instead of two that compile while disagreeing.
+import { scenarioKey } from "./ScenarioKey.ts"
 import { register } from "./Step.ts"
 import type { TestApi } from "./TestApi.ts"
 
@@ -199,8 +205,8 @@ export type FeatureCollection = {
    * second time compiles, type-checks and leaves every service reachable, so nothing goes red while
    * every ambient `Layer.effect` resource is built an extra time per Scenario.
    *
-   * Keyed by the composite and never by name alone, for the reason `scenarioKey`'s own comment
-   * gives: F22 makes Scenario names unique per SCOPE only, so a Rule's Scenario and a same-named
+   * Keyed by the composite and never by name alone, for the reason `ScenarioKey.ts` note (a) gives:
+   * F22 makes Scenario names unique per SCOPE only, so a Rule's Scenario and a same-named
    * Feature-level one are both legal and must not collide here.
    */
   readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
@@ -263,27 +269,6 @@ const resolveRuleId = (feature: ParsedFeature, name: string): string => {
 }
 
 /**
- * The key a Scenario's merged extra Layer is recorded under: the pair `(ruleId, name)` encoded as
- * one string, because a `Map` keys by identity and a two-field object literal would never hit.
- *
- * Mirrors `packages/gherkin/src/Validate.ts`'s own `uniquenessKey` — the same `ruleId ?? "<feature>"`
- * head, the same NUL separator, on purpose. Keying by NAME alone is the plausible simplification and
- * it is wrong for a reason that file already established: F22 makes a Scenario name unique PER SCOPE
- * and no further, and its `duplicate-scenario-name-across-rules.feature` fixture is the executable
- * proof that two Rules may each legally contain a `Scenario: happy path`. A name-keyed map would let
- * one of them silently overwrite the other's entry, and the loser would then run against a Layer
- * built for a DIFFERENT Scenario — a wrong service, not a missing one, so nothing fails loudly.
- *
- * NUL and not a space, a slash or a dash. A `ParsedRule.id` is generator-produced digits, but
- * `resolveRuleId`'s other output is the `unregistered-rule:${name}` sentinel, which carries an
- * author-written Rule NAME and can therefore contain any printable character. With a printable
- * separator the encoding of the pair stops being unambiguous the moment such a name contains it;
- * with NUL it cannot, because neither half can contain a NUL. Validate.ts's own note makes the
- * identical argument on its side of the seam.
- */
-const scenarioKey = (ruleId: string | null, name: string): string => `${ruleId ?? "<feature>"}\u0000${name}`
-
-/**
  * The one implementation both public entry points delegate to.
  *
  * Not exported, and deliberately so: it exists to keep `describeFeature` and `collectFeature` from
@@ -321,7 +306,7 @@ const collect = (
   // Every THREE-argument `Scenario(...)` call, from either level, keyed by `scenarioKey`. Beside
   // `ruleLayers` because it has the identical lifecycle — mutated by a container closure while
   // `define(dsl)` runs, read only after it returns — and never keyed by name alone, for the reason
-  // `scenarioKey`'s own comment gives.
+  // `ScenarioKey.ts` note (a) gives.
   const scenarioLayers = new Map<string, Layer.Layer<any, any, never>>()
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
@@ -707,5 +692,21 @@ export function describeFeature(
 
   // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
   // collection output rather than interleaved with it.
-  emitFeature({ api: vitestTestApi, plan: collection.plan, layer: collection.layer, hooks: collection.hooks })
+  //
+  // All SEVEN fields, and the last three are not optional extras: `hooks` is the FEATURE-level set
+  // alone (the `collect` return above filters it to `ruleId === null`), so an `emitFeature` call
+  // passing only the first four would run every Rule-scoped hook nowhere at all and give every
+  // Rule-nested Scenario the Feature's bare Layer. Every step would still resolve, every existing
+  // assertion in this repo would still pass, and ADR-EC-010's whole guarantee would hold in the
+  // type-checker and nowhere at runtime — which is why `emitFeature` declares them required rather
+  // than defaulting a missing map to an empty one.
+  emitFeature({
+    api: vitestTestApi,
+    plan: collection.plan,
+    layer: collection.layer,
+    hooks: collection.hooks,
+    ruleHooks: collection.ruleHooks,
+    ruleLayers: collection.ruleLayers,
+    scenarioLayers: collection.scenarioLayers
+  })
 }

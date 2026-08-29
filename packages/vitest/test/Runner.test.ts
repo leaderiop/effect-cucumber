@@ -31,7 +31,7 @@
  *   `name` are the same string for every plain Scenario in every other fixture here, so titling with
  *   the wrong one is invisible until two rows of one Outline have to be told apart — mutation B.
  *
- * Mutation-tested (all seven performed against real source, run, confirmed to fail exactly the
+ * Mutation-tested (every one performed against real source, run, confirmed to fail exactly the
  * intended test(s), then reverted) — see the plan summary for the recorded output:
  * - A. `emitFeature` emits a Rule's Scenarios as SIBLINGS of the Rule's block instead of inside it
  *      → the Rule-nesting test fails on `depth`.
@@ -67,6 +67,24 @@
  *      Scenario execution) instead of through `Runner.ts`'s once-cell → the headline full-ordering
  *      test below fails: the sequence gains a SECOND `BeforeAllScenarios:start`/`:end` pair, ahead of
  *      Scenario 2's own `Before`, instead of the once-cell's single pair ahead of Scenario 1's.
+ * - Q. `mergeHookSets`'s two arguments swapped in the per-Rule merge → 1 of 25 fails, the
+ *      Feature-then-Rule/Rule-then-Feature ordering test. Both ends of D-02 invert at once, and every
+ *      hook name and every count in the log stays exactly right — only the order moves.
+ * - R. the per-Rule merge's `?? emptyHookSet` miss branch replaced with `?? hooks` (the plausible
+ *      "fall back to what we already have") → 1 of 25 fails, the exactly-ONCE test: the Feature's own
+ *      set is merged with itself, so every Feature-level hook runs twice for a Rule that declared
+ *      none of its own. The relative order stays correct, so only a count-pinning comparison sees it.
+ * - S. `scenarioKeyFor` built from `scenarioPlan.name` instead of `.astName` → 1 of 25 fails, the
+ *      both-Outline-rows test. Every plain Scenario in every other fixture in this file has
+ *      `name === astName`, so this is the only test in the file the mutation is visible in at all.
+ * - T. the per-Rule `ruleLayers.get(rule.id) ?? layer` reduced to `layer` → 1 of 25 fails, the
+ *      three-tier test, on its middle entry alone (`tier=feature` where `tier=rule` belongs). The
+ *      Feature-level and Scenario-override tiers are untouched, which is what makes the failure name
+ *      the tier that broke.
+ * - U. the FEATURE-level loop given `mergeHookSets(hooks, [...ruleHooks.values()][0] ?? emptyHookSet)`
+ *      — the "both loops are the same three lines" tidy-up `Runner.ts` note (f) warns about → 1 of 25
+ *      fails, the Feature-level-Scenario-sees-neither-Rule-hook test (threat T-08-07-03). Nothing
+ *      about the emitted SHAPE changes, so every positional assertion in this file still passes.
  *
  * ## The fixtures
  *
@@ -231,6 +249,28 @@ const emptyHooks: HookSet = {
 
 /** `emptyHooks` with one or more kinds overridden — keeps each all-scenarios test's intent to one line. */
 const hooksWith = (overrides: Partial<HookSet>): HookSet => ({ ...emptyHooks, ...overrides })
+
+/**
+ * `emitFeature`'s three Rule/Scenario-scope maps, all EMPTY — spread into every call in this file
+ * that predates plan 08-07's signature change.
+ *
+ * That spread is the backward-compatibility assertion, not boilerplate around it: a Feature that
+ * declares no `Rule` and no three-argument `Scenario(...)` collects exactly these three empty maps, so
+ * every shape and ordering assertion written before 08-07 goes on holding BYTE-FOR-BYTE with the new
+ * parameters in place. If the merge/override paths regressed the no-Rule case, they fail here, in the
+ * tests that already knew what the answer was — which is a far better place to find out than in the
+ * 08-07 tests at the bottom of this file, whose expectations were written after the change.
+ *
+ * ONE shared object rather than a factory, which is safe rather than merely convenient for the reason
+ * `Hook.ts`'s `emptyHookSet` gives on its own side: `emitFeature` only ever calls `.get` on these, and
+ * a `ReadonlyMap` parameter gives it no way to mutate one, so no test can observe another test's use
+ * of them. `emptyHooks` above is the same call.
+ */
+const noRuleScope = {
+  ruleHooks: new Map<string, HookSet>(),
+  ruleLayers: new Map<string, Layer.Layer<any, any, never>>(),
+  scenarioLayers: new Map<string, Layer.Layer<any, any, never>>()
+}
 
 /**
  * The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe
@@ -442,6 +482,95 @@ const recorderCheckoutDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
   define({ pattern: "I refund", scope: featureScope("Checkout"), keyword: "When", body: recordingStep("I refund") })
 ]
 
+/**
+ * `shop`'s three steps, with bodies that append their own step text to the shared `Recorder` log —
+ * the fixture the Rule-hook-ordering block at the bottom of this file uses, so a Feature-level hook's
+ * entries, a Rule-level hook's entries and the Scenario's own step entry land in ONE whole-log
+ * ordering assertion.
+ */
+const shopRecorderDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
+  define({ pattern: "I browse", scope: featureScope("Shop"), keyword: "When", body: recordingStep("I browse") }),
+  define({
+    pattern: "I get my money back",
+    scope: featureScope("Shop"),
+    keyword: "When",
+    body: recordingStep("I get my money back")
+  }),
+  define({
+    pattern: "I keep the goods",
+    scope: featureScope("Shop"),
+    keyword: "When",
+    body: recordingStep("I keep the goods")
+  })
+]
+
+/**
+ * A service naming which of the three Layer tiers built it — the only thing the three-tier block at
+ * the bottom of this file needs a Layer to be distinguishable BY.
+ *
+ * `Marker` above cannot do this job: it is one module-scope value, so every tier would be the same
+ * instance and a Scenario provided the wrong tier's Layer would read exactly what it should have.
+ */
+class Tier extends Context.Service<Tier, { readonly name: string }>()("Tier") {}
+
+/**
+ * The shared `Recorder` plus a `Tier` naming this Layer's own tier.
+ *
+ * `Layer.merge` and not `Layer.provideMerge`: the two halves are independent — `Recorder` needs
+ * nothing from `Tier` — and this file is not asserting anything about how `describeFeature.ts`
+ * composes tiers. That composition already happened at REGISTRATION time by the time `emitFeature` is
+ * handed a `ruleLayers`/`scenarioLayers` entry (`Runner.ts` note (f)), so what these tests hand it is
+ * a fully-built effective Layer, exactly as the real caller does.
+ *
+ * The SAME `recorderLayer` goes into every tier, so all three write to one log and the assertion can
+ * be a single ordered comparison rather than three separate reads.
+ */
+const withTier = (recorderLayer: Layer.Layer<Recorder>, name: string): Layer.Layer<Recorder | Tier> =>
+  Layer.merge(recorderLayer, Layer.succeed(Tier, Tier.of({ name })))
+
+/** A step body that records WHICH tier's Layer the Scenario it belongs to was actually provided. */
+const tierStep = (): StepBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    const tier = yield* Tier
+    yield* Ref.update(recorder.log, (seen) => [...seen, `tier=${tier.name}`])
+  })
+
+/** `shop`'s three steps, every one reporting its own Scenario's effective tier. */
+const shopTierDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
+  define({ pattern: "I browse", scope: featureScope("Shop"), keyword: "When", body: tierStep() }),
+  define({ pattern: "I get my money back", scope: featureScope("Shop"), keyword: "When", body: tierStep() }),
+  define({ pattern: "I keep the goods", scope: featureScope("Shop"), keyword: "When", body: tierStep() })
+]
+
+/**
+ * `shop`'s only Rule, resolved once and asserted on rather than indexed with `!`.
+ *
+ * Every 08-07 block below keys `ruleHooks`/`ruleLayers` on `rule.id`, and under
+ * `noUncheckedIndexedAccess` a bare `shop.rules[0]` is `ParsedRule | undefined`. A `!` would turn a
+ * fixture edit that dropped the `Rule:` block into `Cannot read properties of undefined` inside
+ * whichever test ran first; this says which fixture is wrong instead.
+ */
+const shopRule = shop.rules[0]
+if (shopRule === undefined) {
+  throw new Error("fixture `shop` must declare exactly one Rule — every 08-07 block below keys on its id")
+}
+
+/**
+ * The composite key `emitFeature` looks `scenarioLayers` up under, REBUILT here rather than imported
+ * from `src/ScenarioKey.ts`.
+ *
+ * `test/describeFeature.test.ts`'s own `scenarioKeyIn` makes the identical choice for the identical
+ * reason, one stage earlier: the map is only usable by a party that can build the key, so the
+ * ENCODING is the contract between the two stages, and a test that asked the implementation for its
+ * own key could not notice that encoding changing underneath it. Written independently on BOTH sides
+ * of the seam, these two constants are also what would catch `src/ScenarioKey.ts` drifting away from
+ * `packages/gherkin/src/Validate.ts`'s `uniquenessKey`, which it deliberately mirrors.
+ *
+ * NUL separator, `<feature>` head for a Scenario in no Rule.
+ */
+const scenarioKeyIn = (ruleId: string | null, name: string): string => `${ruleId ?? "<feature>"}\u0000${name}`
+
 /** Replace a real plan's warning list, keeping its real Feature and its real Scenario plans. */
 const withWarnings = (
   base: FeaturePlan,
@@ -456,7 +585,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       api,
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // Positional, and over the WHOLE array: a search would pass against an implementation that
@@ -475,7 +605,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       api,
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // Exactly one record at the top level, and it is the Feature's block. An implementation that
@@ -492,7 +623,7 @@ describe("a Feature emits one block with one test per Scenario", () => {
     const plan: FeaturePlan = { feature: checkout, scenarios: [], warnings: [] }
 
     assert.throws(
-      () => emitFeature({ api, plan, layer, hooks: emptyHooks }),
+      () => emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope }),
       /no ScenarioPlan for scenario id/
     )
   })
@@ -513,7 +644,8 @@ describe("a Rule emits a nested block", () => {
         ]
       }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // The two Rule Scenarios sit at depth 2 beneath a block at depth 1. Emitted as siblings of the
@@ -539,7 +671,8 @@ describe("each recorded thunk is wired to its own Scenario", () => {
         api,
         plan: planFeature({ feature: checkout, definitions: recordingDefinitions(ran) }),
         layer,
-        hooks: emptyHooks
+        hooks: emptyHooks,
+        ...noRuleScope
       })
 
       // Nothing has run yet: `emitFeature` registers thunks, it does not execute them. An eager
@@ -567,7 +700,8 @@ describe("a Scenario Outline emits one distinctly-titled test per Examples row",
         definitions: [define({ pattern: "I add {int} apples", scope: featureScope("Outline") })]
       }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // TWO properties in one comparison, and each fails on its own mutation.
@@ -602,7 +736,7 @@ describe("an unused step definition surfaces as a test node", () => {
   it("adds exactly one node, titled with the keyword, the pattern and the site, AFTER every Scenario", () => {
     const { api, records } = makeRecordingApi()
 
-    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks })
+    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
 
     // Last, not first. Hoisted to the top of the block the Feature's own Scenarios get pushed below a
     // variable-length list of footnotes — Runner.ts note (c).
@@ -622,7 +756,7 @@ describe("an unused step definition surfaces as a test node", () => {
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
 
-      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks })
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
 
       // ADR-EC-019 makes an unused pattern a warning and not a failure. Asserted on the Exit rather
       // than by the test simply not throwing, so a node that fails is reported as a failed assertion
@@ -644,7 +778,8 @@ describe("an unused step definition surfaces as a test node", () => {
         ]
       }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // Titled with the pattern alone, these two would be one string twice — two identically-named
@@ -671,7 +806,7 @@ describe("an unused step definition surfaces as a test node", () => {
       })
     ])
 
-    emitFeature({ api, plan, layer, hooks: emptyHooks })
+    emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope })
 
     // The pattern is rendered with `JSON.stringify`, so the embedded quotes are escaped and cannot
     // forge the end of the quoted span in a reporter's output (threat T-06-06-01).
@@ -716,7 +851,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       yield* thunkAt(records, 1)()
@@ -744,7 +880,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       yield* thunkAt(records, 2)()
@@ -773,7 +910,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       const exit1 = yield* Effect.exit(thunkAt(records, 1)())
@@ -803,7 +941,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       yield* thunkAt(records, 1)()
@@ -839,7 +978,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         ]
       }),
       layer,
-      hooks
+      hooks,
+      ...noRuleScope
     })
 
     // Positional, over the whole array — mutation M's target: emitted after the warnings instead of
@@ -871,7 +1011,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
@@ -898,7 +1039,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         api,
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
-        hooks
+        hooks,
+        ...noRuleScope
       })
 
       const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)())
@@ -996,7 +1138,7 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
 
         const plan: FeaturePlan = { feature: checkout, scenarios: [scenario1, scenario2], warnings: [] }
 
-        emitFeature({ api, plan, layer: recorderLayer, hooks })
+        emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope })
 
         // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the
         // `⚙ AfterAllScenarios` node — run them in that same order.
@@ -1060,7 +1202,8 @@ describe("a Feature registering neither all-scenarios hook emits exactly what it
       api,
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
-      hooks: emptyHooks
+      hooks: emptyHooks,
+      ...noRuleScope
     })
 
     // Identical to this file's very first assertion for this same fixture — a hookless Feature's
@@ -1071,4 +1214,204 @@ describe("a Feature registering neither all-scenarios hook emits exactly what it
       { kind: "effect", name: "refunding", depth: 1 }
     ])
   })
+})
+
+/**
+ * D-02's runtime proof against the recording fake: a Scenario INSIDE a Rule runs the Feature's
+ * Before-shaped hooks then that Rule's own, and unwinds the Rule's After-shaped hooks then the
+ * Feature's — while a Scenario OUTSIDE every Rule, in the same emission, sees neither of the Rule's.
+ *
+ * Every assertion here is one ordered comparison over the WHOLE log, never a `.includes` or a
+ * per-hook count. `mergeHookSets`'s entire contract is ORDER (`Hook.ts` note (h)), so an assertion
+ * that only checked both hooks RAN would pass against every wrong order there is — which is the one
+ * thing this block exists to rule out.
+ */
+describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () => {
+  /** Feature-level `Before`/`After`, both bracketing a real suspension. */
+  const featureHooks = (): HookSet =>
+    hooksWith({ Before: [recordingHook("featureBefore")], After: [recordingHook("featureAfter")] })
+
+  /** The Rule's own `Before`/`After`, in the shape `FeatureCollection.ruleHooks` carries them. */
+  const ruleScopedHooks = (): ReadonlyMap<string, HookSet> =>
+    new Map([[
+      shopRule.id,
+      hooksWith({ Before: [recordingHook("ruleBefore")], After: [recordingHook("ruleAfter")] })
+    ]])
+
+  it.effect("runs Feature Before, then Rule Before, then the step, then Rule After, then Feature After", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+        layer: recorderLayer,
+        hooks: featureHooks(),
+        ruleHooks: ruleScopedHooks(),
+        ruleLayers: new Map(),
+        scenarioLayers: new Map()
+      })
+
+      // Emission shape for `shop`, pinned by the Rule-nesting test far above: describe Shop (0),
+      // browsing (1), describe refunds (2), refund granted (3), refund denied (4). Index 3 is the
+      // first Scenario INSIDE the Rule.
+      yield* thunkAt(records, 3)()
+
+      // BOTH halves of D-02 in one comparison, and each fails on its own mutation. Before-shaped
+      // kinds run outer-to-inner and After-shaped kinds unwind inner-to-outer, so swapping
+      // `mergeHookSets`'s two arguments inverts both ends of this array at once while leaving every
+      // name present and every count right.
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "featureBefore:start",
+        "featureBefore:end",
+        "ruleBefore:start",
+        "ruleBefore:end",
+        "I get my money back",
+        "ruleAfter:start",
+        "ruleAfter:end",
+        "featureAfter:start",
+        "featureAfter:end"
+      ])
+    }))
+
+  it.effect("runs NEITHER of the Rule's hooks for a Feature-level Scenario in the same document", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+        layer: recorderLayer,
+        hooks: featureHooks(),
+        ruleHooks: ruleScopedHooks(),
+        ruleLayers: new Map(),
+        scenarioLayers: new Map()
+      })
+
+      // Index 1 is `browsing`, declared before the `Rule:` block and therefore in no Rule at all.
+      yield* thunkAt(records, 1)()
+
+      // INV-EC-005 at the hook tier, and threat T-08-07-03's assertion: the Feature-level emission
+      // loop must never consult `ruleHooks`. A loop that shared the Rule-nested one's merged set —
+      // the plausible "both loops are the same three lines" tidy-up `Runner.ts` warns about — leaves
+      // every name here spelled correctly and simply runs two hooks that belong to a Rule this
+      // Scenario is not in.
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "featureBefore:start",
+        "featureBefore:end",
+        "I browse",
+        "featureAfter:start",
+        "featureAfter:end"
+      ])
+    }))
+
+  it.effect("runs the Feature's own hooks exactly ONCE for a Rule that registered none of its own", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+        layer: recorderLayer,
+        hooks: featureHooks(),
+        // EMPTY, so the Rule-nested loop takes its `?? emptyHookSet` miss branch.
+        ruleHooks: new Map(),
+        ruleLayers: new Map(),
+        scenarioLayers: new Map()
+      })
+
+      yield* thunkAt(records, 3)()
+
+      // `?? hooks` instead of `?? emptyHookSet` on the miss — the plausible "fall back to what we
+      // already have" reading — merges the Feature's set with itself and runs every Feature-level
+      // hook TWICE. Both hooks still run, in the right relative order, so only a comparison that
+      // pins the COUNT can see it.
+      assert.deepStrictEqual(yield* Ref.get(log), [
+        "featureBefore:start",
+        "featureBefore:end",
+        "I get my money back",
+        "featureAfter:start",
+        "featureAfter:end"
+      ])
+    }))
+})
+
+/**
+ * DSL-05's runtime proof against the recording fake: three Layer tiers, one emission, three Scenarios
+ * that each report which tier they were actually provided.
+ *
+ * `test/describeFeature.test.ts` already proves the tiers are BUILT correctly — that a Rule's entry
+ * carries the Feature's services and a Scenario's carries both — by resolving the collected Layers
+ * directly. Nothing there can see which of them a given emitted test node is wired to, which is this
+ * block's whole subject and the one thing that makes INV-EC-005 a runtime property rather than a
+ * collection-time one.
+ */
+describe("each Scenario is emitted with the innermost of the three Layer tiers (08-07)", () => {
+  it.effect("gives a Feature-level Scenario the Feature's, a Rule's the Rule's, and an overridden one its own", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+
+      emitFeature({
+        api,
+        plan: planFeature({ feature: shop, definitions: shopTierDefinitions }),
+        layer: withTier(recorderLayer, "feature"),
+        hooks: emptyHooks,
+        ruleHooks: new Map(),
+        ruleLayers: new Map([[shopRule.id, withTier(recorderLayer, "rule")]]),
+        // Only `refund denied` brings its own — `refund granted` sits in the same Rule with no entry,
+        // so one emission covers the hit and the miss at the SAME nesting level.
+        scenarioLayers: new Map([[scenarioKeyIn(shopRule.id, "refund denied"), withTier(recorderLayer, "scenario")]])
+      })
+
+      yield* thunkAt(records, 1)()
+      yield* thunkAt(records, 3)()
+      yield* thunkAt(records, 4)()
+
+      // Three tiers, three fallback branches, one comparison. Each entry fails on its own mutation:
+      // `tier=feature` on the Feature-level loop consulting `ruleLayers` (T-08-07-03), `tier=rule` on
+      // the Rule-nested loop keeping `layer` instead of `ruleLayer`, and `tier=scenario` on the
+      // `scenarioLayers` lookup being dropped or mis-keyed. A `Layer.merge` of a hit onto the tier
+      // below it — threat T-08-07-01's re-merge — leaves this array unchanged, which is exactly why
+      // the no-re-merge claim is argued structurally in `Runner.ts` note (f) rather than asserted
+      // here: it is a BUILD-count property, and `Recorder`'s deliberately per-`Ref`-shared Layer
+      // cannot count builds (see `makeRecorderLayer`).
+      assert.deepStrictEqual(yield* Ref.get(log), ["tier=feature", "tier=rule", "tier=scenario"])
+    }))
+
+  it.effect("gives BOTH rows of an Outline the one entry their shared registration recorded", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
+
+      emitFeature({
+        api,
+        plan: planFeature({
+          feature: outline,
+          definitions: [
+            define({ pattern: "I add {int} apples", scope: featureScope("Outline"), body: tierStep() })
+          ]
+        }),
+        layer: withTier(recorderLayer, "feature"),
+        hooks: emptyHooks,
+        ruleHooks: new Map(),
+        ruleLayers: new Map(),
+        // The UN-INTERPOLATED name, which is what the author passed to `Scenario(...)` and therefore
+        // the only key `describeFeature.ts` could have written. One entry for the whole Outline.
+        scenarioLayers: new Map([[scenarioKeyIn(null, "adding <count>"), withTier(recorderLayer, "scenario")]])
+      })
+
+      yield* thunkAt(records, 1)()
+      yield* thunkAt(records, 2)()
+
+      // `Runner.ts`'s `scenarioKeyFor` reading `scenarioPlan.name` instead of `.astName` — note (d)'s
+      // trap from the other direction — builds `adding 1` and `adding 2` here, matches NEITHER, and
+      // silently drops the Outline's own extra Layer: both rows read `tier=feature`. Every plain
+      // Scenario in every other fixture in this file has `name === astName`, so this two-row Outline
+      // is the only place in the file where that mutation is visible at all.
+      assert.deepStrictEqual(yield* Ref.get(log), ["tier=scenario", "tier=scenario"])
+    }))
 })
