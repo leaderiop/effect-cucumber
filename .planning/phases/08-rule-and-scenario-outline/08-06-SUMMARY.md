@@ -189,6 +189,10 @@ None. No network endpoint, auth path, file access pattern, or schema change was 
 - `Dsl.ts` note (f)'s forward reference to "plan 08-06's tsgo-gate fixture pair" is now satisfied by files that exist. If a later plan rewrites that note, the fixture names it cites are `test/tsgo-gate/src/rule-satisfied.ts` and `rule-missing-service.ts`.
 - Open for the orchestrator: DSL-05 in `.planning/REQUIREMENTS.md` is still `Pending` by design — see "Decisions Made".
 
+## Self-Check: PASSED
+
+All six claimed files exist on disk (`rule-satisfied.ts`, `rule-missing-service.ts`, `tsconfig.rule-ok.json`, `tsconfig.rule-missing.json`, `verify-tsgo-gate.sh`, this summary). All three claimed commits exist in `git log`: `1b6a9e3`, `c7b7fe9`, `d41c0aa`. Working tree clean; no tracked file was deleted by any commit in this plan.
+
 ---
 *Phase: 08-rule-and-scenario-outline*
 *Completed: 2026-08-29*
