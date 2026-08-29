@@ -66,7 +66,7 @@
  * leak the stub into the rest of the run (threat T-06-07-06) — a leaked stub would silence every
  * later warning in the process and make two consecutive `pnpm test` runs disagree.
  *
- * ## Mutation-tested (all three performed, then reverted)
+ * ## Mutation-tested (every one performed, run, then reverted)
  *
  * - A. `describeFeature` warns from inside `collect` instead of from its own body → the
  *      `collectFeature`-stays-silent assertion fails, and only that one: the recorder gains a
@@ -88,6 +88,8 @@
  *      `Then` body assertion fails: its log prefix gains a SECOND `beforeAllScenarios:start`/`:end`
  *      pair ahead of its own `Before`, so both the exact-array comparison and the
  *      exactly-one-`beforeAllScenarios:start` count assertion fail.
+ * - F, G, H. Plan 08-07's three, recorded on the Rule-composition block at the bottom of this file
+ *      rather than here, beside the arrangement they mutate.
  *
  * **Mutation C SURVIVED the first version of this file, and that is why the last block exists.**
  * The first draft asserted only on what the emitted tests did while running. With nothing emitted,
@@ -369,7 +371,7 @@ describe("describeFeature emitted tests that actually ran", () => {
 /**
  * Task 2: all six hooks, through a REAL `describeFeature` call — the second real call in this file,
  * against its own fixture, so the happy-path Feature above and its assertions stay completely
- * untouched. (The third and last is the Pitfall 34 Outline below.)
+ * untouched. (The third is the Pitfall 34 Outline below, the fourth 08-07's Rule composition.)
  *
  * `hookLog` is a plain module-scope array, not a `Recorder`-style `Context.Service` — deliberately.
  * The happy-path Feature above already proves per-Scenario Layer freshness (INV-EC-002); this block
@@ -568,7 +570,7 @@ const outlineFeature = Effect.runSync(
   ).pipe(Effect.provide(ParameterTypeStore.Default))
 )
 
-// THE THIRD and last real `describeFeature` call in this file. Its three emitted tests are RUN by
+// THE THIRD real `describeFeature` call in this file. Its three emitted tests are RUN by
 // this suite; the block below reads what they recorded.
 describeFeature(outlineFeature, logLayer, ({ Then, When }) => {
   When("I record the row value {word}", function*(value: string) {
@@ -630,6 +632,263 @@ describe("three Outline rows ran as three independent tests", () => {
       `Outline rows are independent${nameSeparator}row carrying alpha (value=alpha, expected=alpha)`,
       `Outline rows are independent${nameSeparator}row carrying beta (value=beta, expected=beta)`,
       `Outline rows are independent${nameSeparator}row carrying gamma (value=gamma, expected=gamma)`
+    ])
+  })
+})
+
+/**
+ * Plan 08-07's end-to-end proof, and the FOURTH and last real `describeFeature` call in this file:
+ * one `.feature` with a `Rule:` block, a Rule-scoped extra Layer, Rule-scoped hooks, and a
+ * Scenario-scoped extra Layer, all composed and all observed from inside REAL running steps.
+ *
+ * ## Why this cannot be `test/Runner.test.ts`'s job, or `test/describeFeature.test.ts`'s
+ *
+ * Each of those files sees exactly one half. `describeFeature.test.ts` resolves the collected
+ * `ruleLayers`/`scenarioLayers` entries directly and proves they were BUILT with the right services —
+ * and cannot see which emitted test node any of them was wired to. `Runner.test.ts` proves the wiring
+ * against a recording fake — and its "Layers" are marker services chosen so the fake can tell them
+ * apart, never Layers a real `describeFeature` call produced. The defect neither can catch is the
+ * seam between them: `describeFeature` collecting three perfectly correct maps and handing
+ * `emitFeature` only the first four fields. Every assertion in both of those files stays green under
+ * exactly that mutation, because neither of them runs `describeFeature`.
+ *
+ * ## The three tiers are told apart by a DERIVED value, not by three independent constants
+ *
+ * `Discount` is `Layer.effect`-built and reads `Catalog` while building, so `netPrice` (90) exists
+ * only if the Rule's extra Layer was composed with `Layer.provideMerge` onto the Feature's rather than
+ * merged beside it — ADR-EC-010's literal "`extraLayer` can itself depend on ambient services", and
+ * the half a `Layer.succeed` constant could not express: a constant is reachable whichever combinator
+ * composed it. `Currency` then formats that number, so the third tier's assertion (`€90`) is only
+ * satisfiable by a Scenario whose effective Layer carries all three.
+ *
+ * ## The hook log lives in a service, and the `Ref` behind it is built ONCE
+ *
+ * `Layer.succeed` over a module-scope `Ref`, deliberately, and not `Layer.effect` — `Runner.test.ts`'s
+ * `makeRecorderLayer` records the same choice for the same reason. The claim here spans TWO Scenarios,
+ * and the ambient Layer is the per-Scenario-fresh form, so a `Ref` created INSIDE the Layer would be a
+ * different `Ref` per Scenario and could not express a cross-Scenario ordering at all. Freshness is
+ * already proven by the happy-path Feature at the top of this file; this block gives it up on purpose.
+ *
+ * ## Mutation-tested (all three performed, run, then reverted)
+ *
+ * - F. `describeFeature`'s `emitFeature` call reverted to its pre-08-07 four fields (the three new
+ *      maps replaced with empty `Map`s) → 4 of this file's 20 fail, all of them this block's, and
+ *      NOTHING outside it: both emitted Rule Scenarios throw `Service not found: Discount` (the
+ *      Rule's Layer never reached the emitted node, so the service is absent at RUNTIME even though
+ *      the step type-checked against it), and both reader blocks then fail — the hook log is 8
+ *      entries instead of 16, and `ruleScenarioNames` is empty because neither Scenario reached its
+ *      recording line. This is the exact seam neither `Runner.test.ts` nor `describeFeature.test.ts`
+ *      can see; both stay fully green under it.
+ * - G. `Hook.ts`'s `mergeHookSets` given `[...rule.After, ...feature.After]` reversed to
+ *      `[...feature.After, ...rule.After]` → 4 fail across three files, of which ONE is this block's:
+ *      the hook-order reader, on the unwind half alone. Every entry is still present and the `Before`
+ *      half is still right, so only an ordered whole-log comparison sees it. (The other three are
+ *      `Hook.test.ts`'s two direct `mergeHookSets` tests and `Runner.test.ts`'s recording-fake
+ *      ordering test — the same property asserted at three levels.)
+ * - H. `Runner.ts`'s per-Scenario `scenarioLayers.get(...) ?? ruleLayer` reduced to `ruleLayer` → 2
+ *      fail, both this block's: the three-tier Scenario on `Service not found: Currency`, and the
+ *      emitted-and-ran reader that was waiting for its name. The Rule Scenario beside it, which asked
+ *      for no Layer of its own, is untouched — which is what makes the failure name the tier that
+ *      broke rather than the whole block.
+ */
+
+/** The FEATURE tier: the ambient Layer's own service. */
+class Catalog extends Context.Service<Catalog, { readonly listPrice: number }>()("Catalog") {}
+
+/**
+ * The RULE tier, DERIVED from the Feature's — see the block header.
+ *
+ * `netPrice` is not a constant this file could have written down: it is computed from `Catalog` while
+ * the Layer builds, so its presence at 90 is evidence about how the two Layers were composed and not
+ * merely that both are reachable.
+ */
+class Discount extends Context.Service<Discount, { readonly netPrice: number }>()("Discount") {}
+
+/** The SCENARIO tier: one Scenario's own extra Layer, D-01's Scenario form. */
+class Currency extends Context.Service<Currency, { readonly symbol: string }>()("Currency") {}
+
+/** The shared hook log, reached through a service in the AMBIENT Layer rather than a bare closure. */
+class HookRef extends Context.Service<HookRef, { readonly entries: Ref.Ref<ReadonlyArray<string>> }>()("HookRef") {}
+
+/**
+ * The one `Ref` every hook below writes to, created ONCE outside every Layer — see the block header.
+ */
+const ruleHookEntries = Ref.makeUnsafe<ReadonlyArray<string>>([])
+
+/** The Feature's ambient Layer: the Feature tier plus the hook log. */
+const ruleFeatureLayer = Layer.merge(
+  Layer.succeed(Catalog, Catalog.of({ listPrice: 100 })),
+  Layer.succeed(HookRef, HookRef.of({ entries: ruleHookEntries }))
+)
+
+/**
+ * The Rule's extra Layer. `Layer.effect` and not `Layer.succeed`, so its `RIn` is `Catalog` and the
+ * composition combinator `describeFeature.ts` uses is load-bearing rather than incidental.
+ */
+const discountLayer = Layer.effect(
+  Discount,
+  Effect.gen(function*() {
+    const catalog = yield* Catalog
+    return Discount.of({ netPrice: catalog.listPrice - 10 })
+  })
+)
+
+/** One Scenario's own extra Layer. */
+const currencyLayer = Layer.succeed(Currency, Currency.of({ symbol: "€" }))
+
+/**
+ * A bare generator that brackets `${name}:start`/`${name}:end` around a real suspension, written into
+ * the `Ref` the AMBIENT Layer provides.
+ *
+ * `bracketed` above cannot be reused: it writes to a module-scope array, and the whole point here is
+ * that both tiers' hooks reach ONE `Ref` through the ambient Layer — which is also what makes the
+ * Rule-scoped hooks' own context requirement (`HookRef`, from the Feature's Layer) part of what
+ * type-checks.
+ */
+const recordRuleHook = (name: string) =>
+  function*() {
+    const { entries } = yield* HookRef
+    yield* Ref.update(entries, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    yield* Ref.update(entries, (seen) => [...seen, `${name}:end`])
+  }
+
+/** The full name of each Rule-nested Scenario that ran to completion — `completedScenarios`'s role. */
+const ruleScenarioNames: Array<string> = []
+
+/** Two Scenarios inside ONE Rule: the second brings an extra Layer of its own, the first does not. */
+const ruleFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Rule composition
+
+  Rule: discounted checkout
+
+    Scenario: a Rule Scenario reaches the Feature and Rule tiers
+      When the rule scenario reads both tiers
+      Then the rule scenario's hook log is Feature-then-Rule
+
+    Scenario: a Scenario Layer adds a third tier
+      When the three-tier scenario reads all three tiers
+      Then the three-tier scenario is done
+`,
+    "test/rule-composition.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE FOURTH and last real `describeFeature` call in this file. Its two emitted tests are RUN by this
+// suite; the two blocks below read what they recorded.
+describeFeature(ruleFeature, ruleFeatureLayer, ({ After, Before, Rule }) => {
+  Before(recordRuleHook("featureBefore"))
+  After(recordRuleHook("featureAfter"))
+
+  Rule(
+    "discounted checkout",
+    discountLayer,
+    // The four Rule-scoped hook registrars are RENAMED rather than shadowing the Feature's own two
+    // above: shadowed, the pair that matters most to this block — which tier a hook was registered
+    // through — would be told apart by nothing but which callback the line happens to sit in.
+    ({ After: RuleAfter, Before: RuleBefore, Scenario, Then, When }) => {
+      RuleBefore(recordRuleHook("ruleBefore"))
+      RuleAfter(recordRuleHook("ruleAfter"))
+
+      // Registered at RULE level, so both Scenarios in this Rule can see them — and nothing outside
+      // it can. The Feature declares no Scenario of its own, so that half is INV-EC-005's own
+      // tsgo-gate fixture's job (08-06), not something a runtime test can observe.
+      When("the rule scenario reads both tiers", function*() {
+        const catalog = yield* Catalog
+        const discount = yield* Discount
+        // 100 is the Feature tier's constant; 90 is derivable ONLY from both tiers, because
+        // `discountLayer` read `Catalog` while building. A Rule Layer merged BESIDE the Feature's
+        // rather than provided from it would not have built at all.
+        assert.strictEqual(catalog.listPrice, 100)
+        assert.strictEqual(discount.netPrice, 90)
+      })
+
+      Then("the rule scenario's hook log is Feature-then-Rule", function*() {
+        const { entries } = yield* HookRef
+        // What this Scenario can legitimately see at this point: the Feature's `Before` and then the
+        // Rule's, and NOTHING else — its own `After` hooks and the Rule's run only once this body
+        // returns, which is why the unwind half is asserted in the sync block below instead.
+        assert.deepStrictEqual(yield* Ref.get(entries), [
+          "featureBefore:start",
+          "featureBefore:end",
+          "ruleBefore:start",
+          "ruleBefore:end"
+        ])
+        ruleScenarioNames.push(currentTestName())
+      })
+
+      // D-01's Scenario form, on a Scenario INSIDE the Rule — so its effective Layer must carry the
+      // Feature's services, the Rule's, AND its own. The two-argument form beside it (the Scenario
+      // above) is what proves the three-argument one is not simply applied to everything.
+      // The five step registrars are RENAMED here for the same reason the Rule's hooks were: oxlint's
+      // `no-shadow` rejects reusing the enclosing Rule's names, and the rename also says at each call
+      // site which container the registration lands in — the property `Plan.ts`'s scope chain turns on.
+      Scenario("a Scenario Layer adds a third tier", currencyLayer, ({ Then: ScenarioThen, When: ScenarioWhen }) => {
+        ScenarioWhen("the three-tier scenario reads all three tiers", function*() {
+          const catalog = yield* Catalog
+          const discount = yield* Discount
+          const currency = yield* Currency
+          // All three tiers in ONE expression, and the middle one is derived: `€90` is unreachable
+          // unless the Feature's Layer fed the Rule's, and the Rule's effective Layer was then what
+          // this Scenario's own extra Layer was composed onto.
+          assert.strictEqual(`${currency.symbol}${discount.netPrice}`, "€90")
+          assert.strictEqual(catalog.listPrice, 100)
+        })
+
+        ScenarioThen("the three-tier scenario is done", function*() {
+          // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
+          yield* Effect.void
+          ruleScenarioNames.push(currentTestName())
+        })
+      })
+    }
+  )
+})
+
+/**
+ * DECLARED LAST, after the block that registered the Rule — the identical "vitest runs a file's
+ * suites in declaration order" reasoning every other reader in this file uses. Both Rule Scenarios,
+ * and therefore both of their `After` unwinds, have finished by the time this executes.
+ */
+describe("a Rule's Layer and hooks compose with the Feature's at runtime (08-07)", () => {
+  it("ran Feature Before then Rule Before, and Rule After then Feature After, for BOTH Rule Scenarios", () => {
+    // ONE positional comparison over the WHOLE log. The `Before` half is already asserted from inside
+    // Scenario 1's own body; what only this block can see is the UNWIND — `After` hooks run after the
+    // last step, so no step can observe them — and that the pattern repeats identically for the
+    // second Scenario rather than the Rule's hooks attaching once per Rule.
+    //
+    // `Ref.get` on a plain `Ref` requires nothing, so `runSync` is safe here and needs no Layer.
+    expect(Effect.runSync(Ref.get(ruleHookEntries))).toEqual([
+      "featureBefore:start",
+      "featureBefore:end",
+      "ruleBefore:start",
+      "ruleBefore:end",
+      "ruleAfter:start",
+      "ruleAfter:end",
+      "featureAfter:start",
+      "featureAfter:end",
+
+      "featureBefore:start",
+      "featureBefore:end",
+      "ruleBefore:start",
+      "ruleBefore:end",
+      "ruleAfter:start",
+      "ruleAfter:end",
+      "featureAfter:start",
+      "featureAfter:end"
+    ])
+  })
+
+  it("emitted one test per Rule Scenario, each nested under the Feature AND under the Rule", () => {
+    // `completedScenarios`'s argument, one nesting level deeper: an implementation that emitted
+    // nothing for the Rule passes every in-body assertion above vacuously, because nothing runs to
+    // assert. The names also pin the nesting — the Rule's own name must sit BETWEEN the Feature's and
+    // the Scenario's, which is what separates `describe(feature) → describe(rule) → test` from a Rule
+    // block emitted as a sibling of the Feature's.
+    expect(ruleScenarioNames).toEqual([
+      `Rule composition${nameSeparator}discounted checkout${nameSeparator}a Rule Scenario reaches the Feature and Rule tiers`,
+      `Rule composition${nameSeparator}discounted checkout${nameSeparator}a Scenario Layer adds a third tier`
     ])
   })
 })

@@ -13,7 +13,7 @@
  * framework, and `describeFeature.ts` — the composition root — is the single place that decides
  * which real implementation to pass.
  *
- * Five things about this module are not visible from the code.
+ * Six things about this module are not visible from the code.
  *
  * (a) **No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here —
  *     not even an `import type`.** Neither name is written out anywhere in this file, comments
@@ -111,6 +111,31 @@
  *     order stays document order throughout; running "always" is a runtime property of the emitted
  *     Effects, never a reordering of the emitted nodes.
  *
+ * (f) **The Layer a Scenario runs with is SUBSTITUTED from three tiers, never merged here; the
+ *     `HookSet` is the opposite, and is merged here — once per Rule.** The two look symmetrical in
+ *     the loops below and are not, which is the single most plausible thing to "make consistent".
+ *
+ *     Layers: `describeFeature.ts` does every merge at REGISTRATION time, where the extra Layer is
+ *     captured — a Rule's entry is already `Layer.provideMerge(featureLayer)(extraLayer)` and a
+ *     Scenario's is already built on top of whatever was ambient where its `Scenario(...)` call was
+ *     written, which inside a Rule is that Rule's already-merged Layer. So the resolution here is
+ *     three `??` fallbacks and nothing else: `scenarioLayers` hit, else the Rule's, else the
+ *     Feature's. `provideMerge` is idempotent in SERVICES and not in BUILDS, so re-merging a hit
+ *     against the tier below it compiles, type-checks, leaves every service reachable, and rebuilds
+ *     every ambient `Layer.effect` resource an extra time per Scenario with nothing going red
+ *     (`describeFeature.ts`'s `scenarioLayers` field comment states the invariant this depends on).
+ *
+ *     Hooks: `describeFeature.ts` deliberately does NOT pre-merge those, because the ORDER is
+ *     D-02's and belongs in one place — `Hook.ts`'s `mergeHookSets`, whose note (h) is why a merged
+ *     array needs no second `Effect.onExit` tier and why `ScenarioEffect.ts` is untouched by any of
+ *     this. The merge happens once per Rule, hoisted out of both the Scenario loop and the emitted
+ *     thunks: the result is identical however often it is computed, so nothing can observe the
+ *     placement, which is precisely why it is written down.
+ *
+ *     There is no fourth tier and no Scenario-scoped `HookSet`. ADR-EC-010 scopes hooks to a Rule and
+ *     no further, so a Scenario's own extra Layer changes its services without changing which hooks
+ *     run around it.
+ *
  * The nesting walk re-derives Feature/Rule structure from `feature.scenarios` and `feature.rules`,
  * while `plan.scenarios` was built off the flat `feature.allScenarios`. The `Map` keyed on
  * `scenarioId` is how the two views are joined, and it is built once rather than per lookup. A
@@ -124,8 +149,13 @@
  * paragraph has the argument verbatim. If one of the declarations is ever narrowed, narrow all of
  * them: they describe the same value.
  *
- * Local imports are `./Plan.ts` and `./TestApi.ts` (both type-only), `./ScenarioEffect.ts` and
- * `./OutlineTitle.ts`. This
+ * Local imports are `./Plan.ts` and `./TestApi.ts` (both type-only), `./ScenarioEffect.ts`,
+ * `./OutlineTitle.ts`, `./Hook.ts` and `./ScenarioKey.ts`. That last one is a LEAF holding the
+ * `scenarioLayers` key encoding, and it is a module rather than a private helper here for a reason
+ * its own header states: `describeFeature.ts` writes that map and this file reads it, this file
+ * cannot import `describeFeature.ts` (that edge closes a cycle and fails `pnpm circular`), and two
+ * independently-written copies of the encoding compile, type-check and lint while disagreeing — a
+ * disagreement that reads as "no Scenario asked for an extra Layer" on every lookup. This
  * module is INTERNAL and is not re-exported from `packages/vitest/src/index.ts` — a consumer calls
  * `describeFeature`, never a runner, and publishing an emission walk would freeze an internal stage
  * into the package's contract. `Registry.ts`, `collectFeature`, `TestApi.ts`, `Plan.ts` and
@@ -138,10 +168,11 @@ import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
-import { type HookSet, runHookBatch } from "./Hook.ts"
+import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.ts"
 import { buildScenarioTitles } from "./OutlineTitle.ts"
 import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
+import { scenarioKey } from "./ScenarioKey.ts"
 import type { TestApi } from "./TestApi.ts"
 
 /**
@@ -164,6 +195,27 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
  * with (T-07-06-01).
  */
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
+
+/**
+ * The `scenarioLayers` key one planned Scenario is looked up under — note (f).
+ *
+ * `astName` and NEVER `name`, which is note (d)'s trap read from the other direction: `name` is the
+ * INTERPOLATED Pickle name, so an Outline's two rows carry `adding 1` and `adding 2` while
+ * `describeFeature.ts` recorded the single entry both rows share under the un-interpolated
+ * `adding <count>` the author passed to `Scenario(...)`. Keying on `name` misses on every Outline row
+ * and hits on every plain Scenario — where the two strings are equal, which is every other fixture in
+ * this repo — so the Outline's own extra Layer is silently dropped while nothing goes red.
+ *
+ * `Option.getOrNull` and not `Option.getOrElse(… "<feature>")`: the `<feature>` head belongs to the
+ * ENCODING, which is `ScenarioKey.ts`'s alone. Spelling the sentinel a second time here would be a
+ * second place for the two sides of the map to drift apart, which is the whole thing that module
+ * exists to prevent.
+ *
+ * At module scope rather than inside `emitFeature`, because it closes over nothing from the emission
+ * walk — `titleFor` and `planFor` below both read per-call state and genuinely cannot be hoisted.
+ */
+const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
+  scenarioKey(Option.getOrNull(scenarioPlan.ruleId), scenarioPlan.astName)
 
 /**
  * Turn `body` into an Effect that runs AT MOST ONCE across every execution, handing the same
@@ -212,9 +264,13 @@ const makeOnce = (
  * @param args.api - the test framework surface, injected — note (a)
  * @param args.plan - one Feature, already planned by `planFeature`
  * @param args.layer - the Feature's single merged Layer, passed straight to each Scenario
- * @param args.hooks - the Feature's registered hooks, grouped by kind, passed straight to each
- *   `buildScenarioEffect` call inside the emission walk below — this module does not weave them
- *   itself, `ScenarioEffect.ts` does
+ * @param args.hooks - the FEATURE-level hooks only (those whose `ruleId` is `null`), grouped by kind.
+ *   Merged with an enclosing Rule's own before reaching `buildScenarioEffect` — note (f); this module
+ *   does not WEAVE them into the Scenario's Effect either way, `ScenarioEffect.ts` does
+ * @param args.ruleHooks - one `HookSet` per `Rule(...)` the Feature declared, keyed by `ParsedRule.id`
+ * @param args.ruleLayers - one already-merged Layer per `Rule(...)`, keyed the same way — note (f)
+ * @param args.scenarioLayers - one already-merged Layer per THREE-argument `Scenario(...)`, keyed by
+ *   `ScenarioKey.ts`'s composite. Sparse: the common two-argument form contributes no entry
  */
 export const emitFeature = (
   args: {
@@ -222,9 +278,12 @@ export const emitFeature = (
     readonly plan: FeaturePlan
     readonly layer: Layer.Layer<any, any, never>
     readonly hooks: HookSet
+    readonly ruleHooks: ReadonlyMap<string, HookSet>
+    readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+    readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
   }
 ): void => {
-  const { api, hooks, layer, plan } = args
+  const { api, hooks, layer, plan, ruleHooks, ruleLayers, scenarioLayers } = args
 
   // Built once, before anything is emitted, and not per lookup: the walk below visits every Scenario
   // exactly once, so a linear search per visit would be quadratic in a Feature's Scenario count for
@@ -273,16 +332,24 @@ export const emitFeature = (
 
   api.describe(plan.feature.name, () => {
     // Feature-level Scenarios first, in the order the document has them.
+    //
+    // This loop reads `hooks` and `layer` — the FEATURE's own — plus `scenarioLayers`, and it must
+    // never read `ruleHooks` or `ruleLayers`: a Scenario out here has no enclosing Rule, so consulting
+    // either would hand it services and hooks INV-EC-005 makes invisible outside that Rule. Nothing in
+    // the types stops it, and every step would still resolve, so the compile-time boundary would hold
+    // in the checker and nowhere else (threat T-08-07-03). The two identifiers are deliberately absent
+    // from this loop's body.
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
+      const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? layer
       api.effect(
         titleFor(scenarioPlan),
         beforeAllScenariosCell === null
-          ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+          ? () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
           : () =>
             Effect.flatMap(
               beforeAllScenariosCell,
-              () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+              () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
             )
       )
     }
@@ -291,17 +358,40 @@ export const emitFeature = (
     // loop above, because the two are the same three lines at two different nesting depths and the
     // shared helper hides the one property that matters here: which block the node lands in.
     for (const rule of plan.feature.rules) {
+      // ONCE PER RULE, outside the Scenario loop below and outside every emitted thunk — note (f).
+      // Hoisting matters: `mergeHookSets` allocates six fresh arrays, so computing it per Scenario
+      // would rebuild them N times, and computing it INSIDE the thunk would rebuild them on every
+      // execution of every Scenario. Neither is observable in any assertion — the merged value is
+      // identical each time — which is exactly why the placement is stated here rather than left to
+      // read as incidental.
+      //
+      // `emptyHookSet` and not `hooks`, on a miss: `mergeHookSets(hooks, hooks)` would run every
+      // Feature-level hook TWICE for a Rule that registered none of its own. A miss here means "this
+      // Rule declared no hooks", which is `emptyHookSet` exactly.
+      const ruleHookSet = mergeHookSets(hooks, ruleHooks.get(rule.id) ?? emptyHookSet)
+      // `?? layer` and not a merge: `ruleLayers`' entries arrive from `describeFeature.ts` ALREADY
+      // merged onto the Feature's own via `Layer.provideMerge`, so a hit is the whole effective Layer
+      // and a miss means the Rule contributed nothing. Re-merging a hit against `layer` type-checks,
+      // leaves every service reachable, and quietly builds every ambient `Layer.effect` resource an
+      // extra time per Scenario (threat T-08-07-01).
+      const ruleLayer = ruleLayers.get(rule.id) ?? layer
+
       api.describe(rule.name, () => {
         for (const scenario of rule.scenarios) {
           const scenarioPlan = planFor(scenario)
+          // The third and innermost tier, and it SUBSTITUTES rather than wraps, for the same reason
+          // `ruleLayer` does: `describeFeature.ts` built this entry on top of whichever Layer was
+          // ambient where the `Scenario(...)` call was written, which inside a Rule is that Rule's
+          // already-merged one. So a hit already contains the Feature's services AND the Rule's.
+          const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? ruleLayer
           api.effect(
             titleFor(scenarioPlan),
             beforeAllScenariosCell === null
-              ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+              ? () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
               : () =>
                 Effect.flatMap(
                   beforeAllScenariosCell,
-                  () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+                  () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
                 )
           )
         }
