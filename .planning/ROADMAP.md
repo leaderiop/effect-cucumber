@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: `loadFeature` — Parse, Compile, Correlate** - A `.feature` file becomes a correlated `ParsedFeature`; every known silent-wrong `compile()` output becomes a loud typed error (completed 2026-08-28)
 - [x] **Phase 3: Parameter Types and Step Matching** - cucumber-expression coercion works, custom types replay into a fresh registry per call, and matching considers every registered pattern (completed 2026-08-28)
 - [x] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema` (completed 2026-08-28)
-- [ ] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first
+- [x] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first (completed 2026-08-29)
 - [ ] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly
 - [ ] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.ensuring`
 - [ ] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples
@@ -230,7 +230,7 @@ Plans:
 
 **Wave 6** *(blocked on 05-05)*
 
-- [ ] 05-06-PLAN.md — Spec: BEH-EC-002 and BEH-EC-003 signature corrections (both published forms were reproduced as vacuous/erasing), INV-EC-003's `any`-free amendment and de-planning, traceability §1/§2/§4, both status documents, and DSL-01..04 marked Complete
+- [x] 05-06-PLAN.md — Spec: BEH-EC-002 and BEH-EC-003 signature corrections (both published forms were reproduced as vacuous/erasing), INV-EC-003's `any`-free amendment and de-planning, traceability §1/§2/§4, both status documents, and DSL-01..04 marked Complete
 
 Decisions locked before planning (`05-CONTEXT.md`): the DSL-01 proof extends Phase 1's `packages/vitest/test/tsgo-gate/` isolated-tsconfig-per-case pattern rather than inventing a parallel location (D-01/D-02); `perScenario` is a **required** key on the object Layer form, callers write `Layer.empty` (D-03); `shared` and `perScenario` may name the same service and `perScenario` wins (D-04); the `Effect.fn(stepText)` auto-wrap carries the bare step text only — argument-value span attributes are deferred (D-05).
 
@@ -369,7 +369,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. `loadFeature` — Parse, Compile, Correlate | 11/11 | Complete   | 2026-08-28 |
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
-| 5. `describeFeature` Type Surface | 5/6 | In Progress|  |
+| 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
