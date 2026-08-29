@@ -52,23 +52,16 @@
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
-import type * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { captureCallSite } from "./CallSite.ts"
 import type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+// `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse. `Plan.ts` is what will
+// import `planFeature`'s caller-facing surface INTO this module, so an edge pointing back the other
+// way would be an `import/no-cycle` violation and a `pnpm circular` failure. See that module's
+// closing paragraph.
+import type { StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
 import { register } from "./Step.ts"
-
-/**
- * A step body after `Step.ts` has normalised it — the `Fn` the registry is instantiated with.
- *
- * The three `any`s are erased detail, not a widening of the public surface: `Dsl.ts`'s
- * `StepRegistrar<ROut>` has already checked every registered body against the ambient Layer's output
- * by the time one reaches here, and this type never appears in a position a caller writes against.
- * Compare PITFALLS Pitfall 6, which is about `any` in a step body's DECLARED type — a different
- * thing, and the one that would actually disable INV-EC-003.
- */
-type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any, any>
 
 /**
  * The union of what the two overloads accept, as the implementation signature sees it.

@@ -18,23 +18,27 @@ planned locations and this note is what tells them apart.
 
 `packages/gherkin/src` and `packages/gherkin/test` are entirely real.
 `packages/vitest/src` now has real source too — `describeFeature.ts`, `Dsl.ts`,
-`Step.ts`, `Registry.ts`, `CallSite.ts` and the `index.ts` barrel — and
+`Step.ts`, `Registry.ts`, `CallSite.ts`, `Errors.ts`, `TestApi.ts`, `Plan.ts`
+and the `index.ts` barrel — and
 `packages/vitest/test` has real suites. Everything else this document names under `packages/vitest`
-remains **planned** and does not exist on disk: `Plan.ts`, `Hooks.ts`,
-`Rule.ts`, `Tags.ts`, `SharedLayer.ts`, `ScenarioOutline.ts` and
-`Background.ts`. §4's rows name only real files. See `spec/roadmap.md` for
+remains **planned** and does not exist on disk: `Hooks.ts`,
+`Rule.ts`, `Tags.ts`, `SharedLayer.ts`, `ScenarioOutline.ts`,
+`Background.ts` and the `Runner.ts` that will consume a `FeaturePlan`.
+`Plan.ts` is real but is not reachable from any user-facing call yet:
+`describeFeature` still discards its collection rather than planning and
+emitting it. §4's rows name only real files. See `spec/roadmap.md` for
 what's actually built.
 
 ## §1 Behavior to source
 
-| Behavior file                                                                                | Range                      | Source module (real and planned — see the preamble)                                                                                         |
-| -------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01 — Steps and World](behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, BEH-EC-013 | `packages/gherkin/src/loadFeature.ts`, `packages/vitest/src/{describeFeature,Dsl,Step,Registry,CallSite}.ts`, `packages/vitest/src/Plan.ts` |
-| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                                                                |
-| [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                                             |
-| [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                                               |
-| [05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015                 | `packages/gherkin/src/{ParameterTypes,StepMatcher,StepArgs,Errors}.ts`                                                                      |
-| [06 — DataTable and DocString arguments](behaviors/06-datatable-and-docstring-arguments.md)  | BEH-EC-016                 | `packages/gherkin/src/{DataTable,StepArguments,Errors,Model,Correlate}.ts`                                                                  |
+| Behavior file                                                                                | Range                      | Source module (real and planned — see the preamble)                                                                                |
+| -------------------------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Steps and World](behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, BEH-EC-013 | `packages/gherkin/src/{loadFeature,Snippet}.ts`, `packages/vitest/src/{describeFeature,Dsl,Step,Registry,CallSite,Errors,Plan}.ts` |
+| [02 — Background, hooks, shared Layers, and tags](behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008             | `packages/vitest/src/{Background,Hooks,SharedLayer,Tags}.ts`                                                                       |
+| [03 — Rules, Scenario Outlines, and TestClock](behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012             | `packages/vitest/src/{Rule,ScenarioOutline}.ts`                                                                                    |
+| [04 — loadFeature parse and validation](behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014                 | `packages/gherkin/src/{loadFeature,Source,Parser,Pickles,Correlate,Validate,Errors,Model}.ts`                                      |
+| [05 — Step matching and parameter types](behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015                 | `packages/gherkin/src/{ParameterTypes,StepMatcher,StepArgs,Errors}.ts`                                                             |
+| [06 — DataTable and DocString arguments](behaviors/06-datatable-and-docstring-arguments.md)  | BEH-EC-016                 | `packages/gherkin/src/{DataTable,StepArguments,Errors,Model,Correlate}.ts`                                                         |
 
 ## §2 Invariant traceability
 
@@ -103,6 +107,7 @@ found".
 | `packages/gherkin/test/ParameterTypeLifecycle.test.ts` | BEH-EC-015             | A custom parameter type resolving across two `loadFeature` calls in one process                                                                                                                                                                                                     |
 | `packages/gherkin/test/ParameterTypes.test.ts`         | BEH-EC-015             | One test per definition-time rejection, repeated builds, and store isolation                                                                                                                                                                                                        |
 | `packages/gherkin/test/Parser.test.ts`                 | BEH-EC-014             | Parse-time throws wrapped as `MissingFile` / `ParseFailed` / `UnknownDialect` / `NoFeature`                                                                                                                                                                                         |
+| `packages/gherkin/test/Snippet.test.ts`                | BEH-EC-013             | `generateStepSnippet`: literals generalised to cucumber-expression parameters, each annotated with the TypeScript type its transform really produces, and the pattern escaped at the injection boundary                                                                             |
 | `packages/gherkin/test/StepArguments.test.ts`          | BEH-EC-016             | The source-order rule asserted on synthetic `PickleStepArgument` values, independent of any fixture                                                                                                                                                                                 |
 | `packages/gherkin/test/StepMatcher.test.ts`            | BEH-EC-015             | Runtime coercion, match-every-pattern, and memoization identity per (registry, pattern)                                                                                                                                                                                             |
 | `packages/gherkin/test/Validate.test.ts`               | BEH-EC-014             | One test per reason tag, plus the Group C warnings and the placeholder false-positive guards                                                                                                                                                                                        |
@@ -113,6 +118,8 @@ found".
 | `packages/gherkin/test/upstream-pin.test.ts`           | BEH-EC-014, BEH-EC-016 | Pins `@cucumber/gherkin@42`'s verified behavior per fixture — including the `argumentIndex` and `PickleTableRow` facts — so an upstream bump fails loudly                                                                                                                           |
 | `packages/gherkin/test/StepArgs.types.ts`              | BEH-EC-015             | **Type-check, not a suite** — compiled by `pnpm typecheck:test`, never collected by vitest; asserts MATCH-01's type-level claim                                                                                                                                                     |
 | `packages/vitest/test/CallSite.test.ts`                | BEH-EC-013             | Definition-site capture: `captureCallSite` returns the AUTHOR's frame and not this package's, ordering is numeric and file-first, and a site that could not be captured stays an explicit absent marker                                                                             |
+| `packages/vitest/test/Errors.test.ts`                  | BEH-EC-013, BEH-EC-014 | The drift-detection data shapes: `StepMatchError`'s two reason tags and nine fields round-tripping, and `UnusedStepDefinitionWarning`'s factory, both with the no-truncation policy asserted by exact message length                                                                |
+| `packages/vitest/test/Plan.test.ts`                    | BEH-EC-013             | `planFeature`: the Background/Scenario/Feature scope chain with inner-shadows-outer precedence, the `UndefinedStep` error and its suggested snippet, the `AmbiguousStep` error ordered by definition site and independent of registration order, and the unused-pattern warnings    |
 | `packages/vitest/test/Registry.test.ts`                | BEH-EC-002, BEH-EC-003 | Per-instance step registration: two registries in one process share no state, `definitions()` is a snapshot, the scope stack refuses to underflow, and a definition carries the scope and the definition site current when registered                                               |
 | `packages/vitest/test/Step.test.ts`                    | BEH-EC-003             | The `Effect.fn(stepText)` auto-wrap: an already-wrapped step passes through BY IDENTITY, a bare generator is wrapped and takes the step text as its span name, and a failure inside a wrapped step keeps that span                                                                  |
 | `packages/vitest/test/describeFeature.test.ts`         | BEH-EC-002, BEH-EC-004 | Collection through `collectFeature`: one registry per call, the container a step was registered inside (ADR-EC-017), the define callback's synchrony, the definition site recorded end to end, and both Layer forms normalising to one Layer with `perScenario` winning a collision |
