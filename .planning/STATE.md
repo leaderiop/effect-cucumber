@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-08-29T21:31:24.850Z"
+status: ready_to_plan
+stopped_at: Phase 09 complete (9/9) — ready to discuss Phase 10
+last_updated: 2026-08-29T23:52:11.809Z
 last_activity: 2026-08-29 -- Phase 09 execution started
 progress:
   total_phases: 11
   completed_phases: 8
   total_plans: 68
-  completed_plans: 59
+  completed_plans: 68
   percent: 73
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 09 — tags
+**Current focus:** Phase 10 — layer scopes (per scenario default + `shared`)
 
 ## Current Position
 
-Phase: 09 (tags) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 09
-Last activity: 2026-08-29 -- Phase 09 execution started
+Phase: 10
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-29
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
@@ -41,7 +41,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 
 **Velocity:**
 
-- Total plans completed: 65
+- Total plans completed: 74
 - Average duration: ~10m
 - Total execution time: ~117m
 
@@ -57,6 +57,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 06 | 8 | - | - |
 | 07 | 8 | - | - |
 | 08 | 9 | - | - |
+| 09 | 9 | - | - |
 
 **Per-plan detail:**
 
