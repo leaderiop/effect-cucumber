@@ -40,6 +40,8 @@ STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
 WORLD_FIELD_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.world-field.json"
 LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
 STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-error.json"
+HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
+HOOK_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-missing.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
@@ -54,7 +56,8 @@ fail() {
 }
 
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
-  "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG"; do
+  "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
+  "$HOOK_NEG_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -271,6 +274,55 @@ if [[ "$STEP_EXPECT_ERROR_EXIT" -ne 0 ]]; then
   fail "the suppressed-directive fixture stopped compiling clean. Two causes, and the output above says which. (1) 'TS2578: Unused @ts-expect-error directive' or 'TS377000: @effect-diagnostics directive has no effect' means NO error occurs on the marked line any more — the DSL type was loosened, or the fixture's ambient Layer now provides Db, and DSL-01's guarantee is gone. (2) An unsuppressed TS377004 alongside TS377000 means the two directive comment lines were REORDERED: '@effect-diagnostics-next-line' must be the line IMMEDIATELY above the code, with '@ts-expect-error' above it. TypeScript skips intervening comment lines when resolving \"next line\"; the plugin does not. See the fixture's own header and RESEARCH.md Finding 3(A)."
 fi
 echo "✓ the supplementary suppressed-directive fixture compiles clean (exit 0)"
+
+# ---------------------------------------------------------------------------
+# Assertions 10 and 11: THE HOOK SATISFIED/STARVED FLIP PAIR.
+#
+# Assertions 5 and 6 cover StepRegistrar. Dsl.ts note (a) is explicit that this rule now has three
+# copies in the repo — this file, Step.ts's register, and Hook.ts's registerHook — and that
+# HookRegistrar needs the identical behavioral proof: a reordered union or a leaked hook member still
+# rejects the bad case, so no existing test goes red; effect(missingEffectContext) just quietly stops
+# covering the new surface. These two assertions are that proof for hooks.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Assertion 10: the hook DSL positive control compiles clean.
+# Discriminates a working guarantee from a dsl that simply rejects everything — the same role
+# assertion 5 plays for StepRegistrar.
+# ---------------------------------------------------------------------------
+HOOK_OK_OUTPUT="$($TSC -p "$HOOK_OK_CONFIG" 2>&1)" && HOOK_OK_EXIT=0 || HOOK_OK_EXIT=$?
+
+if [[ "$HOOK_OK_EXIT" -ne 0 ]]; then
+  echo "$HOOK_OK_OUTPUT"
+  fail "the hook DSL positive control failed to compile — three known causes, and the output above says which. (i) a hook body using Effect.acquireRelease was wrongly rejected, meaning Scope.Scope left HookRegistrar in Dsl.ts note (b). (ii) TS2578 'Unused @ts-expect-error directive', meaning a hook member LEAKED onto ScenarioDsl and is now reachable from every Scenario callback (Dsl.ts note (f)). (iii) an already-Effect.fn-wrapped hook was rejected, meaning the HookRegistrar union's second member is wrong. Do not add \`any\` to the fixture to make this pass — one \`any\` in a hook body is assignable to everything and disables the whole guarantee."
+fi
+echo "✓ hook DSL positive control compiles clean (all six kinds, scoped + wrapped hooks, both Layer forms, Scenario-callback @ts-expect-error)"
+
+# ---------------------------------------------------------------------------
+# Assertion 11: a hook requiring an unprovided service is rejected BY NAME.
+#
+# NOTE: missingEffectContext, and NOT missingLayerContext. These are different diagnostics on
+# different fixtures and must not be "harmonized" with assertion 4's or assertion 8's grep above.
+# Assertion 4 is about the LAYER ARGUMENT's unhandled RIn; assertion 8 is about describeFeature's own
+# layer-argument overload order; this one is about a HOOK's required context. Copying either name here
+# produces an assertion that fails for the wrong reason, which then invites someone to weaken the grep
+# until it passes.
+#
+# Two checks, never one — the exit code proves it was rejected, the diagnostic name proves it was
+# rejected FOR THE RIGHT REASON.
+# ---------------------------------------------------------------------------
+HOOK_NEG_OUTPUT="$($TSC -p "$HOOK_NEG_CONFIG" 2>&1)" && HOOK_NEG_EXIT=0 || HOOK_NEG_EXIT=$?
+
+if [[ "$HOOK_NEG_EXIT" -eq 0 ]]; then
+  echo "$HOOK_NEG_OUTPUT"
+  fail "a hook requiring an unprovided service COMPILED — DSL-07's half of INV-EC-003 is decorative and this project's core value is not enforced for hooks."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_NEG_OUTPUT"; then
+  echo "$HOOK_NEG_OUTPUT"
+  fail "the hook was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the hook DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the HookRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST, after which TypeScript reports the generator as a plain shape mismatch that the plugin has no reason to read as a context problem. See Dsl.ts note (a)."
+fi
+echo "✓ a hook requiring an unprovided service is rejected by name: effect(missingEffectContext)"
 
 echo ""
 echo "tsgo gate: ENFORCED"
