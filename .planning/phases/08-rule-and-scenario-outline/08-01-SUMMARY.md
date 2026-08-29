@@ -209,6 +209,10 @@ None. The conservative `case "rule": return false` introduced in Task 1 was repl
 
 None. This plan adds no network endpoint, no auth path, no file access and no schema change. The one trust boundary it touches — one Rule's registrations versus another Rule's Scenarios — is the boundary it exists to enforce, and all three `mitigate` dispositions in the plan's threat register are covered by the mutation tests recorded above.
 
+## Self-Check: PASSED
+
+All 7 modified files present on disk. All 3 commits (`3365a43`, `918aaf4`, `d3bff90`) present in `git log`. Working tree clean, no untracked files, no deletions in any commit.
+
 ---
 *Phase: 08-rule-and-scenario-outline*
 *Completed: 2026-08-29*
