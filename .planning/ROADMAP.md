@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: DataTable / DocString** - Gherkin tables reach steps through a wrapper that decodes rows via `Schema` (completed 2026-08-28)
 - [x] **Phase 5: `describeFeature` Type Surface** - An unprovided-service step is a compile error, proven by a negative type-test file written first (completed 2026-08-29)
 - [x] **Phase 6: Plan, Scenario-Effect, Runner Emission, and Drift Detection** - Scenarios run as one fail-fast `it.effect` each; unmatched/ambiguous/unused steps fail loudly (completed 2026-08-29)
-- [x] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.ensuring` (completed 2026-08-29)
+- [x] **Phase 7: Hooks** - All six hooks are Effects, ordered correctly, with `After` guaranteed via `Effect.onExit` (completed 2026-08-29)
 - [ ] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples
 - [ ] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI
 - [ ] **Phase 10: Layer Scopes (per-Scenario default + `shared`)** - Both scopes work, and `TestClock` stays per-Scenario even on the shared path
@@ -291,7 +291,7 @@ Plans:
 
   1. Each of `Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios` accepts a bare generator function and is registered auto-wrapped as a named `Effect.fn` (DSL-07).
   2. An append-only `Ref` log asserts the full ordering across a two-Scenario Feature: `BeforeAllScenarios` → (`Before` → `BeforeStep`/`AfterStep` per step → `After`) per Scenario → `AfterAllScenarios` (DSL-07).
-  3. `After` runs and its effect is observable in the log both when every step succeeded and when a step failed mid-Scenario, via `Effect.ensuring` (RUN-02, INV-EC-004).
+  3. `After` runs and its effect is observable in the log both when every step succeeded and when a step failed mid-Scenario, via `Effect.onExit` (RUN-02, INV-EC-004).
   4. A failing `After` does not mask or replace the original step failure in the reported error.
 
 **Plans**: 8 plans (6 waves — two leaf modules, then the type surface, then two parallel tracks through `ScenarioEffect.ts` and `Runner.ts`, then the end-to-end proof, then spec reconciliation)

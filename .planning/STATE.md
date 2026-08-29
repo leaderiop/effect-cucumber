@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-08-29T14:37:29.429Z"
+status: ready_to_plan
+stopped_at: Phase 07 complete (8/8) — ready to discuss Phase 8
+last_updated: 2026-08-29T16:15:50.850Z
 last_activity: 2026-08-29 -- Phase 07 execution started
 progress:
   total_phases: 11
   completed_phases: 6
   total_plans: 50
-  completed_plans: 42
+  completed_plans: 50
   percent: 55
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 07 — hooks
+**Current focus:** Phase 8 — rule and scenario outline
 
 ## Current Position
 
-Phase: 07 (hooks) — EXECUTING
-Plan: 1 of 8
-Status: Executing Phase 07
-Last activity: 2026-08-29 -- Phase 07 execution started
+Phase: 8
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-29
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
@@ -41,7 +41,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 
 **Velocity:**
 
-- Total plans completed: 48
+- Total plans completed: 56
 - Average duration: ~10m
 - Total execution time: ~117m
 
@@ -55,6 +55,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 04 | 5 | - | - |
 | 05 | 6 | - | - |
 | 06 | 8 | - | - |
+| 07 | 8 | - | - |
 
 **Per-plan detail:**
 
