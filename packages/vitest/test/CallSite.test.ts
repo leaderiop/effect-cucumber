@@ -30,12 +30,17 @@
  *
  * ## Imports
  *
- * `../src/CallSite.ts` directly, never `../src/index.ts`: `effect/no-import-from-barrel-package`
- * runs with `checkRelativeIndexImports: true` and fails `pnpm lint` on a relative value-import whose
- * basename is `index.*`. `CallSite` is not in that barrel anyway (CallSite.ts's closing note).
+ * `../src/CallSite.ts` and `../src/Registry.ts` directly, never `../src/index.ts`:
+ * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and fails
+ * `pnpm lint` on a relative value-import whose basename is `index.*`. Neither module is in that
+ * barrel anyway (CallSite.ts's closing note, Registry.ts note (d)).
+ *
+ * `DefinitionSite` comes from `Registry.ts` and not from `CallSite.ts`, which is where the capture
+ * lives: the registry owns the type so that it can stay dependency-free — CallSite.ts note (c).
  */
 import { describe, expect, it } from "@effect/vitest"
-import { captureCallSite, compareCallSites, type DefinitionSite, formatCallSite } from "../src/CallSite.ts"
+import { captureCallSite, compareCallSites, formatCallSite } from "../src/CallSite.ts"
+import type { DefinitionSite } from "../src/Registry.ts"
 
 /** A recorded site, spelled once so the ordering tests read as data rather than as object literals. */
 const site = (file: string, line: number, column: number): DefinitionSite => ({ file, line, column })
@@ -50,7 +55,7 @@ const site = (file: string, line: number, column: number): DefinitionSite => ({ 
  * selection, or a hoist of the capture out of the caller, changes exactly these two numbers.
  */
 const captureFromThisFile = (): DefinitionSite | null => captureCallSite()
-const capturedFromLine = 52
+const capturedFromLine = 57
 const capturedFromColumn = 58
 
 /**

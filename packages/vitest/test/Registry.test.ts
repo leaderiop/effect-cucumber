@@ -9,6 +9,14 @@
  * `packages/gherkin/test/ParameterTypeLifecycle.test.ts` proves the same proposition one package
  * over, and is the file this one is modelled on.
  *
+ * It also carries D-03's registration half: a definition records WHERE it was written. The registry
+ * never captures that itself — it takes a site as an argument — so the assertion that matters is
+ * that the argument survives the round trip untouched, including when it is `null`.
+ *
+ * Mutation-tested (performed, then reverted, confirmed failing):
+ * - A. `register` ignores its `definedAt` argument and always pushes `null` → the "hands back the
+ *      exact object it was given" assertion fails, and nothing else in the repo notices.
+ *
  * ## Imports
  *
  * `../src/*.ts` directly, never `../src/index.ts`: `effect/no-import-from-barrel-package` runs
@@ -16,12 +24,21 @@
  * basename is `index.*`. `Registry` is not in that barrel anyway (Registry.ts note (d)).
  */
 import { describe, expect, it } from "vitest"
-import { createRegistry, type RegistryScope } from "../src/Registry.ts"
+import { createRegistry, type DefinitionSite, type RegistryScope } from "../src/Registry.ts"
 
 /** A step body's real type belongs to the DSL; this file only needs something identifiable. */
 type Body = () => string
 
 const scenario = (name: string): RegistryScope => ({ kind: "scenario", name })
+
+/**
+ * A stand-in site for the tests that are not about the site.
+ *
+ * Every `register` call needs a fourth argument, and passing `null` everywhere would let the two
+ * tests at the bottom pass against a `register` that hardcodes `null` — the exact mutation those
+ * tests exist to catch. A non-null default keeps them discriminating.
+ */
+const elsewhere: DefinitionSite = { file: "/repo/test/elsewhere.test.ts", line: 1, column: 1 }
 
 describe("two registries built in the same process share no state", () => {
   it("hands back two different objects", () => {
@@ -38,7 +55,7 @@ describe("two registries built in the same process share no state", () => {
     const a = createRegistry<Body>("feature A")
     const b = createRegistry<Body>("feature B")
 
-    a.register("Given", "a step in A", () => "a")
+    a.register("Given", "a step in A", () => "a", elsewhere)
 
     // THE load-bearing assertion. A hoisted `records` array makes b.definitions() length 1.
     expect(a.definitions()).toHaveLength(1)
@@ -61,11 +78,11 @@ describe("definitions() returns a snapshot rather than the live array", () => {
   it("does not grow a previously returned array when another step is registered", () => {
     const registry = createRegistry<Body>("a feature")
 
-    registry.register("Given", "the first step", () => "first")
+    registry.register("Given", "the first step", () => "first", elsewhere)
     const captured = registry.definitions()
     expect(captured).toHaveLength(1)
 
-    registry.register("When", "the second step", () => "second")
+    registry.register("When", "the second step", () => "second", elsewhere)
 
     // Returning the internal array directly would make `captured` length 2 here, because it would
     // be the same object the registry keeps pushing onto.
@@ -98,9 +115,9 @@ describe("a step definition carries the scope that was current when it was regis
     const registry = createRegistry<Body>("a feature")
 
     registry.pushScope(scenario("a scenario"))
-    registry.register("When", "a step inside the scenario", () => "inner")
+    registry.register("When", "a step inside the scenario", () => "inner", elsewhere)
     registry.popScope()
-    registry.register("Then", "a step back at the feature root", () => "outer")
+    registry.register("Then", "a step back at the feature root", () => "outer", elsewhere)
 
     const [inner, outer] = registry.definitions()
 
@@ -114,8 +131,33 @@ describe("a step definition carries the scope that was current when it was regis
     const registry = createRegistry<Body>("a feature")
 
     registry.pushScope({ kind: "background", name: null })
-    registry.register("Given", "a background step", () => "background")
+    registry.register("Given", "a background step", () => "background", elsewhere)
 
     expect(registry.definitions()[0]?.scope).toEqual({ kind: "background", name: null })
+  })
+})
+
+describe("a step definition carries the definition site it was registered with", () => {
+  it("hands back the exact object it was given, not a copy or a rebuild", () => {
+    const registry = createRegistry<Body>("a feature")
+    const site: DefinitionSite = { file: "/repo/packages/vitest/test/example.test.ts", line: 12, column: 5 }
+
+    registry.register("Given", "a located step", () => "located", site)
+
+    // Reference identity, and nothing weaker. `toEqual` passes against a `register` that rebuilds
+    // the site field by field, and it also passes against a mutation that pushes a *different*
+    // structurally-equal literal — including one that has quietly dropped a field.
+    expect(registry.definitions()[0]?.definedAt).toBe(site)
+  })
+
+  it("preserves an absent site as null rather than substituting a placeholder", () => {
+    const registry = createRegistry<Body>("a feature")
+
+    registry.register("Given", "an unlocated step", () => "unlocated", null)
+
+    // `null` means the capture FAILED. A `{ file: "", line: 0, column: 0 }` stand-in would read as a
+    // real answer everywhere downstream — it would format as `:0:0` and would sort ahead of every
+    // genuine site instead of last.
+    expect(registry.definitions()[0]?.definedAt).toBeNull()
   })
 })

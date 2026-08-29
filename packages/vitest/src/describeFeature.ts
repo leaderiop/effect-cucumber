@@ -129,7 +129,9 @@ const collect = (
   // an `And` and is never rewritten to the keyword it continues, because that continuation is a
   // match-time question and this is registration time.
   const registrar = (keyword: StepKeyword): StepRegistrar<any> => (pattern, fn) => {
-    registry.register(keyword, pattern, register(pattern, fn))
+    // The definition site is `null` for now — `Registry.ts` takes it as an argument and never
+    // captures one itself. Wiring the real capture in is the next plan step.
+    registry.register(keyword, pattern, register(pattern, fn), null)
   }
 
   const scenarioDsl: ScenarioDsl<any> = {

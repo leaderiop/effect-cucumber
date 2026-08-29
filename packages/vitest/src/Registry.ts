@@ -37,6 +37,12 @@
  *     module deliberately has no dependencies of any kind — an acceptance criterion asserts the
  *     count is zero.
  *
+ *     `DefinitionSite` below is declared here for exactly that reason, even though `CallSite.ts` is
+ *     what produces one. A type-only `import type { DefinitionSite } from "./CallSite.ts"` would be
+ *     the obvious direction and would break the claim above; pointed the other way, the leaf that
+ *     already parses stack traces takes the one import and this module keeps none. There is no cycle
+ *     either way, because nothing here imports anything.
+ *
  * (d) **Why this is not re-exported from `packages/vitest/src/index.ts`.** A registry is an
  *     internal stage of `describeFeature`, not a surface a consumer composes against; publishing
  *     it would freeze the scope stack's shape into the public contract before the DSL that drives
@@ -69,6 +75,23 @@ export type RegistryScope = {
 export type StepKeyword = "Given" | "When" | "Then" | "And" | "But"
 
 /**
+ * Where a definition was written: an absolute path, and V8's own 1-based line and column.
+ *
+ * Registration-time data this module owns, exactly as `RegistryScope` is — the MECHANISM that
+ * produces one lives in `CallSite.ts`, which imports this type rather than exporting it. Note (c)
+ * has the full argument for that direction.
+ *
+ * Absence is `null` and not an optional property, for the same `exactOptionalPropertyTypes` reason
+ * spelled out for `RegistryScope.name`: a site that could not be captured is real data, and one
+ * spelling of "there is none" is better than two.
+ */
+export type DefinitionSite = {
+  readonly file: string
+  readonly line: number
+  readonly column: number
+}
+
+/**
  * One registered step, together with the scope that was on top of the stack when it was
  * registered. Capturing the scope at registration time is what lets a later stage tell a
  * `Background` step from a `Scenario` step without re-walking the document.
@@ -78,6 +101,20 @@ export type StepDefinition<Fn> = {
   readonly pattern: string
   readonly body: Fn
   readonly scope: RegistryScope
+  /**
+   * Where the author's own `Given`/`When`/`Then` call was written — never a line inside this
+   * package.
+   *
+   * `null` means the capture FAILED (there was no stack to read, or no frame outside the capturing
+   * module's own directory), not "deliberately not captured". The distinction matters downstream:
+   * `CallSite.ts`'s `formatCallSite` renders it as words rather than as an empty `:` pair, and
+   * `compareCallSites` sorts it last instead of pretending it is line 0.
+   *
+   * `Plan.ts` orders an ambiguous step's matching patterns by this field (CONTEXT.md D-03), so the
+   * list points the reader at the definitions to go reconcile, in an order that does not depend on
+   * which module vitest happened to import first.
+   */
+  readonly definedAt: DefinitionSite | null
 }
 
 /**
@@ -126,8 +163,16 @@ export const createRegistry = <Fn>(featureName: string) => {
     stack.pop()
   }
 
-  const register = (keyword: StepKeyword, pattern: string, body: Fn): void => {
-    records.push({ keyword, pattern, body, scope: currentScope() })
+  /**
+   * Record one step under the scope that is current right now.
+   *
+   * `definedAt` is a PARAMETER and is never captured here. This module reads no stack and constructs
+   * no `Error`, which is what keeps it dependency-free (note (c)) and testable with literal sites.
+   * The capture belongs to `describeFeature.ts`'s registrar, because the frame that matters is the
+   * author's and the registrar is the only thing the author calls directly.
+   */
+  const register = (keyword: StepKeyword, pattern: string, body: Fn, definedAt: DefinitionSite | null): void => {
+    records.push({ keyword, pattern, body, scope: currentScope(), definedAt })
   }
 
   /** A snapshot — see note (b). Never the live array. */

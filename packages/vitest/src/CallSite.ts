@@ -36,14 +36,18 @@
  *     the caller's frame is two or three deep, and a global mutation would leak into every other
  *     stack in the process.
  *
- * (c) **This module imports nothing at all, and absence is `null` rather than an `Option`.** The
- *     `Option`-shaped spelling would pull `effect/Option` in, and `DefinitionSite` is about to become
- *     a field on `Registry.ts`'s `StepDefinition` — whose own note (c) states that it "deliberately
- *     has no dependencies of any kind", with an acceptance criterion asserting its import count is
- *     zero. `null` is also already this package's spelling for real absence: `RegistryScope.name` is
- *     `string | null` and not an optional property, for the same `exactOptionalPropertyTypes` reason
- *     given there. Reaching for `Option` here to "match the gherkin package" would put a dependency
- *     into the one module that must not have one.
+ * (c) **This module's ONE import is a type, it points at `Registry.ts`, and the direction is the
+ *     whole reason `DefinitionSite` is declared over there rather than here.** `Registry.ts` note (c)
+ *     states that it "deliberately has no dependencies of any kind", with an acceptance criterion
+ *     asserting its import count is zero — so the type has to live in the container and be borrowed
+ *     by the leaf, not the reverse. Moving the declaration back here to "keep the capture
+ *     self-contained" inverts that and breaks the criterion. There is no cycle either way, because
+ *     `Registry.ts` imports nothing.
+ *
+ *     Absence is `null` and not an `Option` for the same reason: the `Option` spelling would pull
+ *     `effect/Option` into a type that ends up on `StepDefinition`. `null` is already this package's
+ *     spelling for real absence — `RegistryScope.name` is `string | null` and not an optional
+ *     property, for the `exactOptionalPropertyTypes` reason given there.
  *
  * `captureCallSite` must be called from the frame whose location you want — see
  * `describeFeature.ts`'s registrar, where the call sits directly inside the arrow the author invokes
@@ -55,17 +59,7 @@
  * would freeze the capture's shape into the package's contract before the ambiguous-step error that
  * consumes it exists.
  */
-/**
- * Where a definition was written: an absolute path, and V8's own 1-based line and column.
- *
- * `null` — not an optional property and not an `Option` — is how a caller spells "no site was
- * captured", per note (c).
- */
-export type DefinitionSite = {
-  readonly file: string
-  readonly line: number
-  readonly column: number
-}
+import type { DefinitionSite } from "./Registry.ts"
 
 /**
  * One V8 stack frame, split into its location and its line and column.
