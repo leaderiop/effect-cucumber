@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-08-28T23:26:10.267Z"
+status: ready_to_plan
+stopped_at: Phase 05 complete (6/6) — ready to discuss Phase 6
+last_updated: 2026-08-29T01:00:03.119Z
 last_activity: 2026-08-28 -- Phase 05 execution started
 progress:
   total_phases: 11
   completed_phases: 4
   total_plans: 34
-  completed_plans: 28
+  completed_plans: 34
   percent: 36
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 05 — describefeature-type-surface
+**Current focus:** Phase 6 — plan, scenario effect, runner emission, and drift detection
 
 ## Current Position
 
-Phase: 05 (describefeature-type-surface) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 05
-Last activity: 2026-08-28 -- Phase 05 execution started
+Phase: 6
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-29
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
@@ -41,7 +41,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 
 **Velocity:**
 
-- Total plans completed: 34
+- Total plans completed: 40
 - Average duration: ~10m
 - Total execution time: ~117m
 
@@ -53,6 +53,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 02 | 11/11 | - | - |
 | 03 | 6 | - | - |
 | 04 | 5 | - | - |
+| 05 | 6 | - | - |
 
 **Per-plan detail:**
 
