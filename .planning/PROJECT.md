@@ -39,26 +39,40 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       column; a step carrying both a DocString and a DataTable receives both,
       in documented, mutation-proven argument order — ADR-EC-025,
       BEH-EC-016. 404 tests passing; full `check.yml` gate green.
+- [x] `describeFeature` takes a Layer; a step's Effect can only use services
+      that Layer provides — ADR-EC-003, backed by `@effect/tsgo`'s
+      `missingLayerContext`/`missingEffectContext` diagnostics — ADR-EC-016.
+      Validated in Phase 5 (`describeFeature` Type Surface): a committed
+      satisfied/starved `tsgo-gate` fixture pair proves an unprovided-service
+      step fails to compile, named by diagnostic; mutation-tested by
+      reordering the `StepRegistrar` union and the `describeFeature` overloads
+      and observing the named diagnostic (not just the exit code) drop out.
+      9/9 gate assertions; 427 tests passing; full `check.yml` gate green.
+- [x] A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`
+      accept a bare generator, auto-wrapped with `Effect.fn` — ADR-EC-001,
+      ADR-EC-005. Validated in Phase 5: `Step.ts`'s `isGeneratorFn` guard
+      auto-wraps a bare generator with `Effect.fn(stepText)` and passes an
+      already-wrapped function through by reference identity; the step text
+      is observable as the span name (DSL-02).
+- [x] `World` is a typed `Context.Service`, not an untyped context bag —
+      ADR-EC-002. Validated in Phase 5: reading a field absent from World's
+      declared type is a plain `TS2339` compile error (not an Effect
+      diagnostic), proven by a dedicated negative fixture (DSL-03).
 
 ### Active
 
 Derived from `spec/behaviors/` (BEH-EC-001 through BEH-EC-013). Each maps to
 one or more ADRs in `spec/decisions/` for full rationale.
 
-- [ ] `describeFeature` takes a Layer; a step's Effect can only use services
-      that Layer provides — ADR-EC-003, backed by `@effect/tsgo`'s
-      `missingLayerContext`/`missingEffectContext` diagnostics — ADR-EC-016
-- [ ] A step is `(...params) => Effect<A, E, R>`; `Given`/`When`/`Then`
-      accept a bare generator, auto-wrapped with `Effect.fn` — ADR-EC-001,
-      ADR-EC-005
-- [ ] `World` is a typed `Context.Service`, not an untyped context bag —
-      ADR-EC-002
 - [ ] `Background` and `Scenario` are step-definition containers — a
       Background's literal Gherkin text is matched against a registered
       `Given`/`And` pattern exactly like any other step, not run
       unconditionally — ADR-EC-017. Background steps are inlined as the
       first `yield*`s of every Scenario's Effect, not a separate vitest hook
-      — ADR-EC-004
+      — ADR-EC-004. Container shapes shipped in Phase 5 (`Background`'s dsl
+      exposes only `{ Given, And }`, `Scenario`'s the full set; two `Registry`
+      instances share no state, mutation-proven) — the literal-text-matching
+      half is Phase 6's job once a runner consumes a `FeatureCollection`.
 - [ ] Hooks (`Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`/
       `AfterAllScenarios`) are Effects; `After` always runs via
       `Effect.ensuring` — ADR-EC-005
@@ -176,4 +190,4 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
 
 ---
-*Last updated: 2026-08-29 after Phase 4 (DataTable / DocString) completion*
+*Last updated: 2026-08-29 after Phase 5 (`describeFeature` Type Surface) completion*
