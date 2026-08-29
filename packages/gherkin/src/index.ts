@@ -81,6 +81,20 @@ export type { ParameterTypeDefinition, ParameterTypeStoreShape } from "./Paramet
 export { compileExpression, createStepMatcher } from "./StepMatcher.ts"
 export type { StepMatch, StepMatcher, StepPatternEntry } from "./StepMatcher.ts"
 
+/**
+ * The other half of what a caller does with a matching FAILURE: the suggested step definition an
+ * undefined-step error carries, so the message says what to write and not only what is missing
+ * (BEH-EC-013, ADR-EC-019). Given a step text and the registry the Feature was parsed with,
+ * `generateStepSnippet` returns a copy-pasteable `Given("...", function*(...) {...})` fragment with
+ * the literal values generalised into cucumber-expression parameters and typed.
+ *
+ * Exported rather than kept internal because its first caller is in another package:
+ * `@effect-cucumber/vitest`'s Plan stage, which cannot reach `@cucumber/cucumber-expressions`
+ * itself — it does not declare that dependency, and under pnpm's isolated layout the import fails
+ * to resolve. See `Snippet.ts`'s doc comment (a).
+ */
+export { generateStepSnippet } from "./Snippet.ts"
+
 /** The compile-time counterpart of `StepMatch.args`, resolved from a pattern string literal. */
 export type { BuiltInParameterTypeMap, StepArgs } from "./StepArgs.ts"
 
