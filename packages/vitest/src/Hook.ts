@@ -1,13 +1,14 @@
 /**
  * The hook-registration seam: turn whatever a test author passed to `Before`/`After`/`BeforeStep`/
  * `AfterStep`/`BeforeAllScenarios`/`AfterAllScenarios` into the uniform `() => Effect` shape the
- * runner will execute, and group a flat list of registered hooks by kind.
+ * runner will execute, group a flat list of registered hooks by kind, and run one kind's hooks as an
+ * INDEPENDENT batch (D-02/D-03) whose failures are combined, never dropped and never first-wins.
  *
  * ADR-EC-005 gives a hook body the same two accepted forms a step body has, and `Step.ts`'s
  * `register` already tells them apart — DELEGATING to it here is strictly less code than
  * reimplementing the discriminator, and needs no edit to `Step.ts` at all.
  *
- * Five things about this module are not visible from the code.
+ * Seven things about this module are not visible from the code.
  *
  * (a) **Normalization is delegated to `Step.ts`'s `register`, with the hook's kind passed in the
  *     `pattern` position, rather than duplicating `isGeneratorFn`.** `register`'s `pattern`
@@ -36,12 +37,36 @@
  *     compile-time check happens. Naming concrete `A`/`E`/`R` here would just be detail nothing
  *     downstream reads.
  *
- * (e) **This module is not re-exported from `packages/vitest/src/index.ts`.** `registerHook` and
- *     `groupHooks` are internal stages of `describeFeature`, exactly like `Step.ts`'s `register` and
- *     `Registry.ts`'s `createRegistry` — publishing them would freeze this seam into the public
- *     contract before the DSL that drives it exists. This package's tests import it by relative path.
+ * (e) **This module is not re-exported from `packages/vitest/src/index.ts`.** `registerHook`,
+ *     `groupHooks` and `runHookBatch` are internal stages of `describeFeature`, exactly like
+ *     `Step.ts`'s `register` and `Registry.ts`'s `createRegistry` — publishing them would freeze this
+ *     seam into the public contract before the DSL that drives it exists. This package's tests import
+ *     it by relative path.
+ *
+ * (f) **`runHookBatch` is a bare `for` loop of `yield*` inside ONE `Effect.gen`, never
+ *     `Effect.forEach` or `Effect.all`.** `ScenarioEffect.ts` note (a) states the reason and it
+ *     applies identically here: with a combinator, "every hook runs" becomes "this combinator's
+ *     default concurrency happens to be 1", and `{ concurrency: "unbounded" }` reads like a
+ *     performance win while interleaving hooks the author registered in order. The plausible tidy-up
+ *     is swapping the loop for `Effect.forEach(hooks, ..., { concurrency: "unbounded" })`; the test
+ *     that goes red is the ordered `:start`/`:end`-bracketed log of three hooks where the first
+ *     failed — a concurrent implementation still produces all three names, but not in order, and not
+ *     with every `:start` preceding its own `:end`.
+ *
+ * (g) **A batch's failures are folded with `Cause.combine` starting from `Cause.empty`, never
+ *     wrapped in a named error class.** `Cause.combine` preserves each hook's own error value by
+ *     identity inside the combined cause — exactly what `ScenarioEffect.ts` note (a) requires of a
+ *     step's error, extended here to a hook's. A `HookBatchError` wrapping the individual causes "to
+ *     follow the house error style" would re-tag every one of them and lose that identity; the
+ *     two-failure identity test (walking the combined cause, not `Cause.squash`ing it) is what goes
+ *     red. Also: `Effect.ensuring` is NOT used anywhere in this module — its finalizer's error
+ *     channel is `never` in `effect@4.0.0-rc.112`, so a hook that can fail is not even assignable to
+ *     it, and it merges no causes. BEH-EC-006's literal "via `Effect.ensuring`" names the guarantee
+ *     this phase's later plans build on `Effect.onExit` to provide, not the combinator used here.
  */
-import type * as Effect from "effect/Effect"
+import * as Cause from "effect/Cause"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import type { HookDefinition, HookKind } from "./HookRegistry.ts"
 import { register } from "./Step.ts"
 
@@ -132,3 +157,38 @@ export const groupHooks = (definitions: ReadonlyArray<HookDefinition<HookBody>>)
     AfterAllScenarios: afterAllScenarios
   }
 }
+
+/**
+ * Run every hook in `hooks`, in array order (registration order, D-01), independently: an earlier
+ * failure does NOT stop a later hook from running (D-02), a deliberate departure from
+ * INV-EC-001's fail-fast. Every failing hook's `Cause` is folded together with `Cause.combine`
+ * (D-03) — nothing is dropped, nothing wins first, nothing goes to `console.warn`.
+ *
+ * Written as a bare `for` loop of `yield*` inside ONE `Effect.gen` — see note (f). Each hook is run
+ * to an `Exit` via `Effect.exit`, so a failure never short-circuits the loop; a failing exit's
+ * `Cause` is collected, and an empty collection means the batch succeeded with `void`.
+ *
+ * See note (g) for why the fold uses `Cause.combine` rather than a wrapper error class, and why
+ * `Effect.ensuring` is not the combinator anywhere in this module.
+ */
+export const runHookBatch = (hooks: ReadonlyArray<HookBody>): Effect.Effect<void, unknown, any> =>
+  Effect.gen(function*() {
+    const failures: Array<Cause.Cause<unknown>> = []
+
+    for (const hook of hooks) {
+      const exit = yield* Effect.exit(hook())
+      if (Exit.isFailure(exit)) {
+        failures.push(exit.cause)
+      }
+    }
+
+    if (failures.length === 0) {
+      return
+    }
+
+    const combined = failures.reduce<Cause.Cause<unknown>>(
+      (folded, cause) => Cause.combine(folded, cause),
+      Cause.empty
+    )
+    return yield* Effect.failCause(combined)
+  })
