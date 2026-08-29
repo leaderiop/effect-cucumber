@@ -195,22 +195,38 @@ No new packages. Everything this phase needs is already installed.
 | Filtering inside `emitFeature` | Filtering at `planFeature` time | Silently corrupts MATCH-05 / ADR-EC-019 unused-definition warnings. Finding 13. |
 | Plain array `includeTags`/`excludeTags` (D-02) | vitest's boolean expression grammar | Locked by D-02. Worth noting the grammar vitest actually implements, for documentation parity: `&&`/`and`, `||`/`or`, `!`/`not`, parentheses, and `*` wildcards, precedence `not` > `and` > `or`. [VERIFIED: `parseOrExpression`/`parseAndExpression`/`createWildcardRegex` in `chunk-artifact.js`; CITED: vitest.dev/guide/test-tags#syntax] |
 
-**Installation:** none. No `npm install` / `pnpm add` step in this phase.
+**Installation:** one package, added post-research — `tinyglobby@0.2.17` as a direct dependency of
+`packages/vitest` (plan 09-07). See the Package Legitimacy Audit below. No other `npm install` /
+`pnpm add` step in this phase.
 
 ---
 
 ## Package Legitimacy Audit
 
-**This phase installs no external packages.** Every dependency it uses (`vitest`, `@vitest/runner`,
-`@effect/vitest`, `@effect-cucumber/gherkin`) is already resolved in this repo's lockfile and was
-vendored by earlier phases. `slopcheck` is available on this machine but has nothing to audit.
+**Amended 2026-08-29, post-plan-checker.** This section originally recorded ZERO new packages for
+Phase 9. That is no longer true. The plan-checker found that plan 09-07 had implemented
+`gherkinTags` with an explicit path array rather than D-09's literal `gherkinTags(glob)`; the user
+was asked and confirmed the glob-string signature is required, which needs a glob implementation.
+**ONE new direct dependency is therefore introduced by Phase 9, audited and accepted:**
+`tinyglobby@0.2.17`, declared in `packages/vitest`'s `dependencies` (CONTEXT.md D-09 addendum).
+
+Every other dependency this phase uses (`vitest`, `@vitest/runner`, `@effect/vitest`,
+`@effect-cucumber/gherkin`) is already resolved in this repo's lockfile and was vendored by earlier
+phases.
 
 | Package | Registry | Disposition |
 |---------|----------|-------------|
-| — | — | No new packages introduced by Phase 9 |
+| `tinyglobby@0.2.17` | npm | **ACCEPTED** — confirmed by the user by name and exact version. Already resolved in this repo's `pnpm-lock.yaml` at exactly `0.2.17` as a transitive dependency of the test runner itself, so declaring it adds a manifest entry and a lockfile importer edge: no new artifact from the registry and no new publisher to trust. Single-purpose, actively maintained glob library; its published `index.d.mts` was read directly during planning to fix the API used. Declared as `^0.2.17` per this repo's runtime-dependency convention — exact pins are devDependencies only, per `pnpm-workspace.yaml`. |
+
+**Why a package rather than the platform or a hand-rolled matcher:** `fs.globSync` landed in Node 22
+and `packages/vitest` declares `"engines": { "node": ">=20" }`; a partial hand-written matcher would
+mishandle character classes and brace expansion. `globSync` and not `glob` because a runner config is
+evaluated synchronously at load time.
 
 **Packages removed due to slopcheck `[SLOP]` verdict:** none
-**Packages flagged as suspicious `[SUS]`:** none
+**Packages flagged as suspicious `[SUS]`:** none — `tinyglobby` is neither. It is already installed in
+this repo at the audited version, and the human confirmation an `[ASSUMED]` verdict would require has
+already been given at higher fidelity: the user named the package and its exact version.
 
 ---
 
