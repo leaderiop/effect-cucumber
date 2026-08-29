@@ -136,11 +136,16 @@ REQUIREMENT: Every emitted tag MUST be DECLARED in the runner's config — a
              not declared MUST NOT fail the Feature: the library MUST catch
              the runner's rejection, re-emit the test UNTAGGED so the
              Scenario still runs, and print one located warning naming the
-             .feature file, the Scenario and the tag — the Scenario's tags
-             then do not exist for the runner, so no --tagsFilter can select
-             it. gherkinTags, a config-time helper taking a GLOB PATTERN (or
-             an array of patterns) over the consumer's own .feature files,
-             is the supported way to generate those declarations.
+             .feature file, the Scenario and every tag that Scenario carried
+             — the Scenario's tags then do not exist for the runner, so no
+             --tagsFilter can select it. That warning MUST claim only that
+             AT LEAST ONE of the listed tags is undeclared, never that all
+             of them are: the runner rejects a tag array as a unit and names
+             the offenders only in its own message text, which the library
+             deliberately does not read. gherkinTags, a config-time helper
+             taking a GLOB PATTERN (or an array of patterns) over the
+             consumer's own .feature files, is the supported way to generate
+             those declarations.
 ```
 
 ### Worked example

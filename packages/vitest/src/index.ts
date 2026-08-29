@@ -51,7 +51,7 @@
  * One prerequisite comes with all of that, and it is stated here rather than left to be discovered:
  * a tag must be DECLARED in the runner's own config or the runner rejects the emission. This library
  * catches that rejection, re-emits the test untagged and prints a warning naming the `.feature` file,
- * the Scenario and the offending tag — so the Scenario still runs, but its tags do not exist for the
+ * the Scenario and the tags it carried — so the Scenario still runs, but its tags do not exist for the
  * runner and a `--tagsFilter` naming any of them cannot select it. `gherkinTags("<glob>")`, exported
  * below, is the supported way to produce those declarations from the same `.feature` files the tags
  * are written in.

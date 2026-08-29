@@ -319,7 +319,11 @@ export type FeatureCollection = {
  * RUNS, but its tags do not exist as far as the runner is concerned, so a `--tagsFilter` invocation
  * naming any of them cannot select it. The `.feature` file still says the tag is there and the runner
  * disagrees. That is a discrepancy no test failure will ever surface, so the warning names the file,
- * the Scenario, every offending tag, and where to declare them.
+ * the Scenario, every tag the Scenario carried, and where to declare them. It names the WHOLE tag
+ * list and says at least one of them is undeclared, rather than naming the offenders: the offending
+ * subset appears only in the framework's own message text, and the structural discrimination below
+ * is precisely a refusal to read that text. `Errors.ts`'s note on `UndeclaredTagWarning.tags`
+ * carries the argument.
  *
  * ## Why the failure is discriminated STRUCTURALLY, and never by message, name or class
  *

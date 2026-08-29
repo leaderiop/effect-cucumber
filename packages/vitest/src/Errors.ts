@@ -302,10 +302,19 @@ export type UndeclaredTagWarningReason = "UndeclaredTag"
  * collection failure (0 tests collected) into one warning about one Scenario is the entire point of
  * the type.
  *
- * `tags` is the OFFENDING tags, not the Scenario's whole tag list, and it is an ARRAY rather than a
- * single `tag`: `strictTags` rejects a `TestOptions.tags` array as a unit, so one catch can concern
- * several undeclared tags at once, and reporting them one at a time would print N lines about one
- * event.
+ * `tags` is the Scenario's WHOLE tag list, of which AT LEAST ONE is undeclared — it is not the
+ * offending subset, and the message below is worded to say exactly that rather than to imply every
+ * entry was rejected. This is a real limit and it is stated rather than papered over: `strictTags`
+ * rejects a `TestOptions.tags` array as a UNIT and names the offenders only in its own message text,
+ * and `describeFeature.ts`'s adapter is forbidden from reading that text (it discriminates the catch
+ * structurally, by outcome, so an upstream wording change cannot silently disable the degradation —
+ * see that module's note (e)). The producer therefore cannot compute the offending subset without
+ * taking on the exact dependency this library refuses. Reporting the whole list under an honest
+ * label is the truthful option; reporting it under "the offending tags" told a reader to go and
+ * declare tags that were already declared.
+ *
+ * It is an ARRAY rather than a single `tag` for the same reason: one catch concerns one rejected
+ * array, so reporting per tag would print N lines about one event.
  *
  * `uri` and `scenarioName` are both required, for the reason `UnusedStepDefinitionWarning`'s own
  * note gives: the name is what a reader recognises and the uri is what an editor can open, and a
@@ -327,7 +336,10 @@ export interface UndeclaredTagWarning {
   readonly uri: string
   /** The Scenario's title, as it appears in the reporter. */
   readonly scenarioName: string
-  /** The offending tags — those `strictTags` did not recognise — with their literal `@` prefixes. */
+  /**
+   * The Scenario's whole tag list, at least one of which `strictTags` did not recognise, with their
+   * literal `@` prefixes. NOT the offending subset — see the note above for why it cannot be.
+   */
   readonly tags: ReadonlyArray<string>
   /** The rendered warning line, every author-controlled component quoted (note (f)). */
   readonly message: string
@@ -336,13 +348,18 @@ export interface UndeclaredTagWarning {
 /**
  * Build an `UndeclaredTagWarning`, rendering D-08's message.
  *
- * The message names the three facts a reader needs to act — the file, the Scenario, and every
- * offending tag — and then the two facts they need in order NOT to act on the wrong thing: the
- * Scenario STILL RAN (it is not missing from the run, only from the tag index) and it was emitted
- * UNTAGGED (so a `--tagsFilter` invocation naming any of these tags cannot select it). Without the
- * second fact the obvious reading of this warning is "my Scenario was skipped", which is the one
- * thing that did not happen. It closes with the upstream documentation URL because declaring the tag
- * is the fix and this library is not the place to re-document someone else's config key.
+ * The message names the three facts a reader needs to act — the file, the Scenario, and the tags it
+ * carried — and then the two facts they need in order NOT to act on the wrong thing: the Scenario
+ * STILL RAN (it is not missing from the run, only from the tag index) and it was emitted UNTAGGED
+ * (so a `--tagsFilter` invocation naming any of these tags cannot select it). Without the second
+ * fact the obvious reading of this warning is "my Scenario was skipped", which is the one thing that
+ * did not happen. It closes with the upstream documentation URL because declaring the tag is the fix
+ * and this library is not the place to re-document someone else's config key.
+ *
+ * The list is introduced as "at least one of which … does not declare", NOT as a list of offenders,
+ * because that is what the producer can honestly claim — see the type's own note. The earlier
+ * wording read every entry as rejected, so a Scenario carrying one declared and one undeclared tag
+ * sent a reader off to declare a tag that was already declared.
  *
  * `uri`, `scenarioName` and EVERY tag go through `quoted` — note (f). Nothing is truncated and the
  * tag list has no cap — note (d).
@@ -366,9 +383,9 @@ export const makeUndeclaredTagWarning = (args: {
   tags: args.tags,
   message: `${quoted(args.uri)}: UndeclaredTag: Scenario ${
     quoted(args.scenarioName)
-  } carries ${args.tags.length} tag(s) this project's vitest config does not declare: ${
+  } carries ${args.tags.length} tag(s), at least one of which this project's vitest config does not declare: ${
     quotedList(args.tags)
-  }. The Scenario still ran, but it was emitted UNTAGGED, so a --tagsFilter run naming any of those tags cannot select it. Declare them under test.tags in your vitest config: https://vitest.dev/guide/test-tags`
+  }. The Scenario still ran, but it was emitted UNTAGGED, so a --tagsFilter run naming any of those tags cannot select it. Declare the missing ones under test.tags in your vitest config: https://vitest.dev/guide/test-tags`
 })
 
 /**
