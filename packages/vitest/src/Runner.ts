@@ -13,7 +13,7 @@
  * framework, and `describeFeature.ts` — the composition root — is the single place that decides
  * which real implementation to pass.
  *
- * Six things about this module are not visible from the code.
+ * Seven things about this module are not visible from the code.
  *
  * (a) **No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here —
  *     not even an `import type`.** Neither name is written out anywhere in this file, comments
@@ -99,8 +99,22 @@
  *     Scenario one's particular Layer instance, which is not what a Feature-wide hook means.
  *
  *     `AfterAllScenarios`, by contrast, is not a once-cell at all: it is ONE extra node emitted after
- *     every Scenario (Rules included) and before the warnings, whose body runs the batch directly. A
- *     separate emitted node is what makes D-09's "runs always" structural rather than arranged: it
+ *     every Scenario (Rules included) and before the warnings, whose body runs the batch directly,
+ *     AND ONLY WHEN AT LEAST ONE RUNNABLE SCENARIO WAS EMITTED. That last conjunct is new and the
+ *     rest of this note is not; the distinction matters, because the guarantee the paragraph below
+ *     describes is untouched by it. What D-09's "runs always" is about is a FAILURE not being able to
+ *     stop teardown — a failed Scenario, or a failed `BeforeAllScenarios` — and that still holds
+ *     exactly as written. What the conjunct removes is the VACUOUS case, which is a different thing
+ *     entirely: when no runnable Scenario was emitted, `BeforeAllScenarios` is a once-cell reachable
+ *     only from inside a Scenario thunk, so it structurally CANNOT have run, and an
+ *     `AfterAllScenarios` node would tear down resources nothing ever set up. "Runnable" means both
+ *     halves: a Scenario the tag filter kept AND one that is not `@skip`-tagged — a skipped test's
+ *     thunk is never invoked either, so it reaches the once-cell no more than an excluded one does. A
+ *     Feature that declares no Scenarios at all falls in the same case for the same reason and is not
+ *     a separate rule. Note that a failing Scenario is still runnable and still emits the node: it
+ *     RAN, so it reached the cell.
+ *
+ *     A separate emitted node is what makes D-09's "runs always" structural rather than arranged: it
  *     does not await the `BeforeAllScenarios` deferred, so a failed `BeforeAllScenarios` cannot stop
  *     it, and it is a sibling of the Scenario nodes, so a failed Scenario cannot stop it either. The
  *     plausible tidy-up "wrap the whole `describe` block in a finalizer instead" has nothing to wrap —
@@ -135,6 +149,38 @@
  *     There is no fourth tier and no Scenario-scoped `HookSet`. ADR-EC-010 scopes hooks to a Rule and
  *     no further, so a Scenario's own extra Layer changes its services without changing which hooks
  *     run around it.
+ *
+ * (g) **The registration-time tag filter runs INSIDE this walk, after `planFor` and before anything
+ *     is emitted, and the two places it looks like it belongs are both broken.** D-03 makes an
+ *     excluded Scenario never become a test node at all — absent from the output rather than
+ *     reported as skipped — and this is the only point in the pipeline where that is expressible.
+ *     Both plausible relocations are recorded here because both COMPILE, and one of them is silent.
+ *
+ *     *Filtering `plan.scenarios` before `emitFeature` is handed it* — the obvious reading of "filter
+ *     at registration time", done one layer up in `describeFeature.ts` — is loud and immediate: this
+ *     walk does not iterate `plan.scenarios`, it iterates `plan.feature.scenarios` and LOOKS THE PLAN
+ *     UP through `planFor`. Removing an entry from the plan while leaving the parsed document intact
+ *     is exactly the state `planFor`'s throw declares impossible, so the whole file dies on
+ *     "no ScenarioPlan for scenario id …", blaming `Plan.ts` for a filter written elsewhere.
+ *
+ *     *Filtering inside `planFeature`* is the dangerous one, because nothing goes red. `planFeature`
+ *     accumulates the set of step definitions each Scenario's steps resolved to, and every registered
+ *     definition outside that set becomes an `UnusedStepDefinitionWarning` (MATCH-05, ADR-EC-019).
+ *     Drop the excluded Scenarios before that pass and every definition used ONLY by them newly
+ *     reports as unused — on all three of 06-CONTEXT.md D-02's channels at once. Warning nodes always
+ *     pass, so a tag filter would quietly rewrite this Feature's drift-detection output behind a
+ *     green run. Planning and warning cover the WHOLE Feature; only emission is filtered. The
+ *     property that buys is worth stating positively: a tag filter cannot change which step
+ *     definitions are considered defined or used, ever.
+ *
+ *     Two things deliberately still emit when every Scenario is filtered out, and they are decisions
+ *     rather than omissions. The `⚠` warning nodes emit, because they describe REGISTRATION and not
+ *     execution — suppressing them would make a filtered run look like a Feature with no unused
+ *     definitions, which is a different and false claim. And the `describe` blocks emit even when
+ *     they end up empty, for that reason plus note (c)'s: a Feature or Rule the reader can find in the
+ *     reporter and see is empty beats one that silently is not there. Only the `⚙ AfterAllScenarios`
+ *     node is suppressed, and note (e) has the reason, which is about resource lifecycle rather than
+ *     about visibility.
  *
  * The nesting walk re-derives Feature/Rule structure from `feature.scenarios` and `feature.rules`,
  * while `plan.scenarios` was built off the flat `feature.allScenarios`. The `Map` keyed on
@@ -173,7 +219,42 @@ import { buildScenarioTitles } from "./OutlineTitle.ts"
 import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
-import type { TestApi } from "./TestApi.ts"
+import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
+import type { EmitOptions, TestApi } from "./TestApi.ts"
+
+/**
+ * What one `emitFeature` call reports back about emissions it did NOT make — note (g).
+ *
+ * `describeFeature.ts` needs the count to print D-10's single collection-time notice, and there is
+ * nowhere else it can be computed: the walk that decides which Scenarios survive the filter visits
+ * both the Feature-level and the Rule-nested arrays, so anything counting outside this function would
+ * have to duplicate the walk and could then disagree with it.
+ *
+ * A struct rather than a bare `number`, because a bare number would have to be re-typed at every call
+ * site to mean anything, and because a later plan adding a second reported quantity should not be a
+ * breaking change to this signature.
+ *
+ * Nothing is PRINTED from this module and nothing should be. `test/Runner.test.ts` calls `emitFeature`
+ * directly, dozens of times, against a recording fake; a terminal write in here would spam that suite
+ * with output belonging to no test. It is also the rule `describeFeature.ts`'s own terminal-channel
+ * comment already states for `collectFeature`: the stage that computes stays silent, and the
+ * composition root decides what a human sees.
+ */
+export interface EmitOutcome {
+  /**
+   * How many Scenarios the tag filter removed from this Feature — across BOTH the Feature-level and
+   * the Rule-nested loops, counted before anything about them was emitted.
+   *
+   * `0` under `noTagFilter`, always: that sentinel's two arrays are empty and `shouldEmit` treats an
+   * empty half as "filters nothing", so no Scenario can reach the skip branch.
+   *
+   * This counts EXCLUDED Scenarios and never `@skip`-tagged ones. The two are different events with
+   * different output: an excluded Scenario is absent from the run, a skipped one is reported as
+   * skipped, and a notice conflating them would tell a reader that Scenarios they can see in the
+   * reporter were never registered.
+   */
+  readonly excludedScenarioCount: number
+}
 
 /**
  * The title of the synthetic node that reports one unused step definition — note (c).
@@ -195,6 +276,28 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
  * with (T-07-06-01).
  */
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
+
+/**
+ * The emit options every SYNTHETIC node carries — the `⚙ AfterAllScenarios` node and every `⚠`
+ * warning node. Untagged, never skipped.
+ *
+ * These nodes are this library's own; no `.feature` file wrote them and none of them corresponds to a
+ * Scenario, so there are no tags they could honestly carry. Giving them the enclosing Feature's tags
+ * is the plausible tidy-up and is wrong twice over: a `--tagsFilter` invocation naming any of those
+ * tags would then also select — or, naming a different one, SKIP — a Feature's teardown, which is not
+ * a thing an author asked to filter; and it would push author-controlled strings through a second
+ * validation site in the test framework for no benefit at all.
+ *
+ * `skip: false` on the warning nodes restates note (c): an unused definition is a warning and its node
+ * is always-passing, never skipped, because the skipped count a reporter prints has to keep meaning
+ * "tests the author chose not to run".
+ *
+ * ONE shared value rather than a fresh literal per emission, which is safe for `noTagFilter`'s and
+ * `emptyHookSet`'s reason: every field is `readonly`, `tags` is a `ReadonlyArray`, and nothing in this
+ * package mutates an `EmitOptions` — `describeFeature.ts`'s adapter spreads `tags` into a fresh array
+ * before it reaches anything that could.
+ */
+const emptyEmitOptions: EmitOptions = { tags: [], skip: false }
 
 /**
  * The `scenarioLayers` key one planned Scenario is looked up under — note (f).
@@ -256,10 +359,12 @@ const makeOnce = (
  * warnings. The order is the document's and is never sorted or interleaved — `ParsedFeatureCore`
  * lists `scenarios` and `rules` the way the file does.
  *
- * Returns `void`, and every callback it hands to `describe` returns `void` too. An async block
+ * Returns an `EmitOutcome`, and every callback it hands to `describe` returns `void`. An async block
  * callback returns before registering anything, so the Feature would emit zero tests and PASS;
  * `TestApi.describe`'s `define` is typed `() => void` so that cannot be written here at all
- * (`TestApi.ts` note (c)).
+ * (`TestApi.ts` note (c)). That same synchronous-`define` guarantee is what lets the returned counts
+ * be read immediately after the outermost `describe` call returns: the loops that populate them run
+ * inside `define`, and `define` has finished by then.
  *
  * @param args.api - the test framework surface, injected — note (a)
  * @param args.plan - one Feature, already planned by `planFeature`
@@ -271,6 +376,10 @@ const makeOnce = (
  * @param args.ruleLayers - one already-merged Layer per `Rule(...)`, keyed the same way — note (f)
  * @param args.scenarioLayers - one already-merged Layer per THREE-argument `Scenario(...)`, keyed by
  *   `ScenarioKey.ts`'s composite. Sparse: the common two-argument form contributes no entry
+ * @param args.tagFilter - the caller's normalised registration filter, applied inside this walk and
+ *   nowhere else — note (g). REQUIRED, like every field above it: a caller that filters nothing
+ *   passes `Tags.ts`'s `noTagFilter` sentinel, which is a value they chose rather than an argument
+ *   they might simply have left off
  */
 export const emitFeature = (
   args: {
@@ -281,9 +390,21 @@ export const emitFeature = (
     readonly ruleHooks: ReadonlyMap<string, HookSet>
     readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
     readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+    readonly tagFilter: TagFilter
   }
-): void => {
-  const { api, hooks, layer, plan, ruleHooks, ruleLayers, scenarioLayers } = args
+): EmitOutcome => {
+  const { api, hooks, layer, plan, ruleHooks, ruleLayers, scenarioLayers, tagFilter } = args
+
+  // Both counters are written by the two Scenario loops below and read after the outermost
+  // `describe` has returned — safe because `define` is synchronous (`TestApi.ts` note (c)).
+  //
+  // `excluded` is this call's whole reported outcome. `runnable` is the `⚙ AfterAllScenarios`
+  // suppression condition of note (e), and it is deliberately NOT the complement of `excluded`: a
+  // `@skip`-tagged Scenario is emitted, so it is not excluded, and its thunk is never invoked, so it
+  // is not runnable either. Deriving one from the other would collapse that distinction and emit a
+  // teardown node for a Feature whose every Scenario is `@skip`.
+  let excludedScenarioCount = 0
+  let runnableScenarioCount = 0
 
   // Built once, before anything is emitted, and not per lookup: the walk below visits every Scenario
   // exactly once, so a linear search per visit would be quadratic in a Feature's Scenario count for
@@ -341,6 +462,18 @@ export const emitFeature = (
     // from this loop's body.
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
+      // AFTER `planFor` and BEFORE anything is emitted — note (g). Earlier is either a thrown
+      // "no ScenarioPlan for scenario id" or a silent rewrite of the unused-definition warnings.
+      if (!shouldEmit(tagFilter, scenarioPlan.tags)) {
+        excludedScenarioCount += 1
+        continue
+      }
+      // Nothing branches on `onlyTag`, here or anywhere — D-06. `@only` reaches the node as one more
+      // entry of `tags` and changes nothing else about the emission.
+      const skip = isSkipped(scenarioPlan.tags)
+      if (!skip) {
+        runnableScenarioCount += 1
+      }
       const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? layer
       api.effect(
         titleFor(scenarioPlan),
@@ -350,7 +483,11 @@ export const emitFeature = (
             Effect.flatMap(
               beforeAllScenariosCell,
               () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
-            )
+            ),
+        // The Scenario's own tags, passed through by reference and never copied, re-sorted or
+        // de-duplicated: `ScenarioPlan.tags` is already the flattened inheritance chain and the one
+        // widening to a mutable array belongs to `describeFeature.ts`'s adapter alone.
+        { tags: scenarioPlan.tags, skip }
       )
     }
 
@@ -379,6 +516,18 @@ export const emitFeature = (
       api.describe(rule.name, () => {
         for (const scenario of rule.scenarios) {
           const scenarioPlan = planFor(scenario)
+          // The same two lines as the Feature-level loop's, written out again rather than factored
+          // into a shared helper — the reason the comment above this block gives for the whole loop
+          // applies here in particular. A shared "emit one Scenario" helper would hide which block a
+          // node lands in, which is the one property these two loops differ in at all.
+          if (!shouldEmit(tagFilter, scenarioPlan.tags)) {
+            excludedScenarioCount += 1
+            continue
+          }
+          const skip = isSkipped(scenarioPlan.tags)
+          if (!skip) {
+            runnableScenarioCount += 1
+          }
           // The third and innermost tier, and it SUBSTITUTES rather than wraps, for the same reason
           // `ruleLayer` does: `describeFeature.ts` built this entry on top of whichever Layer was
           // ambient where the `Scenario(...)` call was written, which inside a Rule is that Rule's
@@ -392,7 +541,8 @@ export const emitFeature = (
                 Effect.flatMap(
                   beforeAllScenariosCell,
                   () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
-                )
+                ),
+            { tags: scenarioPlan.tags, skip }
           )
         }
       })
@@ -401,19 +551,29 @@ export const emitFeature = (
     // AfterAllScenarios — note (e). ONE extra always-attempted node, a sibling of the Scenario nodes
     // rather than a finalizer wrapped around this block, emitted after every Scenario (Rules
     // included) and before the warnings.
-    if (hooks.AfterAllScenarios.length > 0) {
+    //
+    // The second conjunct is note (e)'s vacuous-case suppression: with no runnable Scenario emitted,
+    // the `BeforeAllScenarios` once-cell is unreachable, so this node would tear down what was never
+    // set up. It is a conjunct rather than a replacement — a Feature that registered no
+    // `AfterAllScenarios` hook still emits nothing, exactly as before.
+    if (hooks.AfterAllScenarios.length > 0 && runnableScenarioCount > 0) {
       api.effect(afterAllScenariosTitle, () => {
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
           hooks.AfterAllScenarios
         ).pipe(Effect.provide(layer))
         return afterAllScenariosEffect
-      })
+      }, emptyEmitOptions)
     }
 
     // Last, and always passing — note (c). Reversing this to put the warnings first pushes the
     // Feature's own Scenarios off the top of the block.
+    //
+    // Emitted even when every Scenario was filtered out — note (g). They report REGISTRATION, and a
+    // filtered run that hid them would claim this Feature has no unused definitions.
     for (const warning of plan.warnings) {
-      api.effect(warningTitle(warning), () => Effect.void)
+      api.effect(warningTitle(warning), () => Effect.void, emptyEmitOptions)
     }
   })
+
+  return { excludedScenarioCount }
 }

@@ -138,6 +138,7 @@ import type { HookBody, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
+import { noTagFilter } from "../src/Tags.ts"
 import type { TestApi } from "../src/TestApi.ts"
 
 /**
@@ -271,6 +272,22 @@ const noRuleScope = {
   ruleLayers: new Map<string, Layer.Layer<any, any, never>>(),
   scenarioLayers: new Map<string, Layer.Layer<any, any, never>>()
 }
+
+/**
+ * `emitFeature`'s eighth field, set to the "filters nothing" sentinel — spread into EVERY call in
+ * this file that predates plan 09-04's signature change.
+ *
+ * The same backward-compatibility argument `noRuleScope` above makes, one plan later: every shape,
+ * ordering and hook-ordering assertion in this file was written before the tag filter existed, and
+ * every one of them must still hold BYTE-FOR-BYTE under `noTagFilter`. That is the whole of the claim
+ * "an absent filter changes nothing", and it is asserted here by the tests that already knew what the
+ * answer was rather than by a new test written after the change.
+ *
+ * ONE shared object, safe for `Hook.ts`'s `emptyHookSet` reason: `TagFilter`'s two fields are
+ * `ReadonlyArray`s, `emitFeature` only reads them, and nothing in `Runner.ts` mutates a filter — so no
+ * test can observe another test's use of this value.
+ */
+const unfiltered = { tagFilter: noTagFilter }
 
 /**
  * The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe
@@ -586,7 +603,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Positional, and over the WHOLE array: a search would pass against an implementation that
@@ -606,7 +624,8 @@ describe("a Feature emits one block with one test per Scenario", () => {
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Exactly one record at the top level, and it is the Feature's block. An implementation that
@@ -623,7 +642,7 @@ describe("a Feature emits one block with one test per Scenario", () => {
     const plan: FeaturePlan = { feature: checkout, scenarios: [], warnings: [] }
 
     assert.throws(
-      () => emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope }),
+      () => emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered }),
       /no ScenarioPlan for scenario id/
     )
   })
@@ -645,7 +664,8 @@ describe("a Rule emits a nested block", () => {
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // The two Rule Scenarios sit at depth 2 beneath a block at depth 1. Emitted as siblings of the
@@ -672,7 +692,8 @@ describe("each recorded thunk is wired to its own Scenario", () => {
         plan: planFeature({ feature: checkout, definitions: recordingDefinitions(ran) }),
         layer,
         hooks: emptyHooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       // Nothing has run yet: `emitFeature` registers thunks, it does not execute them. An eager
@@ -701,7 +722,8 @@ describe("a Scenario Outline emits one distinctly-titled test per Examples row",
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // TWO properties in one comparison, and each fails on its own mutation.
@@ -736,7 +758,7 @@ describe("an unused step definition surfaces as a test node", () => {
   it("adds exactly one node, titled with the keyword, the pattern and the site, AFTER every Scenario", () => {
     const { api, records } = makeRecordingApi()
 
-    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
+    emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
     // Last, not first. Hoisted to the top of the block the Feature's own Scenarios get pushed below a
     // variable-length list of footnotes — Runner.ts note (c).
@@ -756,7 +778,7 @@ describe("an unused step definition surfaces as a test node", () => {
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
 
-      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope })
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
       // ADR-EC-019 makes an unused pattern a warning and not a failure. Asserted on the Exit rather
       // than by the test simply not throwing, so a node that fails is reported as a failed assertion
@@ -779,7 +801,8 @@ describe("an unused step definition surfaces as a test node", () => {
       }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Titled with the pattern alone, these two would be one string twice — two identically-named
@@ -806,7 +829,7 @@ describe("an unused step definition surfaces as a test node", () => {
       })
     ])
 
-    emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope })
+    emitFeature({ api, plan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered })
 
     // The pattern is rendered with `JSON.stringify`, so the embedded quotes are escaped and cannot
     // forge the end of the quoted span in a reporter's output (threat T-06-06-01).
@@ -824,7 +847,10 @@ describe("the recording fake itself", () => {
       api.describe("throwing", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
-    api.effect("after", () => Effect.void)
+    // The one place in this file that drives the fake directly rather than through `emitFeature`.
+    // The options are inert here — this test is about the depth counter and asserts nothing about
+    // tags — so they are the untagged, unskipped pair a synthetic node would carry.
+    api.effect("after", () => Effect.void, { tags: [], skip: false })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every
     // assertion that followed — the failure would surface in an unrelated test.
@@ -852,7 +878,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -881,7 +908,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 2)()
@@ -911,7 +939,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       const exit1 = yield* Effect.exit(thunkAt(records, 1)())
@@ -942,7 +971,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -979,7 +1009,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
       }),
       layer,
       hooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Positional, over the whole array — mutation M's target: emitted after the warnings instead of
@@ -1012,7 +1043,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
@@ -1040,7 +1072,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
         plan: planFeature({ feature: checkout, definitions: recorderCheckoutDefinitions }),
         layer: recorderLayer,
         hooks,
-        ...noRuleScope
+        ...noRuleScope,
+        ...unfiltered
       })
 
       const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)())
@@ -1143,7 +1176,7 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
 
         const plan: FeaturePlan = { feature: checkout, scenarios: [scenario1, scenario2], warnings: [] }
 
-        emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope })
+        emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope, ...unfiltered })
 
         // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the
         // `⚙ AfterAllScenarios` node — run them in that same order.
@@ -1208,7 +1241,8 @@ describe("a Feature registering neither all-scenarios hook emits exactly what it
       plan: planFeature({ feature: checkout, definitions: checkoutDefinitions }),
       layer,
       hooks: emptyHooks,
-      ...noRuleScope
+      ...noRuleScope,
+      ...unfiltered
     })
 
     // Identical to this file's very first assertion for this same fixture — a hookless Feature's
@@ -1255,7 +1289,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         hooks: featureHooks(),
         ruleHooks: ruleScopedHooks(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       // Emission shape for `shop`, pinned by the Rule-nesting test far above: describe Shop (0),
@@ -1292,7 +1327,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         hooks: featureHooks(),
         ruleHooks: ruleScopedHooks(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       // Index 1 is `browsing`, declared before the `Rule:` block and therefore in no Rule at all.
@@ -1325,7 +1361,8 @@ describe("a Rule's hooks merge with the Feature's in D-02's order (08-07)", () =
         // EMPTY, so the Rule-nested loop takes its `?? emptyHookSet` miss branch.
         ruleHooks: new Map(),
         ruleLayers: new Map(),
-        scenarioLayers: new Map()
+        scenarioLayers: new Map(),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 3)()
@@ -1369,7 +1406,8 @@ describe("each Scenario is emitted with the innermost of the three Layer tiers (
         ruleLayers: new Map([[shopRule.id, withTier(recorderLayer, "rule")]]),
         // Only `refund denied` brings its own — `refund granted` sits in the same Rule with no entry,
         // so one emission covers the hit and the miss at the SAME nesting level.
-        scenarioLayers: new Map([[scenarioKeyIn(shopRule.id, "refund denied"), withTier(recorderLayer, "scenario")]])
+        scenarioLayers: new Map([[scenarioKeyIn(shopRule.id, "refund denied"), withTier(recorderLayer, "scenario")]]),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
@@ -1406,7 +1444,8 @@ describe("each Scenario is emitted with the innermost of the three Layer tiers (
         ruleLayers: new Map(),
         // The UN-INTERPOLATED name, which is what the author passed to `Scenario(...)` and therefore
         // the only key `describeFeature.ts` could have written. One entry for the whole Outline.
-        scenarioLayers: new Map([[scenarioKeyIn(null, "adding <count>"), withTier(recorderLayer, "scenario")]])
+        scenarioLayers: new Map([[scenarioKeyIn(null, "adding <count>"), withTier(recorderLayer, "scenario")]]),
+        ...unfiltered
       })
 
       yield* thunkAt(records, 1)()
