@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-08-29T02:00:08.690Z"
-last_activity: 2026-08-29 -- Phase 6 planning complete
+last_updated: "2026-08-29T02:02:27.246Z"
+last_activity: 2026-08-29 -- Phase 06 execution started
 progress:
   total_phases: 11
   completed_phases: 5
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 6 — plan, scenario effect, runner emission, and drift detection
+**Current focus:** Phase 06 — plan-scenario-effect-runner-emission-and-drift-detection
 
 ## Current Position
 
-Phase: 6
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-08-29 -- Phase 6 planning complete
+Phase: 06 (plan-scenario-effect-runner-emission-and-drift-detection) — EXECUTING
+Plan: 1 of 8
+Status: Executing Phase 06
+Last activity: 2026-08-29 -- Phase 06 execution started
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 

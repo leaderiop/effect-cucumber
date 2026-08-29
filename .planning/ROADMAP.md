@@ -256,9 +256,9 @@ Resolved by research, not re-opened at planning time: two `describeFeature` **ov
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Call-site capture and `StepDefinition.definedAt`, the D-03 ordering key
-- [ ] 06-02-PLAN.md — `generateStepSnippet` in `@effect-cucumber/gherkin` (D-01; also resolves the pnpm isolated-layout blocker)
-- [ ] 06-03-PLAN.md — `StepMatchError`, the unused-pattern warning type, and the `TestApi` seam
+- [x] 06-01-PLAN.md — Call-site capture and `StepDefinition.definedAt`, the D-03 ordering key
+- [x] 06-02-PLAN.md — `generateStepSnippet` in `@effect-cucumber/gherkin` (D-01; also resolves the pnpm isolated-layout blocker)
+- [x] 06-03-PLAN.md — `StepMatchError`, the unused-pattern warning type, and the `TestApi` seam
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -397,7 +397,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Parameter Types and Step Matching | 6/6 | Complete   | 2026-08-28 |
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
-| 6. Plan, Scenario-Effect, Runner, Drift Detection | 0/TBD | Not started | - |
+| 6. Plan, Scenario-Effect, Runner, Drift Detection | 3/8 | In Progress|  |
 | 7. Hooks | 0/TBD | Not started | - |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
