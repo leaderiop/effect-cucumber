@@ -13,7 +13,7 @@
  * framework, and `describeFeature.ts` — the composition root — is the single place that decides
  * which real implementation to pass.
  *
- * Four things about this module are not visible from the code.
+ * Five things about this module are not visible from the code.
  *
  * (a) **No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here —
  *     not even an `import type`.** Neither name is written out anywhere in this file, comments
@@ -73,6 +73,34 @@
  *     collapsing an Outline's rows into N identically-named tests. `Plan.ts` note (c) records the
  *     mirrored trap on the other side: `astName` is the scope-match key and `name` never is.
  *
+ * (e) **`BeforeAllScenarios`/`AfterAllScenarios` share one Feature-wide execution through a
+ *     synchronous `Deferred`, computed and composed entirely inside this module — `TestApi.ts` gains
+ *     no new member.** `Deferred`'s unsafe constructor is synchronous, so it is constructible during the
+ *     emission walk itself, unlike `Effect.cached` (whose memo is only reachable by running an
+ *     Effect first — it does not compose with a synchronous walk that must hand N independent
+ *     thunks to `TestApi.effect`) or `Effect.once` (which does not exist in this build). `makeOnce`,
+ *     declared at module scope below, turns a `BeforeAllScenarios` batch into an Effect that runs the
+ *     batch on its first execution and hands every later caller the SAME outcome — success or
+ *     failure — via `Deferred.await`. That `await` on the second and later callers is what makes
+ *     D-08's literal requirement true: a failing `BeforeAllScenarios` reaches every Scenario
+ *     individually, not only whichever one happened to run first. The Feature's Layer is provided
+ *     INSIDE the cell, at the point `makeOnce` is called, rather than inside whichever Scenario's own
+ *     composed Effect happens to trigger it — providing it there would bind the Feature-wide hook to
+ *     Scenario one's particular Layer instance, which is not what a Feature-wide hook means.
+ *
+ *     `AfterAllScenarios`, by contrast, is not a once-cell at all: it is ONE extra node emitted after
+ *     every Scenario (Rules included) and before the warnings, whose body runs the batch directly. A
+ *     separate emitted node is what makes D-09's "runs always" structural rather than arranged: it
+ *     does not await the `BeforeAllScenarios` deferred, so a failed `BeforeAllScenarios` cannot stop
+ *     it, and it is a sibling of the Scenario nodes, so a failed Scenario cannot stop it either. The
+ *     plausible tidy-up "wrap the whole `describe` block in a finalizer instead" has nothing to wrap —
+ *     `TestApi.describe`'s `define` returns `void` (note (c) above), so there is no Effect there to
+ *     attach a finalizer to. The other plausible tidy-up, "emit it after the warnings, they come
+ *     last", is note (c)'s own rule read backwards: the warnings are always-passing footnotes and
+ *     this node can fail, so it belongs with the things that report results, not below them. Emission
+ *     order stays document order throughout; running "always" is a runtime property of the emitted
+ *     Effects, never a reordering of the emitted nodes.
+ *
  * The nesting walk re-derives Feature/Rule structure from `feature.scenarios` and `feature.rules`,
  * while `plan.scenarios` was built off the flat `feature.allScenarios`. The `Map` keyed on
  * `scenarioId` is how the two views are joined, and it is built once rather than per lookup. A
@@ -93,11 +121,13 @@
  * `ScenarioEffect.ts` all set the same precedent.
  */
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
+import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
+import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
-import type { HookSet } from "./Hook.ts"
+import { type HookSet, runHookBatch } from "./Hook.ts"
 import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import type { TestApi } from "./TestApi.ts"
@@ -112,6 +142,47 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
   `⚠ unused step definition: ${warning.keyword} ${JSON.stringify(warning.pattern)} (${
     Option.getOrElse(warning.definedAt, () => "an unrecorded location")
   })`
+
+/**
+ * The title of the synthetic node that runs a Feature's `AfterAllScenarios` hooks — note (e).
+ *
+ * A CONSTANT string with no interpolation of any Feature, Rule or Scenario name, deliberately:
+ * `warningTitle`'s `JSON.stringify` is what defends against a pattern string forging a second node in
+ * a reporter's output (T-06-06-01), and a constant simply has no document text available to forge it
+ * with (T-07-06-01).
+ */
+const afterAllScenariosTitle = "⚙ AfterAllScenarios"
+
+/**
+ * Turn `body` into an Effect that runs AT MOST ONCE across every execution, handing the same
+ * outcome — success or failure — to every later caller. The mechanism behind
+ * `BeforeAllScenarios`'s once-cell — note (e).
+ *
+ * The plain `started` boolean is sound because the framework runs the tests of one file
+ * sequentially, and every node this module emits runs to completion before the next one begins —
+ * there is no interleaving for two callers to race inside. `Deferred.await` on the second and later
+ * callers, rather than re-running `body`, is what makes a FAILING `BeforeAllScenarios` reach every
+ * Scenario individually rather than only the first one to run — D-08's literal requirement.
+ *
+ * The explicit return annotation is required, not stylistic: `composite: true` demands it, and
+ * pinning `Effect<void, unknown, Scope.Scope>` here keeps `any` out of the emitted contract.
+ */
+const makeOnce = (
+  body: Effect.Effect<void, unknown, Scope.Scope>
+): Effect.Effect<void, unknown, Scope.Scope> => {
+  const deferred = Deferred.makeUnsafe<void, unknown>()
+  let started = false
+  return Effect.suspend((): Effect.Effect<void, unknown, Scope.Scope> => {
+    if (started) {
+      return Deferred.await(deferred)
+    }
+    started = true
+    // `Deferred.into` completes `deferred` with `body`'s exit and itself never fails (it reports
+    // completion as a boolean); the `flatMap` into `Deferred.await` is what turns that completion
+    // back into `body`'s own outcome for THIS, the first, caller — not only for later ones.
+    return Effect.flatMap(Deferred.into(body, deferred), () => Deferred.await(deferred))
+  })
+}
 
 /**
  * Declare every test node one planned Feature produces, through the injected seam alone.
@@ -166,11 +237,27 @@ export const emitFeature = (
     return found
   }
 
+  // Built once per Feature, before anything is emitted — note (e). `null` when the Feature registers
+  // no `BeforeAllScenarios` hook, so a hookless Feature's Scenario thunks stay byte-for-byte what
+  // plan 07-04 left them as.
+  const beforeAllScenariosCell: Effect.Effect<void, unknown, Scope.Scope> | null = hooks.BeforeAllScenarios.length > 0
+    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios).pipe(Effect.provide(layer)))
+    : null
+
   api.describe(plan.feature.name, () => {
     // Feature-level Scenarios first, in the order the document has them.
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
-      api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks }))
+      api.effect(
+        scenarioPlan.name,
+        beforeAllScenariosCell === null
+          ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+          : () =>
+            Effect.flatMap(
+              beforeAllScenariosCell,
+              () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+            )
+      )
     }
 
     // Then the Rules, each opening its own nested block. Written out rather than shared with the
@@ -180,8 +267,29 @@ export const emitFeature = (
       api.describe(rule.name, () => {
         for (const scenario of rule.scenarios) {
           const scenarioPlan = planFor(scenario)
-          api.effect(scenarioPlan.name, () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks }))
+          api.effect(
+            scenarioPlan.name,
+            beforeAllScenariosCell === null
+              ? () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+              : () =>
+                Effect.flatMap(
+                  beforeAllScenariosCell,
+                  () => buildScenarioEffect({ plan: scenarioPlan, layer, hooks })
+                )
+          )
         }
+      })
+    }
+
+    // AfterAllScenarios — note (e). ONE extra always-attempted node, a sibling of the Scenario nodes
+    // rather than a finalizer wrapped around this block, emitted after every Scenario (Rules
+    // included) and before the warnings.
+    if (hooks.AfterAllScenarios.length > 0) {
+      api.effect(afterAllScenariosTitle, () => {
+        const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
+          hooks.AfterAllScenarios
+        ).pipe(Effect.provide(layer))
+        return afterAllScenariosEffect
       })
     }
 
