@@ -869,15 +869,19 @@ export function describeFeature(
   // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
   // collection output rather than interleaved with it.
   //
-  // All EIGHT fields, and the last four are not optional extras: `hooks` is the FEATURE-level set
-  // alone (the `collect` return above filters it to `ruleId === null`), so an `emitFeature` call
+  // All NINE fields. The eight REQUIRED ones are not optional extras: `hooks` is the FEATURE-level
+  // set alone (the `collect` return above filters it to `ruleId === null`), so an `emitFeature` call
   // passing only the first four would run every Rule-scoped hook nowhere at all and give every
   // Rule-nested Scenario the Feature's bare Layer. Every step would still resolve, every existing
   // assertion in this repo would still pass, and ADR-EC-010's whole guarantee would hold in the
   // type-checker and nowhere at runtime — which is why `emitFeature` declares them required rather
   // than defaulting a missing map to an empty one.
   //
-  // The eighth, `tagFilter`, follows the same rule and for a sharper reason: an omitted filter that
+  // The ninth, `onEmitted`, is the one OPTIONAL field, and it is optional because a caller that wants
+  // no report is making a real choice rather than forgetting an argument — `Runner.ts` note (h). This
+  // call site is the reason it exists, and it passes it.
+  //
+  // The eighth, `tagFilter`, follows the required rule for a sharper reason: an omitted filter that
   // defaulted to "no filter" and an omitted filter that defaulted to "match nothing" are one
   // keystroke apart and the second deletes a whole suite behind a green run. So `emitFeature`
   // requires an explicit, fully normalised filter, and the collapse from the OPTIONAL public
@@ -887,7 +891,19 @@ export function describeFeature(
   // is the whole of the "no options at all" case and there is no second default anywhere.
   const tagFilter = makeTagFilter(options ?? {})
 
-  const outcome = emitFeature({
+  // The return value is DELIBERATELY DISCARDED, and that is the fix for a defect that shipped. It is
+  // correct only for a `TestApi` whose `describe` runs its callback synchronously — which
+  // `Runner.test.ts`'s recording fake is and the real framework is NOT: the framework registers a
+  // suite collector and runs the callback later, when it collects the file. So every counter
+  // `emitFeature` reports through its return value is still at its initial `0` on the line after this
+  // call, however many Scenarios the filter removed. Guarding D-10's notice on it meant the notice
+  // never printed once in a real run, while all four of `Runner.test.ts`'s outcome assertions stayed
+  // green because they drive the synchronous fake. `Runner.ts` note (h) has the whole argument, and
+  // plan 09-06's integration tests are what measured it.
+  //
+  // `onEmitted` fires as the last statement INSIDE the walk, so it observes final counts under either
+  // kind of framework. Anything in this file that needs a count uses it.
+  emitFeature({
     // ONE adapter per `describeFeature` call, built here rather than at module scope, because
     // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
     // Two Features in one file get two adapters, each located against its own uri.
@@ -898,46 +914,56 @@ export function describeFeature(
     ruleHooks: collection.ruleHooks,
     ruleLayers: collection.ruleLayers,
     scenarioLayers: collection.scenarioLayers,
-    tagFilter
+    tagFilter,
+    // D-10's ONE collection-time summary line, and three things about WHERE it is are worth writing
+    // down because none is visible from the code.
+    //
+    // (1) It lives in `describeFeature`'s own body and NOT inside `collect`, for the identical reason
+    //     the unused-definition loop above does: `collectFeature` shares `collect` verbatim and must
+    //     stay silent, or every test asserting on a plan would print the very thing it is asserting
+    //     on. `emitFeature` is silent for the sibling reason `Runner.ts` records — a terminal write
+    //     there would spam `Runner.test.ts`'s dozens of direct calls — which is why it HANDS BACK the
+    //     count instead of printing it. Passing a closure that writes to a terminal INTO that silent
+    //     module does not break the rule; it is the rule, with the composition root still deciding
+    //     what a human sees.
+    //
+    // (2) It necessarily prints AFTER the emitted block rather than above it like the warnings loop,
+    //     which is the one asymmetry in this function's output order. The count does not exist until
+    //     the emission walk has run, and the only way to have it earlier would be to walk the Feature
+    //     a second time before emitting — a duplicate walk that could disagree with the real one.
+    //
+    // (3) It is a CALLBACK and not a read of the return value, which is (2) taken seriously rather
+    //     than assumed: "after the walk has run" and "after the call that starts the walk returns"
+    //     are the same instant only for a synchronous framework. See the comment above this call.
+    //
+    // `notice.message` is passed straight through, never rebuilt and never reformatted, for the
+    // reason the warnings loop states above: a second rendering lets the terminal text and the
+    // structured value say different things, and it drops the `JSON.stringify` quoting that stops a
+    // tag or a Feature name containing a control character from rewriting the terminal line
+    // (T-09-05-01).
+    //
+    // Guarded on `> 0` rather than printed unconditionally: a Feature nothing was filtered out of has
+    // nothing to report, and a "0 Scenario(s) excluded" line on every Feature in a suite is noise
+    // that trains a reader to skip the exact line D-10 exists to make them read. The guard lives HERE
+    // and not in `emitFeature`, so the module that computes stays free of the question of what is
+    // worth telling a human.
+    onEmitted: (outcome) => {
+      if (outcome.excludedScenarioCount > 0) {
+        console.warn(
+          makeExcludedScenariosNotice({
+            featureName: collection.plan.feature.name,
+            uri: collection.plan.feature.uri,
+            count: outcome.excludedScenarioCount,
+            // The NORMALISED arrays, not `options.includeTags`/`options.excludeTags`: those are
+            // optional and the notice's fields are not, and `makeExcludedScenariosNotice` derives its
+            // `reason` from exactly these two lengths. Reading the raw options here would let the
+            // notice's `reason` be computed from a different pair of values than the filter that
+            // produced the count.
+            includeTags: tagFilter.include,
+            excludeTags: tagFilter.exclude
+          }).message
+        )
+      }
+    }
   })
-
-  // D-10's ONE collection-time summary line, and two things about WHERE it is are worth writing down
-  // because neither is visible from the code.
-  //
-  // (1) It lives in `describeFeature`'s own body and NOT inside `collect`, for the identical reason
-  //     the unused-definition loop above does: `collectFeature` shares `collect` verbatim and must
-  //     stay silent, or every test asserting on a plan would print the very thing it is asserting on.
-  //     `emitFeature` is silent for the sibling reason `Runner.ts` records — a terminal write there
-  //     would spam `Runner.test.ts`'s dozens of direct calls — which is why it RETURNS the count
-  //     instead of printing it.
-  //
-  // (2) It necessarily prints AFTER the emitted block rather than above it like the warnings loop,
-  //     which is the one asymmetry in this function's output order. The count does not exist until
-  //     the emission walk has run, and the only way to have it earlier would be to walk the Feature a
-  //     second time before emitting — a duplicate walk that could disagree with the real one.
-  //
-  // `notice.message` is passed straight through, never rebuilt and never reformatted, for the reason
-  // the warnings loop states three lines above: a second rendering lets the terminal text and the
-  // structured value say different things, and it drops the `JSON.stringify` quoting that stops a tag
-  // or a Feature name containing a control character from rewriting the terminal line (T-09-05-01).
-  //
-  // Guarded on `> 0` rather than printed unconditionally: a Feature nothing was filtered out of has
-  // nothing to report, and a "0 Scenario(s) excluded" line on every Feature in a suite is noise that
-  // trains a reader to skip the exact line D-10 exists to make them read.
-  if (outcome.excludedScenarioCount > 0) {
-    console.warn(
-      makeExcludedScenariosNotice({
-        featureName: collection.plan.feature.name,
-        uri: collection.plan.feature.uri,
-        count: outcome.excludedScenarioCount,
-        // The NORMALISED arrays, not `options.includeTags`/`options.excludeTags`: those are optional
-        // and the notice's fields are not, and `makeExcludedScenariosNotice` derives its `reason`
-        // from exactly these two lengths. Reading the raw options here would let the notice's
-        // `reason` be computed from a different pair of values than the filter that produced the
-        // count.
-        includeTags: tagFilter.include,
-        excludeTags: tagFilter.exclude
-      }).message
-    )
-  }
 }

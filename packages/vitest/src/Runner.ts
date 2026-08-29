@@ -13,7 +13,7 @@
  * framework, and `describeFeature.ts` — the composition root — is the single place that decides
  * which real implementation to pass.
  *
- * Seven things about this module are not visible from the code.
+ * Eight things about this module are not visible from the code.
  *
  * (a) **No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here —
  *     not even an `import type`.** Neither name is written out anywhere in this file, comments
@@ -182,6 +182,32 @@
  *     node is suppressed, and note (e) has the reason, which is about resource lifecycle rather than
  *     about visibility.
  *
+ * (h) **The `EmitOutcome` is reported on TWO channels, and the RETURN VALUE is the unsafe one.** This
+ *     function both returns an `EmitOutcome` and calls an optional `onEmitted` with one. They are not
+ *     redundant, and which one a caller picks decides whether their feature works at all.
+ *
+ *     Every counter reported here is incremented INSIDE the callback handed to `api.describe(...)`.
+ *     Whether that callback has run by the time `api.describe` RETURNS is a property of the injected
+ *     framework, not of this module — and the two implementations that matter disagree.
+ *     `test/Runner.test.ts`'s recording fake invokes it synchronously, so the return value is correct
+ *     there. **vitest does not**: `describe(name, factory)` registers a suite collector and runs
+ *     `factory` later, when the runner collects the file. Against the real framework the return value
+ *     is therefore always the counters' INITIAL state — `0` — however many Scenarios were removed.
+ *
+ *     That is not hypothetical, it shipped: D-10's exclusion notice in `describeFeature.ts` was
+ *     guarded on the RETURNED `excludedScenarioCount`, so it never printed a single line in a real
+ *     run, while all four of `Runner.test.ts`'s outcome assertions stayed green because they exercise
+ *     the synchronous fake. Plan 09-06's integration tests are what measured it.
+ *
+ *     `onEmitted` is invoked as the LAST statement inside the walk, so it observes final counts under
+ *     any framework, deferred or not. The return value is KEPT rather than removed, which is a
+ *     deliberate and accepted cost recorded here rather than an oversight: removing it would churn 33
+ *     call sites in `test/Runner.test.ts` plus its four `deepStrictEqual(outcome, …)` assertions, all
+ *     of which are correct about the fake they drive, and a caller that genuinely supplies a
+ *     synchronous `TestApi` can still read it. The price is that two ways to obtain one value now
+ *     exist and one of them is a trap — which is exactly why the trap is written down here, on
+ *     `EmitOutcome`, and on the parameter itself. **New code uses `onEmitted`.**
+ *
  * The nesting walk re-derives Feature/Rule structure from `feature.scenarios` and `feature.rules`,
  * while `plan.scenarios` was built off the flat `feature.allScenarios`. The `Map` keyed on
  * `scenarioId` is how the two views are joined, and it is built once rather than per lookup. A
@@ -229,6 +255,11 @@ import type { EmitOptions, TestApi } from "./TestApi.ts"
  * nowhere else it can be computed: the walk that decides which Scenarios survive the filter visits
  * both the Feature-level and the Rule-nested arrays, so anything counting outside this function would
  * have to duplicate the walk and could then disagree with it.
+ *
+ * **It is delivered TWICE — see note (h) — and only one of the two is safe against a real test
+ * framework.** The `onEmitted` callback fires from inside the emission walk; the return value is
+ * computed when `emitFeature` returns, which for a framework that DEFERS its block callback is before
+ * the walk has run. A consumer that needs a correct count must use the callback.
  *
  * A struct rather than a bare `number`, because a bare number would have to be re-typed at every call
  * site to mean anything, and because a later plan adding a second reported quantity should not be a
@@ -380,6 +411,13 @@ const makeOnce = (
  *   nowhere else — note (g). REQUIRED, like every field above it: a caller that filters nothing
  *   passes `Tags.ts`'s `noTagFilter` sentinel, which is a value they chose rather than an argument
  *   they might simply have left off
+ * @param args.onEmitted - called ONCE with the final `EmitOutcome`, as the last statement inside the
+ *   emission walk — note (h). This is the only channel that carries a correct count under a framework
+ *   that DEFERS its block callback, which vitest does; the returned value does not. OPTIONAL, and it
+ *   is the one optional field here, deliberately: it is a reporting hook, and a caller that wants no
+ *   report (`collectFeature`'s silence rule, or `Runner.test.ts`'s fake asserting on the return) is
+ *   making a real choice rather than forgetting an argument. Anything that must OBSERVE the count
+ *   passes it
  */
 export const emitFeature = (
   args: {
@@ -391,9 +429,10 @@ export const emitFeature = (
     readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
     readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
     readonly tagFilter: TagFilter
+    readonly onEmitted?: ((outcome: EmitOutcome) => void) | undefined
   }
 ): EmitOutcome => {
-  const { api, hooks, layer, plan, ruleHooks, ruleLayers, scenarioLayers, tagFilter } = args
+  const { api, hooks, layer, onEmitted, plan, ruleHooks, ruleLayers, scenarioLayers, tagFilter } = args
 
   // Both counters are written by the two Scenario loops below and read after the outermost
   // `describe` has returned — safe because `define` is synchronous (`TestApi.ts` note (c)).
@@ -573,7 +612,26 @@ export const emitFeature = (
     for (const warning of plan.warnings) {
       api.effect(warningTitle(warning), () => Effect.void, emptyEmitOptions)
     }
+
+    // THE LAST STATEMENT INSIDE THE WALK — note (h), and the position is the whole point. Every
+    // counter above is final by the time this line is reached, under a framework that runs this
+    // callback synchronously AND under one that defers it, which is precisely what the returned value
+    // a few lines below cannot claim.
+    //
+    // A fresh literal rather than the returned object, and no shared binding between the two: this one
+    // is built from the counters as they now stand, and giving both channels one mutable object would
+    // make the return value silently CORRECT itself later, turning a value a caller already read into
+    // one that changes underneath them.
+    //
+    // It is called even when nothing was excluded. Deciding here whether the outcome is worth
+    // reporting would put a policy question in the module whose own doc says it prints nothing and
+    // reports everything; the `> 0` guard belongs to whoever writes to a terminal, which is
+    // `describeFeature.ts`.
+    onEmitted?.({ excludedScenarioCount })
   })
 
+  // Note (h): CORRECT only for a synchronous `api.describe`, which the recording fake is and vitest is
+  // not. Kept for the fake and for any caller that supplies one; `onEmitted` above is what a consumer
+  // needing a real count uses.
   return { excludedScenarioCount }
 }

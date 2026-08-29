@@ -1424,24 +1424,24 @@ describeFeature(undeclaredTagFeature, Layer.empty, ({ When }) => {
  * would vanish while the reporter showed zero failures. Zero tests emitted and zero tests failed look
  * identical, which is why this needs its own Feature rather than a variation on the one above.
  *
- * ## D-10's exclusion NOTICE is not asserted here, because it is not currently printed
+ * ## D-10's exclusion NOTICE, and the defect this block found
  *
- * This block asserts the exclusion itself and deliberately makes NO claim about the one-line summary
- * D-10 requires when a filter removed Scenarios. That line does not reach the terminal through the
- * real entry point, and the cause is the deferral fact `collectionWarnings` above records:
- * `emitFeature` increments `excludedScenarioCount` INSIDE the `describe` factory, `describeFeature`
- * reads the returned `EmitOutcome` on the line after `emitFeature` returns, and vitest has not run
- * that factory yet — so the count is always 0 there and the `> 0` guard never opens.
+ * The notice is asserted below, and it did not print at all until this plan changed the source. The
+ * cause is the deferral fact `collectionWarnings` above records: `emitFeature` increments
+ * `excludedScenarioCount` INSIDE the `describe` factory, and `describeFeature` used to read the
+ * returned `EmitOutcome` on the line after `emitFeature` returns — which vitest has not run the
+ * factory by. The count was therefore always `0` there and the `> 0` guard never opened, so a stale
+ * `excludeTags` hiding a whole Feature sat behind a green run exactly as D-10 exists to prevent.
  *
- * `Runner.test.ts` cannot see this: its recording fake invokes `define` synchronously, so all four of
+ * `Runner.test.ts` could not see it: its recording fake invokes `define` synchronously, so all four of
  * its `excludedScenarioCount` assertions are correct about the fake and silent about the framework.
- * This is exactly the class of defect this file exists for, and it was measured rather than reasoned
- * about — with the two `@wip` Scenarios provably excluded (the assertion below), the captured warning
- * list for this Feature's uri is empty.
+ * That is this file's founding argument — a value-asserting test and a fake are each sharper than a
+ * real run at the thing they test, and neither can see the emission that never happened.
  *
- * Asserting the notice needs a source fix that changes how `emitFeature` reports its outcome, which is
- * a contract this plan does not own. The gap is written down rather than left as a missing assertion
- * so that nobody reads this block as having covered D-10.
+ * The fix is `Runner.ts`'s `onEmitted` callback, invoked as the last statement inside the walk, which
+ * `describeFeature.ts` now passes; `Runner.ts` note (h) has the argument and records why the return
+ * value is kept anyway. THIS ASSERTION is the only thing in the repo that fails if the notice
+ * regresses to reading that return value — so it is not a formality.
  */
 const excludeTagsRan: Array<string> = []
 
@@ -1552,6 +1552,31 @@ describe("an undeclared tag warns and keeps running; a filter excludes without a
     expect(excludeTagsRan).toEqual([
       `excludeTags removes Scenarios from registration${nameSeparator}the Scenario that survives excludeTags`
     ])
+  })
+
+  it("printed exactly one D-10 notice, naming the count, the option and the quoted tag", () => {
+    const printed = warningsFor("test/exclude-tags.feature")
+    // Exactly ONE, per Feature and never per excluded Scenario. D-03 removed the per-Scenario output
+    // on purpose, and a line each would rebuild it in `console.warn`; the count is what makes the
+    // aggregate honest without doing that. This is also the assertion that fails if the notice ever
+    // goes back to reading `emitFeature`'s synchronous return value, which is `0` under vitest.
+    expect(printed).toHaveLength(1)
+
+    const line = printed[0] ?? ""
+    // The COUNT, which is the fact a reader acts on and the one a stale filter makes alarming.
+    expect(line).toContain("2 Scenario(s)")
+    // The OPTION that did it, so the reader knows which of the two to go and look at. The notice
+    // derives this from the normalised arrays rather than accepting it, so a wrong one here would mean
+    // the reason and the fields beside it disagreed.
+    expect(line).toContain("excludeTags")
+    // QUOTED, for the D-08 assertion's reason: author-controlled text reaching a terminal is escaped
+    // by `Errors.ts` note (f), and matching the quote characters is what tests the control rather than
+    // merely the content.
+    expect(line).toContain(JSON.stringify("@wip"))
+    expect(line).toContain(JSON.stringify("excludeTags removes Scenarios from registration"))
+    // The sentence that stops "excluded" being read as "skipped". A skipped test at least appears in
+    // the reporter; these Scenarios appear nowhere at all, and the notice is the only trace of them.
+    expect(line).toContain("never registered")
   })
 
   it("emitted every Scenario under excludeTags: [], and printed nothing about it", () => {

@@ -11,13 +11,15 @@ requires:
   - phase: 06-plan-scenario-effect-runner-emission-and-drift-detection
     provides: "packages/vitest/test/emission.test.ts itself — the only file in the repo that calls describeFeature for real, and its module-scope-stub-then-assert-inside-an-it idiom"
 provides:
-  - "packages/vitest/test/emission.test.ts — six new real describeFeature calls (the 5th through 10th), carrying runtime acceptance for roadmap criteria 1 and 2, D-03, D-06, D-07 and D-08"
+  - "packages/vitest/test/emission.test.ts — six new real describeFeature calls (the 5th through 10th), carrying runtime acceptance for roadmap criteria 1, 2 and 3, D-03, D-06, D-07, D-08 and D-10"
   - "packages/vitest/test/emission.test.ts — a COLLECTION-PHASE console.warn capture (collectionWarnings + warningsFor + a beforeAll restore), which is the only shape that can observe a tag warning at all"
-  - "the measured fact that vitest DEFERS a describe factory, and its two consequences: a wrap-the-call warning capture is permanently empty, and D-10's exclusion notice never prints"
+  - "packages/vitest/src/Runner.ts — an optional onEmitted(outcome) callback invoked as the LAST statement inside the emission walk, plus note (h) recording why the returned EmitOutcome is unsafe under a deferring framework and why it is kept anyway"
+  - "packages/vitest/src/describeFeature.ts — D-10's exclusion notice moved onto onEmitted, which is what makes it print at all"
+  - "the measured fact that vitest DEFERS a describe factory, and its two consequences: a wrap-the-call warning capture is permanently empty, and a synchronously-read EmitOutcome is always zero"
 affects:
-  - "09-07 (barrel plan — unaffected file set, but the D-10 defect below is unresolved at phase close)"
+  - "09-07 (barrel plan — disjoint file set; no coordination needed)"
   - "09-08 (CLI gate — the @only and @skip Scenario titles it greps for are listed below)"
-  - "the phase's closing plan (RUN-05 cannot be marked complete while D-10 is unobservable; spec reconciliation is also still owed)"
+  - "the phase's closing plan (RUN-05 is now fully observable; spec reconciliation for BEH-EC-008/ADR-EC-020 is still owed)"
 
 # Tech tracking
 tech-stack:
@@ -27,46 +29,52 @@ tech-stack:
     - "Filtering captured terminal lines by the artefact's uri rather than by array position, so each block reads only its own and collection order is not encoded in an assertion"
     - "Asserting a security control by matching the JSON.stringify'd form specifically, so the assertion fails against a bare interpolation that a toContain check would accept"
     - "Pairing a must-be-zero counter with a must-be-non-zero sibling counter in the same comparison, so zero means 'correctly suppressed' rather than 'nothing ran at all'"
-    - "Writing an UNASSERTED requirement into the source as a named gap with its measured cause, rather than leaving a missing assertion to read as coverage"
+    - "Reporting a walk's outcome through a callback fired INSIDE the walk rather than through a return value, when whether the walk has run at return time is the injected collaborator's choice"
 
 key-files:
   created: []
   modified:
     - packages/vitest/test/emission.test.ts
+    - packages/vitest/src/Runner.ts
+    - packages/vitest/src/describeFeature.ts
+    - spec/traceability.md
 
 key-decisions:
   - "Task 1's claim is carried by an EMPTY warning capture, not by a non-zero test count: the plan's structural argument was falsified by 09-05's shipped catch-and-degrade, which keeps the file green when a tag is rejected"
   - "The warning capture spans the whole COLLECTION phase instead of wrapping each describeFeature call, because vitest defers the describe factory and a wrapped capture is silently, permanently empty"
   - "The D-08 probe Scenario carries exactly ONE tag, so the block's assertions are about the mechanism rather than about the over-reporting defect recorded below"
   - "excludeTags absence is asserted by TITLE via currentTestName(), never by a total count — a count cannot separate 'never registered' from 'registered and skipped', which is D-03's whole distinction"
-  - "D-10's exclusion notice is deliberately NOT asserted, and the gap is written into the source with its measured cause rather than left as a missing assertion"
+  - "OPTION B per coordinator decision: emitFeature gains an OPTIONAL onEmitted callback fired inside the walk, and KEEPS its EmitOutcome return value, so Runner.ts's 33 test call sites and four outcome assertions are untouched"
+  - "The accepted cost of Option B is two ways to obtain one value where one is a trap; it is documented on Runner.ts note (h), on EmitOutcome, and on the parameter itself, with 'new code uses onEmitted' stated explicitly"
+  - "describeFeature DISCARDS the return value entirely rather than reading both, so there is exactly one live source of the count in the composition root"
 
 patterns-established:
   - "Measuring a framework's collection/execution phase boundary with a throwaway probe before trusting a plan's assumption about when a side effect is observable"
   - "Recording a mutation whose predicted outcome was FALSIFIED, together with the second mutation that recovers the predicted outcome, rather than reporting the prediction as met"
+  - "Keeping a known-unsafe API beside its safe replacement when removing it would churn correct downstream assertions, provided the trap is documented at every site a caller can reach it from"
 
 # Requirements
-requirements-completed: []
-requirements-advanced: [RUN-05]
+requirements-completed: [RUN-05]
+requirements-advanced: []
 
 # Metrics
-duration: 25min
+duration: 45min
 completed: 2026-08-30
 ---
 
 # Phase 9 Plan 06: Runtime Tag Acceptance Through the Real describeFeature Summary
 
-**Six new real `describeFeature` calls prove at runtime that a four-level-tagged Feature collects and runs, that a `@skip` Scenario executes no step and no hook and is harmless even with an unmatched step, that a fully-skipped Feature runs no teardown, that an undeclared tag warns with quoted text and keeps running, and that a registration filter excludes without a trace while an empty array excludes nothing — and, in the course of proving it, measured that vitest DEFERS its `describe` factory, which is why D-10's exclusion notice never reaches a terminal.**
+**Six new real `describeFeature` calls prove at runtime that a four-level-tagged Feature collects and runs, that a `@skip` Scenario executes no step and no hook and is harmless even with an unmatched step, that a fully-skipped Feature runs no teardown, that an undeclared tag warns with quoted text and keeps running, and that a registration filter excludes without a trace while an empty array excludes nothing — and, in the course of proving it, found and fixed a shipped defect: vitest DEFERS its `describe` factory, so D-10's exclusion notice had never printed once.**
 
 ## Performance
 
 | Metric | Value |
 |---|---|
-| Duration | ~25 min (00:26 → 00:43, 2026-08-30) |
-| Tasks | 3 of 3 implemented; 1 acceptance criterion blocked (see Blocker) |
-| Files modified | 1 (0 created) |
-| Repo test count | 713 passed → **731 passed + 3 skipped** (734) |
-| `emission.test.ts` count | 20 passed → **38 passed + 3 skipped** (41) |
+| Duration | ~45 min (00:26 → 00:55, 2026-08-30) |
+| Tasks | 3 of 3, plus a coordinator-decided source fix |
+| Files modified | 4 (0 created) |
+| Repo test count | 713 passed → **732 passed + 3 skipped** (735) |
+| `emission.test.ts` count | 20 passed → **39 passed + 3 skipped** (42) |
 | Real `describeFeature` calls in the file | 4 → **10** |
 
 ## Task Commits
@@ -74,18 +82,16 @@ completed: 2026-08-30
 1. **Task 1: a four-level-tagged Feature collects and runs for real** — `82a16ab` (test)
 2. **Task 2: `@skip` runs no step, no hook and no teardown** — `f619271` (test)
 3. **Task 3: the D-08 degradation and the D-03 registration filter** — `66bcfaa` (test)
+4. **D-10 fix: report the emission outcome from inside the walk (Option B)** — `a674068` (fix)
 
 ---
 
-## BLOCKER: D-10's exclusion notice never prints, and the cause is a framework deferral
+## The defect this plan found, and the fix the coordinator chose
 
-This is the plan's one unmet acceptance criterion, and it is a **defect in shipped source**, not in the
-test. It needs a decision that this plan does not own — see *Decision required* below.
+### What was wrong
 
-### What was measured
-
-`packages/vitest/src/describeFeature.ts` reads `emitFeature`'s returned `EmitOutcome` on the statement
-after `emitFeature` returns:
+`describeFeature.ts` read `emitFeature`'s returned `EmitOutcome` on the statement after `emitFeature`
+returns:
 
 ```ts
 const outcome = emitFeature({ ... })
@@ -93,60 +99,83 @@ if (outcome.excludedScenarioCount > 0) { console.warn(makeExcludedScenariosNotic
 ```
 
 `emitFeature` increments `excludedScenarioCount` **inside** the `api.describe(...)` factory. `Runner.ts`
-states the assumption that makes this correct — *"That same synchronous-`define` guarantee is what lets
+stated the assumption that makes this correct — *"That same synchronous-`define` guarantee is what lets
 the returned counts be read immediately after the outermost `describe` call returns"* — and against
 `Runner.test.ts`'s recording fake it holds, because that fake invokes `define` synchronously.
 
-**Against the real framework it does not hold.** vitest's `describe(name, factory)` registers a suite
+**Against the real framework it did not hold.** vitest's `describe(name, factory)` registers a suite
 collector and runs `factory` later, when the runner collects the file. So at the moment
-`describeFeature` reads the outcome, the walk has not happened, `excludedScenarioCount` is `0`, the
-`> 0` guard never opens, and no notice is ever printed — not late, never.
+`describeFeature` read the outcome the walk had not happened, `excludedScenarioCount` was `0`, the
+`> 0` guard never opened, and **the notice never printed — not late, never.** A stale `excludeTags`
+hiding a whole Feature sat behind a green run, which is the exact failure D-10 exists to prevent.
 
-Verified three ways:
+Measured three ways before any code changed:
 
 | Probe | Result |
 |---|---|
 | Throwaway file calling `describeFeature(..., { excludeTags: ["@wip"] })` with `console.warn` captured across the whole module body **and** re-read after the tests ran | both captures **empty**, while the exclusion itself worked (2 of 3 Scenarios absent) |
-| A temporary assertion inside `emission.test.ts` expecting one notice line for `test/exclude-tags.feature` | `expected [] to have a length of 1 but got +0`, with the sibling title assertion proving 2 Scenarios *were* excluded |
+| A temporary assertion in `emission.test.ts` expecting one notice line for `test/exclude-tags.feature` | `expected [] to have a length of 1 but got +0`, with the sibling title assertion proving 2 Scenarios *were* excluded |
 | Same file with `--disableConsoleIntercept` | no notice line anywhere in the output |
 
-### Why nothing caught this before
+### Why nothing caught it before
 
 `Runner.test.ts`'s four `excludedScenarioCount` assertions are correct **about the fake** and silent
-about the framework. 09-05's summary marks T-09-05-02 as *"Done… A stale `excludeTags` hiding a whole
-Feature can no longer sit behind a green run"* — that claim does not hold against the real entry point.
-This is precisely the class of defect `emission.test.ts` exists for, and it is the same shape as the
-file's own historical mutation C: an implementation that is perfectly correct at the seam and produces
-nothing at the terminal.
+about the framework. 09-05's summary marked T-09-05-02 *"Done… A stale `excludeTags` hiding a whole
+Feature can no longer sit behind a green run"* — that claim did not hold against the real entry point
+until this plan. **That summary's T-09-05-02 row should be read as superseded by this one.** This is
+precisely the class of defect `emission.test.ts` exists for, and the same shape as the file's own
+historical mutation C: an implementation perfectly correct at the seam that produces nothing at all.
+
+### The fix: Option B, as decided by the coordinator
+
+`emitFeature` gained an **optional** `onEmitted?: (outcome: EmitOutcome) => void`, invoked as the
+**last statement inside** the emission walk, and **kept** its `EmitOutcome` return value.
+`describeFeature.ts` now prints D-10's notice from that callback and discards the return value.
+
+```ts
+// Runner.ts — last statement inside api.describe(...)'s callback
+onEmitted?.({ excludedScenarioCount })
+})
+
+// still returned, for a caller whose api.describe IS synchronous
+return { excludedScenarioCount }
+```
+
+**Why the return value is kept — and this is a deliberate, accepted cost, not an oversight.** Removing
+it would churn 33 `emitFeature` call sites in `Runner.test.ts` plus its four
+`deepStrictEqual(outcome, …)` assertions, every one of which is *correct about the recording fake it
+drives* — the fake runs `define` synchronously, so the returned counts are accurate there. A caller
+that genuinely supplies a synchronous `TestApi` (the fake today; possibly Phase 10's shared-Layer
+`TestApi`) can still read it. **The price is that two ways to obtain one value now exist and one of
+them is a trap.** That trade-off was accepted per the coordinator's decision, and it is mitigated by
+documenting the trap at all three places a caller can reach it:
+
+- `Runner.ts` **note (h)** — a new note, with the shipped-defect story and the closing line *"New code
+  uses `onEmitted`."*
+- `EmitOutcome`'s own doc comment — *"It is delivered TWICE… only one of the two is safe against a real
+  test framework."*
+- The `@param args.onEmitted` tag, and an inline comment on the `return` statement itself marking it
+  correct only for a synchronous `api.describe`.
+
+`describeFeature.ts` reads **only** the callback — the return value is discarded outright rather than
+read as a fallback — so the composition root has exactly one live source of the count.
+
+Two properties of `Runner.ts` are preserved unchanged: it still writes nothing to a terminal (the
+callback is supplied by the composition root, which is where the `> 0` "is this worth telling a human"
+guard also stays), and it still walks the Feature exactly once.
+
+`onEmitted` is the module's **one optional field**, which is a deliberate departure from 09-04's
+"required, never optional" doctrine for `emitFeature`'s other eight: it is a reporting hook, and a
+caller that wants no report — `Runner.test.ts`'s fake asserting on the return value — is making a real
+choice rather than forgetting an argument. Documented as such on the parameter.
 
 ### The same deferral also invalidated the plan's Task 1 design
 
 The plan asked Task 1 to wrap its `describeFeature` call in a warning capture. That capture is
-**permanently and silently empty** — the `it.effect` emissions, and therefore D-08's
-`console.warn`, happen inside the deferred factory, after `describeFeature` has returned. A wrapped
-capture would not have failed; it would have passed for the wrong reason forever. This was caught by
-running it, and the fix (a collection-phase capture removed in `beforeAll`) is described below.
-
-### Decision required
-
-Fixing this changes how `emitFeature` reports its outcome — a contract plan 09-04 deliberately shaped
-and documented at length in `Runner.ts` notes (e) and (g) and in `EmitOutcome`'s own doc comment.
-Three shapes were considered; each has a real cost, and 33 `emitFeature` call sites plus 4
-`deepStrictEqual(outcome, …)` assertions in `Runner.test.ts` sit downstream:
-
-| Option | Shape | Cost |
-|---|---|---|
-| **A** | `emitFeature` takes a required `onEmitted: (outcome: EmitOutcome) => void`, invoked as the last statement **inside** the factory; the return value goes away | Breaks all 33 call sites (mechanically — they share an `unfiltered` constant) and the 4 outcome assertions. Keeps `Runner.ts` silent and the single walk intact. Matches 09-04's own "required, never optional" doctrine, since a forgotten optional callback silently deletes the notice |
-| **B** | Same callback, but **optional**, keeping the return value for the synchronous-fake case | No call-site churn; but two ways to say one thing, with the stale one being the trap, and an optional reporting hook is exactly the "could only ever be a forgotten one" argument 09-04 rejected |
-| **C** | `describeFeature` re-derives the excluded count itself with a second pass over `plan.feature` + `shouldEmit`, printing from a wrapped outermost `describe` factory | No `Runner.ts` change at all, but duplicates the emission walk — which `EmitOutcome`'s doc explicitly forbids ("anything counting outside this function would have to duplicate the walk and could then disagree with it") |
-
-**Recommendation: Option A**, with the follow-up work being (1) the `Runner.ts`/`describeFeature.ts`
-change, (2) the mechanical `Runner.test.ts` update, (3) re-asserting T-09-05-02 in 09-05's summary,
-and (4) un-blocking the notice assertion in `emission.test.ts`, where the gap is already named in
-source and a ready-to-pass shape is described.
-
-**Everything else in the plan is complete and committed.** The exclusion *itself* is fully asserted —
-only the summary line is missing.
+**permanently and silently empty** — the `it.effect` emissions, and therefore D-08's `console.warn`,
+happen inside the deferred factory, after `describeFeature` has returned. A wrapped capture would not
+have failed; it would have passed for the wrong reason forever. Caught by running it; the fix is the
+collection-phase capture described below.
 
 ---
 
@@ -201,6 +230,18 @@ an Effect a skipped test never builds).
 - **D-03.** `excludeTags: ["@wip"]` — absence asserted **by title**, via `currentTestName()` recorded
   from each step body, compared as a whole array against the single surviving title. A count cannot
   separate "never registered" from "registered and skipped".
+- **D-10.** Exactly one notice line for that Feature, asserted on its count (`2 Scenario(s)`), the
+  option that caused it (`excludeTags`), the quoted tag and Feature name, and the `never registered`
+  sentence that stops "excluded" being read as "skipped". The line as actually rendered:
+
+  ```
+  "test/exclude-tags.feature": ExcludedByExcludeTags: 2 Scenario(s) in Feature "excludeTags removes
+  Scenarios from registration" were excluded by excludeTags ["@wip"]. They were never registered, so
+  they appear nowhere in this run's output — not even as skipped. Widen or remove the filter to run them.
+  ```
+
+  **This is the only assertion in the repo that fails if the notice regresses to reading `emitFeature`'s
+  synchronous return value** — proven by mutation VII below.
 - **Empty-array rule.** `excludeTags: []` on the *same* `@wip` tag the block above excludes, so
   emptiness is provably what decides. Both Scenarios ran; no notice printed.
 
@@ -216,16 +257,21 @@ All five performed against real source, run, observed, reverted. `git status` is
 | **IV** | `Tags.ts`'s `isSkipped` forced to `false` | **3 of 33 fail.** The unmatched-step Scenario turns RED with `UndefinedStep` — proving the `@skip` is what carries Pitfall 15, not the absence of a definition — and both counter assertions fail (`before: 3, after: 3`; `beforeAllScenarios: 1`) |
 | **V** | `runnableScenarioCount > 0` conjunct dropped from `Runner.ts` | **1 of 33 fails**, with exactly the predicted asymmetry: `afterAllScenarios: 1` beside `beforeAllScenarios: 0` — teardown run against a setup that structurally cannot have happened |
 | **VI** | Catch-and-degrade bypassed with the **committed** `@undeclared-on-purpose` Scenario in place | `(0 test)` / `Tests no tests` — the whole-file collapse D-08 exists to prevent, now provable from committed source rather than a temporary edit |
+| **VII** | `describeFeature.ts`'s `onEmitted` guard neutered, simulating a regression to the stale return value | **1 of 42 fails**, and only that one: *"printed exactly one D-10 notice…"* → `expected [] to have a length of 1 but got +0`. Confirms the new assertion is what guards the fix, and that nothing else in the repo does |
 
 ## Verification
 
 | Gate | Result |
 |---|---|
-| `pnpm exec vitest run packages/vitest/test/emission.test.ts` | exit 0 — **38 passed, 3 skipped (41)** |
+| `pnpm exec vitest run packages/vitest/test/emission.test.ts` | exit 0 — **39 passed, 3 skipped (42)** |
 | `pnpm exec vitest run packages/vitest/test/emission.test.ts --allowOnly=false` | exit 0 — criterion 3 verified deterministically |
-| `pnpm test` | 31 files, **731 passed + 3 skipped (734)**, exit 0 |
+| `pnpm test` | 31 files, **732 passed + 3 skipped (735)**, exit 0 |
+| `pnpm build` | exit 0 |
 | `pnpm typecheck:test` | exit 0, both projects |
 | `pnpm lint` (oxlint + dprint check) | exit 0 |
+| `pnpm circular` | no circular dependency found (32 files) |
+| `pnpm verify:testapi-seam` | exit 0 — three `✓` lines; `Runner.ts` still imports no framework |
+| `pnpm verify:spec` | PASS 7, FAIL 0, SKIP 1 |
 
 ### Acceptance greps
 
@@ -327,13 +373,43 @@ All five performed against real source, run, observed, reverted. `git status` is
   working tree was clean, so nothing was discarded.
 - **Files modified:** none
 
-### Escalated (not fixed)
+### Escalated, then fixed under direction
 
-**6. [Rule 4 — Architectural] D-10's exclusion notice never prints**
+**6. [Rule 4 — Architectural, ESCALATED and RESOLVED] D-10's exclusion notice never printed**
 
-See **BLOCKER** above. Requires changing `emitFeature`'s outcome-reporting contract — 33 call sites and
-a contract 09-04 deliberately designed. Three options and a recommendation are written up there.
-Task 3 asserts the exclusion itself and names the gap in source so it cannot read as covered.
+- **Found during:** Task 1 (the deferral), confirmed against D-10 during Task 3
+- **Issue:** See *The defect this plan found* above. `describeFeature` read `emitFeature`'s return
+  value before vitest had run the `describe` factory that populates it, so the count was always `0`
+  and the notice never printed.
+- **Escalation:** Raised as a checkpoint rather than auto-fixed, because the fix changes
+  `emitFeature`'s outcome-reporting contract — 33 call sites and a design 09-04 documented at length
+  in `Runner.ts` notes (e)/(g) and on `EmitOutcome`. Three options (A: required callback, drop the
+  return; B: optional callback, keep the return; C: re-derive the count in `describeFeature`) were
+  written up with costs.
+- **Decision:** The coordinator chose **Option B** — optional `onEmitted`, return value retained, no
+  `Runner.ts`/`Runner.test.ts` call-site churn, with the "two ways to get the same outcome" trade-off
+  accepted as an intentional cost and documented rather than treated as an oversight.
+- **Fix:** Implemented as decided. `Runner.ts` gained the optional parameter, the in-walk invocation
+  and note (h); `describeFeature.ts` moved the notice onto the callback and discards the return value;
+  `emission.test.ts` gained the notice assertion. Mutation VII proves the assertion guards it.
+- **Files modified:** `packages/vitest/src/Runner.ts`, `packages/vitest/src/describeFeature.ts`,
+  `packages/vitest/test/emission.test.ts`
+- **Committed in:** `a674068`
+
+**7. [Rule 2 — Say only what is true] `spec/traceability.md` §4's `emission.test.ts` row**
+
+- **Found during:** the D-10 fix
+- **Issue:** AGENTS.md §1. The row described the file's Phase 6–8 coverage only, and gained none of
+  RUN-05's runtime half. Note that §1's behavior-doc-02 row needed **no** change: it already claimed
+  `describeFeature.ts` PRINTS the `ExcludedScenariosNotice` once per Feature whose filter removed
+  Scenarios — a claim that was FALSE when 09-05 wrote it and is TRUE now. The code caught up to the
+  spec rather than the reverse.
+- **Fix:** The §4 row gains BEH-EC-008 and a sentence naming the five new runtime claims, including
+  that the D-10 assertion is the only thing in the repo that fails on a regression to the synchronous
+  return value. `npx dprint fmt` re-padded the table.
+- **Files modified:** `spec/traceability.md`
+- **Verification:** `pnpm verify:spec` — PASS 7, FAIL 0
+- **Committed in:** `a674068`
 
 ## Findings for the phase owner
 
@@ -360,54 +436,64 @@ recorded in the source beside the capture helper.
 | Threat ID | Disposition | Status |
 |---|---|---|
 | T-09-06-01 | mitigate | **Done.** The D-08 assertion matches `JSON.stringify("@undeclared-on-purpose")`, the quoted uri and the quoted Scenario title. A message interpolating any of them bare fails these and would pass a `toContain(value)` check. |
-| T-09-06-02 | mitigate | **Partial — the exclusion half done, the notice half BLOCKED.** Absence is asserted by TITLE (whole-array comparison against the single surviving name), never by a total count. The "exactly one notice line" half cannot be asserted while the notice is not printed — see BLOCKER. |
+| T-09-06-02 | mitigate | **Done, and it required a source fix.** Absence is asserted by TITLE (whole-array comparison against the single surviving name), never by a total count. Exactly one notice line is asserted, naming the count `2`, the `excludeTags` option, the quoted tag and Feature name, and the `never registered` sentence. The notice did not print at all before this plan; mutation VII confirms this assertion is the only guard on the fix. **Supersedes 09-05's T-09-05-02 "Done" row**, which was correct about the code as written and wrong about what a real run produced. |
 | T-09-06-03 | mitigate | **Done.** Every gate asserts a non-zero test count, and mutations II and VI both show that `Tests no tests` is precisely what an undeclared tag produces once the degradation is removed. |
 | T-09-06-04 | mitigate | **Done.** `grep -c '\.only('` is **0**, and the file passes under `--allowOnly=false` as a committed acceptance command. |
 | T-09-06-05 | mitigate | **Done.** `grep -v '^\s*//' vitest.config.ts \| grep -c 'undeclared-on-purpose'` is **0**. Both `vitest.config.ts` note (d) and the new block's own comment state that declaring it deletes the test's meaning while leaving it green. |
 | T-09-06-SC | accept | **Done.** No package added, removed or version-changed. `pnpm install --frozen-lockfile` restored the existing lockfile only; `tinyglobby` belongs to plan 09-07 and was not touched. |
 
-## Threat Flags
-
-None. This plan opens no network endpoint, no auth path, no file-access pattern and no schema at a
-trust boundary. It adds test code to one existing file.
-
 ## Known Stubs
 
-None in the sense of unwired code. One **named, documented gap**: D-10's exclusion notice is not
-asserted, because it is not printed. The gap is written into `emission.test.ts` with its measured cause
-rather than left silent, and the BLOCKER section above carries the decision needed to close it.
+None. The one gap this plan opened — D-10's unasserted notice — was closed by the coordinator-directed
+fix rather than carried forward. `Runner.ts`'s retained `EmitOutcome` return value is **not** a stub: it
+is a working, correct API for a synchronous `TestApi`, kept by decision, with its one unsafe usage
+documented at every site a caller can reach it from.
 
 ## Requirements
 
-**RUN-05 remains `Pending`**, advanced but not completed — narrowing the call plans 09-03, 09-04 and
-09-05 all made. Five of this plan's six `must_haves` truths are now observed end to end against the
-real framework:
+**RUN-05 is COMPLETE.** All six of this plan's `must_haves` truths are now observed end to end against
+the real framework, which is the bar plans 09-03, 09-04 and 09-05 each deferred to this one:
 
 - ✅ A tagged Feature collects and runs through the real `describeFeature`
 - ✅ A `@skip` Scenario's `Before`/`After`/`BeforeStep`/`AfterStep` never run
 - ✅ A `@skip` Scenario's step bodies never run
 - ✅ A `@skip` Scenario with an unmatched step does not fail the run
 - ✅ An undeclared tag still runs and prints one warning naming file, Scenario and tag
-- ❌ **A run whose `excludeTags` removed Scenarios prints one summary line** — the notice is never
-  printed (BLOCKER)
+- ✅ A run whose `excludeTags` removed Scenarios prints one summary line saying how many and why
 
-Marking RUN-05 complete now would claim something the repo cannot back (AGENTS.md §4). It becomes
-markable once the D-10 defect is fixed and its assertion is added here.
+Nothing here claims something the repo cannot back (AGENTS.md §4): every one of the six has a committed
+assertion in `emission.test.ts` driven by a real `describeFeature` call, and five of the six have a
+recorded mutation showing the assertion fails when the behaviour is removed.
+
+**Still owed by the phase's closing plan** (unchanged by this plan): `spec/behaviors/02`'s BEH-EC-008
+MUST-level text and ADR-EC-020's Decision section still FORBID the `describeFeature`-time registration
+filter that 09-05 shipped, and `.planning/REQUIREMENTS.md`'s RUN-05 wording and `spec/roadmap.md` are
+untouched. Only `spec/traceability.md` was reconciled here and in 09-05.
+
+## Threat Flags
+
+None. This plan opens no network endpoint, no auth path, no file-access pattern and no schema at a
+trust boundary. The one new surface is an optional in-process callback parameter, and the only thing
+crossing it is a `{ excludedScenarioCount: number }` struct built inside the same module.
 
 ## Self-Check: PASSED
 
-Modified file exists on disk:
+All four modified files exist on disk:
 
 - `packages/vitest/test/emission.test.ts` — FOUND
+- `packages/vitest/src/Runner.ts` — FOUND
+- `packages/vitest/src/describeFeature.ts` — FOUND
+- `spec/traceability.md` — FOUND
 
-All three task commits present in `git log`:
+All four commits present in `git log`:
 
 - `82a16ab` — FOUND
 - `f619271` — FOUND
 - `66bcfaa` — FOUND
+- `a674068` — FOUND
 
 Working tree clean of every mutation: `Tags.ts`, `Runner.ts` and `describeFeature.ts` were each
-restored from a byte copy taken before mutating and confirmed by `git status`/`git diff --stat` showing
-only `emission.test.ts` modified at each stage; both throwaway probe files were deleted. STATE.md and
-ROADMAP.md deliberately untouched — this executor ran in a worktree and the orchestrator owns those
-writes after the wave.
+restored from a byte copy taken before mutating and confirmed by `git status`/`git diff --stat`; both
+throwaway probe files (`zz-tagprobe.test.ts`, `zz-defer-probe.test.ts`) and every temporary `DBG_`
+print were removed, and `grep` finds no marker string remaining. STATE.md and ROADMAP.md deliberately
+untouched — this executor ran in a worktree and the orchestrator owns those writes after the wave.
