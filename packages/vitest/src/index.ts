@@ -21,9 +21,25 @@
  * [ADR-EC-016](../../../spec/decisions/016-effect-tsgo-language-service-plugin.md)'s build gate is
  * what keeps it from decaying silently.
  *
- * **Current state.** `describeFeature` collects step definitions and normalises the Layer; it emits
- * ZERO vitest tests. Test emission is Phase 6's (`spec/roadmap.md` is the single place that says
- * what is actually built). The type surface below is final; the runtime is not yet wired to vitest.
+ * **Current state.** `describeFeature` emits one `it.effect` per Scenario, nested inside a
+ * `describe` named after the Feature and, where the document has `Rule`s, a further nested
+ * `describe` per Rule. A Background's steps are the leading `yield*`s of the same Effect rather than
+ * a separate hook, so they run first and the first failure ends the Scenario. A step whose text
+ * matched no registered pattern visible to it, or more than one at the same scope level, fails ITS
+ * OWN Scenario with a located `StepMatchError` and leaves every other Scenario runnable. A
+ * registered pattern that matched no step anywhere in the Feature is a warning rather than a
+ * failure, surfaced on three channels: `console.warn` at collection time, an always-passing test
+ * node last in the block, and a structured list on the plan.
+ *
+ * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: hooks —
+ * `Before`/`After`/`BeforeStep`/`AfterStep` and their all-Scenarios forms — are Phase 7 (DSL-07,
+ * RUN-02); a `Rule` that extends the ambient Layer with its own per-Scenario Layer, and typed
+ * `Scenario Outline` Examples, are Phase 8 (DSL-05, DSL-06) — a Rule's Scenarios run today and are
+ * nested correctly, but nothing can REGISTER at Rule scope; tag routing, `@skip` and the `@only`
+ * policy are Phase 9 (RUN-05), so a tag is currently inert; and the opt-in `shared` Layer built once
+ * per Feature, together with the per-Scenario `TestClock` isolation that has to accompany it, is
+ * Phase 10 (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is accepted and
+ * type-checked today, but both halves are built per Scenario at runtime.
  *
  * ## Export policy
  *
@@ -33,16 +49,21 @@
  *
  * ## Deliberately NOT exported
  *
- * `createRegistry` (and its `Registry`/`StepDefinition` types), `register` from `Step.ts`, and
- * `collectFeature` from `describeFeature.ts`. All three are internal stages of `describeFeature`
- * with no standalone consumer contract, following `@effect-cucumber/gherkin`'s own precedent, where
- * `Parser`, `Pickles`, `Correlate`, `Source` and `Validate` are internal and only `loadFeature` is
- * published. This package's tests import them by relative path.
+ * `createRegistry` (and its `Registry`/`StepDefinition` types), `register` from `Step.ts`,
+ * `captureCallSite` from `CallSite.ts`, `planFeature` from `Plan.ts`, `buildScenarioEffect` from
+ * `ScenarioEffect.ts`, `emitFeature` from `Runner.ts`, the `TestApi` seam they reach the framework
+ * through, and `collectFeature` from `describeFeature.ts`. Every one of them is an internal stage of
+ * `describeFeature` with no standalone consumer contract, following `@effect-cucumber/gherkin`'s own
+ * precedent, where `Parser`, `Pickles`, `Correlate`, `Source` and `Validate` are internal and only
+ * `loadFeature` is published. This package's tests import them by relative path.
  *
- * `collectFeature` in particular is Phase 6's in-package join point, reached by relative import and
- * not a published surface: RUN-01 reads a `FeatureCollection` and emits `it.effect` from it.
- * Exporting it now would freeze the collection's shape into the package's contract before the one
- * consumer it exists for has used it once.
+ * The omission is a decision, not an oversight, and the cost of getting it wrong is asymmetric: a
+ * published internal stage is a contract this project then has to keep, through every change to the
+ * pipeline it is a stage of. `collectFeature` is the sharpest case — it is the in-package join point
+ * a test asserts a `FeatureCollection` against, and exporting it would freeze that collection's
+ * shape, `plan` field included, into the package's contract. `TestApi` is the next sharpest: Phase
+ * 10 (RUN-03/RUN-04) changes which implementation flows through it, and a consumer never constructs
+ * one.
  */
 
 /** The entry point. Everything else in this package is reached through the dsl it hands `define`. */
@@ -57,3 +78,25 @@ export { describeFeature } from "./describeFeature.ts"
  * ([ADR-EC-017](../../../spec/decisions/017-background-and-scenario-are-step-definition-containers.md)).
  */
 export type { BackgroundDsl, FeatureDsl, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+
+/**
+ * The two channels step drift reaches a consumer through (BEH-EC-013, ADR-EC-019).
+ *
+ * `StepMatchError` is the FAILURE: a Pickle step whose text resolved to zero registered patterns
+ * (MATCH-03) or to more than one at the same scope level (MATCH-04). It arrives in a failing
+ * Scenario's error channel, which is a value a consumer catches and narrows on `reason` — so the
+ * class has to be reachable by name, and matching on message text instead is the thing this export
+ * exists to make unnecessary.
+ *
+ * `UnusedStepDefinitionWarning` is NOT a failure and never enters an error channel: a registered
+ * pattern that matched no step in the whole Feature is dead code, not a broken Scenario (MATCH-05,
+ * same ADR). It is exported specifically so 06-CONTEXT.md D-02's channel 3 — the structured list —
+ * is inspectable and assertable by a consumer, rather than only readable as terminal text or as a
+ * test node's title. `@effect-cucumber/gherkin`'s barrel exports `LoadFeatureWarning` alongside
+ * `LoadFeatureError` for the same reason, and this mirrors it.
+ *
+ * The two `*Reason` unions come with them: they are the discriminants a consumer branches on, and a
+ * `reason` field whose type is unnameable forces a string comparison at every call site.
+ */
+export { StepMatchError } from "./Errors.ts"
+export type { StepMatchErrorReason, UnusedStepDefinitionWarning, UnusedStepDefinitionWarningReason } from "./Errors.ts"
