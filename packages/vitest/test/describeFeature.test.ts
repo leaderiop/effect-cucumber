@@ -925,3 +925,223 @@ describe("a Rule naming no Rule in the parsed Feature registers nothing that can
     expect(ruleFeature.allScenarios.map((scenario) => Option.getOrNull(scenario.ruleId))).not.toContain(keys[0])
   })
 })
+
+/**
+ * ## The Scenario-scoped extra Layer (08-05b, D-01's Scenario form)
+ *
+ * Still appended at the END, for the reason the 08-05a block above states: the `definedAt` test
+ * hard-codes its own line number, so nothing may be inserted above it.
+ *
+ * Both nesting levels now share ONE `makeScenarioRegistrar` factory, so every assertion here is
+ * simultaneously a statement about `dsl.Scenario` and about `RuleDsl.Scenario` — that is the point
+ * of extracting it. What still differs per call site is the two arguments the factory is handed, and
+ * the three-tier test below is the only thing that checks the Rule level got the right ones.
+ *
+ * Every Layer claim is settled by RESOLVING the merged Layer, never by inspecting its type or its
+ * shape — the same reasoning this file's header already records for the D-04 `Layer.merge` case, and
+ * it applies with full force to `Layer.provideMerge`'s two argument positions.
+ */
+
+/** A service NOTHING in this file provides except a Scenario's own `extraLayer`. */
+class ScenarioMarker extends Context.Service<ScenarioMarker, { readonly who: string }>()("ScenarioMarker") {}
+
+const scenarioMarker = Layer.succeed(ScenarioMarker, ScenarioMarker.of({ who: "scenario" }))
+
+/**
+ * The Scenario's own service built ON TOP of the enclosing RULE's — `Layer<ScenarioMarker, never,
+ * RuleMarker>`, a non-`never` `RIn` naming a service only the Rule provides.
+ *
+ * THE discriminator for which ambient Layer `makeScenarioRegistrar` was handed inside a `Rule`.
+ * `makeScenarioRegistrar(ruleId, featureLayer)` — the plausible defect, since `featureLayer` is in
+ * scope at that line too — leaves this Layer's `RuleMarker` requirement unmet and the build dies.
+ * Every assertion using the plain `scenarioMarker` above passes under that defect, because a Layer
+ * that needs nothing composes onto either ambient.
+ */
+const scenarioMarkerBuiltOnRule = Layer.effect(
+  ScenarioMarker,
+  Effect.gen(function*() {
+    return ScenarioMarker.of({ who: `scenario on ${(yield* RuleMarker).who}` })
+  })
+)
+
+/**
+ * A SECOND implementation of the ambient `Marker`, for the collision case.
+ *
+ * Same tag, distinguishable value — the `sharedMarker`/`perScenarioMarker` shape the D-04 test uses,
+ * for the identical reason: only a field that is READ can tell two Layers of one service apart.
+ */
+const scenarioOwnMarker = Layer.succeed(Marker, Marker.of({ who: "scenario's own" }))
+
+/** Read the Scenario-only service back out of a collected Layer. */
+const scenarioMarkerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+  Effect.provide(
+    Effect.gen(function*() {
+      return (yield* ScenarioMarker).who
+    }),
+    layer
+  )
+
+/**
+ * The composite key `scenarioLayers` is keyed by, REBUILT here rather than imported from the source.
+ *
+ * `scenarioKey` is module-private in `src/describeFeature.ts`, and reconstructing it is deliberate
+ * rather than a workaround: the map is only usable by a consumer that can build the key, so the
+ * encoding IS the contract 08-07 gets written against, and a test that asked the implementation for
+ * its own key could not notice that encoding changing underneath it. NUL separator and `<feature>`
+ * for a Scenario in no Rule, mirroring `packages/gherkin/src/Validate.ts`'s `uniquenessKey`.
+ */
+const scenarioKeyIn = (ruleId: string | null, name: string): string => `${ruleId ?? "<feature>"}\u0000${name}`
+
+/**
+ * The `scenarioLayers` entry, or a thrown error naming the key that was missing.
+ *
+ * Throws rather than falling back to `collected.layer`, for the reason `ruleLayerOf` above does: a
+ * missing entry would otherwise be reported as whatever service assertion ran next, hiding the
+ * absent registration that actually caused it.
+ */
+const scenarioLayerOf = (
+  collected: FeatureCollection,
+  ruleId: string | null,
+  name: string
+): Layer.Layer<any, any, never> => {
+  const key = scenarioKeyIn(ruleId, name)
+  const found = collected.scenarioLayers.get(key)
+  if (found === undefined) {
+    throw new Error(`the collection has no scenarioLayers entry for ${JSON.stringify(key)}`)
+  }
+  return found
+}
+
+describe("a Scenario's extra Layer merges onto whatever was ambient where it was written", () => {
+  it.effect("provides the Feature's ambient service and the Scenario's own, from the Scenario's entry", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(feature, sharedMarker, ({ Scenario }) => {
+        Scenario("checkout", scenarioMarker, ({ When }) => {
+          When("I pay", noop)
+        })
+      })
+
+      const scenarioLayer = scenarioLayerOf(collected, null, "checkout")
+
+      // BOTH, from one Layer — `provideMerge` keeps the ambient side reachable, which is the half
+      // `Layer.provide` would drop and the reason ADR-EC-010 names this combinator.
+      assert.strictEqual(yield* markerFrom(scenarioLayer), "shared")
+      assert.strictEqual(yield* scenarioMarkerFrom(scenarioLayer), "scenario")
+    }))
+
+  it.effect("leaves the Feature's own Layer unable to provide the Scenario's extra service", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(feature, sharedMarker, ({ Scenario }) => {
+        Scenario("checkout", scenarioMarker, () => {})
+      })
+
+      // The isolation half, and the same argument INV-EC-005 makes one level up: folding a
+      // Scenario's extra Layer into `collection.layer` would let every OTHER Scenario in the Feature
+      // resolve a service only this one asked for.
+      const outside = yield* Effect.exit(scenarioMarkerFrom(collected.layer))
+      assert.isTrue(Exit.isFailure(outside))
+
+      // …while the Feature's own service is still reachable from it, so the failure above is about
+      // the extra service and not about a Layer that provides nothing at all.
+      assert.strictEqual(yield* markerFrom(collected.layer), "shared")
+    }))
+
+  it("records no entry for the two-argument form, in the same collection that records one", () => {
+    const collected = collectFeature(feature, sharedMarker, ({ Scenario }) => {
+      Scenario("checkout", scenarioMarker, ({ When }) => {
+        When("I pay", noop)
+      })
+      // The overwhelmingly common form, in the SAME collection, so the two are told apart by the
+      // arity check alone rather than by being two different runs. The name is not one the fixture
+      // Feature declares, which is itself true to the mechanism: the map is populated at
+      // REGISTRATION time and never consults the parsed Feature — unlike `resolveRuleId`, which does.
+      Scenario("checkout without a Layer of its own", ({ Then }) => {
+        Then("I am charged", noop)
+      })
+    })
+
+    // Exactly one key, and it is the three-argument call's. An arity check inverted or dropped puts
+    // a second key here — the "the common case silently starts carrying a Layer" defect that no
+    // Layer assertion in this file could otherwise see.
+    expect([...collected.scenarioLayers.keys()]).toEqual([scenarioKeyIn(null, "checkout")])
+
+    // …and the two-argument form still ran its define callback under its OWN scenario scope, so the
+    // arity branch did not swallow the callback while suppressing the entry.
+    expect(scopeOf(collected, "I am charged")).toEqual({
+      kind: "scenario",
+      name: "checkout without a Layer of its own",
+      ruleId: null
+    })
+    expect(scopeOf(collected, "I pay")).toEqual({ kind: "scenario", name: "checkout", ruleId: null })
+  })
+
+  it.effect("reaches the Feature's, the Rule's and the Scenario's own service from one merged Layer", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {
+        Rule("members get a discount", ruleAMarker, ({ Scenario }) => {
+          Scenario("member checkout", scenarioMarkerBuiltOnRule, ({ When }) => {
+            When("the member pays", noop)
+          })
+        })
+      })
+
+      const scenarioLayer = scenarioLayerOf(collected, ruleAId, "member checkout")
+
+      // All three tiers, from ONE Layer: composition NESTS rather than replaces.
+      assert.strictEqual(yield* markerFrom(scenarioLayer), "shared")
+      assert.strictEqual(yield* ruleMarkerFrom(scenarioLayer), "rule A")
+
+      // "scenario on rule A" and not merely "scenario": this Layer was BUILT from the Rule's own
+      // service, so it only builds at all if the ambient Layer handed to the factory inside `Rule`
+      // was that Rule's already-merged one. `makeScenarioRegistrar(ruleId, featureLayer)` dies here.
+      assert.strictEqual(yield* scenarioMarkerFrom(scenarioLayer), "scenario on rule A")
+
+      // Keyed under the RULE's id, never under `<feature>`: a `ruleId` dropped from the key would
+      // make a Rule's Scenario collide with a same-named Feature-level one, which F22 explicitly
+      // permits to coexist.
+      assert.isFalse(collected.scenarioLayers.has(scenarioKeyIn(null, "member checkout")))
+      assert.deepStrictEqual([...collected.scenarioLayers.keys()], [scenarioKeyIn(ruleAId, "member checkout")])
+    }))
+
+  it.effect("resolves a service both the Scenario's extra Layer and its ambient name to the Scenario's own", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(feature, sharedMarker, ({ Scenario }) => {
+        Scenario("checkout", scenarioOwnMarker, () => {})
+      })
+
+      // The precedence assertion, and the one a swapped `Layer.provideMerge` argument order fails.
+      // Resolved by RUNNING the merged Layer: both orders produce the identical type and the
+      // identical shape here, exactly as the D-04 `Layer.merge` case above does, so nothing short of
+      // building the context can tell them apart. `sharedMarker` is the ambient one and would
+      // resolve to "shared".
+      assert.strictEqual(yield* markerFrom(scenarioLayerOf(collected, null, "checkout")), "scenario's own")
+    }))
+
+  it("records the entry even when the Scenario's define callback throws, and still pops its scope", () => {
+    const collected = collectFeature(feature, sharedMarker, ({ Given, Scenario }) => {
+      try {
+        Scenario("checkout", scenarioMarker, () => {
+          throw new Error("the define callback for this scenario threw")
+        })
+      } catch {
+        // Swallowed HERE, inside the define callback, exactly as the two-argument throw case above
+        // does — the point is what survived the throw, not that the throw is survivable.
+      }
+
+      Given("a step after the scenario-with-a-Layer threw", noop)
+    })
+
+    // The merge and the `set` run BEFORE `pushScope`/`try`, mirroring `Rule`'s own ordering. Moved
+    // after the `define` call — the reading order a tidy-up would prefer — this entry is missing,
+    // and the Scenario would silently run against a narrower ambient Layer than it asked for.
+    expect(collected.scenarioLayers.has(scenarioKeyIn(null, "checkout"))).toBe(true)
+
+    // And the `finally` still pops, so the later step is not re-parented onto the scenario — the
+    // same guarantee the two-argument form has had since before this factory existed.
+    expect(scopeOf(collected, "a step after the scenario-with-a-Layer threw")).toEqual({
+      kind: "feature",
+      name: "Checkout",
+      ruleId: null
+    })
+  })
+})
