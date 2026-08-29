@@ -90,6 +90,19 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       and a failing `After` never masks the original step failure —
       DSL-07, RUN-02, INV-EC-004. 575 tests passing; full `check.yml` gate
       green.
+- [x] Every tag maps to vitest's native tag system; `@skip` additionally
+      routes to `it.effect.skip`. `@only` is emitted as a plain tag, not
+      `it.effect.only` (which fails CI) — ADR-EC-026 (supersedes ADR-EC-020),
+      BEH-EC-008. Validated in Phase 9 (Tags): every tag inherited from
+      Feature/Rule/Scenario/Examples reaches the emitted node in that order;
+      `@skip` routes to `it.effect.skip` with no `Before`/`After` running;
+      `@only` stays inert under `allowOnly: false` so a committed `.only`
+      fails CI by design; `includeTags`/`excludeTags` filter at registration
+      time (not vitest's own `--testNamePattern`), proven against a real
+      `vitest` CLI run (not just an in-process recording fake) via
+      `scripts/verify-tags-filter.sh`. `gherkinTags(pattern)` (D-09) derives
+      the config's declared tag universe from `.feature` files themselves.
+      743 tests passing; full `check.yml` gate green.
 
 ### Active
 
@@ -99,9 +112,6 @@ one or more ADRs in `spec/decisions/` for full rationale.
       an opt-in `shared` Layer built once via `@effect/vitest`'s `layer(...)`
       with `excludeTestServices: true` so `TestClock` stays per-Scenario even
       on the shared path — ADR-EC-006, ADR-EC-018
-- [ ] Every tag maps to vitest's native tag system; `@skip` additionally
-      routes to `it.effect.skip`. `@only` is emitted as a plain tag, not
-      `it.effect.only` (which fails CI) — ADR-EC-020, BEH-EC-008
 - [ ] `Rule` can extend the ambient Layer with an extra per-Scenario Layer,
       visible only to Scenarios inside that Rule — ADR-EC-010
 - [ ] `Scenario Outline` Examples are typed for free via cucumber-expression
@@ -204,7 +214,7 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Adopt the `excludeTestServices` shared-Layer TestClock fix (ADR-EC-018) rather than a documented carve-out | Fully verified working, costs nothing but isolated internal complexity in the `shared`-Layer runner path | — Pending |
 | Fold step-drift detection (BEH-EC-013) into this milestone rather than deferring | Table stakes across every comparable library; the one failure-mode gap the Layer check doesn't cover; low-medium cost since it reuses ADR-EC-014's correlation data | ✓ Good — shipped in Phase 6 as `StepMatchError`/`UnusedStepDefinitionWarning`, wired through `describeFeature`'s Plan → Warn → Emit sequence |
 | Defer reusable step definitions (Gap 2) to a later milestone | Genuinely harder here than in any comparable library — a shared step's `R` must reconcile against every consuming Layer, no ecosystem precedent | — Pending |
-| Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | — Pending |
+| Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | ✓ Good — shipped in Phase 9 as registration-time filtering (ADR-EC-026, superseding ADR-EC-020's forbid-filtering stance once the trade-off was re-examined against real usage) |
 
 ---
-*Last updated: 2026-08-29 after Phase 7 (Hooks) completion*
+*Last updated: 2026-08-30 after Phase 9 (Tags) completion*
