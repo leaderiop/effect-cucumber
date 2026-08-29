@@ -389,14 +389,14 @@ unconditionally, even when the Outline's own title already differs by interpolat
   3. A Feature containing an `@only`-tagged Scenario passes a CI-mode run (the mode where `.only` fails by design) — proving `@only` is emitted as a plain tag and never `it.effect.only` (RUN-05).
   4. A tag filter selects exactly the tagged Scenarios, and `excludeTags` on `describeFeature`'s options object excludes them (RUN-05; `excludeTags`' exact signature location is decided in this phase — currently unspecified in the spec).
 
-**Plans:** 9 plans in 6 waves
+**Plans:** 3/9 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — root `vitest.config.ts` (declared tag universe, `allowOnly: false`) and the `TestApi` seam gate script
-- [ ] 09-02-PLAN.md — `Tags.ts` leaf (reserved tags, `TagFilter`, `shouldEmit`) and the two new `Errors.ts` warning types
-- [ ] 09-03-PLAN.md — `ScenarioPlan.tags`, populated and asserted at all four inheritance levels
+- [x] 09-01-PLAN.md — root `vitest.config.ts` (declared tag universe, `allowOnly: false`) and the `TestApi` seam gate script
+- [x] 09-02-PLAN.md — `Tags.ts` leaf (reserved tags, `TagFilter`, `shouldEmit`) and the two new `Errors.ts` warning types
+- [x] 09-03-PLAN.md — `ScenarioPlan.tags`, populated and asserted at all four inheritance levels
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -491,7 +491,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
-| 9. Tags | 0/TBD | Not started | - |
+| 9. Tags | 3/9 | In Progress|  |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
