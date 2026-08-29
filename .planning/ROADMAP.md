@@ -307,8 +307,8 @@ Plans:
 
 **Wave 3** *(blocked on 07-02)*
 
-- [ ] 07-03-PLAN.md — the `hook-satisfied` / `hook-missing-service` tsgo-gate fixture pair and gate assertions 10 and 11, so a reordered `HookRegistrar` union or a hook member leaked onto `ScenarioDsl` fails by name
-- [ ] 07-04-PLAN.md — `Before` gating and the `After` guarantee via `Effect.onExit` (RUN-02, INV-EC-004), threading the `HookSet` from the collection through `emitFeature` to `buildScenarioEffect`
+- [x] 07-03-PLAN.md — the `hook-satisfied` / `hook-missing-service` tsgo-gate fixture pair and gate assertions 10 and 11, so a reordered `HookRegistrar` union or a hook member leaked onto `ScenarioDsl` fails by name
+- [x] 07-04-PLAN.md — `Before` gating and the `After` guarantee via `Effect.onExit` (RUN-02, INV-EC-004), threading the `HookSet` from the collection through `emitFeature` to `buildScenarioEffect`
 
 **Wave 4** *(blocked on 07-04)*
 
@@ -429,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 2/8 | In Progress|  |
+| 7. Hooks | 4/8 | In Progress|  |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
