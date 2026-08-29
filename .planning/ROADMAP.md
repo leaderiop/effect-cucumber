@@ -389,7 +389,18 @@ unconditionally, even when the Outline's own title already differs by interpolat
   3. A Feature containing an `@only`-tagged Scenario passes a CI-mode run (the mode where `.only` fails by design) — proving `@only` is emitted as a plain tag and never `it.effect.only` (RUN-05).
   4. A tag filter selects exactly the tagged Scenarios, and `excludeTags` on `describeFeature`'s options object excludes them (RUN-05; `excludeTags`' exact signature location is decided in this phase — currently unspecified in the spec).
 
-**Plans**: TBD — set by `/gsd:plan-phase 9`
+**Plans:** 9 plans in 6 waves
+
+Plans:
+- [ ] 09-01-PLAN.md — root `vitest.config.ts` (declared tag universe, `allowOnly: false`) and the `TestApi` seam gate script
+- [ ] 09-02-PLAN.md — `Tags.ts` leaf (reserved tags, `TagFilter`, `shouldEmit`) and the two new `Errors.ts` warning types
+- [ ] 09-03-PLAN.md — `ScenarioPlan.tags`, populated and asserted at all four inheritance levels
+- [ ] 09-04-PLAN.md — `EmitOptions` on the `TestApi` seam; registration filtering, skip routing and teardown suppression inside `emitFeature`
+- [ ] 09-05-PLAN.md — public `includeTags`/`excludeTags` argument, per-Feature adapter with catch-and-degrade, exclusion notice
+- [ ] 09-06-PLAN.md — runtime acceptance through the real `describeFeature` in `emission.test.ts`
+- [ ] 09-07-PLAN.md — `gherkinTags` config helper and the package barrel
+- [ ] 09-08-PLAN.md — CLI-observable gate for tag filtering and the skip reporter footprint
+- [ ] 09-09-PLAN.md — spec reconciliation: ADR-EC-026 supersedes ADR-EC-020, BEH-EC-008/017 amended, RUN-05 marked
 
 **Research flag**: **Light research recommended** — vitest v4's native tag API is new; confirm its config-time tag-declaration mechanics against the installed `vitest@4.1.x` before finalizing the design.
 
