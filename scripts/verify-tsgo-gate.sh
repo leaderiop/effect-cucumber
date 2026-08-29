@@ -42,6 +42,8 @@ LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
 STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-error.json"
 HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
 HOOK_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-missing.json"
+RULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-ok.json"
+RULE_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-missing.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
@@ -57,7 +59,8 @@ fail() {
 
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
   "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
-  "$HOOK_NEG_CONFIG"; do
+  "$HOOK_NEG_CONFIG" "$RULE_OK_CONFIG" \
+  "$RULE_NEG_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -323,6 +326,68 @@ if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_NEG_OUTPUT"; then
   fail "the hook was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the hook DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the HookRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST, after which TypeScript reports the generator as a plain shape mismatch that the plugin has no reason to read as a context problem. See Dsl.ts note (a)."
 fi
 echo "✓ a hook requiring an unprovided service is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertions 12 and 13: THE RULE SATISFIED/STARVED FLIP PAIR.
+#
+# Assertions 5/6 cover a step against the Feature's ambient Layer; 10/11 cover a hook against it.
+# These two cover ADR-EC-010's extra Layers — the one place in the DSL where `ROut` is not the same
+# everywhere in a Feature. `FeatureDsl.Rule` hands its callback a `RuleDsl<ROut | R2>` and
+# `ScenarioRegistrar`'s three-argument form hands its callback a `ScenarioDsl<ROut | R2>`; DSL-05 and
+# INV-EC-005 are the claim that the union holds INSIDE that callback and nowhere else.
+#
+# Narrow either union back to `ROut` and every existing assertion above still passes: the Feature
+# level is untouched, nothing else in this repo registers a Rule-scoped step, and the boundary just
+# quietly stops existing. That is why the pair is committed rather than derived — assertion 12 is the
+# only thing in this script that goes red when the union is narrowed.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Assertion 12: the Rule/Scenario extra-Layer positive control compiles clean.
+# Discriminates a working boundary from a dsl that simply rejects everything — the same role
+# assertion 5 plays for StepRegistrar and assertion 10 for HookRegistrar. This fixture also carries
+# three load-bearing `@ts-expect-error` directives, so it fails in BOTH directions: too strict, and
+# too loose.
+# ---------------------------------------------------------------------------
+RULE_OK_OUTPUT="$($TSC -p "$RULE_OK_CONFIG" 2>&1)" && RULE_OK_EXIT=0 || RULE_OK_EXIT=$?
+
+if [[ "$RULE_OK_EXIT" -ne 0 ]]; then
+  echo "$RULE_OK_OUTPUT"
+  fail "the Rule/Scenario extra-Layer positive control failed to compile — three known causes, and the output above says which. (i) TS2345/TS377004 naming RuleService or ScenarioService INSIDE a Rule's or a Scenario's own callback: the extra service was wrongly REJECTED where it is supposed to be visible, meaning FeatureDsl.Rule's or ScenarioRegistrar's generic union (\`RuleDsl<ROut | R2>\` / \`ScenarioDsl<ROut | R2>\`) was narrowed back to \`ROut\` alone in packages/vitest/src/Dsl.ts. (ii) TS2578 'Unused @ts-expect-error directive' on the \`void ruleDsl.BeforeAllScenarios\` line: BeforeAllScenarios or AfterAllScenarios LEAKED onto RuleDsl, which ADR-EC-010 does not scope to a Rule (Dsl.ts note (f)). (iii) TS377000 '@effect-diagnostics directive has no effect', or TS2578, on either INVISIBILITY line — the Rule's (\"outside the rule\") or the Scenario's (\"outside the scoped Scenario\"): that form's extra Layer leaked into the ambient ROut OUTSIDE its own scope, so INV-EC-005's boundary is gone and roadmap success criterion 1 is decorative. Do not add \`any\` to the fixture to make this pass — one \`any\` in a step body is assignable to everything and disables the whole guarantee."
+fi
+echo "✓ Rule/Scenario extra-Layer positive control compiles clean (Rule-scoped steps + four Rule hooks + Rule Background + Scenario extra Layer, with both invisibility guards satisfied)"
+
+# ---------------------------------------------------------------------------
+# Assertion 13: DSL-05 — a Rule-scoped service used OUTSIDE its Rule is rejected BY NAME.
+#
+# This is roadmap success criterion 1 in its most literal form: rule-missing-service.ts is
+# rule-satisfied.ts's Rule-scoped step body, byte-for-byte, registered at Feature level with no Rule
+# in the file. The pair isolates exactly one variable — whether the step is inside the Rule that
+# contributed the service.
+#
+# NOTE: missingEffectContext, and NOT missingLayerContext. These are different diagnostics on
+# different fixtures and must not be "harmonized" with assertion 4's or assertion 8's grep above.
+# Assertion 4 is about a Layer ARGUMENT's own unhandled RIn; assertion 8 is about describeFeature's
+# layer-argument overload order; this one is about a STEP's required context. Copying either name
+# here produces an assertion that fails for the wrong reason, which then invites someone to weaken
+# the grep until it passes. The negative fixture's output contains TS377004 and no
+# missingLayerContext at all — its ambient Layer (World.layer) is complete.
+#
+# Two checks, never one — the exit code proves it was rejected, the diagnostic name proves it was
+# rejected FOR THE RIGHT REASON.
+# ---------------------------------------------------------------------------
+RULE_NEG_OUTPUT="$($TSC -p "$RULE_NEG_CONFIG" 2>&1)" && RULE_NEG_EXIT=0 || RULE_NEG_EXIT=$?
+
+if [[ "$RULE_NEG_EXIT" -eq 0 ]]; then
+  echo "$RULE_NEG_OUTPUT"
+  fail "a Rule-scoped service COMPILED in a step written OUTSIDE its Rule — DSL-05's compile-time boundary (INV-EC-005, roadmap success criterion 1) is decorative, and ADR-EC-010's extra Layer is a runtime convention with no type behind it. Most likely cause: FeatureDsl.Rule's callback parameter in packages/vitest/src/Dsl.ts was widened past \`RuleDsl<ROut | R2>\` — e.g. to \`RuleDsl<any>\` — or the Rule's extraLayer was merged into the Feature's ambient ROut instead of only into the Rule's."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$RULE_NEG_OUTPUT"; then
+  echo "$RULE_NEG_OUTPUT"
+  fail "the out-of-Rule step was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the Rule surface. CI stays green on a rejection that no longer proves anything about context. Two likely causes: FeatureDsl.Rule's \`R2\` generic parameter was dropped, so the fixture now fails for an arity or shape reason instead; or the step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST, after which TypeScript reports the generator as a plain shape mismatch that the plugin has no reason to read as a context problem. See Dsl.ts note (a)."
+fi
+echo "✓ a Rule-scoped service used outside its Rule is rejected by name: effect(missingEffectContext)"
 
 echo ""
 echo "tsgo gate: ENFORCED"
