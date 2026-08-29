@@ -68,6 +68,16 @@
  *      loses, which is why it is asserted separately rather than folded into a single match.
  * - C. `describeFeature` calls `collect` and never emits → the `completedScenarios` assertion in the
  *      last block fails.
+ * - D. `Runner.ts`'s `AfterAllScenarios` node is never emitted (its `if (hooks.AfterAllScenarios.length
+ *      > 0)` guard forced to skip) → every emitted hook test still PASSES (nothing downstream of the
+ *      node depends on it), and only the new final block's "exactly once and last" assertion fails,
+ *      because `hookLog`'s last two entries are Scenario 2's own `after2:start`/`:end` instead of
+ *      `afterAllScenarios:start`/`:end`.
+ * - E. `BeforeAllScenarios` composed inside `ScenarioEffect.ts`'s `buildScenarioEffect` (run once per
+ *      Scenario execution) instead of through `Runner.ts`'s once-cell → the second hook Scenario's own
+ *      `Then` body assertion fails: its log prefix gains a SECOND `beforeAllScenarios:start`/`:end`
+ *      pair ahead of its own `Before`, so both the exact-array comparison and the
+ *      exactly-one-`beforeAllScenarios:start` count assertion fail.
  *
  * **Mutation C SURVIVED the first version of this file, and that is why the last block exists.**
  * The first draft asserted only on what the emitted tests did while running. With nothing emitted,
@@ -343,5 +353,176 @@ describe("describeFeature emitted tests that actually ran", () => {
       `Emission${nameSeparator}the first scenario records its own entry`,
       `Emission${nameSeparator}the second scenario records a different entry`
     ])
+  })
+})
+
+/**
+ * Task 2: all six hooks, through a REAL `describeFeature` call — the second (and last) real call in
+ * this file, against its own fixture, so the happy-path Feature above and its assertions stay
+ * completely untouched.
+ *
+ * `hookLog` is a plain module-scope array, not a `Recorder`-style `Context.Service` — deliberately.
+ * The happy-path Feature above already proves per-Scenario Layer freshness (INV-EC-002); this block
+ * proves hook ORDERING across a real run, for which a closed-over array is adequate, and it lets every
+ * hook and step body below stay a plain `Effect.sync`-free generator that requires no service at all
+ * (the ambient Layer is `Layer.empty`), mirroring `completedScenarios`'s own "read the module-scope
+ * array directly" convention.
+ *
+ * Every hook and every step body brackets a real suspension with `${name}:start`/`Effect.yieldNow`/
+ * `${name}:end` — `test/Runner.test.ts`'s `recordingHook`/`bracketedStep` convention, copied here for
+ * the identical reason: without the suspension, this ordering assertion cannot tell sequential
+ * execution from concurrent execution that happens to finish in the same tick.
+ */
+const hookLog: Array<string> = []
+
+/** A bare generator that brackets `${name}:start`/`${name}:end` around a real suspension in `hookLog`. */
+const bracketed = (name: string) =>
+  function*() {
+    hookLog.push(`${name}:start`)
+    yield* Effect.yieldNow
+    hookLog.push(`${name}:end`)
+  }
+
+/**
+ * A second, smaller Feature — its own fixture, per the header, so the happy-path Feature's assertions
+ * above never have to change. Two Scenarios, each with a `When` (records its own position) and a
+ * `Then` (asserts the whole log's prefix it can legitimately see at that point, THEN returns without
+ * itself appending anything — the assertion must run before its own `AfterStep`/`After` entries land,
+ * or it could not tell "what I can see so far" from "what I will see once I'm done").
+ */
+const hooksFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Hooks
+  Scenario: the first hook scenario sees BeforeAllScenarios and its own Before
+    When I run the first hook scenario's own step
+    Then the first hook scenario's log matches its own legitimate prefix
+
+  Scenario: the second hook scenario sees no second BeforeAllScenarios
+    When I run the second hook scenario's own step
+    Then the second hook scenario's log matches its own legitimate prefix
+`,
+    "test/hooks.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE second and LAST real `describeFeature` call in this file. Registers only succeeding hooks and
+// steps — the header's founding constraint — and asserts entirely from inside the emitted bodies and
+// the final sync block below, never by re-deriving the plan's expectations here.
+describeFeature(
+  hooksFeature,
+  Layer.empty,
+  ({ After, AfterAllScenarios, AfterStep, Before, BeforeAllScenarios, BeforeStep, Then, When }) => {
+    // Two Before hooks and two After hooks — registration order (D-01) is observable in a real run,
+    // not only against `test/Runner.test.ts`'s recording fake.
+    Before(bracketed("before1"))
+    Before(bracketed("before2"))
+    After(bracketed("after1"))
+    After(bracketed("after2"))
+    // One BeforeStep and one AfterStep — wraps EVERY resolved step, the `When` and the `Then` alike.
+    BeforeStep(bracketed("beforeStep"))
+    AfterStep(bracketed("afterStep"))
+    // One BeforeAllScenarios and one AfterAllScenarios — the once-cell and the trailing node.
+    BeforeAllScenarios(bracketed("beforeAllScenarios"))
+    AfterAllScenarios(bracketed("afterAllScenarios"))
+
+    When("I run the first hook scenario's own step", bracketed("scenario1-step"))
+    Then("the first hook scenario's log matches its own legitimate prefix", function*() {
+      // A bare assertion body has no Effect to `yield*` on its own — `Effect.void` satisfies
+      // oxlint's `require-yield` (a generator with no `yield` at all is rejected) without asserting
+      // anything itself.
+      yield* Effect.void
+      // What Scenario 1 can legitimately see at this point: ONE BeforeAllScenarios pair (this Scenario
+      // is the first to run, so the once-cell's body runs here), its own two Before hooks, its own
+      // first step's BeforeStep/step/AfterStep unit, and its own second step's BeforeStep — but NOT
+      // that second step's own AfterStep, and NOT its Scenario-level After hooks: both run only AFTER
+      // this assertion returns.
+      assert.deepStrictEqual(hookLog, [
+        "beforeAllScenarios:start",
+        "beforeAllScenarios:end",
+        "before1:start",
+        "before1:end",
+        "before2:start",
+        "before2:end",
+        "beforeStep:start",
+        "beforeStep:end",
+        "scenario1-step:start",
+        "scenario1-step:end",
+        "afterStep:start",
+        "afterStep:end",
+        "beforeStep:start",
+        "beforeStep:end"
+      ])
+    })
+
+    When("I run the second hook scenario's own step", bracketed("scenario2-step"))
+    Then("the second hook scenario's log matches its own legitimate prefix", function*() {
+      // Same `require-yield` satisfaction as the first `Then` body above.
+      yield* Effect.void
+      // Scenario 2's own legitimate prefix: everything Scenario 1 saw AND did (its own AfterStep and
+      // After hooks now present too, since Scenario 1 fully completed first), followed by Scenario 2's
+      // own Before hooks, first step's unit, and second step's BeforeStep — mutation E's target: were
+      // BeforeAllScenarios composed per Scenario instead of through the once-cell, a SECOND
+      // `beforeAllScenarios:start`/`:end` pair would appear right before this Scenario's own `Before`.
+      assert.deepStrictEqual(hookLog, [
+        "beforeAllScenarios:start",
+        "beforeAllScenarios:end",
+        "before1:start",
+        "before1:end",
+        "before2:start",
+        "before2:end",
+        "beforeStep:start",
+        "beforeStep:end",
+        "scenario1-step:start",
+        "scenario1-step:end",
+        "afterStep:start",
+        "afterStep:end",
+        "beforeStep:start",
+        "beforeStep:end",
+        "afterStep:start",
+        "afterStep:end",
+        "after1:start",
+        "after1:end",
+        "after2:start",
+        "after2:end",
+        "before1:start",
+        "before1:end",
+        "before2:start",
+        "before2:end",
+        "beforeStep:start",
+        "beforeStep:end",
+        "scenario2-step:start",
+        "scenario2-step:end",
+        "afterStep:start",
+        "afterStep:end",
+        "beforeStep:start",
+        "beforeStep:end"
+      ])
+      // The other half of mutation E's target, stated as a count rather than a position: no matter
+      // where a stray second pair would land, there must be exactly ONE `beforeAllScenarios:start` in
+      // the whole prefix Scenario 2 can see.
+      assert.strictEqual(hookLog.filter((entry) => entry === "beforeAllScenarios:start").length, 1)
+    })
+  }
+)
+
+/**
+ * DECLARED LAST ON PURPOSE, after every other `describe` block in this file — the identical
+ * "vitest runs a file's suites in declaration order" reasoning `completedScenarios`'s own last block
+ * uses. Both hook Scenarios above, and the `⚙ AfterAllScenarios` node emitted after them, have already
+ * run by the time this executes.
+ *
+ * This is the real-run half of roadmap success criterion 3/D-09: `test/Runner.test.ts`'s recording
+ * fake can prove the `AfterAllScenarios` node was EMITTED at the right position, but only a real vitest
+ * run — this file — can prove it was actually EXECUTED, since a recording fake never runs anything on
+ * its own.
+ */
+describe("the hook Feature's real-run AfterAllScenarios proof", () => {
+  it("ran the AfterAllScenarios node last, and its own hook exactly once", () => {
+    // Mutation D's target: an `AfterAllScenarios` node that was never emitted leaves the log ending
+    // with Scenario 2's own `after2:start`/`:end` instead.
+    expect(hookLog.slice(-2)).toEqual(["afterAllScenarios:start", "afterAllScenarios:end"])
+    // Exactly once — not "at least once", which the position check above already implies but does not
+    // by itself rule out a stray extra pair earlier in the log.
+    expect(hookLog.filter((entry) => entry === "afterAllScenarios:start")).toHaveLength(1)
   })
 })

@@ -58,6 +58,15 @@
  * - N. the `AfterAllScenarios` node's body is composed to `Effect.flatMap` the `BeforeAllScenarios`
  *      cell first → the runs-even-when-`BeforeAllScenarios`-failed test fails, because the node's own
  *      exit becomes a failure instead of a success.
+ * - O. `ScenarioEffect.ts`'s per-step unit has its `BeforeStep` and `AfterStep` batches swapped (the
+ *      unit's `yield*` runs `AfterStep` and its `onExit` finalizer runs `BeforeStep`) → the headline
+ *      full-ordering test below fails, and by construction nothing else in this file does: no other
+ *      test here asserts BeforeStep/AfterStep ordering, which is `test/ScenarioEffect.test.ts`'s job
+ *      (its own mutation J is the identical swap, caught there too).
+ * - P. `BeforeAllScenarios` composed inside `ScenarioEffect.ts`'s `buildScenarioEffect` (run once per
+ *      Scenario execution) instead of through `Runner.ts`'s once-cell → the headline full-ordering
+ *      test below fails: the sequence gains a SECOND `BeforeAllScenarios:start`/`:end` pair, ahead of
+ *      Scenario 2's own `Before`, instead of the once-cell's single pair ahead of Scenario 1's.
  *
  * ## The fixtures
  *
@@ -103,11 +112,12 @@ import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import type * as Scope from "effect/Scope"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import type { HookBody, HookSet } from "../src/Hook.ts"
-import { type FeaturePlan, planFeature, type StepBody } from "../src/Plan.ts"
+import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
 import type { TestApi } from "../src/TestApi.ts"
@@ -285,6 +295,24 @@ const recordingStep = (name: string): StepBody => () =>
   Effect.gen(function*() {
     const recorder = yield* Recorder
     yield* Ref.update(recorder.log, (seen) => [...seen, name])
+  })
+
+/**
+ * A step body that brackets a real suspension with `${name}:start`/`${name}:end`, written onto the
+ * SAME `Recorder` log `recordingHook`/`failingHook` write to — used ONLY by the headline full-ordering
+ * test below. Mirrors `test/ScenarioEffect.test.ts`'s `recordingStep` exactly, for the identical
+ * reason recorded there: without a real suspension in the middle, an ordering assertion cannot tell
+ * sequential execution from concurrent execution that happens to finish in the same tick
+ * (07-PATTERNS.md's finding). `recordingStep` above stays unbracketed on purpose — it is used only for
+ * MACRO-ordering (a whole Scenario versus a whole once-cell); the headline test below needs the finer
+ * step-level ordering `BeforeStep`/`AfterStep` bracket around.
+ */
+const bracketedStep = (name: string): StepBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
   })
 
 /** Parse an inline Feature the way a consumer would, so the fixtures are real contract values. */
@@ -872,6 +900,146 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
       assert.isTrue(Exit.isFailure(afterAllExit))
       assert.strictEqual(Exit.isFailure(afterAllExit) ? Cause.squash(afterAllExit.cause) : undefined, boom)
     }))
+})
+
+/**
+ * Roadmap success criterion 2, literally: one comparison over one append-only log proves the WHOLE
+ * `BeforeAllScenarios → (Before → BeforeStep/step/AfterStep per step → After) per Scenario →
+ * AfterAllScenarios` sequence across a two-Scenario Feature, all six hook kinds registered at once.
+ *
+ * Deliberately a SINGLE `assert.deepStrictEqual`, not a set of narrower per-hook-kind checks: an
+ * arrangement that gets every PAIRWISE ordering right but the overall INTERLEAVING wrong — e.g. both
+ * Scenarios' `Before` hooks running ahead of either Scenario's steps, or `BeforeAllScenarios` composed
+ * per Scenario instead of once for the Feature (mutation P) — would still pass a suite of narrower
+ * assertions built from projections or `.some(...)` searches. Only the whole log, compared at once
+ * against the literal expected array, rules every one of those out simultaneously.
+ */
+describe("the phase's headline assertion: the full six-hook ordering across a two-Scenario Feature (roadmap SC #2)", () => {
+  it.effect(
+    "BeforeAllScenarios -> (Before -> BeforeStep/step/AfterStep x2 -> After) x2 -> AfterAllScenarios",
+    () =>
+      Effect.gen(function*() {
+        const { api, records } = makeRecordingApi()
+        const { layer: recorderLayer, log } = makeRecorderLayer()
+
+        // One hook of each of the six kinds, each hook's own entries named after its kind — so the
+        // expected array below reads as the sequence itself.
+        const hooks: HookSet = {
+          Before: [recordingHook("Before")],
+          After: [recordingHook("After")],
+          BeforeStep: [recordingHook("BeforeStep")],
+          AfterStep: [recordingHook("AfterStep")],
+          BeforeAllScenarios: [recordingHook("BeforeAllScenarios")],
+          AfterAllScenarios: [recordingHook("AfterAllScenarios")]
+        }
+
+        // Hand-built ScenarioPlans over `checkout`'s real two Feature-level Scenarios (paying,
+        // refunding) — their real `scenarioId`s so `emitFeature`'s `planFor` lookup resolves, but
+        // hand-crafted BRACKETED step bodies (not `checkoutDefinitions`' real step text) so this test
+        // controls exactly what each Scenario's TWO resolved steps record, named after their position.
+        const [payingId, refundingId] = checkout.scenarios.map((scenario) => scenario.id)
+        if (payingId === undefined || refundingId === undefined) {
+          throw new Error("fixture `checkout` must have exactly two Feature-level Scenarios")
+        }
+
+        const stepsOf = (prefix: string): ReadonlyArray<PlannedStep> => [
+          {
+            _tag: "Resolved",
+            step: {
+              text: `${prefix}-step1`,
+              line: 1,
+              keyword: "When",
+              origin: "scenario",
+              pattern: `${prefix}-step1`,
+              body: bracketedStep(`${prefix}-step1`),
+              args: []
+            }
+          },
+          {
+            _tag: "Resolved",
+            step: {
+              text: `${prefix}-step2`,
+              line: 2,
+              keyword: "When",
+              origin: "scenario",
+              pattern: `${prefix}-step2`,
+              body: bracketedStep(`${prefix}-step2`),
+              args: []
+            }
+          }
+        ]
+
+        const scenario1: ScenarioPlan = {
+          scenarioId: payingId,
+          name: "paying",
+          astName: "paying",
+          ruleId: Option.none(),
+          steps: stepsOf("scenario1")
+        }
+        const scenario2: ScenarioPlan = {
+          scenarioId: refundingId,
+          name: "refunding",
+          astName: "refunding",
+          ruleId: Option.none(),
+          steps: stepsOf("scenario2")
+        }
+
+        const plan: FeaturePlan = { feature: checkout, scenarios: [scenario1, scenario2], warnings: [] }
+
+        emitFeature({ api, plan, layer: recorderLayer, hooks })
+
+        // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the
+        // `⚙ AfterAllScenarios` node — run them in that same order.
+        yield* thunkAt(records, 1)()
+        yield* thunkAt(records, 2)()
+        yield* thunkAt(records, 3)()
+
+        // THE headline assertion. Written out in full, grouped by line so the sequence reads directly:
+        // one `BeforeAllScenarios` pair; then, per Scenario, `Before` gates two `BeforeStep`/step/
+        // `AfterStep` units, followed by `After`; then, once, `AfterAllScenarios`.
+        assert.deepStrictEqual(yield* Ref.get(log), [
+          "BeforeAllScenarios:start",
+          "BeforeAllScenarios:end",
+
+          "Before:start",
+          "Before:end",
+          "BeforeStep:start",
+          "BeforeStep:end",
+          "scenario1-step1:start",
+          "scenario1-step1:end",
+          "AfterStep:start",
+          "AfterStep:end",
+          "BeforeStep:start",
+          "BeforeStep:end",
+          "scenario1-step2:start",
+          "scenario1-step2:end",
+          "AfterStep:start",
+          "AfterStep:end",
+          "After:start",
+          "After:end",
+
+          "Before:start",
+          "Before:end",
+          "BeforeStep:start",
+          "BeforeStep:end",
+          "scenario2-step1:start",
+          "scenario2-step1:end",
+          "AfterStep:start",
+          "AfterStep:end",
+          "BeforeStep:start",
+          "BeforeStep:end",
+          "scenario2-step2:start",
+          "scenario2-step2:end",
+          "AfterStep:start",
+          "AfterStep:end",
+          "After:start",
+          "After:end",
+
+          "AfterAllScenarios:start",
+          "AfterAllScenarios:end"
+        ])
+      })
+  )
 })
 
 describe("a Feature registering neither all-scenarios hook emits exactly what it emitted before this plan", () => {
