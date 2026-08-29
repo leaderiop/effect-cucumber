@@ -15,7 +15,7 @@
  * consumes fully-resolved value objects and never sees a pattern, a registry or a `ParsedFeature`
  * internal again.
  *
- * Six things about this module are not visible from the code.
+ * Seven things about this module are not visible from the code.
  *
  * (a) **A resolution failure stays IN POSITION in the step list, as a member of the `PlannedStep`
  *     union — it is not hoisted to a `failure` field on the Scenario.** The consequence is the whole
@@ -82,6 +82,21 @@
  *     non-mutating `toSorted` — never the mutating in-place form, which `unicorn(no-array-sort)`
  *     rejects anyway. Revisit when the rc moves, not before.
  *
+ * (g) **A pattern counts as USED when it was VISIBLE to a step and MATCHED it — not when it was
+ *     SELECTED to run it.** The two readings differ on exactly one case, and it is the one that
+ *     matters: a Feature-level pattern that matched a step and then lost to a Scenario-level
+ *     override. Under the "was selected" reading that pattern is reported unused, so the
+ *     Feature-level-default-plus-override arrangement note (b) exists to support produces a warning
+ *     telling the author to delete the default — advice that is exactly backwards. It is not dead
+ *     code; it matched. ADR-EC-019's own wording is "a registered pattern that matches zero steps
+ *     across the whole Feature", which is the visible-and-matched reading and not the other one.
+ *
+ *     The used-set is keyed on the `StepDefinition` OBJECT REFERENCE and never on
+ *     `definition.pattern`. Two definitions may legitimately share one pattern string at two
+ *     different scopes — a default and its override are frequently worded identically — and a string
+ *     key would let either one's use silently mark the other as used, hiding a genuinely dead
+ *     registration behind a live one.
+ *
  * Local imports: `./CallSite.ts`, `./Errors.ts` and `./Registry.ts`, plus the
  * `@effect-cucumber/gherkin` barrel. NEVER `./describeFeature.ts` — the dependency runs the other
  * way, because `describeFeature.ts` imports `planFeature` from here, and the reverse edge would be
@@ -109,7 +124,7 @@ import {
 import type * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { compareCallSites, formatCallSite } from "./CallSite.ts"
-import { StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
+import { makeUnusedStepDefinitionWarning, StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
 import type { RegistryScopeKind, StepDefinition } from "./Registry.ts"
 
 /**
@@ -369,6 +384,48 @@ const ambiguousStep = (args: {
 }
 
 /**
+ * MATCH-05. A registered pattern that matched no step anywhere in the Feature.
+ *
+ * A WARNING and never a failure (ADR-EC-019): an unused step definition is dead code, not a broken
+ * Scenario, and the plan it is attached to is completely usable. This is 06-CONTEXT.md D-02's third
+ * surface — the structured, programmatically-inspectable one a test asserts against directly instead
+ * of scraping `console.warn` output or parsing a synthetic test node's title.
+ *
+ * The message prefix omits the line number that `at()` supplies everywhere else, and that is not an
+ * oversight: this finding is about the whole Feature, which has no single line where a pattern
+ * failing to match happened. The definition SITE is the location a reader needs, and it is in the
+ * sentences instead.
+ *
+ * `definedAt` is handed to the factory already rendered through `formatCallSite`, so the field is
+ * always `Option.some` — carrying either a real `file:line:column` or the shared
+ * `an unrecorded location` wording. That keeps the field and the message saying the same thing, and
+ * keeps every consumer from having to re-decide the absent-site phrasing for itself.
+ */
+const unusedStepDefinition = (args: {
+  readonly feature: ParsedFeature
+  readonly definition: StepDefinition<StepBody>
+}): UnusedStepDefinitionWarning => {
+  const { definition, feature } = args
+  const site = formatCallSite(definition.definedAt)
+  const sentences = [
+    `the step pattern ${quoted(definition.pattern)}, registered as a ${definition.keyword} at`,
+    `${site}, matched no step in Feature ${quoted(feature.name)}.`,
+    "An unused step definition is dead code that will drift out of sync with the Feature, and a typo",
+    "in a pattern looks from here exactly like a definition nobody needs any more.",
+    "Delete it, or fix the pattern so it matches the step it was written for."
+  ]
+  return makeUnusedStepDefinitionWarning({
+    reason: "UnusedStepDefinition",
+    featureName: feature.name,
+    uri: feature.uri,
+    keyword: definition.keyword,
+    pattern: definition.pattern,
+    definedAt: site,
+    message: `${feature.uri}: UnusedStepDefinition: ${sentences.join(" ")}`
+  })
+}
+
+/**
  * Is `definition` on `step`'s scope chain? ARCHITECTURE.md Pattern 5, and ADR-EC-017 for the
  * Background half.
  *
@@ -484,20 +541,38 @@ export const planFeature = (args: {
     entries: definitions.map((definition) => ({ pattern: definition.pattern, definition }))
   })
 
+  // Every definition that was VISIBLE to at least one step AND matched that step's text, recorded
+  // BEFORE level precedence discards the shadowed ones. That ordering is the whole subtlety of
+  // MATCH-05, and the object-reference key is the other half — note (g) has both arguments.
+  const used = new Set<StepDefinition<StepBody>>()
+
   const scenarios = feature.allScenarios.map((scenario): ScenarioPlan => ({
     scenarioId: scenario.id,
     name: scenario.name,
     astName: scenario.astName,
     ruleId: scenario.ruleId,
-    steps: scenario.steps.map((step) =>
-      planStep({
-        feature,
-        scenario,
-        step,
-        matches: matcher.match(step.text).filter((match) => isVisibleTo(match.definition, scenario, step))
-      })
-    )
+    steps: scenario.steps.map((step) => {
+      const visible = matcher.match(step.text).filter((match) => isVisibleTo(match.definition, scenario, step))
+      for (const match of visible) {
+        used.add(match.definition)
+      }
+      return planStep({ feature, scenario, step, matches: visible })
+    })
   }))
 
-  return { feature, scenarios, warnings: [] }
+  // Sorted for determinism, so a test can assert by position rather than by searching, and so the
+  // list a developer reads does not reorder itself under an unrelated refactor. Same key as the
+  // ambiguous list — definition site — with the pattern as the tie-break for two registrations that
+  // share one site or have none, and `toSorted` is stable, so two findings that tie on both keep the
+  // order they were found in. Copied, reasoning and all, from `packages/gherkin/src/Validate.ts`'s
+  // own closing sort.
+  const warnings = definitions
+    .filter((definition) => !used.has(definition))
+    .toSorted((left, right) => {
+      const bySite = compareCallSites(left.definedAt, right.definedAt)
+      return bySite === 0 ? left.pattern.localeCompare(right.pattern) : bySite
+    })
+    .map((definition) => unusedStepDefinition({ feature, definition }))
+
+  return { feature, scenarios, warnings }
 }
