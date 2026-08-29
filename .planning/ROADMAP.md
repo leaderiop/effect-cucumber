@@ -303,7 +303,7 @@ Plans:
 
 **Wave 2** *(blocked on 07-01)*
 
-- [ ] 07-02-PLAN.md — `HookRegistrar<ROut>` and the six `FeatureDsl` members, plus hook registration in the composition root and `FeatureCollection.hooks`
+- [x] 07-02-PLAN.md — `HookRegistrar<ROut>` and the six `FeatureDsl` members, plus hook registration in the composition root and `FeatureCollection.hooks`
 
 **Wave 3** *(blocked on 07-02)*
 
@@ -429,7 +429,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. DataTable / DocString | 5/5 | Complete   | 2026-08-28 |
 | 5. `describeFeature` Type Surface | 6/6 | Complete   | 2026-08-29 |
 | 6. Plan, Scenario-Effect, Runner, Drift Detection | 8/8 | Complete   | 2026-08-29 |
-| 7. Hooks | 1/8 | In Progress|  |
+| 7. Hooks | 2/8 | In Progress|  |
 | 8. Rule and Scenario Outline | 0/TBD | Not started | - |
 | 9. Tags | 0/TBD | Not started | - |
 | 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
