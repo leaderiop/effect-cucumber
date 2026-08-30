@@ -40,10 +40,11 @@ each one's affected invariants.
 
 ### Process
 
-| Document                                                    | Purpose                                                     |
-| ----------------------------------------------------------- | ----------------------------------------------------------- |
-| [Requirement ID scheme](./process/requirement-id-scheme.md) | The `EC` infix, ID families, amend-vs-supersede rules       |
-| [Definitions of Done](./process/definitions-of-done.md)     | Per-change checklist and the (currently planned) merge gate |
+| Document                                                                       | Purpose                                                                                             |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                               |
+| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist and the (currently planned) merge gate                                         |
+| ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited |
 
 ## Reading order
 
@@ -57,11 +58,21 @@ entries, then check `traceability.md` still has them, then check
 
 ## Identifier scheme
 
-| Prefix       | Meaning                                                            |
-| ------------ | ------------------------------------------------------------------ |
-| `BEH-EC-NNN` | Behavior                                                           |
-| `INV-EC-NNN` | Invariant                                                          |
-| `ADR-EC-NNN` | Decision                                                           |
-| `REQ-EC-NNN` | Acceptance requirement (tag on a `.feature` file — none exist yet) |
+| Prefix       | Meaning                                                                                       |
+| ------------ | --------------------------------------------------------------------------------------------- |
+| `BEH-EC-NNN` | Behavior                                                                                      |
+| `INV-EC-NNN` | Invariant                                                                                     |
+| `ADR-EC-NNN` | Decision                                                                                      |
+| `REQ-EC-NNN` | Acceptance requirement — a tag on a `.feature` file under `packages/vitest/test/acceptance/`  |
+| `P-NN`       | A "Looks Done But Isn't" checklist item. **No `EC` infix**, deliberately — see the note below |
 
-Full rules in [`process/requirement-id-scheme.md`](./process/requirement-id-scheme.md).
+Full rules for the four `EC`-infixed families in
+[`process/requirement-id-scheme.md`](./process/requirement-id-scheme.md); full rules for `P-NN` in
+[`process/looks-done-but-isnt-checklist.md`](./process/looks-done-but-isnt-checklist.md), which
+restates the same permanence, contiguity and no-reuse discipline in its own words.
+
+`P-NN` is the one family without the `EC` infix. The infix exists to disambiguate identifiers when
+several specs are open side by side, and it earns that cost for an id a consumer or a sibling project
+might ever quote. A checklist item is quoted only from inside this repository — from two gate scripts
+and from thirteen test titles — and a `P-EC-NN` would have been three characters of ceremony per
+citation for a disambiguation nobody needs. Recorded here rather than left to look like an oversight.
