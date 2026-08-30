@@ -4,9 +4,12 @@
  * `Runner.ts` walks a plan and emits one `describe` per Feature and one test per Scenario. It does
  * that through an INJECTED object satisfying this interface, and it imports no test framework of
  * any kind. `describeFeature.ts`'s composition root is the single place that decides which real
- * implementation to pass — today the module-level `describe`/`it.effect` from `@effect/vitest`;
- * from Phase 10, the `it` that `layer(shared)(name, (it) => …)` hands its callback on the
- * shared-Layer path. This is Pattern 3 of `.planning/research/ARCHITECTURE.md`.
+ * implementation to pass, and TWO of them exist. `vitestTestApi` closes over the MODULE-LEVEL
+ * `describe`/`it.effect` from `@effect/vitest` and is the default, per-Scenario path.
+ * `sharedLayerTestApi` closes over the `it` that `layer(shared)((it) => …)` hands its callback —
+ * the one carrying the shared Layer's services — and additionally provides a fresh simulated clock
+ * and console per emitted node (ADR-EC-018). This is Pattern 3 of
+ * `.planning/research/ARCHITECTURE.md`.
  *
  * Four things about this module are not visible from the code.
  *
@@ -23,6 +26,21 @@
  *     recording fake with no vitest machinery in scope at all (plan 06-06). A type-only import
  *     here would put a test framework back into `Runner.ts`'s type graph and make that fake harder
  *     to write, not easier — so there is none.
+ *
+ *     One fact about that callback's object is what made the seam workable exactly as designed,
+ *     rather than needing a third member: it is a `Vitest.MethodsNonLive`, and `MethodsNonLive` has
+ *     NO `describe` member at all. So the shared-path implementation satisfies `describe` below with
+ *     the MODULE-LEVEL one, and that is legitimate precisely because `describe` carries no Layer
+ *     services — it opens a block and nothing else, so there is nothing for it to rebuild silently.
+ *     That is exactly what distinguishes it from the module-level `it.effect`, which does carry
+ *     context and which Anti-Pattern 3 forbids on that path. Only the member that carries services
+ *     differs between the two implementations.
+ *
+ *     `MethodsNonLive` additionally has no `live` member (Pitfall 29). A Feature using a `shared`
+ *     Layer therefore cannot opt one Scenario out of the simulated clock, so the two paths do NOT
+ *     have identical capability surfaces. That is a documented limitation of the shared scope rather
+ *     than a defect, and not something this interface could paper over: a member present on one path
+ *     and throwing on the other would be worse than its absence.
  *
  * (b) **`skip` is a FIELD on `EmitOptions`; `only` has no representation here at all.** The two
  *     halves of this note are different KINDS of statement, and conflating them is the mistake it

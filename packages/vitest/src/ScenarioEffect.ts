@@ -57,10 +57,20 @@
  *
  *     Fresh per EXECUTION is the other half, and it comes for free from returning an unexecuted
  *     Effect: the Layer is built when the Effect runs, so two runs build it twice. That is
- *     INV-EC-002 for the per-Scenario case. This phase provides the Feature's single merged Layer
- *     uniformly, with no shared/per-Scenario distinction at runtime — ADR-EC-018's shared path is
- *     Phase 10's entire reason to exist (RUN-03/RUN-04), and adding a memoised branch here in
- *     anticipation would break INV-EC-002 for every Feature that does not ask for one.
+ *     INV-EC-002.
+ *
+ *     The Layer this module provides is the PER-SCENARIO TIER, on BOTH paths, and that is what makes
+ *     one uniform provision correct rather than a simplification awaiting a branch. A Feature that
+ *     declared a `shared` Layer has that tier built once and made AMBIENT on the emitted test node
+ *     by the composition root, before this module is ever reached; re-providing it here would
+ *     rebuild the shared resource once per Scenario, which is ARCHITECTURE.md's Anti-Pattern 3 one
+ *     level removed and the exact defect ADR-EC-018 exists to prevent. So "fresh per execution"
+ *     remains true of the tier this module provides, and is DELIBERATELY not true of the shared
+ *     tier — asking for one is asking for exactly that.
+ *
+ *     The per-Scenario `TestClock`/`TestConsole` pair is likewise provided at the EMISSION boundary,
+ *     in the composition root, and never here. Between the two, this module still knows nothing
+ *     about which path it is on, which is the property that keeps it branch-free.
  *
  * (c) **An `Unresolved` step becomes a failure IN POSITION, not an up-front rejection.** The loop
  *     could scan the list first and fail before step one, which is shorter and reads as a nice
@@ -171,7 +181,8 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
  * `unknown` for the same reason, and a reporter needs no more.
  *
  * @param args.plan - one Scenario's steps, already resolved by `Plan.ts` and already in run order
- * @param args.layer - the Feature's single merged Layer, from `FeatureCollection.layer`
+ * @param args.layer - the PER-SCENARIO tier, from `FeatureCollection.layer` — note (b). Never the
+ *   Feature's shared tier, which is already ambient on the emitted test node when there is one
  * @param args.hooks - the Feature's registered hooks, grouped by kind, from `FeatureCollection.hooks`
  */
 export const buildScenarioEffect = (

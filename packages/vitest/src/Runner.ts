@@ -24,10 +24,12 @@
  *     Layer's services, and calling the MODULE-LEVEL `it.effect` inside that callback still
  *     compiles and still passes, because each Scenario provides its own Layers — while silently
  *     rebuilding the "shared" resource once per Scenario. That is a BEH-EC-007 violation with no
- *     failing test anywhere, invisible until someone counts testcontainer starts, and it becomes
- *     live in Phase 10 when RUN-03/RUN-04 add the shared path. Taking the framework only through
- *     the parameter makes the wrong `it` unreachable rather than merely discouraged. `TestApi.ts`
- *     note (a) is the other half of the argument, and an acceptance grep enforces both.
+ *     failing test anywhere, invisible until someone counts testcontainer starts. That path is no
+ *     longer hypothetical — RUN-03/RUN-04 shipped it, and there are now two concrete implementations
+ *     of the injected object, one per path — so this rule is load-bearing today rather than in
+ *     anticipation. Taking the framework only through the parameter makes the wrong `it` unreachable
+ *     rather than merely discouraged. `TestApi.ts` note (a) is the other half of the argument, and
+ *     an acceptance grep enforces both.
  *
  *     The second payoff is that this module is testable at all: with no framework in its type
  *     graph, `test/Runner.test.ts` asserts what was emitted against a recording fake, from inside a
@@ -149,6 +151,20 @@
  *     There is no fourth tier and no Scenario-scoped `HookSet`. ADR-EC-010 scopes hooks to a Rule and
  *     no further, so a Scenario's own extra Layer changes its services without changing which hooks
  *     run around it.
+ *
+ *     A Feature's SHARED Layer scope changes NONE of the above, and the reason is that it was never
+ *     one of these tiers. The `scenarioLayers.get(...) ?? ruleLayer ?? layer` chain resolves the
+ *     per-Scenario tier and only that; a shared tier, when the Feature declared one, is established
+ *     around the emitted test nodes by the composition root and arrives here already ambient on
+ *     `api`. So this walk is identical on both paths and has no branch for them — which is the
+ *     property that lets `test/Runner.test.ts` go on driving one recording fake.
+ *
+ *     The two `Effect.provide(layer)` call sites in this file — the `BeforeAllScenarios` once-cell
+ *     and the `AfterAllScenarios` node — are correct on both paths for the same reason. Each
+ *     provides the per-Scenario tier and leaves anything else the hook needs on the Effect's own
+ *     requirements, where the ambient context satisfies it at run time. Adding a shared tier to
+ *     either call would rebuild the shared resource, which is the whole defect the shared scope
+ *     exists to remove.
  *
  * (g) **The registration-time tag filter runs INSIDE this walk, after `planFor` and before anything
  *     is emitted, and the two places it looks like it belongs are both broken.** D-03 makes an
@@ -399,7 +415,9 @@ const makeOnce = (
  *
  * @param args.api - the test framework surface, injected — note (a)
  * @param args.plan - one Feature, already planned by `planFeature`
- * @param args.layer - the Feature's single merged Layer, passed straight to each Scenario
+ * @param args.layer - the Feature's PER-SCENARIO Layer tier, passed straight to each Scenario. When
+ *   the Feature declared a shared tier as well, that one is already ambient on `api` and is
+ *   deliberately not here — note (f)
  * @param args.hooks - the FEATURE-level hooks only (those whose `ruleId` is `null`), grouped by kind.
  *   Merged with an enclosing Rule's own before reaching `buildScenarioEffect` — note (f); this module
  *   does not WEAVE them into the Scenario's Effect either way, `ScenarioEffect.ts` does
