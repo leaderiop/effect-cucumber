@@ -117,12 +117,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Every REQ-EC-NNN tag used in a .feature file is defined in traceability.md.
+# 4. Every REQ-EC-NNN tag used in a .feature file is defined in traceability.md,
+#    AND no .feature file outside the acceptance directory carries one.
+#
+# TWO DIRECTIONS, AND THE SECOND ONE HAD TO BE WRITTEN. AGENTS.md §5 and
+# packages/vitest/test/acceptance/README.md both said this check enforced the
+# directory rule "in both directions"; it enforced NEITHER direction of it. It
+# did exactly one thing — for every tag found in any .feature file anywhere,
+# grep that id out of traceability.md — with no directory scoping at all.
+#
+# The claim looked true because check 5 catches a stray tag TODAY, and only
+# incidentally: the id space is saturated at EXPECTED_REQ_COUNT/EXPECTED_REQ_COUNT,
+# so a tag written anywhere lands as `duplicated` or `outofrange`. The moment
+# that constant is bumped for a newly allocated requirement, a @REQ-EC-023 in
+# packages/gherkin/test/fixtures/ passes every check while two documents still
+# say it cannot. That is the failure mode AGENTS.md §4 exists to prevent,
+# asserted in a file that states §4.
+#
+# ACCEPTANCE_TAG_DIR is the one directory where the tag is legal. The parser
+# corpus under packages/gherkin/test/fixtures/ and the tag-scanning fixtures
+# under packages/vitest/test/fixtures/ are never handed to a runner, so a tag
+# there would join the traceability chain while executing nothing — which is
+# precisely the "covered" claim this whole file exists to keep honest.
 #
 # No .feature suite exists yet (see spec/roadmap.md) — this SKIPs cleanly
 # until packages/*/test/features (or wherever the acceptance suite ends up)
 # exists and starts tagging scenarios.
 # ---------------------------------------------------------------------------
+ACCEPTANCE_TAG_DIR="packages/vitest/test/acceptance"
+
 if [[ -f "$SPEC_DIR/traceability.md" ]]; then
   tags=$(grep -rhoE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null | sort -u)
   if [[ -z "$tags" ]]; then
@@ -132,10 +155,24 @@ if [[ -f "$SPEC_DIR/traceability.md" ]]; then
     while IFS= read -r tag; do
       grep -q "${tag#@}" "$SPEC_DIR/traceability.md" || undefined="${undefined} ${tag}"
     done <<< "$tags"
+
+    # Direction two: the FILES carrying a tag, with the one legal directory
+    # removed. Reported relative to the repo root so the message is diffable
+    # rather than machine-specific.
+    stray=$(grep -rlE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null \
+      | sed "s|^${ROOT_DIR}/||" \
+      | grep -v "^${ACCEPTANCE_TAG_DIR}/" \
+      | sort \
+      | tr '\n' ' ' | sed 's/ *$//')
+
     if [[ -n "$undefined" ]]; then
       report FAIL "features -> traceability" "undefined:${undefined}"
+    elif [[ -n "$stray" ]]; then
+      report FAIL "features -> traceability" \
+        "REQ tag outside ${ACCEPTANCE_TAG_DIR}/ (AGENTS.md §5): $stray"
     else
-      report PASS "features -> traceability" "all REQ tags defined"
+      report PASS "features -> traceability" \
+        "all REQ tags defined, and none outside ${ACCEPTANCE_TAG_DIR}/"
     fi
   fi
 else

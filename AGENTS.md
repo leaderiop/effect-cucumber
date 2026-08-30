@@ -85,7 +85,12 @@ both directions by `spec/scripts/verify-traceability.sh` check 4: the parser
 corpus under `packages/gherkin/test/fixtures/` and the tag-scanning fixtures
 under `packages/vitest/test/fixtures/` are never handed to a runner and must
 NOT carry the tag — `packages/vitest/test/acceptance/` is the only directory
-where a `.feature` file may.
+where a `.feature` file may. Check 4's two directions are literal: every tag it
+finds must be DEFINED in `spec/traceability.md`, and no file carrying one may
+live outside that directory. Whether each tag also has a real ROW in §5 — and
+whether the set is complete, contiguous and carried exactly once — is **check
+5**, which is separate because check 4's definedness half is satisfied by a
+prose mention.
 
 ## 6. Identifier scheme
 

@@ -13,9 +13,15 @@ Each entry here is a PAIR: `<name>.feature` and `<name>.steps.test.ts`, sitting 
 [`../../../gherkin/test/fixtures/README.md`](../../../gherkin/test/fixtures/README.md) states the opposite rule for the
 parser corpus, and that sentence stays exactly as written — the two rules are halves of the same constraint, and
 `spec/scripts/verify-traceability.sh` check 4 enforces both. It greps EVERY `.feature` file in the repository for the
-tag pattern and fails `pnpm verify:spec` naming any tag that has no row in `spec/traceability.md` §5. A tag added here
-without its row is a red gate, not a silent omission; a tag added anywhere else is the same red gate for the opposite
-reason.
+tag pattern, then asserts two things: that every tag it found is DEFINED in `spec/traceability.md`, and that no file
+carrying one lives outside this directory. A tag added anywhere else fails `pnpm verify:spec` by file name.
+
+The neighbouring claim — that every tag also has a real ROW in `spec/traceability.md` §5, rather than a passing
+mention in that file's prose — belongs to **check 5**, not to check 4, and the distinction is the point of check 5
+existing separately. Check 4's definedness half is a `grep -q` over the whole document, which an id merely mentioned
+in prose satisfies; check 5 matches the §5 TABLE and nothing else. Check 5 also owns the count, the contiguity and the
+one-Scenario-per-id rule. See that script's own comment above check 5 for the three failures check 4 is structurally
+unable to see.
 
 The ids are permanent. They are allocated contiguously, in the order `.planning/REQUIREMENTS.md` writes the
 requirements, and are never renumbered and never reused (AGENTS.md §6,

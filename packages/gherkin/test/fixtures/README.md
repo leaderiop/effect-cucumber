@@ -21,9 +21,10 @@ The two differ by one character and test opposite paths. A fixture for the silen
 body row alone tests the loud path instead and passes for entirely the wrong reason.
 
 No fixture may carry a tag matching `@REQ-EC-NNN`. `spec/scripts/verify-traceability.sh` check 4 greps every `.feature`
-file in the repository for that pattern and fails `pnpm verify:spec` when the tag is not defined in
-`spec/traceability.md`. Fixture tags use names like `@featuretag`, `@ruletag`, `@scenariotag`, `@exampletag`,
-`@blockone`, `@blocktwo`.
+file in the repository for that pattern and fails `pnpm verify:spec` twice over: when the tag is not defined in
+`spec/traceability.md`, and — the half that applies to THIS directory — when the file carrying it lives anywhere other
+than `packages/vitest/test/acceptance/`. A tag added here is reported by file name, whether or not it is defined.
+Fixture tags use names like `@featuretag`, `@ruletag`, `@scenariotag`, `@exampletag`, `@blockone`, `@blocktwo`.
 
 ## Group A — `compile()` produces silently zero or silently wrong output
 
