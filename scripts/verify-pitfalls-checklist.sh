@@ -248,31 +248,68 @@ TMP_DIR="$(mktemp -d)"
 #
 # AMBIGUOUS is its own answer rather than a silent first-match: two tests sharing
 # a title would make a status assertion mean something other than what it reads.
-report_query() {
-  local report="$1" mode="$2" title="${3-}"
-  REPORT="$report" QUERY_MODE="$mode" QUERY_TITLE="$title" node -e '
-    const fs = require("node:fs")
-    const report = JSON.parse(fs.readFileSync(process.env.REPORT, "utf8"))
-    const results = (report.testResults || []).flatMap((file) => file.assertionResults || [])
-    const mode = process.env.QUERY_MODE
+#
+# AN UNREADABLE REPORT IS A NAMED FAILURE, NOT A NODE STACK TRACE. Without the
+# guard below, an absent, truncated or malformed report made `JSON.parse` throw;
+# under `set -e` the enclosing `P13_TOTAL="$(report_query …)"` then killed the
+# script with a raw stack trace, NO `✗ pitfalls checklist: NOT ENFORCED` banner,
+# no `cat "$LOG"`, and nothing saying which item was running. That is the same
+# silent-exit shape as the `packed_manifest` bug fixed above, and
+# scripts/verify-watch-rerun.sh has carried the mitigation for its own copy of
+# this helper all along — the sibling was the one that had to survive a WATCHING
+# runner rewriting the file mid-poll, so it learned this first.
+#
+# THE CHECK LIVES IN THE BASH WRAPPER, NOT AT THE TWELVE CALL SITES. A sentinel
+# every caller must remember to test is a sentinel a thirteenth caller forgets;
+# `fail` here covers all of them and cannot be omitted by a future one. `fail`
+# writes to STDERR, so the banner survives being called from inside `$( )` —
+# which is exactly how all twelve call sites invoke this.
+#
+# The one shape that stays lossy is process substitution (`done < <(report_query
+# …)`), where errexit does not propagate to the parent: the banner still prints,
+# but the loop simply iterates nothing. Reading the banner is the recovery.
+REPORT_UNREADABLE_SENTINEL="__REPORT_UNREADABLE__"
 
-    if (mode === "total") {
-      console.log(String(results.length))
-    } else if (mode === "passed" || mode === "failed") {
-      console.log(String(results.filter((result) => result.status === mode).length))
-    } else if (mode === "titles") {
-      for (const result of results) console.log(result.title)
-    } else if (mode === "messages") {
-      for (const result of results) for (const message of result.failureMessages || []) console.log(message)
-    } else if (mode === "status") {
-      const matches = results.filter((result) => result.title === process.env.QUERY_TITLE)
-      if (matches.length === 0) console.log("ABSENT")
-      else if (matches.length > 1) console.log("AMBIGUOUS")
-      else console.log(matches[0].status)
-    } else {
-      throw new Error("unknown query mode: " + mode)
-    }
-  '
+report_query() {
+  local report="$1" mode="$2" title="${3-}" answer
+  answer="$(
+    REPORT="$report" QUERY_MODE="$mode" QUERY_TITLE="$title" \
+      SENTINEL="$REPORT_UNREADABLE_SENTINEL" node -e '
+      const fs = require("node:fs")
+      let report
+      try {
+        report = JSON.parse(fs.readFileSync(process.env.REPORT, "utf8"))
+      } catch {
+        console.log(process.env.SENTINEL)
+        process.exit(0)
+      }
+      const results = (report.testResults || []).flatMap((file) => file.assertionResults || [])
+      const mode = process.env.QUERY_MODE
+
+      if (mode === "total") {
+        console.log(String(results.length))
+      } else if (mode === "passed" || mode === "failed") {
+        console.log(String(results.filter((result) => result.status === mode).length))
+      } else if (mode === "titles") {
+        for (const result of results) console.log(result.title)
+      } else if (mode === "messages") {
+        for (const result of results) for (const message of result.failureMessages || []) console.log(message)
+      } else if (mode === "status") {
+        const matches = results.filter((result) => result.title === process.env.QUERY_TITLE)
+        if (matches.length === 0) console.log("ABSENT")
+        else if (matches.length > 1) console.log("AMBIGUOUS")
+        else console.log(matches[0].status)
+      } else {
+        throw new Error("unknown query mode: " + mode)
+      }
+    '
+  )"
+
+  if [[ "$answer" == "$REPORT_UNREADABLE_SENTINEL" ]]; then
+    fail "the JSON report $report is absent or unparseable, queried with mode \"$mode\". Nothing was asserted about that run. The runner writes this file with --outputFile; an absent one usually means the vitest invocation died before reporting (check the .log beside it in \$TMP_DIR), and a truncated one means it was read while still being written."
+  fi
+
+  printf '%s\n' "$answer"
 }
 
 # One scoped invocation of the repo-local runner. The exit code is deliberately
