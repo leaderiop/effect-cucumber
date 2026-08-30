@@ -90,10 +90,14 @@ REQUIREMENT: The After hook, if declared, MUST execute whether every step in
 
 ```
 REQUIREMENT: When describeFeature's second argument has a `shared` field, that
-             Layer MUST be built exactly once for the whole Feature (via
-             @effect/vitest's layer(...) helper) and its resources MUST be
-             released once, after every Scenario in the Feature has run — not
-             once per Scenario.
+             Layer MUST be built AT MOST ONCE for the whole Feature (via
+             @effect/vitest's layer(...) helper): exactly once when the Feature
+             emits at least one node whose body needs it, and ZERO times when it
+             emits none — a Feature whose every Scenario a registration-time tag
+             filter removed never builds its shared tier, because the library's
+             own always-passing warning nodes are routed off the shared emission
+             path (ADR-EC-026, plan 10-07). Its resources MUST be released once,
+             after every Scenario in the Feature has run — not once per Scenario.
 ```
 
 > **Correction (2026-08-30, Phase 10 implementation, measured against the installed
@@ -144,13 +148,16 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 
 > **Correction (2026-08-30, Phase 10 gap closure, plan 10-07, measured against the installed
 > `@effect/vitest@4.0.0-rc.112` rather than reasoned about):** the correction above covers the
-> RELEASE half. This one covers the BUILD half, which the requirement's wording does not
-> mention a boundary for — and the boundary is a STRENGTHENING of the requirement, not a
-> divergence from it, unlike the correction above.
+> RELEASE half. This one covers the BUILD half's zero-case, which the requirement above now
+> states directly as "AT MOST ONCE ... and ZERO times when it emits none" — amended into the
+> normative block itself (2026-08-30) rather than left as an unstated boundary, because a MUST
+> the implementation knowingly diverges from is a defect in the requirement, not a footnote
+> beside it (AGENTS.md §1).
 >
-> **What the requirement says.** Built exactly once for the whole Feature.
+> **What the requirement said before this correction.** Built exactly once for the whole
+> Feature, with no stated exception.
 >
-> **What that leaves unstated.** How many times a Feature with NO runnable Scenario builds
+> **What that left unstated.** How many times a Feature with NO runnable Scenario builds
 > it. Read literally, "exactly once" would say once. The answer that matches the rest of the
 > system is zero, because
 > [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)'s
@@ -162,8 +169,8 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > until plan 10-07, because the library's own always-passing unused-step-definition nodes
 > travelled the same emission route as the Scenarios, and that route builds the memoised
 > shared tier before running ANY body — including a body that is just `Effect.void`. The
-> `AfterAllScenarios` teardown node was already suppressed in this situation (this behavior's
-> own carve-out, [BEH-EC-017](./07-hook-ordering-and-guarantees.md)); the warning node that
+> `AfterAllScenarios` teardown node was already suppressed in this situation by
+> [BEH-EC-017](./07-hook-ordering-and-guarantees.md)'s own carve-out; the warning node that
 > forced the very build teardown would have needed was not.
 >
 > **What holds now, and where it is asserted.**
