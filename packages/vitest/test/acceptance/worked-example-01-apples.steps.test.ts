@@ -91,18 +91,25 @@ const feature = await Effect.runPromise(
 
 /**
  * The test author's own `World`, shape for shape from `spec/behaviors/01-steps-and-world.md`
- * lines 291-298.
+ * lines 291-298, plus one field.
  *
  * The library ships no `World` type (BEH-EC-004): what it ships is the constraint that the DECLARED
  * shape is the REACHABLE shape. `apples` is declared here, so a step can read it; a field that is not
  * declared here is a plain `TS2339` at the read site, which `scripts/verify-tsgo-gate.sh` assertion 7
  * is what actually proves — no running test can assert about code that does not compile.
+ *
+ * `basket` is the second declared field, and it is here so that DSL-03's Scenario has a field to
+ * exercise that is distinct from the one the worked example already uses. Both are `Ref`s, because
+ * every value one step writes for a later step in the same Scenario has to be (RUN-06, INV-EC-006).
  */
-class World extends Context.Service<World, { readonly apples: Ref.Ref<number> }>()("World") {
+class World extends Context.Service<World, {
+  readonly apples: Ref.Ref<number>
+  readonly basket: Ref.Ref<ReadonlyArray<string>>
+}>()("World") {
   static readonly layer = Layer.effect(
     this,
     Effect.gen(function*() {
-      return World.of({ apples: yield* Ref.make(0) })
+      return World.of({ apples: yield* Ref.make(0), basket: yield* Ref.make<ReadonlyArray<string>>([]) })
     })
   )
 }
@@ -127,6 +134,62 @@ describeFeature(feature, World.layer, ({ Scenario }) => {
       // recomputed here would pass with the cross-step plumbing removed.
       const actual = yield* Ref.get(apples)
       assert.strictEqual(actual, expected)
+    })
+  })
+
+  // DSL-02 (BEH-EC-003). Every step body in this file is a BARE generator function — none is
+  // pre-wrapped with `Effect.fn` — so the registrar accepted an unwrapped generator and the library
+  // wrapped it. What makes this Scenario the one that CLAIMS that, rather than a fourth restatement
+  // of it, is that the value asserted below is computed inside the body from the Gherkin file's own
+  // argument: 21 arrives as a `number`, the body doubles it, and 42 is read back out. A registrar
+  // that accepted the generator and never invoked it leaves `apples` at the Layer's 0.
+  Scenario("A bare generator step body is registered and run", ({ Then, When }) => {
+    When("I double {int} apples", function*(n: number) {
+      const { apples } = yield* World
+      yield* Ref.set(apples, n * 2)
+    })
+
+    Then("the doubled count is {int}", function*(expected: number) {
+      const { apples } = yield* World
+      assert.strictEqual(yield* Ref.get(apples), expected)
+    })
+  })
+
+  // DSL-03 (BEH-EC-004), positive half. `basket` IS declared on `World`'s shape above, so a step may
+  // read it and gets back what the previous step wrote. The negative half — that a field ABSENT from
+  // that shape is unreachable — is a claim about what does not compile, so no test here can make it;
+  // `scripts/verify-tsgo-gate.sh` assertion 7 carries it, and the section 5 row says so.
+  Scenario("A World field is typed and reachable", ({ Given, Then }) => {
+    Given("I put {string} and {string} in the basket", function*(first: string, second: string) {
+      const { basket } = yield* World
+      yield* Ref.update(basket, (held) => [...held, first, second])
+    })
+
+    Then("the basket holds {string}", function*(expected: string) {
+      const { basket } = yield* World
+      assert.strictEqual((yield* Ref.get(basket)).join(","), expected)
+    })
+  })
+
+  // DSL-01 (BEH-EC-002), positive half — the project's core value, from the runtime side. The step
+  // below yields `World` and the ambient Layer resolves it. The negative half is the whole point of
+  // the requirement and is unstatable here: a step requiring a service the ambient Layer does NOT
+  // provide is a type error at authoring time, so there is no runtime in which to observe it.
+  // `scripts/verify-tsgo-gate.sh` assertions 5, 6 and 8 carry it, and the section 5 row says so.
+  //
+  // The `Given` records what it FOUND rather than merely resolving and discarding it, so the
+  // assertion is about a value that came out of the Layer's own build effect (`Ref.make(0)` and
+  // `Ref.make([])`) rather than about the step having run at all.
+  Scenario("A step reaches a service the ambient Layer provides", ({ Given, Then }) => {
+    Given("a step resolves the ambient World service", function*() {
+      const { apples, basket } = yield* World
+      const reading = `${yield* Ref.get(apples)} apples, ${(yield* Ref.get(basket)).length} in the basket`
+      yield* Ref.update(basket, (held) => [...held, reading])
+    })
+
+    Then("the resolved World reported {string}", function*(expected: string) {
+      const { basket } = yield* World
+      assert.deepStrictEqual(yield* Ref.get(basket), [expected])
     })
   })
 })

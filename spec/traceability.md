@@ -229,10 +229,11 @@ written" rule. They are permanent: never renumbered and never reused
 (AGENTS.md §6).
 
 **Not all 22 are carried yet, and this list says which.** `REQ-EC-001` through
-`REQ-EC-021` are ALLOCATED but their fixtures have not landed; only the rows in
-the table below name a `.feature` file that exists on disk today. Two structural
-facts about the remaining allocation are worth stating before the fixtures
-arrive, because neither is visible from a row:
+`REQ-EC-009`, and `REQ-EC-013` through `REQ-EC-021`, are ALLOCATED but their
+fixtures have not landed; only the rows in the table below name a `.feature`
+file that exists on disk today. Two structural facts about the remaining
+allocation are worth stating before the fixtures arrive, because neither is
+visible from a row:
 
 - Five of them — `REQ-EC-003` (PARSE-03), `REQ-EC-007` (MATCH-03),
   `REQ-EC-008` (MATCH-04), `REQ-EC-009` (MATCH-05) and `REQ-EC-018` (RUN-02) —
@@ -248,9 +249,12 @@ arrive, because neither is visible from a row:
   that carries the negative half — see the `REQ-EC-010` and `REQ-EC-012` rows
   below for the two already landed.
 
-| REQ-EC-NNN | v1 requirement | `.feature` file                                                    | Scenario title | Verified by                                                                                                                                                                                                           |
-| ---------- | -------------- | ------------------------------------------------------------------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REQ-EC-022 | RUN-06         | `packages/vitest/test/acceptance/worked-example-01-apples.feature` | Eating apples  | `packages/vitest/test/acceptance/worked-example-01-apples.steps.test.ts` — every value crossing a step boundary goes through a `Ref` on the Layer-provided `World`, never a closure variable (INV-EC-006, ADR-EC-009) |
+| REQ-EC-NNN | v1 requirement | `.feature` file                                                    | Scenario title                                      | Verified by                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------- | -------------- | ------------------------------------------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REQ-EC-010 | DSL-01         | `packages/vitest/test/acceptance/worked-example-01-apples.feature` | A step reaches a service the ambient Layer provides | `packages/vitest/test/acceptance/worked-example-01-apples.steps.test.ts` for the positive half — a step yields `World` and the ambient Layer resolves it at run time. The NEGATIVE half is carried by `scripts/verify-tsgo-gate.sh` assertions 5, 6 and 8, and has to be: that a step requiring a service the ambient Layer does not provide FAILS TO COMPILE is a claim about code that never runs, so no running test can make it |
+| REQ-EC-011 | DSL-02         | `packages/vitest/test/acceptance/worked-example-01-apples.feature` | A bare generator step body is registered and run    | `packages/vitest/test/acceptance/worked-example-01-apples.steps.test.ts` — an unwrapped generator function is accepted by the registrar, wrapped by the library, and invoked with the Gherkin file's own argument, which the body doubles and the next step reads back                                                                                                                                                              |
+| REQ-EC-012 | DSL-03         | `packages/vitest/test/acceptance/worked-example-01-apples.feature` | A World field is typed and reachable                | `packages/vitest/test/acceptance/worked-example-01-apples.steps.test.ts` for the positive half — a field declared on the `World` service's shape is written by one step and read by the next. The NEGATIVE half is carried by `scripts/verify-tsgo-gate.sh` assertion 7 (`TS2339`), and has to be: that a field ABSENT from the declared shape is unreachable is a claim about what does not compile                                |
+| REQ-EC-022 | RUN-06         | `packages/vitest/test/acceptance/worked-example-01-apples.feature` | Eating apples                                       | `packages/vitest/test/acceptance/worked-example-01-apples.steps.test.ts` — every value crossing a step boundary goes through a `Ref` on the Layer-provided `World`, never a closure variable (INV-EC-006, ADR-EC-009)                                                                                                                                                                                                               |
 
 ## §6 Coverage targets
 
