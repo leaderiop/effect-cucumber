@@ -134,6 +134,15 @@
  * redundant beside the clock half, because the two are guarded by DIFFERENT halves of ADR-EC-018's
  * fix and only the console half notices when `excludeTestServices: true` goes missing.
  *
+ * Plan 10-07's excluded-everything block, appended at the END of this file, records its own FOUR
+ * mutations (1 through 4) in its own header, beside the arrangement they mutate — the same precedent.
+ * Mutations 1 and 2 reproduce the gap `10-VERIFICATION.md` found (the `shared` Layer still building
+ * for a Feature with every Scenario excluded, forced open by an always-passing warning node) from the
+ * two ends of the fix — `describeFeature.ts`'s routing and `Runner.ts`'s classification. Mutation 3 is
+ * the mirror-image mistake — marking the `⚙ AfterAllScenarios` node context-free too — and is caught
+ * by `Runner.test.ts`'s structural routing projection (Task 2), not by this file, which is the
+ * asymmetry that assertion exists to record. Mutation 4 exercises the block's own non-vacuity control.
+ *
  * Mutations iv and vi both turned up the SAME underlying mechanism from opposite directions —
  * `Effect.provide` forks the `CurrentMemoMap` that `@effect/vitest`'s `layer(...)` leaves in the
  * ambient context, so a Layer that is the same OBJECT as one already built there is a memo hit no
@@ -2569,5 +2578,169 @@ describe("a Rule's own extraLayer under a shared Feature rebuilds only the Rule 
       `Shared rule composition${nameSeparator}discounted checkout under a shared catalog${nameSeparator}the first rule scenario under a shared feature reads both tiers`,
       `Shared rule composition${nameSeparator}discounted checkout under a shared catalog${nameSeparator}the second rule scenario under a shared feature rebuilds only the rule tier`
     ])
+  })
+})
+
+/**
+ * Plan 10-07 — closing the one gap `10-VERIFICATION.md` found: a `shared` Layer with EVERY Scenario
+ * in the Feature excluded by the tag filter, and at least one unused step definition, must never be
+ * built. Appended at the END of this file, after every block above, per this file's own documented
+ * declaration-order rule; the reader `describe` goes last, after the `describeFeature` call it reads.
+ *
+ * `CR-02`/gap[0]'s mechanism, reproduced here: on the shared path every emission used to go through
+ * `sharedIt.effect`, and the installed `@effect/vitest@4.0.0-rc.112`'s own implementation of that
+ * constructor flatMaps the memoised shared-Layer build before running ANY body — including the `⚠`
+ * unused-step-definition node's, whose whole body is `Effect.void`. A Feature with `{ shared,
+ * perScenario }`, an `excludeTags` filter removing every Scenario, and one unused step definition
+ * therefore still built the (potentially expensive) `shared` Layer for zero runnable Scenarios.
+ * `Runner.ts`'s `EmitOptions.contextFree` plus `describeFeature.ts`'s `sharedLayerTestApi` routing fix
+ * this by sending a `contextFree` node through the module-level, Layer-free constructor even on the
+ * shared path — this block is the in-process regression proof that the fix holds.
+ *
+ * ## Why this Feature carries a SECOND, unused step definition at all
+ *
+ * The whole point of this block is the combination `10-VERIFICATION.md` named: excluded Scenarios
+ * ALONE never built the shared tier before this plan either — nothing forces a build for a Feature
+ * with zero Scenarios and zero warnings. It is specifically the always-passing `⚠` node, forced by an
+ * unused pattern, that travels the route the fix closes. Without the second definition below, this
+ * block would pass for the wrong reason (nothing was ever emitted at all) rather than the right one
+ * (something WAS emitted, and it did not force a build) — which is exactly what the third `it` below
+ * guards against.
+ *
+ * ## Why the excluded tag never reaches `vitest.config.ts`
+ *
+ * `Runner.ts` note (g): an excluded Scenario never becomes a test node at all, so its tag is never
+ * handed to the framework at all — `strictTags` has nothing to validate. No `vitest.config.ts`
+ * declaration is needed for `@excluded-everything`, unlike the tag blocks above this one in the file.
+ *
+ * ## Mutation-tested (every one performed against real source, run, then reverted — plan 10-07 Task 3)
+ *
+ * - 1. **The defect, restored.** `describeFeature.ts`'s `sharedLayerTestApi` route selection deleted,
+ *      sending every emission through the shared route unconditionally → the "counter is 0" test below
+ *      goes RED, reading `1`. Reproduces the gap in this working tree from the composition-root side.
+ * - 2. **The flag, inverted.** `Runner.ts`'s `warningEmitOptions` constant's `contextFree` flipped to
+ *      `false`, `describeFeature.ts` left untouched → the same test goes RED the same way, `1`.
+ *      Separates the two halves of the fix: the routing branch alone does nothing if the emitter never
+ *      classifies the node as context-free.
+ * - 3. **The mirror-image mistake.** `Runner.ts`'s `afterAllScenariosEmitOptions` constant's
+ *      `contextFree` flipped to `true` → `Runner.test.ts`'s routing projection (Task 2) goes RED,
+ *      while every assertion in THIS file, including this block's three, stays GREEN. That asymmetry
+ *      is exactly why Task 2's structural assertion exists: nothing in this file exercises a hook
+ *      under a shared Feature, so nothing here would ever notice a Feature's teardown silently routed
+ *      off the shared tier.
+ * - 4. **The non-vacuity control, exercised.** The unused step definition deleted from this block's
+ *      `define` callback, everything else including the fix left in place → the "still reported"
+ *      assertion below goes RED (the array of `UnusedStepDefinition` lines becomes empty) while the
+ *      counter assertion stays GREEN at `0`. Proves the control is load-bearing: without it, this
+ *      block would stay green under a future change that silently stopped emitting `⚠` nodes under a
+ *      total exclusion, which would be `Runner.ts` note (g)'s own violation.
+ *
+ * See the plan 10-07 SUMMARY for the full mutation table (file/line, expected, observed).
+ */
+
+/** How many times this block's shared tier has been built. Must stay `0` — the whole claim. */
+let excludedEverythingSharedBuilds = 0
+
+/** The shared tier's probe service, mirroring `SharedProbe`'s shape one section above. */
+class ExcludedEverythingProbe
+  extends Context.Service<ExcludedEverythingProbe, { readonly buildOrdinal: number }>()("ExcludedEverythingProbe")
+{}
+
+/**
+ * The shared tier. `Layer.effect`, not `Layer.succeed`, copying `sharedProbeLayer`'s shape exactly —
+ * see that block's own comment for why the build needs a body at all despite having nothing to await.
+ */
+const excludedEverythingSharedLayer = Layer.effect(
+  ExcludedEverythingProbe,
+  Effect.gen(function*() {
+    // Same `require-yield` satisfaction as `sharedProbeLayer`'s body.
+    yield* Effect.void
+    excludedEverythingSharedBuilds += 1
+    return ExcludedEverythingProbe.of({ buildOrdinal: excludedEverythingSharedBuilds })
+  })
+)
+
+/**
+ * The full name of every Scenario in this block that actually ran. Must stay EMPTY — the second half
+ * of the claim, separating "the counter is 0 because the fix works" from "the counter is 0 because
+ * the Feature never registered anything for an unrelated reason".
+ */
+const excludedEverythingRan: Array<string> = []
+
+/**
+ * ONE Scenario, tagged so `excludeTags` removes it — the whole Feature has nothing runnable. A new,
+ * unique uri: `warningsFor` filters by uri, so a reused one would read another block's lines.
+ */
+const excludedEverythingFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Excluded everything still reports its unused step definition
+
+  @excluded-everything
+  Scenario: the only scenario, entirely excluded by the tag filter
+    When the excluded-everything step runs
+`,
+    "test/excluded-everything.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE FIFTEENTH real `describeFeature` call in this file, and the first to combine the object form
+// with an `excludeTags` filter that removes every Scenario. `perScenario: Layer.empty`, for
+// `sharedBuildFeature`'s own reason above: it removes the per-Scenario tier as a possible explanation
+// for what is (or is not) observed here.
+describeFeature(
+  excludedEverythingFeature,
+  { shared: excludedEverythingSharedLayer, perScenario: Layer.empty },
+  ({ When }) => {
+    // The ONE definition the Feature's only Scenario's step matches — never reached, because the
+    // Scenario is excluded before anything is emitted (note (g)).
+    When("the excluded-everything step runs", function*() {
+      excludedEverythingRan.push(currentTestName())
+      yield* Effect.void
+    })
+    // The UNUSED definition — the entire reason this block exists. Its pattern matches no step in
+    // this Feature at all, so `planFeature` reports it as an `UnusedStepDefinitionWarning`, and
+    // `Runner.ts` emits its `⚠` node UNCONDITIONALLY (note (g)) — through the context-free route this
+    // plan's fix sends it down.
+    When("the excluded-everything step that no Scenario in this Feature calls", function*() {
+      yield* Effect.void
+    })
+  },
+  { excludeTags: ["@excluded-everything"] }
+)
+
+/**
+ * DECLARED LAST IN THIS FILE, after the block that registered the Feature, for the declaration-order
+ * reason every other reader here uses.
+ */
+describe("a shared Layer with every Scenario excluded stays unbuilt, even with an unused step definition (10-07)", () => {
+  it("never built the shared tier — RUN-03's build discipline for the zero-runnable-Scenario case", () => {
+    // The assertion this whole plan exists to make true. Under Anti-Pattern 3 / the pre-fix
+    // `sharedLayerTestApi`, this reads `1`: the `⚠` node's `Effect.void` body forced the build anyway.
+    expect(excludedEverythingSharedBuilds).toBe(0)
+  })
+
+  it("ran no Scenario at all — separating build discipline from registration failing for an unrelated reason", () => {
+    expect(excludedEverythingRan).toEqual([])
+  })
+
+  it("still reported the unused step definition — the load-bearing non-vacuity control", () => {
+    // Filtered rather than a whole-array `toHaveLength`: this Feature's single Scenario being
+    // entirely excluded ALSO fires D-10's "N Scenario(s) excluded" notice on the same uri, so the
+    // array legitimately carries two lines. Only the `UnusedStepDefinition` one is this control's
+    // claim.
+    //
+    // Without this assertion, the counter test above would pass VACUOUSLY the moment the warning
+    // stops being produced — a definition that accidentally matched a step, or a future change that
+    // suppressed warnings under a total exclusion, would both leave this block green while measuring
+    // nothing (mutation 4). The console line and the `⚠` node come from the same `plan.warnings`
+    // array (`describeFeature.ts` lines ~1147-1155), so the line's presence is a sound proxy for the
+    // node's emission — the node's own body, `Effect.void`, offers nothing else to observe.
+    const unusedDefinitionLines = warningsFor(excludedEverythingFeature.uri).filter((line) =>
+      line.includes("UnusedStepDefinition")
+    )
+    expect(unusedDefinitionLines).toHaveLength(1)
+    expect(unusedDefinitionLines[0]).toContain(
+      JSON.stringify("the excluded-everything step that no Scenario in this Feature calls")
+    )
   })
 })

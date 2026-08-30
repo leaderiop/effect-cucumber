@@ -198,6 +198,19 @@
  *     node is suppressed, and note (e) has the reason, which is about resource lifecycle rather than
  *     about visibility.
  *
+ *     Emitting the `⚠` nodes is free only if they do not travel the route that carries the shared
+ *     tier's build (plan 10-07, closing the gap `10-VERIFICATION.md` found): on the shared path every
+ *     emission used to go through the ONE constructor `layer(...)` hands back, and that constructor's
+ *     own implementation flatMaps the memoised shared-Layer build before running ANY body — including
+ *     a body that is just `Effect.void`. A Feature with every Scenario excluded by the tag filter and
+ *     at least one unused step definition therefore still built its `shared` Layer, defeating the
+ *     entire premise that the tier is deferred and observable only when used. `EmitOptions.contextFree`
+ *     is the fix: the emitter now says WHICH KIND of node each emission is, and the composition root
+ *     (`describeFeature.ts`'s `sharedLayerTestApi`) decides where it goes — a node whose body requires
+ *     nothing from either Layer tier is routed through the module-level, Layer-free constructor even on
+ *     the shared path, so nothing about it can force a build. Named here as a property of the EMISSION
+ *     ROUTE, without importing or naming a framework specifier, exactly as note (a) refuses to.
+ *
  * (h) **The `EmitOutcome` is reported on TWO channels, and the RETURN VALUE is the unsafe one.** This
  *     function both returns an `EmitOutcome` and calls an optional `onEmitted` with one. They are not
  *     redundant, and which one a caller picks decides whether their feature works at all.
@@ -325,8 +338,14 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
 /**
- * The emit options every SYNTHETIC node carries — the `⚙ AfterAllScenarios` node and every `⚠`
- * warning node. Untagged, never skipped.
+ * The emit options both SYNTHETIC node kinds share the shape of — untagged, never skipped — and now
+ * differ on in exactly `contextFree` (plan 10-07). Split from what was formerly one shared
+ * `emptyEmitOptions` constant into these two, because the gap `10-VERIFICATION.md` found is precisely
+ * that the two kinds were indistinguishable to the emission route: an always-passing `⚠` node forced
+ * the same shared-Layer build a teardown node legitimately needs, and nothing said the two should be
+ * routed differently.
+ *
+ * What both constants below still share, carried forward from the one constant this replaces:
  *
  * These nodes are this library's own; no `.feature` file wrote them and none of them corresponds to a
  * Scenario, so there are no tags they could honestly carry. Giving them the enclosing Feature's tags
@@ -335,16 +354,39 @@ const afterAllScenariosTitle = "⚙ AfterAllScenarios"
  * a thing an author asked to filter; and it would push author-controlled strings through a second
  * validation site in the test framework for no benefit at all.
  *
- * `skip: false` on the warning nodes restates note (c): an unused definition is a warning and its node
- * is always-passing, never skipped, because the skipped count a reporter prints has to keep meaning
- * "tests the author chose not to run".
+ * `skip: false` restates note (c): an unused definition is a warning and its node is always-passing,
+ * never skipped, because the skipped count a reporter prints has to keep meaning "tests the author
+ * chose not to run" — and `⚙ AfterAllScenarios` is likewise never skipped, it either runs or (note (e))
+ * is not emitted at all.
  *
- * ONE shared value rather than a fresh literal per emission, which is safe for `noTagFilter`'s and
- * `emptyHookSet`'s reason: every field is `readonly`, `tags` is a `ReadonlyArray`, and nothing in this
- * package mutates an `EmitOptions` — `describeFeature.ts`'s adapter spreads `tags` into a fresh array
- * before it reaches anything that could.
+ * ONE shared value per kind rather than a fresh literal per emission, which is safe for
+ * `noTagFilter`'s and `emptyHookSet`'s reason: every field is `readonly`, `tags` is a `ReadonlyArray`,
+ * and nothing in this package mutates an `EmitOptions` — `describeFeature.ts`'s adapter spreads `tags`
+ * into a fresh array before it reaches anything that could.
  */
-const emptyEmitOptions: EmitOptions = { tags: [], skip: false }
+
+/**
+ * The `⚠` warning nodes' options — `contextFree: true`.
+ *
+ * Its whole body is `Effect.void` (note (c)), so it needs nothing either Layer tier provides. That is
+ * what makes routing it away from the shared emission route SAFE: nothing about what the node reports
+ * changes, only which constructor registers it, because a node whose body requires nothing cannot
+ * observe which constructor ran it.
+ */
+const warningEmitOptions: EmitOptions = { tags: [], skip: false, contextFree: true }
+
+/**
+ * The `⚙ AfterAllScenarios` node's options — `contextFree: false`.
+ *
+ * Its body runs the Feature's `AfterAllScenarios` hooks (note (e)), which provide the per-Scenario
+ * tier and leave whatever else the hook needs on the Effect's own requirements, where the ambient
+ * context satisfies it at run time (note (f)'s last paragraph) — that "whatever else" may be a
+ * service the shared tier alone provides, so this node MUST stay on the route that carries it. Setting
+ * this to `true` would route a Feature's teardown hooks away from the shared tier, so a teardown hook
+ * naming a shared service would fail at run time with a missing-service defect — Task 2's routing
+ * projection and Task 3 mutation 3 in the 10-07 plan summary pin this the other way.
+ */
+const afterAllScenariosEmitOptions: EmitOptions = { tags: [], skip: false, contextFree: false }
 
 /**
  * The `scenarioLayers` key one planned Scenario is looked up under — note (f).
@@ -544,7 +586,10 @@ export const emitFeature = (
         // The Scenario's own tags, passed through by reference and never copied, re-sorted or
         // de-duplicated: `ScenarioPlan.tags` is already the flattened inheritance chain and the one
         // widening to a mutable array belongs to `describeFeature.ts`'s adapter alone.
-        { tags: scenarioPlan.tags, skip }
+        //
+        // `contextFree: false` (plan 10-07): a Scenario's body is the author's own step Effects,
+        // which may require anything either Layer tier provides.
+        { tags: scenarioPlan.tags, skip, contextFree: false }
       )
     }
 
@@ -599,7 +644,9 @@ export const emitFeature = (
                   beforeAllScenariosCell,
                   () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
                 ),
-            { tags: scenarioPlan.tags, skip }
+            // `contextFree: false`, for the same reason as the Feature-level loop's identical field
+            // above.
+            { tags: scenarioPlan.tags, skip, contextFree: false }
           )
         }
       })
@@ -619,16 +666,18 @@ export const emitFeature = (
           hooks.AfterAllScenarios
         ).pipe(Effect.provide(layer))
         return afterAllScenariosEffect
-      }, emptyEmitOptions)
+      }, afterAllScenariosEmitOptions) // contextFree: false — note (e); must stay on the shared route
     }
 
     // Last, and always passing — note (c). Reversing this to put the warnings first pushes the
     // Feature's own Scenarios off the top of the block.
     //
     // Emitted even when every Scenario was filtered out — note (g). They report REGISTRATION, and a
-    // filtered run that hid them would claim this Feature has no unused definitions.
+    // filtered run that hid them would claim this Feature has no unused definitions. `contextFree:
+    // true` (note (g)'s extension below) is what keeps emitting them free: routed through
+    // `warningEmitOptions`, they no longer force the shared tier's build.
     for (const warning of plan.warnings) {
-      api.effect(warningTitle(warning), () => Effect.void, emptyEmitOptions)
+      api.effect(warningTitle(warning), () => Effect.void, warningEmitOptions) // contextFree: true
     }
 
     // THE LAST STATEMENT INSIDE THE WALK — note (h), and the position is the whole point. Every

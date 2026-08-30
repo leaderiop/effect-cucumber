@@ -526,27 +526,52 @@ const vitestTestApi = (featureUri: string): TestApi => ({
  * The SHARED path's concrete `TestApi` — the second one, and the reason note (e) says the seam is a
  * PARAMETER rather than an import.
  *
- * Its `effect` emits through the `it` that `layer(...)` hands its callback, and NEVER through the
- * module-level one. That is the whole of ARCHITECTURE.md's Anti-Pattern 3: the module-level test
- * constructor called from inside that callback compiles, lints and PASSES, while silently rebuilding
- * the "shared" resource once per Scenario. Routing through this object makes the wrong constructor
- * unreachable from the shared branch rather than merely discouraged.
+ * TWO emission routes, chosen per node by `EmitOptions.contextFree` (plan 10-07, closing the gap
+ * `10-VERIFICATION.md` found). Both routes register through the same underlying framework `it` — the
+ * module-level constructor and the `layer(...)`-provided one are `@effect/vitest`'s own `it.effect` and
+ * the `MethodsNonLive.effect` it hands `layer(...)`'s callback, and neither opens a `describe` of its
+ * own — so the emitted node ORDER and the describe/test tree are identical either way; this fact was
+ * VERIFIED by this task's own `<verify>` run, not assumed, and is recorded here so the next reader does
+ * not have to re-derive it.
+ *
+ * **The context-free route:** `vitestTestApi(featureUri).effect`, reused as a VALUE rather than a
+ * second hand-written closure around the module-level test constructor. Reusing it is what keeps
+ * `makeDegradingEffect` at ONE implementation — the property that function's own doc comment says it
+ * exists for ("duplicating it is how the shared path silently loses the degradation") — and it makes
+ * the two paths' D-08 catch-and-degrade behaviour identical by construction rather than by inspection.
+ * `vitestTestApi` is declared above this factory in this file, so the reference resolves without
+ * reordering anything.
+ *
+ * This is NOT the failure `.planning/research/ARCHITECTURE.md`'s Anti-Pattern 3 forbids, though the two
+ * look identical from a distance. Anti-Pattern 3 is about a SCENARIO body reaching the module-level
+ * constructor, where the Scenario provides its own Layers and the shared resource is silently rebuilt
+ * per Scenario. A node routed here is `contextFree: true` by construction — its body is `Effect.void`
+ * (`Runner.ts`'s `⚠` warning nodes, the only kind this route is used for today) — and a body that
+ * builds nothing on either route cannot be "silently rebuilt" by being on this one; routing it away
+ * from the shared route is in fact the ONLY way to leave the shared tier unbuilt for it, which is the
+ * whole claim this plan closes.
+ *
+ * **The shared route:** the existing closure, unchanged — `sharedIt.effect` with `Effect.provide(testEnv)`
+ * wrapped around the thunk. Every Scenario node and the `⚙ AfterAllScenarios` node travel this one,
+ * both `contextFree: false`.
  *
  * Its `describe` is the MODULE-LEVEL one, unchanged, and that is not the same mistake. `describe`
  * carries no Layer services — it opens a block and nothing else — so there is nothing for it to
  * silently rebuild. It is also the only way to nest a Rule block at all: the object `layer(...)`
  * hands back is a `MethodsNonLive`, which has no `describe` member (`TestApi.ts` note (a)).
  *
- * Every emitted Effect is wrapped in `Effect.provide(testEnv)`, at the EMISSION boundary. That is
- * ADR-EC-018's per-Scenario `TestClock`/`TestConsole` isolation, and the placement is deliberate:
- * doing it inside `ScenarioEffect.ts` would make that module know there are two paths, which is
- * exactly what its own note (b) says it must not. `excludeTestServices: true` at the `layer(...)` call
+ * Every emitted Effect on the SHARED route is wrapped in `Effect.provide(testEnv)`, at the EMISSION
+ * boundary. That is ADR-EC-018's per-Scenario `TestClock`/`TestConsole` isolation, and the placement is
+ * deliberate: doing it inside `ScenarioEffect.ts` would make that module know there are two paths, which
+ * is exactly what its own note (b) says it must not. `excludeTestServices: true` at the `layer(...)` call
  * site is the other half — and the two halves guard DIFFERENT services rather than being one change
  * spelled twice. This provide is what delivers the per-Scenario CLOCK; without it the clock leaks and
  * the console does not. `excludeTestServices: true` is what delivers the per-Scenario CONSOLE;
  * without it the console leaks and the clock does not. Both directions were measured by mutation in
  * plan 10-04, and the ADR's own implementation note carries the memo-map identity argument for why.
- * Neither half is redundant; deleting either one leaves a real leak with the other still in place.
+ * Neither half is redundant; deleting either one leaves a real leak with the other still in place. A
+ * `contextFree: true` node needs neither, because it reads nothing — it is routed off this path
+ * entirely rather than paying for isolation it has no use for.
  *
  * Pitfall 29, recorded where the two paths differ: `MethodsNonLive` has no `live` member, so a
  * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. The two paths do
@@ -555,12 +580,26 @@ const vitestTestApi = (featureUri: string): TestApi => ({
  * @param featureUri - the `.feature` file every warning from this adapter is located against
  * @param sharedIt - the object `layer(...)` hands its callback, carrying the shared Layer's services
  */
-const sharedLayerTestApi = (featureUri: string, sharedIt: Vitest.MethodsNonLive<any>): TestApi => ({
-  describe,
-  effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
+const sharedLayerTestApi = (featureUri: string, sharedIt: Vitest.MethodsNonLive<any>): TestApi => {
+  // The context-free route, built ONCE per Feature exactly like the default path's own adapter — this
+  // IS that adapter, reused as a value rather than rebuilt.
+  const contextFreeEffect = vitestTestApi(featureUri).effect
+  // The shared route: the existing closure, unchanged — `sharedIt.effect` with
+  // `Effect.provide(testEnv)` wrapped around the thunk. Built once, same as before this task, and
+  // still the ONLY reference to `sharedIt.effect` in this file (`pnpm verify:testapi-seam`-adjacent
+  // grep in the plan's own `<done>` counts it).
+  const sharedRouteEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     sharedIt.effect(name, () => self().pipe(Effect.provide(testEnv)), emitOptions)
   })
-})
+  return {
+    describe,
+    effect: (name, self, emitOptions) =>
+      emitOptions.contextFree
+        // Nothing here can force the shared Layer to build.
+        ? contextFreeEffect(name, self, emitOptions)
+        : sharedRouteEffect(name, self, emitOptions)
+  }
+}
 
 /**
  * Separate the two accepted layer arguments into the two tiers the emission stage provides

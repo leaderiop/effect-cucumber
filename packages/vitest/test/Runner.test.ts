@@ -1065,9 +1065,13 @@ describe("the recording fake itself", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
     // The one place in this file that drives the fake directly rather than through `emitFeature`.
-    // The options are inert here — this test is about the depth counter and asserts nothing about
-    // tags — so they are the untagged, unskipped pair a synthetic node would carry.
-    api.effect("after", () => Effect.void, { tags: [], skip: false })
+    // `tags`/`skip` are inert here — this test is about the depth counter and asserts nothing about
+    // either. `contextFree: true` is NOT inert in general (plan 10-07) — it is the routing flag that
+    // sends a node through the module-level constructor even on the shared path — but it IS inert for
+    // THIS fake, which records every emission through the one `effect` member regardless of the flag's
+    // value; `true` is chosen because this synthetic-looking node ("after") most resembles the `⚠`
+    // warning kind this file's other tests exercise.
+    api.effect("after", () => Effect.void, { tags: [], skip: false, contextFree: true })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every
     // assertion that followed — the failure would surface in an unrelated test.
