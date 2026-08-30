@@ -109,6 +109,28 @@
 #      a trap registered after the write cannot clean up a failure during it,
 #      and this mutation failed at precisely that moment.
 #
+#   D. THE EXTRACTION ITSELF, which until now was never mutated — every entry
+#      above tests what happens AROUND the copy, none tested whether the copy is
+#      the right one. Two arms, both against the real fixture, both reverted:
+#
+#      D1, a Scenario titled `Eating apples in bulk` appended to
+#          worked-example-01-apples.feature. The old `index($0, title)` rule is a
+#          SUBSTRING test, so it matched that title too: the extraction produced
+#          SIX step lines instead of three, silently copying a second Scenario.
+#          TOTAL_1 rises with it and assertion 4's `TOTAL_2 > TOTAL_1` gets
+#          weaker with nothing reporting it, and the old `-lt 3` control could
+#          not see a LARGER extraction at all. With the anchored `$0 ~ "^[[:space:]]*Scenario: " title "$"`
+#          rule: THREE lines, gate green, the extra Scenario correctly ignored.
+#      D2, a SECOND Scenario titled exactly `Eating apples` appended. The old
+#          `grep -q` precondition asked "at least one" and passed. The uniqueness
+#          count fails by name: "has 2 Scenario(s) titled exactly ...; expected
+#          exactly 1".
+#
+#      The two arms are separate because they are different failures and the
+#      anchor only fixes one of them: an anchored match still matches both halves
+#      of an exact duplicate. Existence checks and uniqueness checks are not
+#      interchangeable, and this file needed both.
+#
 # Usage: bash scripts/verify-watch-rerun.sh
 
 set -euo pipefail
@@ -244,8 +266,17 @@ for tracked in "$WORK_FEATURE" "$WORK_STEPS"; do
   [[ -e "$tracked" ]] && fail "$tracked already exists on disk. A previous run of this gate did not clean up, or something else owns that path. Remove it and re-run; if it keeps reappearing, the trap in this script is not firing."
 done
 
-grep -q "Scenario: $EXISTING_TITLE\$" "$SOURCE_FEATURE" ||
-  fail "no line of $SOURCE_FEATURE ends with \"Scenario: $EXISTING_TITLE\". This gate copies that Scenario out by title, so a rename would otherwise produce an EMPTY copy — against which run 1 reports zero tests and every assertion below is vacuous. Update EXISTING_TITLE at the top of this script to match."
+# UNIQUENESS, not existence, and the difference is the whole of this
+# precondition. `grep -q` answered "at least one", which is the wrong question:
+# the awk extraction below copies out EVERY block whose title matches, so a
+# second Scenario with the same title — legal Gherkin under a `Rule:`, since
+# Validate.ts's uniqueness key is `${ruleId}\0${name}` — silently doubles the
+# copy. TOTAL_1 then rises and assertion 4's `TOTAL_2 > TOTAL_1` gets weaker with
+# nothing reporting it. Counting is one character more than testing.
+TITLE_OCCURRENCES="$(grep -cE "^[[:space:]]*Scenario: ${EXISTING_TITLE}\$" "$SOURCE_FEATURE" || true)"
+if [[ "$TITLE_OCCURRENCES" -ne 1 ]]; then
+  fail "$SOURCE_FEATURE has $TITLE_OCCURRENCES Scenario(s) titled exactly \"$EXISTING_TITLE\"; expected exactly 1. At 0, this gate copies that Scenario out by title and a rename produces an EMPTY copy, against which run 1 reports zero tests and every assertion below is vacuous. Above 1, the copy silently gains extra Scenarios and assertion 4's comparison weakens without saying so. Update EXISTING_TITLE at the top of this script, or disambiguate the fixture."
+fi
 
 grep -qF -- "$NEW_TITLE" "$SOURCE_FEATURE" &&
   fail "$SOURCE_FEATURE already contains the title \"$NEW_TITLE\". Assertion 2 asserts that title is ABSENT before the edit; if the source carries it, the assertion is false before the gate does anything. Change NEW_TITLE at the top of this script."
@@ -266,20 +297,31 @@ echo "✓ preconditions: $VITEST present, $SOURCE_FEATURE carries \"Scenario: $E
 # copy that needed no tag never had a reason to carry one, and stripping it keeps
 # this gate's correctness from depending on another script's scan mechanism.
 # ---------------------------------------------------------------------------
-awk -v title="Scenario: $EXISTING_TITLE" '
+# ANCHORED, not `index()`. `index($0, title)` is a SUBSTRING test, so a future
+# Scenario titled `Eating apples in bulk` matches `Eating apples` and its block
+# is copied too. The uniqueness precondition above catches the exact-duplicate
+# case; only the anchor catches the prefix case, and the two are different
+# failures. `title` is interpolated into a regex here, so it must stay a literal
+# title — no metacharacters — which is what the precondition's identical anchor
+# also asserts.
+awk -v title="$EXISTING_TITLE" '
   /^Feature:/ { print; print ""; next }
-  index($0, title) { inblock = 1; print; next }
+  $0 ~ "^[[:space:]]*Scenario: " title "$" { inblock = 1; print; next }
   inblock && /^[[:space:]]*$/ { inblock = 0; next }
   inblock { print }
 ' "$SOURCE_FEATURE" >"$WORK_FEATURE"
 
-# Positive control on the extraction itself. An awk program that silently
-# matched nothing produces a one-line file, run 1 collects zero tests, and
-# assertion 1 would be the only thing standing between that and a green gate.
+# Positive control on the extraction itself, and it is EXACT rather than a lower
+# bound. `-lt 3` only noticed a SMALLER extraction; a larger one — the prefix
+# match the anchor above now prevents, or a step added to the source Scenario —
+# went unreported, and a copy that grew is exactly what makes assertion 4's
+# `TOTAL_2 > TOTAL_1` weaker while staying green. An exact count fails in both
+# directions and names both numbers.
+EXPECTED_EXTRACTED_STEPS=3
 EXTRACTED_STEPS="$(grep -cE '^[[:space:]]+(Given|When|Then) ' "$WORK_FEATURE" || true)"
-if [[ "$EXTRACTED_STEPS" -lt 3 ]]; then
+if [[ "$EXTRACTED_STEPS" -ne "$EXPECTED_EXTRACTED_STEPS" ]]; then
   cat "$WORK_FEATURE"
-  fail "extracting \"$EXISTING_TITLE\" out of $SOURCE_FEATURE produced $EXTRACTED_STEPS step line(s), expected at least 3 (content above). The awk extraction no longer matches that fixture's layout — most likely the Scenario's steps are no longer indented, or a blank line was introduced inside the Scenario body."
+  fail "extracting \"$EXISTING_TITLE\" out of $SOURCE_FEATURE produced $EXTRACTED_STEPS step line(s), expected exactly $EXPECTED_EXTRACTED_STEPS (content above). FEWER means the awk extraction no longer matches that fixture's layout — most likely the Scenario's steps are no longer indented, or a blank line was introduced inside the Scenario body. MORE means the extraction picked up something it should not have, or the source Scenario gained a step; if the latter is intended, change EXPECTED_EXTRACTED_STEPS in this script in the same commit."
 fi
 echo "✓ copied \"Scenario: $EXISTING_TITLE\" ($EXTRACTED_STEPS steps) out of $SOURCE_FEATURE into $WORK_FEATURE"
 
