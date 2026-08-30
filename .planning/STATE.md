@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: Layer Scopes (per-Scenario default + `shared`)
 status: executing
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-08-30T01:06:34.974Z"
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-08-30T01:27:03.788Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 10 execution started
-state_head: 4513a17554259cba7f3ee45fb1f44335667c8094
+state_head: 784221cf0384ea298fa05d99b30f9e85fc6a9d24
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 74
-  completed_plans: 69
+  completed_plans: 70
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 ## Current Position
 
 Phase: 10 (Layer Scopes (per-Scenario default + `shared`)) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 10 execution started
 
@@ -79,6 +79,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 03-05 | ~14m | 3 | 4 |
 | 03-06 | ~8m | 3 | 7 |
 | Phase 10 P01 | 12m | 2 tasks | 7 files |
+| Phase 10 P02 | 16min | 3 tasks | 6 files |
 
 **Recent Trend:**
 
@@ -156,6 +157,11 @@ Recent decisions affecting current work:
 - [Phase 10]: [10-01]: LayerArgument (the implementation-signature union) stays Layer<any, any, never> deliberately. TypeScript never resolves a call against an implementation signature, so narrowing it changes nothing observable while making the body disagree with itself. Its doc comment now says so.
 - [Phase 10]: [10-01]: A grep acceptance criterion of `grep -c ' as [A-Z]'` = 0 is unsatisfiable in any file importing Effect — AGENTS.md section 3 mandates `import * as Layer from "effect/Layer"`. Use `grep -v '^import ' | grep -c ' as [A-Z]'`; both existing .types.ts precedents behave identically. Second instance of the 03-04 literal-collision lesson in one plan.
 - [Phase 10]: [10-01]: RUN-03/RUN-04 stay Pending. This plan shipped the type-level half only; 10-02 owns the build-once runtime fix and 10-06 owns .planning/REQUIREMENTS.md. Same precedent as 03-01 through 03-04. Repo test count unchanged at 743 passed / 3 skipped across 32 files — the .types.ts suffix is why.
+- [Phase 10]: The two Layer scopes are two FIELDS on FeatureCollection (layer = per-Scenario tier, sharedLayer = Layer|null), never one merged Layer plus a flag
+- [Phase 10]: D-04's collision rule is now a PROVISION ORDER property: no collection-level assertion can see it, so describeFeature.test.ts's D-04 case was re-homed to a two-values claim and the runtime verdict moves to plan 10-03
+- [Phase 10]: sharedLayer is null and never Layer.empty: an empty Layer is a Layer the caller asked for, so it cannot express 'never asked for this scope at all'
+- [Phase 10]: describe is the module-level one in BOTH TestApi implementations - it carries no Layer services, and MethodsNonLive has no describe member, so it is also the only way to nest a Rule under a shared Feature
+- [Phase 10]: A grep-based acceptance criterion that forbids a literal also forbids documenting it; the intent-preserving form strips comment lines. Third occurrence of this collision (03-04, 10-01, 10-02)
 
 ### Pending Todos
 
@@ -201,7 +207,7 @@ New since 01-03 (not blockers, constraints to respect):
 - **All `effect` / `@effect/*` imports must be submodule namespace imports** (`import * as Effect from "effect/Effect"`). `import { Effect } from "effect"` is now a lint *error*, not a convention. Relative `index` imports are also rejected (`checkRelativeIndexImports: true`).
 - ~~**01-06 (CI) should add `pnpm lint` and `pnpm verify:oxlint-plugin` to the merge gate**~~ Done — both run in the `lint` job of `check.yml`. `verify:oxlint-plugin` was not in the 01-06 plan and was added as a Rule 2 deviation for exactly the reason recorded here.
 - `spec/**/*.md` is now dprint-formatted including its fenced `ts` blocks. Editing spec files by hand risks failing `dprint check`; run `pnpm format` after.
-- `no-bigint-literals` is the one vendored rule with no test (upstream shipped none). Enabled and loading, but locally unverified.
+- `no-bigint-literals` is the one vendored rule with no test (upstream shipped ). Enabled and loading, but locally unverified.
 - `pnpm install` prints "Ignored build scripts: dprint@0.56.1". Harmless — dprint resolves its binary via a platform optional dependency. 01-06 may want to silence it in CI.
 
 New since 01-04 (not blockers, constraints to respect):
@@ -260,7 +266,7 @@ New since 03-04 (not blockers, constraints to respect):
 - **The compilation cache stays two-level.** `WeakMap<ParameterTypeRegistry, Map<string, CucumberExpression>>`. A future "simplification" to a pattern-only `Map` reproduces a real bug, not just a slower path — see the 03-04 decision entry and the summary's mutation proof 2.
 - **`compileExpression` is exported mainly so the memoization claim is assertable by reference identity.** Normal callers go through `createStepMatcher`. Do not remove the export to "tidy the surface" without moving the identity assertions somewhere they still hold.
 - **`StepMatch<D>.args` is `ReadonlyArray<unknown>` deliberately.** Phase 5's DSL narrows it with `StepArgs<P>` at the call site; this package cannot, because a custom parameter type's transform return type is not recoverable from a pattern string at runtime.
-- **`packages/gherkin/src/index.ts` still exports none of `createStepMatcher`, `defineParameterType`, `StepPatternError`, `StepArgs`.** 03-05 owns it. Until then, import by direct relative path (`../src/StepMatcher.ts`), never through the barrel.
+- **`packages/gherkin/src/index.ts` still exports of `createStepMatcher`, `defineParameterType`, `StepPatternError`, `StepArgs`.** 03-05 owns it. Until then, import by direct relative path (`../src/StepMatcher.ts`), never through the barrel.
 - **MATCH-01 is still Pending in REQUIREMENTS.md after 03-04, deliberately** — the fourth consecutive plan in this phase to decline the marking on "say only what is true" grounds. The mechanism is proven at runtime and at the type level, but nothing a consumer can reach uses it. **03-05 should mark MATCH-01 and MATCH-02 together.**
 - **Writing a grep-based acceptance criterion that forbids a literal also forbids explaining it in a comment.** 03-04's `.sort(` criterion tripped on a comment saying why `.sort()` is not used; `expressions-pin.test.ts`'s phrasing ("the in-place one is rejected by oxlint's `unicorn(no-array-sort)`") is the workaround to copy.
 - Repo test count is now **329 across 13 files** (304 before this plan).
@@ -288,9 +294,10 @@ New since 03-06 (not blockers, constraints to respect):
 - **The `LoadFeatureError` reason set is still closed at exactly ten members** and BEH-EC-014 still says "drawn from exactly this set". `StepPatternError` remains the separate channel for parameter-type and step-pattern failures, and 03-06's third ADR correction now records why in `spec/` as well as in `Errors.ts` note (d).
 - **`ls packages/gherkin/test/*.test.ts` returns 11, but `pnpm test` reports 14 files.** The extra three are the vendored oxlint rule tests under `tools/oxlint/effect/test/`, outside `packages/*` and outside §4's stated scope. The two numbers are not a contradiction — do not "fix" §4 by adding `tools/` rows.
 - Repo test count is unchanged at **337 across 14 files** — 03-06 is documentation only.
+- Phase 10 SC#2 (shared Layer built once) and SC#3 (per-Scenario TestClock) are MEASURED but not guarded: plan 10-02's proving probe was a throwaway and no committed test exercises the shared emission path. Plans 10-03 (in-process) and 10-04 (real CLI) must close this before RUN-03/RUN-04 can be marked complete.
 
 ## Session Continuity
 
-Last session: 2026-08-30T01:06:18.131Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-08-30T01:26:43.930Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
