@@ -1761,3 +1761,238 @@ describe("the default per-Scenario Layer scope builds once per Scenario (10-03)"
     ])
   })
 })
+
+/**
+ * Plan 10-03, Task 2 — the OPT-IN `shared` scope, counted. The TWELFTH real `describeFeature` call in
+ * this file, and the FIRST anywhere in this repo to pass the `{ shared, perScenario }` argument form
+ * to the real entry point.
+ *
+ * Appended after Task 1's block for this file's declaration-order rule, with its OWN counters and its
+ * OWN service classes (T-10-03-05). Same Scenario count as the block above, so the two blocks differ
+ * in exactly the one thing under test: which argument FORM `describeFeature` was called with.
+ *
+ * ## The pair of assertions, and why neither one alone is the claim
+ *
+ * `sharedBuildOrdinals` is `[1, 1, 1]`: every Scenario reached the SAME single build, which is
+ * RUN-03 SC #2 and the whole reason Phase 10 exists. On its own it is satisfied by a fix that
+ * memoised BOTH tiers — and that fix would break INV-EC-002 for every Feature that opted into a
+ * shared scope, silently, because every step would still resolve. So it is paired with
+ * `scopedBuildOrdinals` being `[1, 2, 3]` in the SAME Feature and the SAME run (T-10-03-02). One
+ * assertion says the shared half stopped rebuilding; the other says the per-Scenario half did not
+ * start being memoised with it. Only the pair distinguishes the fix from the over-fix.
+ *
+ * ## Each Scenario asserts the count from INSIDE, and that is deliberate
+ *
+ * The first statement in the step body is `assert.strictEqual(sharedBuilds, 1)` — the module-scope
+ * counter, read at the moment that Scenario runs. That makes the build-count claim observable from
+ * OUTSIDE this process as that test node's own pass/fail status, which is the signal plan 10-05's
+ * real-CLI gate reads: a reporter has a field for a test's status and no field for a counter. It is
+ * the FIRST thing that can fail in the body for the same reason.
+ *
+ * ## `collisionWinners` is D-04's runtime home
+ *
+ * `CollisionMarker` is named by BOTH tiers with different values, and every Scenario must reach
+ * `perScenario`'s. The RULE is unchanged from ADR-EC-006; its MECHANISM changed in plan 10-02. It
+ * used to be `Layer.merge(shared, perScenario)`'s argument order — second argument wins. Nothing
+ * merges the tiers any more: the shared tier is ambient on the emitted test node and the per-Scenario
+ * tier is provided INSIDE the Scenario's own Effect, so the inner, nearer provision wins by
+ * construction. `describeFeature.test.ts` re-homed its own D-04 case to a two-tiers-two-values claim
+ * precisely because no collection-level assertion can see provision order, and `describeFeature.ts`
+ * note (d) names this block as where the runtime verdict moved to. This is that block.
+ *
+ * ## Mutation-tested (each performed, run, then reverted)
+ *
+ * - i.   `describeFeature.ts`'s shared branch made to pass `vitestTestApi(...)` instead of
+ *        `sharedLayerTestApi(...)` — the module-level `it` inside `layer(...)`'s callback, which is
+ *        ARCHITECTURE.md Anti-Pattern 3 exactly. 7 fail, ALL of them this block's and nothing else in
+ *        the repo: all three Scenario bodies on `expected +0 to equal 1`, plus all four readers on
+ *        empty arrays.
+ *
+ *        The observed number is `0`, not the 2/3/4 a first reading of Anti-Pattern 3 predicts, and
+ *        the difference is worth keeping: emitting through the module-level `it` does not merely
+ *        REBUILD the shared Layer per Scenario here, it never reaches a built one at all. Nothing was
+ *        registered through `sharedIt`, so at step time `sharedBuilds` is still 0 — and had the count
+ *        assertion not been first, the next line would have failed on `Service not found:
+ *        SharedProbe` instead. Either way the block goes red, which is the property being tested; the
+ *        `0` records that `sharedLayerTestApi` is what carries the shared services to a step, not
+ *        merely what causes the build to be counted once.
+ * - ii.  `splitLayerArgument` reverted to the pre-10-02 `Layer.merge(shared, perScenario)` collapse.
+ *        9 fail: SIX of this block's — Scenarios two and three on `expected 2 to equal 1` and
+ *        `expected 3 to equal 1`, and all four readers, each holding exactly ONE entry — PLUS all
+ *        three of `describeFeature.test.ts`'s `the layer argument separates into two independently
+ *        provided tiers` cases.
+ *
+ *        Scenario ONE passes under this mutation, and that is the signature of the defect rather than
+ *        a gap: a merged Layer built per Scenario IS on its first build when Scenario one runs. Only
+ *        Scenarios two and three can tell `1, 1, 1` from `1, 2, 3`, which is why three Scenarios are
+ *        the minimum this block could have used. `collisionWinners` records `["perScenario"]` — the
+ *        merged Layer resolves the collision the same way, so this mutation does NOT turn the D-04
+ *        assertion red on its merits, and that is precisely why 10-02 re-homed the collection-level
+ *        D-04 case rather than trusting it to notice a mechanism change.
+ * - iii. The two `Layer.succeed(CollisionMarker, ...)` values swapped between the tiers. Exactly 1
+ *        fails — `collisionWinners`, on `["shared", "shared", "shared"] to deeply equal
+ *        ["perScenario", ...]` — and nothing else in the repo, this block included. That is what
+ *        proves the assertion is a real collision test and not a tautology satisfied by either
+ *        arrangement (T-10-03-04).
+ */
+
+/** The SHARED tier's probe: one build for the whole Feature, so every Scenario reads ordinal 1. */
+class SharedProbe extends Context.Service<SharedProbe, { readonly buildOrdinal: number }>()("SharedProbe") {}
+
+/** The PER-SCENARIO tier's probe, in the SAME Feature — the `[1, 2, 3]` half of the pair. */
+class ScopedProbe extends Context.Service<ScopedProbe, { readonly buildOrdinal: number }>()("ScopedProbe") {}
+
+/**
+ * The service BOTH tiers name, with different values. D-04's runtime subject.
+ *
+ * An object carrying a `who` rather than a bare string, `describeFeature.test.ts`'s `Marker` idiom
+ * and for its reason: two implementations that differ in a field that is READ cannot masquerade as
+ * one another through structural sameness.
+ */
+class CollisionMarker extends Context.Service<CollisionMarker, { readonly who: string }>()("CollisionMarker") {}
+
+/** How many times the SHARED tier has been built. Asserted from inside every step body. */
+let sharedBuilds = 0
+
+/** How many times the PER-SCENARIO tier has been built, in the same Feature. */
+let scopedBuilds = 0
+
+/**
+ * The shared tier. `never` in the error channel is not incidental — plan 10-01's overload constrains
+ * `shared` to `Layer<R, never, never>`, so a failable Layer here is a COMPILE error, and this block
+ * must not be the thing that discovers that. `SharedLayerConstraint.types.ts` owns that claim.
+ */
+const sharedProbeLayer = Layer.mergeAll(
+  Layer.effect(
+    SharedProbe,
+    Effect.gen(function*() {
+      // Same `require-yield` satisfaction as the assertion-only step bodies in this file. The build
+      // has nothing to await — the counter IS the observation — but `Layer.effect` is still the
+      // constructor this needs: it has a build-time body at all, which `Layer.succeed` does not.
+      yield* Effect.void
+      sharedBuilds += 1
+      return SharedProbe.of({ buildOrdinal: sharedBuilds })
+    })
+  ),
+  Layer.succeed(CollisionMarker, CollisionMarker.of({ who: "shared" }))
+)
+
+/** The per-Scenario tier of the SAME Feature, which must stay fresh per Scenario (INV-EC-002). */
+const scopedProbeLayer = Layer.mergeAll(
+  Layer.effect(
+    ScopedProbe,
+    Effect.gen(function*() {
+      // `require-yield`, as above.
+      yield* Effect.void
+      scopedBuilds += 1
+      return ScopedProbe.of({ buildOrdinal: scopedBuilds })
+    })
+  ),
+  Layer.succeed(CollisionMarker, CollisionMarker.of({ who: "perScenario" }))
+)
+
+/** The shared build each Scenario REACHED — all three must be the same build. */
+const sharedBuildOrdinals: Array<number> = []
+
+/** The per-Scenario build each Scenario reached, in the same run — all three must differ. */
+const scopedBuildOrdinals: Array<number> = []
+
+/** Which tier's `CollisionMarker` each Scenario actually resolved. D-04, at run time. */
+const collisionWinners: Array<string> = []
+
+/** The full name of each shared-path Scenario that ran to completion. */
+const sharedScenarioNames: Array<string> = []
+
+/**
+ * Three Scenarios, ONE shared build.
+ *
+ * The three Scenario TITLES are fixed: plan 10-05's real-CLI gate asserts on them by exact suffix
+ * match, so renaming one here without renaming it there turns that gate's assertion vacuously true.
+ */
+const sharedBuildFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Shared build count
+
+  Scenario: the first shared scenario observes the single shared build
+    When the shared scenario reads both tiers
+    Then the shared scenario is done
+
+  Scenario: the second shared scenario observes the same shared build
+    When the shared scenario reads both tiers
+    Then the shared scenario is done
+
+  Scenario: the third shared scenario observes the same shared build
+    When the shared scenario reads both tiers
+    Then the shared scenario is done
+`,
+    "test/shared-build-count.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE TWELFTH real `describeFeature` call in this file, and the first in the repo to pass the OBJECT
+// form. The argument shape is the entire difference from the block above it.
+describeFeature(sharedBuildFeature, { shared: sharedProbeLayer, perScenario: scopedProbeLayer }, ({ Then, When }) => {
+  // ONE definition, matched by all three Scenarios, so the three bodies cannot drift apart into
+  // asserting three different things about one claim.
+  When("the shared scenario reads both tiers", function*() {
+    // FIRST, and deliberately so: this is the assertion plan 10-05's CLI gate observes from outside
+    // the process, as this test node's pass/fail status. Under Anti-Pattern 3 it reads 2, then 3,
+    // then 4 — one extra build per Scenario — and the node fails before it records anything.
+    assert.strictEqual(sharedBuilds, 1)
+
+    const shared = yield* SharedProbe
+    sharedBuildOrdinals.push(shared.buildOrdinal)
+
+    const scoped = yield* ScopedProbe
+    scopedBuildOrdinals.push(scoped.buildOrdinal)
+
+    // D-04, resolved by PROVISION order rather than merge order — see this block's header.
+    const marker = yield* CollisionMarker
+    collisionWinners.push(marker.who)
+  })
+
+  Then("the shared scenario is done", function*() {
+    // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
+    yield* Effect.void
+    sharedScenarioNames.push(currentTestName())
+  })
+})
+
+/**
+ * DECLARED LAST IN THIS FILE, after the block that registered the Feature, for the declaration-order
+ * reason every other reader here uses.
+ */
+describe("the opt-in shared Layer scope builds exactly once per Feature (10-03)", () => {
+  it("gave all three Scenarios the SAME single shared build", () => {
+    // RUN-03 SC #2, and the assertion this whole phase exists to make true. Under the pre-Phase-10
+    // implementation — and under Anti-Pattern 3's module-level `it` — this reads one build per
+    // Scenario while every step still resolves and nothing else in the repo goes red.
+    expect(sharedBuildOrdinals).toEqual([1, 1, 1])
+  })
+
+  it("kept the per-Scenario tier of the SAME Feature fresh for every Scenario", () => {
+    // The half that catches the OVER-fix (T-10-03-02). A change that memoised both tiers satisfies
+    // the assertion above and breaks INV-EC-002 for every Feature that asked for a shared scope;
+    // this is the only assertion in the repo that sees it.
+    expect(scopedBuildOrdinals).toEqual([1, 2, 3])
+  })
+
+  it("resolved a service named by BOTH tiers to the perScenario implementation (D-04)", () => {
+    // Asserted for all three Scenarios rather than once: the winner is now a property of how each
+    // Scenario's Effect was composed, so it is a per-Scenario fact and a single sample would not
+    // notice one Scenario resolving differently from its siblings.
+    expect(collisionWinners).toEqual(["perScenario", "perScenario", "perScenario"])
+  })
+
+  it("emitted and ran all three Scenarios, each nested under the Feature", () => {
+    // `completedScenarios`'s argument again, and it is not a formality on this path: `layer(...)`
+    // registers through a callback, so a shared branch that never invoked it emits nothing at all —
+    // and all three assertions above would then pass against three empty arrays if they were written
+    // as anything looser than exact-array comparisons (T-10-03-03).
+    expect(sharedScenarioNames).toEqual([
+      `Shared build count${nameSeparator}the first shared scenario observes the single shared build`,
+      `Shared build count${nameSeparator}the second shared scenario observes the same shared build`,
+      `Shared build count${nameSeparator}the third shared scenario observes the same shared build`
+    ])
+  })
+})
