@@ -22,7 +22,9 @@
     "verify:no-runner-dep": "bash scripts/verify-no-runner-dep.sh",
     "verify:testapi-seam": "bash scripts/verify-testapi-seam.sh",
     "verify:tags-filter": "bash scripts/verify-tags-filter.sh",
-    "verify:shared-layer-once": "bash scripts/verify-shared-layer-once.sh"
+    "verify:shared-layer-once": "bash scripts/verify-shared-layer-once.sh",
+    "verify:acceptance-ref-state": "bash scripts/verify-acceptance-ref-state.sh",
+    "verify:acceptance-no-any": "bash scripts/verify-acceptance-no-any.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",
