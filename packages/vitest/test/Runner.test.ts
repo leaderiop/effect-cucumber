@@ -282,6 +282,32 @@ const titlesOf = (records: ReadonlyArray<EmissionRecord>): ReadonlyArray<string>
   records.filter(({ kind }) => kind === "effect").map(({ name }) => name)
 
 /**
+ * `shapeOf` minus `depth`, plus `EmitOptions.contextFree` — a FOURTH, SIBLING projection (plan
+ * 10-07), not a widening of `shapeOf` or `emissionOf`. `emissionOf`'s own doc comment makes the
+ * argument this one relies on unchanged: fifteen assertions compare through `shapeOf` and several
+ * through `emissionOf`, every one a claim about SHAPE or about TAGS/SKIP this task must leave exactly
+ * as it found it, and widening either projection to also carry `contextFree` would mean editing every
+ * expected array in this file to name a routing flag it says nothing about — precisely how a
+ * regression gets committed inside a diff too large to read. The corollary is the same one
+ * `emissionOf` states and it is the reason THIS projection has to exist at all: a value absent from a
+ * projection is INVISIBLE to every assertion comparing through it, so no existing `shapeOf` or
+ * `emissionOf` assertion in this file could ever notice a routing regression.
+ *
+ * `name` alone, not `depth`: the routing claim is "which flag does THIS node carry", and depth is
+ * `shapeOf`'s claim, already asserted there — carrying it here too would make this projection a
+ * second, redundant witness for a fact `shapeOf` already pins, rather than a sibling asserting
+ * something new.
+ */
+const routingOf = (
+  records: ReadonlyArray<EmissionRecord>
+): ReadonlyArray<{ readonly kind: string; readonly name: string; readonly contextFree: boolean | null }> =>
+  records.map(({ kind, name, options }) => ({
+    kind,
+    name,
+    contextFree: options === null ? null : options.contextFree
+  }))
+
+/**
  * The thunk recorded at `index`, or a thrown explanation.
  *
  * A helper rather than `records[index]!.self!`: under `noUncheckedIndexedAccess` the two assertions
@@ -1065,9 +1091,13 @@ describe("the recording fake itself", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
     // The one place in this file that drives the fake directly rather than through `emitFeature`.
-    // The options are inert here — this test is about the depth counter and asserts nothing about
-    // tags — so they are the untagged, unskipped pair a synthetic node would carry.
-    api.effect("after", () => Effect.void, { tags: [], skip: false })
+    // `tags`/`skip` are inert here — this test is about the depth counter and asserts nothing about
+    // either. `contextFree: true` is NOT inert in general (plan 10-07) — it is the routing flag that
+    // sends a node through the module-level constructor even on the shared path — but it IS inert for
+    // THIS fake, which records every emission through the one `effect` member regardless of the flag's
+    // value; `true` is chosen because this synthetic-looking node ("after") most resembles the `⚠`
+    // warning kind this file's other tests exercise.
+    api.effect("after", () => Effect.void, { tags: [], skip: false, contextFree: true })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every
     // assertion that followed — the failure would surface in an unrelated test.
@@ -1302,6 +1332,72 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
       assert.isTrue(Exit.isFailure(afterAllExit))
       assert.strictEqual(Exit.isFailure(afterAllExit) ? Cause.squash(afterAllExit.cause) : undefined, boom)
     }))
+})
+
+/**
+ * Plan 10-07, Task 2 — pins `EmitOptions.contextFree`'s ROUTING claim structurally: every Scenario
+ * node and the `⚙ AfterAllScenarios` node are NOT context-free, and every `⚠` warning node IS.
+ *
+ * This is the framework-free half of the claim and it catches something `emission.test.ts`'s
+ * behavioural test (plan 10-07, Task 1) structurally cannot: the MIRROR-IMAGE mistake of marking the
+ * `⚙ AfterAllScenarios` node context-free too. That mutation routes a Feature's teardown hooks away
+ * from the shared tier, so a teardown hook naming a shared service fails at run time with a
+ * missing-service defect — and nothing in `emission.test.ts` today exercises a hook under a shared
+ * Feature, so nothing else in this repo would notice (mutation 3 in the plan 10-07 SUMMARY proves
+ * this: this test goes RED while `emission.test.ts` stays entirely GREEN under that mutation).
+ *
+ * A shared-path teardown fixture — a `describeFeature` call combining `{ shared, perScenario }`, an
+ * `AfterAllScenarios` hook, and a step that reads a shared-tier service — is deliberately NOT added
+ * here or anywhere else in this plan: that is WR-02 in `10-REVIEW.md`, a separate, already-recorded
+ * coverage gap. This assertion pins the ROUTING DECISION `Runner.ts` makes; it does not stand in for
+ * that missing behavioural coverage.
+ *
+ * This file drives a recording fake and imports no test framework's `layer(...)` machinery, so this
+ * test says nothing about Layer BUILDS — it says only which route each node was CONSIGNED to. That
+ * separation is the point: the emitter's job is to classify, the composition root's job is to route,
+ * and they are asserted in different files against different subjects (`Runner.ts` here,
+ * `describeFeature.ts` in `emission.test.ts`).
+ */
+describe("EmitOptions.contextFree routes each node kind correctly (10-07)", () => {
+  it("marks every Scenario and the ⚙ AfterAllScenarios node NOT context-free, and every ⚠ warning node context-free", () => {
+    const { api, records } = makeRecordingApi()
+    // The SAME fixture the AfterAllScenarios describe block above already uses — a runnable Scenario
+    // pair, an `AfterAllScenarios` hook, and one unused step definition — rather than a new one, per
+    // this task's own instruction to reuse an existing arrangement.
+    const hooks = hooksWith({ AfterAllScenarios: [recordingHook("afterAll")] })
+
+    emitFeature({
+      api,
+      plan: planFeature({
+        feature: checkout,
+        definitions: [
+          ...checkoutDefinitions,
+          define({ pattern: "I never happen", scope: featureScope("Checkout"), definedAt: site(9) })
+        ]
+      }),
+      layer,
+      hooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    // ONE whole-array comparison through the new projection: the two Scenario nodes and the
+    // `⚙ AfterAllScenarios` node all read `contextFree: false`, and only the trailing `⚠` warning
+    // node reads `true`. The mirror-image mutation (setting `⚙ AfterAllScenarios`'s flag to `true`)
+    // flips the THIRD entry alone, which is exactly what makes this assertion — and not a `.some(...)`
+    // search — the one that catches it.
+    assert.deepStrictEqual(routingOf(records), [
+      { kind: "describe", name: "Checkout", contextFree: null },
+      { kind: "effect", name: "paying", contextFree: false },
+      { kind: "effect", name: "refunding", contextFree: false },
+      { kind: "effect", name: "⚙ AfterAllScenarios", contextFree: false },
+      {
+        kind: "effect",
+        name: `⚠ unused step definition: Given "I never happen" (/repo/test/runner.steps.ts:9:5)`,
+        contextFree: true
+      }
+    ])
+  })
 })
 
 /**

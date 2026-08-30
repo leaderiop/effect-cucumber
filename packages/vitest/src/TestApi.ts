@@ -42,10 +42,18 @@
  *     than a defect, and not something this interface could paper over: a member present on one path
  *     and throwing on the other would be worse than its absence.
  *
- * (b) **`skip` is a FIELD on `EmitOptions`; `only` has no representation here at all.** The two
- *     halves of this note are different KINDS of statement, and conflating them is the mistake it
- *     exists to prevent: the first is a shape choice with a live alternative, the second is a
- *     behavior decision with none.
+ * (b) **`skip` and `contextFree` are FIELDS on `EmitOptions`; `only` has no representation here at
+ *     all.** The three halves of this note are different KINDS of statement, and conflating them is
+ *     the mistake it exists to prevent: the first two are shape choices with a live alternative, the
+ *     third is a behavior decision with none.
+ *
+ *     `contextFree` (plan 10-07) is `skip`'s argument applied unchanged to a second field: it keeps
+ *     this interface at TWO members and it makes `Runner.test.ts`'s recording fake grow a second
+ *     recorded VALUE rather than a routing decision the fake cannot see. It exists so `Runner.ts` can
+ *     tell `describeFeature.ts`'s composition root WHICH KIND of node an emission is — a Scenario, or
+ *     one of the two synthetic node kinds — without importing or naming a test framework to do it
+ *     (note (a) above is unweakened by this field; it is library-owned plain data, exactly as `tags`
+ *     and `skip` already are).
  *
  *     `skip` could have been a second, skip-specific emission member beside `effect` — the test
  *     framework's own tester exposes exactly that — and it is a field on the options object
@@ -140,6 +148,36 @@ export interface EmitOptions {
    *   only reached at `yield*` time inside the Effect that is never built.
    */
   readonly skip: boolean
+  /**
+   * `true` when this node's body requires NOTHING from either of the Feature's Layer tiers —
+   * `contextFree` says so about the BODY, not about the node's provenance, and that distinction is
+   * the entire reason for the field.
+   *
+   * The `⚠ unused step definition` node is `contextFree: true`: its whole body is `Effect.void`, so
+   * it needs nothing the shared tier or the per-Scenario tier provides. The `⚙ AfterAllScenarios`
+   * node is EQUALLY synthetic — neither corresponds to a Scenario a `.feature` file wrote — and is
+   * emphatically `contextFree: false`: its body runs the Feature's teardown hooks, which may name a
+   * service the shared tier provides, and that tier is reachable only through the shared emission
+   * route (`describeFeature.ts`'s `sharedLayerTestApi`). A reader who sets this flag on both synthetic
+   * node kinds, reasoning "they are both synthetic", converts this field into a new silent defect —
+   * a Feature's teardown routed away from the shared tier, failing at run time with a missing-service
+   * defect the moment it names one. Say it here because the two node kinds otherwise look alike: both
+   * are library-owned, both carry `emptyEmitOptions`-style untagged/unskipped defaults, and only this
+   * field tells them apart.
+   *
+   * Required, not optional, for note (b)'s stated reason applied unchanged here: an optional field
+   * lets a future call site simply forget it and emit through whichever route the default happens to
+   * be, with nothing going red — which is precisely the shape of the defect this field closes (a
+   * `shared` Layer built for a Feature with every Scenario excluded, forced open by an always-passing
+   * warning node routed through the shared constructor). Extending note (b) rather than writing a new
+   * note: it already explains why a field beats a third interface member (one emission call to reason
+   * about; a recorded VALUE the fake can compare rather than a method whose only observable is
+   * whether it was called), and both halves of that argument apply to this field verbatim.
+   *
+   * Every Scenario node is `contextFree: false` — a Scenario's body is the author's own step Effects,
+   * which may require anything either Layer tier provides.
+   */
+  readonly contextFree: boolean
 }
 
 /**
