@@ -158,8 +158,26 @@ authoring time, never a runtime failure discovered when the Scenario runs.
 
 ### Active
 
-None — all requirements derived from `spec/behaviors/` (BEH-EC-001 through
-BEH-EC-013) are validated as of Phase 11. This milestone (v1.0) is complete.
+All v1 requirements (derived from `spec/behaviors/`, BEH-EC-001 through
+BEH-EC-013) are validated as of Phase 11 — v1.0 is complete. The following
+are the v2-deferred items already on record in the archived requirements
+(`.planning/milestones/v1.0-REQUIREMENTS.md`), candidates for the next
+milestone rather than newly discovered gaps:
+
+- [ ] Reusable step definitions across Scenarios/Features (REUSE-01) —
+      genuinely harder here than in comparable libraries, since a shared
+      step's `R` must reconcile against every consuming Layer, with no
+      ecosystem precedent to copy
+- [ ] A `ScenarioOutline` Examples column unreferenced by any step's pattern,
+      available to the step body as a typed value decoded via `Schema`
+      (OUTLINE-01)
+- [ ] Retry support for a Scenario, rebuilding its per-Scenario Layer fresh
+      per attempt (RETRY-01) — composition-order requirement already
+      confirmed by research, implementation deferred
+- [ ] A lint rule flagging a `let`/`var` inside a `Scenario`/`Rule`/
+      `Background` callback that a step closes over (LINT-01) — automates
+      the RUN-06/INV-EC-006 convention beyond what
+      `verify:acceptance-ref-state` can reach outside this repository
 
 ### Out of Scope
 
@@ -226,6 +244,10 @@ BEH-EC-013) are validated as of Phase 11. This milestone (v1.0) is complete.
   unpublished `@effect/oxc` oxlint rules, vendored (MIT-licensed) during
   Stack research — not yet formally adopted; see `spec/roadmap.md` §
   Under consideration.
+- **v1.0 shipped 2026-08-30**: ~29,600 lines of TypeScript across
+  `packages/gherkin` and `packages/vitest`, 85 plans across 11 phases, 22/22
+  v1 requirements validated with a named automated assertion each. Not
+  published to npm (out of scope this milestone — see Out of Scope below).
 
 ## Constraints
 
