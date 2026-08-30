@@ -15,7 +15,7 @@
  * consumes fully-resolved value objects and never sees a pattern, a registry or a `ParsedFeature`
  * internal again.
  *
- * Seven things about this module are not visible from the code.
+ * Eight things about this module are not visible from the code.
  *
  * (a) **A resolution failure stays IN POSITION in the step list, as a member of the `PlannedStep`
  *     union — it is not hoisted to a `failure` field on the Scenario.** The consequence is the whole
@@ -114,6 +114,28 @@
  *     key would let either one's use silently mark the other as used, hiding a genuinely dead
  *     registration behind a live one.
  *
+ * (h) **A step's DataTable and DocString are APPENDED to the cucumber-expression arguments, and
+ *     this module is the only place that join happens.** BEH-EC-016 owns the ORDER the two
+ *     arguments arrive in relative to each other; the requirement that they land after the
+ *     pattern's own arguments, positionally, is now stated normatively there too, and
+ *     `packages/gherkin/src/StepArguments.ts` note (b) is the producing side of the same contract.
+ *
+ *     The two argument sources are disjoint by construction, which is what makes concatenation
+ *     safe rather than merely convenient: a cucumber-expression is matched against a step's TEXT,
+ *     and a table or a doc string is everything BELOW that text, so no `{int}` can ever consume a
+ *     table cell and no table can shift a pattern argument. The order within `stepArguments` is
+ *     already settled upstream by `argumentIndex`, and this module neither re-sorts it nor
+ *     inspects it — a step carrying nothing spreads `[]` and the args list is unchanged, which is
+ *     precisely why BEH-EC-016 requires an empty array rather than an absent field.
+ *
+ *     Appending rather than prepending is what keeps `StepArgs<P>` honest. That type resolves a
+ *     step body's parameter list from the pattern LITERAL, and a pattern literal cannot express a
+ *     table's presence — there is no brace token for it and deliberately so. Prepending would put
+ *     an untyped parameter in front of every inferred one, so a step body that takes a table would
+ *     silently receive its pattern arguments shifted by one. Appending leaves every inferred
+ *     parameter at the index `StepArgs<P>` says it has, and leaves the author to hand-annotate the
+ *     trailing table parameter. `packages/gherkin/test/StepArgs.types.ts` pins both halves.
+ *
  * Local imports: `./CallSite.ts`, `./Errors.ts` and `./Registry.ts`, plus the
  * `@effect-cucumber/gherkin` barrel. NEVER `./describeFeature.ts` — the dependency runs the other
  * way, because `describeFeature.ts` imports `planFeature` from here, and the reverse edge would be
@@ -162,9 +184,12 @@ export type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any
  * carried through for reporting (BEH-EC-005 needs to say a step came from a Background), `pattern`
  * names which definition won, and `body` and `args` are what actually gets called.
  *
- * `args` is `StepMatcher`'s output passed through POSITIONALLY and UNMODIFIED. A `null` produced by
- * an optional group that did not participate is meaningful and is kept: dropping it would shift
- * every later argument by one, silently handing the step body the wrong values in the right types.
+ * `args` is `StepMatcher`'s output passed through POSITIONALLY and UNMODIFIED, followed by this
+ * step's `stepArguments` — its DataTable and DocString, in the source order BEH-EC-016 settled. A
+ * `null` produced by an optional group that did not participate is meaningful and is kept:
+ * dropping it would shift every later argument by one, silently handing the step body the wrong
+ * values in the right types, and it would additionally move the trailing table parameter to an
+ * index the step body's annotation does not expect. Note (h) has the full argument for the order.
  */
 export type ResolvedStep = {
   readonly text: string
@@ -577,7 +602,10 @@ const planStep = (args: {
         origin: step.origin,
         pattern: only.pattern,
         body: only.definition.body,
-        args: only.args
+        // The pattern's own coerced arguments FIRST, then the step's table and doc string — note
+        // (h). `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is
+        // the identity for them and the args list is byte-identical to the matcher's output.
+        args: [...only.args, ...step.stepArguments]
       }
     }
   }

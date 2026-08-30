@@ -12,13 +12,20 @@ pattern is matched against at all.
 See [`spec/roadmap.md`](../roadmap.md) for what is built versus what is only specified — this
 document describes the contract, not the build status.
 
-What this file deliberately does **not** specify is the STEP-BODY SIGNATURE: how these arguments are
-positioned relative to the cucumber-expression arguments in a `Given`/`When`/`Then` callback. That is
-Phase 5's DSL territory (DSL-02) and belongs with the registration API, next to
-[BEH-EC-002](./01-steps-and-world.md)'s callback shape, because it is a decision about the DSL rather
-than about the arguments themselves. This file owns the ORDER the arguments arrive in and the
-accessors available on them; it does not own the callback that receives them, and the callback shape
-is not duplicated here.
+This file previously declined to specify the STEP-BODY SIGNATURE — how these arguments are positioned
+relative to the cucumber-expression arguments in a `Given`/`When`/`Then` callback — and deferred it to
+Phase 5's DSL territory (DSL-02), next to [BEH-EC-002](./01-steps-and-world.md)'s callback shape. That
+deferral is **withdrawn**, and the question is answered by the last REQUIREMENT below. It is answered
+here rather than in `01` because the deferral turned out to be the reason nothing implemented it: the
+producing side of the contract had already been written into
+`packages/gherkin/src/StepArguments.ts` on the assumption that a consumer would spread this array
+after the pattern's arguments, and for five phases no consumer did. A step body declaring a
+`DataTable` parameter received `undefined`, and no gate noticed, because the only document that could
+have stated the delivery had declined to. The order and the delivery are one contract and now live in
+one place.
+
+What this file still does not own is the REGISTRATION call shape around the callback — that remains
+BEH-EC-002's, and is not duplicated here.
 
 ---
 
@@ -147,6 +154,37 @@ REQUIREMENT: A failed decode MUST name the 1-based BODY-ROW ordinal and the
              silently-wrong "Row 1".
 ```
 
+```
+REQUIREMENT: A step body MUST receive its stepArguments POSITIONALLY, APPENDED
+             after the cucumber-expression arguments, in the order this file
+             already settled. A step carrying no argument spreads [] and its
+             body's parameter list is exactly the pattern's — which is why the
+             empty array above is required to be an array and not an absent
+             field.
+
+             The two sources cannot collide. A cucumber-expression is matched
+             against a step's TEXT and these arguments are everything BELOW that
+             text, so no parameter token can consume a table cell and no table
+             can displace a pattern argument.
+
+             StepArgs<P> MUST NOT infer these parameters, and this is a
+             REQUIREMENT rather than a limitation being excused. StepArgs<P>
+             resolves a step body's parameters from the pattern LITERAL, and a
+             pattern literal cannot express a table's presence: there is no
+             brace token for a DataTable and there deliberately is none, because
+             a table is not part of the text a pattern matches. So the author
+             MUST annotate the trailing parameter explicitly — (table: DataTable)
+             — and the annotation is the only place that claim exists.
+
+             APPENDED, never prepended, and the ordering is load-bearing rather
+             than conventional. Prepending would place an un-inferrable
+             parameter ahead of every inferred one, so StepArgs<P> would report
+             each pattern argument at an index one lower than the position it
+             actually arrives at, and a step body taking a table would receive
+             its own pattern's arguments shifted. Appending leaves every
+             inferred parameter at the index StepArgs<P> assigns it.
+```
+
 ### Two decisions a reader will otherwise ask about
 
 **Why `hashes()` and `rowsHash()` return an `Effect` while `raw()` does not.** The asymmetry is the
@@ -162,8 +200,10 @@ for the rejected alternative in full.
 **Why the result is an ordered array rather than a `{ docString, dataTable }` record.** A record has
 no order, so it would push the ordering question onto every consumer and answer it nowhere — and
 `argumentIndex` is a real upstream fact, verified in both directions against a byte-mirrored fixture
-pair, so the answer exists and only has to be read once. Phase 5's step-body signature spreads this
-array, which only works if the order is already settled here.
+pair, so the answer exists and only has to be read once. The step-body signature above spreads this
+array, which only works because the order is already settled here; `packages/vitest/src/Plan.ts`'s
+`planStep` is the single place that spread happens, and it neither re-sorts the array nor inspects
+it.
 
 ### Signatures
 
@@ -236,8 +276,10 @@ import * as Schema from "effect/Schema"
 // what lets it name the offending row rather than an index into a value nobody wrote.
 const User = Schema.Struct({ name: Schema.String, email: Schema.String })
 
-// A step-shaped body. Pre-implementation with respect to the Phase 5 DSL: the step-registration
-// call shape AROUND this function is BEH-EC-002's, not this file's, so only the body is shown.
+// A step-shaped body. The step-registration call shape AROUND this function is BEH-EC-002's, not
+// this file's, so only the body is shown. `table` is annotated rather than inferred, and it is the
+// LAST parameter: this pattern happens to take no cucumber-expression arguments, so it is also the
+// first, but a pattern with parameters puts them ahead of it.
 export const registerUsers = Effect.fn("registerUsers")(function*(table: DataTable) {
   // Fails with a located DataTableError naming the row and the column when a row does not decode,
   // and propagates DuplicateHeaderColumn untouched when the table's own header is at fault.
