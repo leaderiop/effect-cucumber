@@ -69,10 +69,31 @@
  *    `.planning/phases/11-.../11-CONTEXT.md`'s "Reusable Assets" list repeats the worked example's
  *    error and names `ScenarioOutline` among this package's public exports. It is not one.
  *
- * A sixth translation is forced by effect v4 rather than by this repo, and it is the one place this
- * file's `DiscountRegistry` is not byte-for-byte the worked example's:
+ * The fifth is not the only thing this pair found. Writing it is also what discovered that **the
+ * runner never handed a step body its data table at all**, and the Background below is the first
+ * caller in the repository that needed it:
  *
- * 6. **`Duration.decode` is gone, and `Duration.toMillis` will not take a plain `string`.** In
+ * 6. **`Plan.ts` forwarded only the cucumber-expression arguments.** `packages/gherkin` had parsed,
+ *    wrapped, ordered and exported a step's table since Phase 4 — `ParsedStep.stepArguments`, exactly
+ *    as ADR-EC-008 promises — and `planStep` set `args: only.args`, the matcher's output alone. So
+ *    `table` below arrived `undefined` and every Scenario in this file died on
+ *    `Cannot read properties of undefined (reading 'hashes')`. Nothing in the suite was red, because
+ *    `spec/behaviors/06` had DECLINED to specify the step-body signature and no gate can check a
+ *    contract no document states. Closing it took one line in `planStep` and the normative paragraph
+ *    `06` had deferred; both landed with this pair, and `packages/gherkin/test/StepArgs.types.ts`
+ *    now pins the type-level half.
+ *
+ *    That is why `table` is ANNOTATED below rather than inferred, and the annotation is not a
+ *    workaround for a weak type. `StepArgs<P>` resolves a step body's parameters from the pattern
+ *    LITERAL, and `"the cart contains:"` is indistinguishable from the pattern of a step carrying
+ *    nothing — a table is everything BELOW the text a pattern matches, so there is no brace token
+ *    for it and deliberately none. BEH-EC-016 now requires the author to write the type, which is
+ *    the only place that claim can exist.
+ *
+ * A seventh translation is forced by effect v4 rather than by this repo, and it is the one place
+ * this file's `DiscountRegistry` is not byte-for-byte the worked example's:
+ *
+ * 7. **`Duration.decode` is gone, and `Duration.toMillis` will not take a plain `string`.** In
  *    `effect@4.0.0-rc.112` a `Duration.Input` is a template-literal type, so a value that arrived
  *    through a `{string}` step parameter is not assignable to it and no amount of widening makes it
  *    so — widening is exactly what this directory's zero-unsound-escape-hatch rule forbids. The
@@ -242,8 +263,11 @@ describeFeature(feature, World.layer, (dsl) => {
   Background(({ Given }) => {
     Given("the cart contains:", function*(table: DataTable) {
       // Annotated with the `DataTable` type the gherkin package exports rather than widened to make
-      // the parameter compile (PROH-11-02). `hashes()` yields the body rows keyed by the header row's
-      // cells; the decode then turns each `price` cell's string into a number.
+      // the parameter compile (PROH-11-02) — and REQUIRED to be annotated, per header translation 6
+      // and BEH-EC-016. It is the last parameter because table arguments are appended after the
+      // pattern's own; this pattern simply has none. `decodeHashes` reads the body rows keyed by the
+      // header row's cells and turns each `price` cell's string into a number in one step, keeping
+      // one error channel and producing ADR-EC-008's located error.
       const rows = yield* decodeHashes(CartRow)(table)
       yield* Ref.set((yield* World).subtotal, rows.reduce((sum, row) => sum + row.price, 0))
     })
