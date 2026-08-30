@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 8 plans (8 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed). Plans 10-01 through 10-06 are executed; 10-07 and 10-08 close the one gap `10-VERIFICATION.md` found (a `shared` Layer still built when the tag filter excluded every Scenario, because the always-passing `⚠` warning nodes travelled the shared emission route).
+**Plans**: 7/8 plans executed (8 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed). Plans 10-01 through 10-06 are executed; 10-07 and 10-08 close the one gap `10-VERIFICATION.md` found (a `shared` Layer still built when the tag filter excluded every Scenario, because the always-passing `⚠` warning nodes travelled the shared emission route).
 
 Plans:
 **Wave 1**
@@ -464,7 +464,7 @@ Plans:
 
 **Wave 7** *(gap closure — blocked on 10-06)*
 
-- [ ] 10-07-PLAN.md — A routing flag on the library's own `EmitOptions` sends the always-passing `⚠` nodes down a Layer-free emission route, so a Feature whose Scenarios are all excluded never builds its `shared` tier; regression block in `emission.test.ts`, routing projection in `Runner.test.ts`, four mutation proofs
+- [x] 10-07-PLAN.md — A routing flag on the library's own `EmitOptions` sends the always-passing `⚠` nodes down a Layer-free emission route, so a Feature whose Scenarios are all excluded never builds its `shared` tier; regression block in `emission.test.ts`, routing projection in `Runner.test.ts`, four mutation proofs
 
 **Wave 8** *(blocked on 10-07)*
 
@@ -529,7 +529,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 6/6 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 7/8 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
