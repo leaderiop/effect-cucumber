@@ -149,9 +149,11 @@ export interface EmitOptions {
    */
   readonly skip: boolean
   /**
-   * `true` when this node's body requires NOTHING from either of the Feature's Layer tiers —
-   * `contextFree` says so about the BODY, not about the node's provenance, and that distinction is
-   * the entire reason for the field.
+   * Which EMISSION ROUTE this node takes on the shared path — `true` selects the Layer-free route.
+   *
+   * The emitter sets this per node KIND, never by analysing a body: only the library's own `⚠`
+   * nodes are `true`. Every Scenario is `false` unconditionally, even one whose steps happen to
+   * need nothing, because the flag is a routing decision and a Scenario's body is the author's.
    *
    * The `⚠ unused step definition` node is `contextFree: true`: its whole body is `Effect.void`, so
    * it needs nothing the shared tier or the per-Scenario tier provides. The `⚙ AfterAllScenarios`
@@ -164,6 +166,14 @@ export interface EmitOptions {
    * defect the moment it names one. Say it here because the two node kinds otherwise look alike: both
    * are library-owned, both carry `emptyEmitOptions`-style untagged/unskipped defaults, and only this
    * field tells them apart.
+   *
+   * Setting `true` on a Scenario is the mirror of that mistake and is WORSE, because one of its two
+   * outcomes is silent: a Scenario naming a shared service fails loudly with a missing-service
+   * defect, but one that only reads the clock or console runs against the framework's own per-test
+   * services instead of `sharedLayerTestApi`'s `Effect.provide(testEnv)` — ADR-EC-018's isolation
+   * argument no longer covers it, and nothing goes red. Nothing in the type system, in `Runner.ts`,
+   * or in any test prevents a Scenario emission from carrying `contextFree: true` today; this note
+   * is the only guard until one exists.
    *
    * Required, not optional, for note (b)'s stated reason applied unchanged here: an optional field
    * lets a future call site simply forget it and emit through whichever route the default happens to
