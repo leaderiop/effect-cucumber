@@ -26,35 +26,77 @@
 //     the likeliest way to silently stop running some package's tests; omitting them preserves the
 //     defaults every existing test file in this repo relies on. `pnpm test` reported 30 test files
 //     and 645 tests both immediately before and immediately after this file first landed, which is
-//     the empirical check RESEARCH assumption A5 asked for.
+//     the empirical check RESEARCH assumption A5 asked for. That default is also why every
+//     acceptance step module under `packages/vitest/test/acceptance/` is named `*.steps.test.ts`
+//     rather than `*.steps.ts`: the include glob is what collects it, and this note is why the
+//     glob cannot simply be widened to meet a nicer filename.
 //
-// (d) `@undeclared-on-purpose` is RESERVED and must NEVER be added to the list below. Plan 09-06
-//     emits it from `packages/vitest/test/emission.test.ts` to prove the D-08 catch-and-degrade
-//     path: the Scenario still runs untagged and a located warning prints, instead of the file
-//     collecting zero tests. Declaring it here deletes that test's meaning while leaving it green.
-//     That is why the list stops at eight entries — the ninth slot is deliberately empty.
+// (d) `@undeclared-on-purpose` is RESERVED and must NEVER be added to the list below, nor to any
+//     `.feature` file the glob in (e) expands. Plan 09-06 emits it from
+//     `packages/vitest/test/emission.test.ts` to prove the D-08 catch-and-degrade path: the
+//     Scenario still runs untagged and a located warning prints, instead of the file collecting
+//     zero tests. Declaring it here deletes that test's meaning while leaving it green. The
+//     hand-written list below therefore still stops at eight entries and its ninth slot is still
+//     deliberately empty — what changed in Phase 11 is that the list is no longer the WHOLE tag
+//     universe, only its hand-written half. The other half is derived, and derived entries cannot
+//     reintroduce the reserved tag unless someone writes it into an acceptance `.feature` file,
+//     which is the same prohibition stated one layer out.
 //
 // (e) `@skip` and `@only` are the library's two reserved tags (D-05, D-06): `@skip` additionally
 //     routes to a real vitest skip, and `@only` is emitted as a plain tag and is NEVER routed to
 //     `it.effect.only`. The other six are probes used by this repo's own suite — `@slow` and `@wip`
 //     are pass-through probes (D-07), and the four `…tag` entries mirror the tag-inheritance
-//     fixture at `packages/gherkin/test/Correlate.test.ts:173`. A future phase that adds
-//     `@REQ-EC-NNN` acceptance tags (AGENTS.md §5) adds them here, or reaches the D-08 degradation
-//     path instead.
+//     fixture at `packages/gherkin/test/Correlate.test.ts:173`. This note used to offer a future
+//     phase two options for the acceptance tags AGENTS.md §5 requires: declare them here, or reach
+//     the D-08 degradation path instead. Phase 11 took the first, through `gherkinTags` (D-09,
+//     RUN-05) rather than by hand — so this file contains ZERO acceptance-tag literals and adding
+//     a tagged Scenario to the acceptance suite needs no edit here at all. Both halves of that
+//     choice were observed rather than assumed: with the glob in place the acceptance Scenario is
+//     emitted carrying its tag; with the acceptance tag left undeclared, D-08 catches the
+//     collection-time throw and the Scenario runs UNTAGGED behind one located warning while
+//     `pnpm test` still exits 0. That second observation is why the acceptance suite asserts its
+//     own collected test COUNT and does not rely on the exit code.
+//
+// The helper is imported from `./packages/vitest/src/GherkinTags.ts`, the concrete module, and
+// deliberately NOT from the `@effect-cucumber/vitest` barrel: that barrel re-exports
+// `describeFeature.ts`, which imports `@effect/vitest`, and this config file is loaded outside any
+// test context. `GherkinTags.ts` is a leaf whose only imports are `node:fs` and `tinyglobby`, which
+// is what makes it safe to reach from here.
 import { defineConfig } from "vitest/config"
+import { gherkinTags } from "./packages/vitest/src/GherkinTags.ts"
+
+/**
+ * The hand-written half of the tag universe — see notes (d) and (e). These WIN a name collision
+ * against the derived half below, so a tag that appears in both places keeps whatever this entry
+ * says about it rather than being flattened to a bare `{ name }`.
+ */
+const declaredByHand = [
+  { name: "@skip" },
+  { name: "@only" },
+  { name: "@slow" },
+  { name: "@wip" },
+  { name: "@featuretag" },
+  { name: "@ruletag" },
+  { name: "@scenariotag" },
+  { name: "@exampletag" }
+]
+
+/**
+ * The derived half: every tag any acceptance `.feature` file carries, read from the files
+ * themselves. `packages/vitest/test/acceptance/` is the only directory in the repository whose
+ * `.feature` files may carry an acceptance tag — that rule, and its enforcement by
+ * `spec/scripts/verify-traceability.sh` check 4, is stated in that directory's own README and in
+ * `packages/gherkin/test/fixtures/README.md`, which states the inverse for the parser corpus.
+ *
+ * De-duplicated by `name` against the hand-written half so no `name` can appear twice in the array
+ * vitest receives.
+ */
+const declaredByAcceptanceFeatures = gherkinTags("packages/vitest/test/acceptance/**/*.feature")
+  .filter((derived) => !declaredByHand.some((entry) => entry.name === derived.name))
 
 export default defineConfig({
   test: {
-    tags: [
-      { name: "@skip" },
-      { name: "@only" },
-      { name: "@slow" },
-      { name: "@wip" },
-      { name: "@featuretag" },
-      { name: "@ruletag" },
-      { name: "@scenariotag" },
-      { name: "@exampletag" }
-    ],
+    tags: [...declaredByHand, ...declaredByAcceptanceFeatures],
     allowOnly: false
   }
 })
