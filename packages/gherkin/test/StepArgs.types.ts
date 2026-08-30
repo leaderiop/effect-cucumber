@@ -130,6 +130,44 @@ type TwoArgumentStepBody = (...args: StepArgs<"I have {int} cukes and {word} lef
 export const restParametersFormATuple: TwoArgumentStepBody = (_count: number, _fruit: string): void => {}
 
 //
+// BEH-EC-016's step-body-signature REQUIREMENT: a DataTable is APPENDED positionally and is NOT
+// inferred from the pattern. Pinned here rather than in `packages/vitest` because the claim is
+// about what `StepArgs` does — and specifically about what it must keep NOT doing.
+//
+
+/**
+ * A pattern carrying a table contributes NO extra element, and that is the requirement rather than
+ * a shortfall. `StepArgs<P>` reads the pattern LITERAL, and a pattern literal cannot express a
+ * table's presence: a DataTable is everything BELOW the step text a pattern is matched against, so
+ * there is no brace token for it and deliberately none. The Gherkin text
+ *
+ *     Given the cart contains:
+ *       | item   | price |
+ *
+ * has the pattern `"the cart contains:"`, whose literal is indistinguishable from that of a step
+ * carrying nothing at all. So the tuple is empty, the runtime argument is real, and the gap between
+ * them is closed by the author's own annotation and by nothing else.
+ */
+export const aTableIsNotInferredFromThePattern = expectTrue(equality<StepArgs<"the cart contains:">, []>())
+
+/**
+ * The appended-not-prepended half, which is the one with a silent failure mode. `{int}` stays at
+ * index 0 and a table lands after it, so `StepArgs` continues to report each pattern argument at
+ * the index it actually arrives at. Were the delivery changed to PREPEND, every inferred parameter
+ * would shift by one while this equality kept passing unchanged — the tuple below is what a reader
+ * must compare the step body's real parameter list against, and `packages/vitest/src/Plan.ts` note
+ * (h) is where the ordering is argued.
+ */
+export const patternArgumentsKeepTheirIndicesBesideATable = expectTrue(
+  equality<StepArgs<"{int} rows of the cart contain:">, [number]>()
+)
+
+declare const tableStepArguments: StepArgs<"the cart contains:">
+
+// @ts-expect-error a table contributes no tuple element, so there is nothing at index 0 to annotate
+export const aTableIsNotTupleElementZero: [unknown] = tableStepArguments
+
+//
 // Negative assertions. `@ts-expect-error` fails the build when the expected error stops
 // occurring, which is what makes the positives above non-vacuous.
 //

@@ -15,11 +15,18 @@
  *
  * (b) **The result is an ordered ARRAY, not a `{ docString, dataTable }` record.** The roadmap's
  *     success criterion for PARSE-04 is a documented, tested argument ORDER, and a record has no
- *     order — it would push the ordering question onto every consumer and answer it nowhere. Phase
- *     5's step-body signature spreads this array after the cucumber-expression arguments, which
- *     only works if the order is already settled. A record would force each of those call sites to
+ *     order — it would push the ordering question onto every consumer and answer it nowhere. The
+ *     step-body signature spreads this array after the cucumber-expression arguments, which only
+ *     works if the order is already settled. A record would force each of those call sites to
  *     re-derive the order from `argumentIndex` itself, which is exactly the duplication
  *     `Correlate.ts`'s "do not re-derive what `compile()` already did" rule exists to prevent.
+ *
+ *     That consumer is `packages/vitest/src/Plan.ts`'s `planStep`, and naming it is worth a line
+ *     because for five phases it did not exist. This note asserted the spread as settled contract
+ *     while `planStep` forwarded the matcher's arguments alone, so every step body declaring a
+ *     table parameter received `undefined` — with nothing red, because BEH-EC-016 had explicitly
+ *     DECLINED to specify the delivery and no gate can check a contract no document states.
+ *     BEH-EC-016 now states it; see its step-body-signature REQUIREMENT and `Plan.ts` note (h).
  *
  * (c) **`ParsedStep.argument` stays the RAW `PickleStepArgument`, and `stepArguments` is an
  *     ADDITIONAL field rather than a replacement.** `test/Correlate.test.ts` carries a test
