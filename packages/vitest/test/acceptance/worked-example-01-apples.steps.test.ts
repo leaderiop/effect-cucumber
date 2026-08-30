@@ -62,6 +62,54 @@
  * too, because satisfying the letter of the no-`let` rule with a module-scope array defeats its
  * entire intent (PROH-11-03).
  *
+ * ## Mutation-tested (every one performed, run, then reverted)
+ *
+ * A passing acceptance test is not evidence by itself — mutation B below is the demonstration of
+ * that, and it is why the other four exist. Each entry names the mutation, what went RED, and, the
+ * part that matters, what stayed GREEN. `packages/vitest/test/acceptance/README.md` makes this record
+ * a standing requirement for every pair added to this directory.
+ *
+ * - **A. The tag universe is load-bearing, but NOT for collection — and the difference matters.**
+ *      The `gherkinTags` glob in `vitest.config.ts` pointed at a pattern matching no file, so all four
+ *      acceptance tags became undeclared. NOTHING went red. `pnpm test` still reported 33 files and
+ *      777 passed and still EXITED 0, and this file still collected and passed all four of its tests.
+ *      That is not the predicted result and the difference is `describeFeature.ts`'s D-08
+ *      catch-and-degrade path: an undeclared tag throws at collection time and would take the whole
+ *      file to zero tests, but the adapter catches it and re-emits each Scenario UNTAGGED behind one
+ *      located warning naming the file, the Scenario and the tag — four warnings here, one per
+ *      Scenario. What DID go red is the thing the declaration exists for:
+ *      `vitest run … --tagsFilter=@REQ-EC-022` failed inside the runner's own `createTagsFilter` with
+ *      `Tests no tests` and `Errors 1 error`, because a filter pattern is validated against
+ *      `test.tags` regardless of `strictTags` (`vitest.config.ts` note (a)). With the glob restored
+ *      that same command selects exactly the `Eating apples` Scenario and skips the other three,
+ *      which is the sharp positive control: the DERIVED declaration really reaches the emitted node.
+ *      The consequence for later plans in this directory: `pnpm test`'s exit code cannot detect a
+ *      silently-untagged or silently-uncollected acceptance suite, so the collected test COUNT is
+ *      what has to be asserted.
+ * - **B. The assertions are not automatically sharp.** In `Then I have {int} apples left`, the
+ *      `Ref.get` read was replaced by the literal the assertion expects (`const actual = expected`).
+ *      Nothing went red — all four tests STAYED GREEN, the mutated one included. A test that compares
+ *      a value to itself passes forever and covers nothing. This pair is kept rather than collapsed
+ *      into one entry precisely because mutation C is what gives this Scenario's assertion its
+ *      meaning; B alone is the record that "it passes" is not the evidence it looks like.
+ * - **C. The library is really doing the work.** `When I eat 1 apples` became `When I eat 2 apples`
+ *      in the `.feature` file, with no TypeScript touched at all. RED: `Eating apples`, with
+ *      `AssertionError: expected 1 to equal 2`. GREEN: the other three. The arithmetic is the proof —
+ *      3 − 2 = 1, compared against the `2` that the file's own `Then` line carries — so BOTH numbers
+ *      travelled out of the Gherkin text, through the parser and the cucumber-expression matcher, and
+ *      into the step body. A Scenario whose step has the value hard-coded survives this mutation
+ *      untouched, which is PROH-11-01's whole point: traceability that survives deletion of its
+ *      subject is a false claim of coverage.
+ * - **D. The state really crosses steps.** The `Given I have {int} apples` body was emptied to a
+ *      no-op. RED: `Eating apples`, with `AssertionError: expected -1 to equal 2`. GREEN: the other
+ *      three. The `-1` is what makes this sharper than a bare failure: it is the Layer's own fresh
+ *      `Ref.make(0)` minus the `When`'s 1, so the `Then` demonstrably read the `Ref` the earlier steps
+ *      wrote rather than recomputing anything, and the `Given`'s write is what had put 3 there.
+ * - **E. The traceability gate is real.** The `REQ-EC-022` row was deleted from
+ *      `spec/traceability.md` §5. RED: `pnpm verify:spec` exited 1 with
+ *      `FAIL | features -> traceability | undefined: @REQ-EC-022`. GREEN: its other seven checks. The
+ *      row is required by a gate that names the offending tag, not by convention.
+ *
  * ## Imports
  *
  * `assert` from `@effect/vitest` inside step bodies, never `expect`: oxlint's

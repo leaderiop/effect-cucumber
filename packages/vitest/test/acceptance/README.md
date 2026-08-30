@@ -92,3 +92,13 @@ The minimum set for a new pair is the analogue of mutations C, D and E recorded 
   the reading step reads what the writing step wrote through the `Ref`, rather than recomputing it.
 - **E** — delete the pair's row from `spec/traceability.md` §5, and watch `pnpm verify:spec` fail naming the tag. That
   is what proves the traceability row is required rather than decorative.
+
+## Assert the collected test COUNT, not the exit code
+
+This directory's most useful measured finding, and the reason the minimum mutation set above starts at C: `pnpm test`
+exiting 0 does **not** prove an acceptance pair ran. Mutation A on the first pair pointed the config's `gherkinTags`
+glob at a pattern matching no file, leaving every acceptance tag undeclared — and the suite stayed green, 777 passed,
+exit 0, because `describeFeature`'s D-08 path catches the collection-time throw and re-emits each Scenario untagged
+behind a warning. A renamed directory, a `.steps.ts` that should have been `.steps.test.ts`, or a Feature that emits
+nothing all look identical from the outside: a smaller number nobody is watching. Assert how many tests the pair
+produced.
