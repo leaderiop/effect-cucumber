@@ -77,12 +77,20 @@
  *     concrete dependency belongs, and an acceptance grep enforces that this file stays the only
  *     one holding it.
  *
- *     The seam is a PARAMETER rather than an import because Phase 10 (RUN-03/RUN-04, ADR-EC-018)
- *     will pass a DIFFERENT `TestApi` through it — the `it` object that `layer(shared)(name, (it) =>
- *     …)` hands its callback, which is the one carrying the shared Layer's services. That object
- *     and the module-level pair below are both valid `TestApi`s and neither substitutes for the
- *     other, which is precisely why the choice belongs at a call site and not in an import
- *     statement. `TestApi.ts` note (a) is the other half of the argument.
+ *     The seam is a PARAMETER rather than an import because TWO concrete implementations now go
+ *     through it, and the choice between them is per-Feature data. `vitestTestApi` closes over the
+ *     MODULE-LEVEL test constructor and is the default path. `sharedLayerTestApi` closes over the
+ *     `it` object `layer(shared)` hands its callback — the one carrying the shared Layer's services
+ *     — and additionally provides a fresh `testEnv` per emitted node (ADR-EC-018). Both are valid
+ *     `TestApi`s and neither substitutes for the other, which is precisely why the choice belongs at
+ *     a call site and not in an import statement. `TestApi.ts` note (a) is the other half of the
+ *     argument.
+ *
+ *     `describe` is the SAME module-level function in both, and that is not a leak of the wrong
+ *     object into the shared path: `describe` carries no Layer services, so there is nothing for it
+ *     to silently rebuild, and it is the only way to nest a Rule block at all — the object
+ *     `layer(...)` hands back is a `MethodsNonLive`, which has no `describe` member. Only the test
+ *     constructor differs, because only the test constructor carries context.
  *
  *     Because this module is the only one that can SEE the framework, it is also the only one that
  *     can see the framework FAIL — so it owns one more translation than the seam's shape suggests.
@@ -134,8 +142,11 @@
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
-import { describe, it } from "@effect/vitest"
+import { describe, it, layer, type Vitest } from "@effect/vitest"
+import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import * as TestClock from "effect/testing/TestClock"
+import * as TestConsole from "effect/testing/TestConsole"
 import { captureCallSite } from "./CallSite.ts"
 import type {
   BackgroundDsl,
@@ -154,7 +165,7 @@ import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `import/no-cycle` violation and a `pnpm circular` failure. See that module's closing paragraph.
 import { type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
-import { emitFeature } from "./Runner.ts"
+import { emitFeature, type EmitOutcome } from "./Runner.ts"
 // The composite `scenarioLayers` key, in a LEAF module both this file and `Runner.ts` import rather
 // than private to either — `ScenarioKey.ts`'s own header has the argument. `Runner.ts` reads back
 // what the `Scenario` container below writes, and it cannot import this file (that edge would close a
@@ -346,26 +357,55 @@ export type FeatureCollection = {
 }
 
 /**
- * The concrete `TestApi`, built once PER FEATURE by this factory — note (e).
+ * The per-Scenario simulated clock and console, rebuilt here from the two PUBLIC `effect` modules.
  *
- * It used to be a module-scope constant and is not one any more, for exactly one reason: `featureUri`.
- * D-08's warning has to name the `.feature` file it came from, a uri is per-Feature data, and module
- * scope is the one place in this file where no Feature exists yet. What did NOT change is the part
- * note (e) is actually about — the concrete framework objects are still constructed HERE and nowhere
- * else, and `pnpm verify:testapi-seam` still enforces that. A factory is not a second seam.
+ * Four things about this constant are not visible from the code, and every one of them is
+ * load-bearing for ADR-EC-018.
  *
- * `describe` is vitest's own and is re-exported by the package this module imports it from; the
- * Effect-aware test constructor is that package's, and its `self` parameter is
- * `() => Effect<A, E, Scope>`, which is exactly what `TestApi.effect` declares (`TestApi.ts` note
- * (d), verified against the installed build rather than assumed).
+ * The test framework has an equivalent of its own and does NOT export it — writing
+ * `import { TestEnv } from "@effect/vitest"` does not compile. So it is reconstructed, and this
+ * definition is byte-equivalent to the framework's own: it was read out of the installed
+ * `@effect/vitest@4.0.0-rc.112`'s `dist/internal/internal.js`, line 34, rather than guessed. Both
+ * halves come from `effect` itself, so nothing here depends on a private export staying where it is.
  *
- * `effect` is a forwarding function rather than the bare method reference it used to be, for exactly
- * one reason: `EmitOptions.tags` is a `ReadonlyArray<string>` — as it is in `Model.ts`, `Plan.ts` and
- * `TestApi.ts`, all the way from the parse — while vitest's own options type wants a mutable
- * `string[]`. `[...options.tags]` is THE single tag-array widening in this package, and it lives here
- * because this is already the one module permitted to name a test framework at all. Widening
- * `ScenarioPlan.tags` or `EmitOptions.tags` instead would "fix" the same assignment error by letting
- * every stage upstream rewrite a Scenario's tags in place.
+ * The clock half is CALLED, with parens. `TestClock.layer` without them is the constructor function,
+ * not a Layer, and dropping the parens is the single most plausible tidy-up on this line. It would
+ * silently reintroduce the cross-Scenario clock leak ADR-EC-018 exists to prevent — the one where a
+ * Scenario that runs after another Scenario advanced the clock starts at the advanced time.
+ *
+ * A MODULE-SCOPE binding is safe precisely because a Layer is a BLUEPRINT and not a built value:
+ * every `Effect.provide(testEnv)` builds its own clock and its own console, so one constant serves
+ * every Scenario in every Feature without any of them sharing state. Hoisting a BUILT context here
+ * instead — "it is only test services, build it once" — is exactly the leak above, arrived at from
+ * the other direction. Measured during this phase's planning: three Scenarios under one shared Layer
+ * each read `Clock.currentTimeMillis` as 0, after a preceding Scenario had advanced the clock by an
+ * hour.
+ *
+ * It is used on the SHARED path only, and provided per EMITTED NODE — note (e). The default path
+ * gets an equivalent pair from the framework's own test constructor, per test, and needs nothing
+ * from here.
+ */
+const testEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())
+
+/**
+ * D-08's catch-and-degrade, as ONE implementation shared by BOTH concrete adapters below.
+ *
+ * One and not two, because the adapters differ in exactly one thing — which framework `it` they emit
+ * through — and this recovery must be identical on both. Duplicating it is how the shared path
+ * silently loses the degradation: a missing `catch` block turns nothing red, because the failure it
+ * recovers from happens only for a Feature that carries a tag no `vitest.config.ts` declares.
+ *
+ * `emit` takes the same three arguments the framework's own test constructor does, with `tags`
+ * OPTIONAL — that optionality is what lets the fallback below OMIT the key rather than pass an empty
+ * array, which is the difference between not reaching the check that just threw and reaching it with
+ * a value it would have to validate.
+ *
+ * `[...options.tags]` is THE single tag-array widening in this package: `EmitOptions.tags` is a
+ * `ReadonlyArray<string>` — as it is in `Model.ts`, `Plan.ts` and `TestApi.ts`, all the way from the
+ * parse — while vitest's own options type wants a mutable `string[]`. It lives here because this is
+ * already the one module permitted to name a test framework at all. Widening `ScenarioPlan.tags` or
+ * `EmitOptions.tags` instead would "fix" the same assignment error by letting every stage upstream
+ * rewrite a Scenario's tags in place.
  *
  * ## The `try`/`catch`: D-08's catch-and-degrade
  *
@@ -421,31 +461,101 @@ export type FeatureCollection = {
  * Scenario. Registration is the guarantee and the warning is the report, so the guarantee goes first.
  *
  * @param featureUri - the `.feature` file every warning from this adapter is located against
+ * @param emit - the framework emission to degrade around, taking the framework's own three arguments
+ */
+const makeDegradingEffect = (
+  featureUri: string,
+  emit: (
+    name: string,
+    self: Parameters<TestApi["effect"]>[1],
+    options: { readonly tags?: Array<string>; readonly skip: boolean }
+  ) => void
+): TestApi["effect"] =>
+(name, self, options) => {
+  try {
+    emit(name, self, { tags: [...options.tags], skip: options.skip })
+  } catch (cause) {
+    try {
+      // The SAME name and the SAME thunk, so the Scenario a reader is looking for is still the one
+      // that appears — and `skip` preserved, because a `@skip` Scenario whose tags were undeclared
+      // is still a skipped Scenario. Only `tags` is dropped, and it is OMITTED rather than passed
+      // as an empty array: an empty array is a value `strictTags` would have to validate, and the
+      // one thing this call must not do is reach the check that just threw.
+      emit(name, self, { skip: options.skip })
+    } catch {
+      // Structural discrimination, and the only branch that reaches it: an emission with no tags
+      // cannot fail `strictTags`, so whatever is wrong here was never about tags. `cause` and not
+      // the inner throw — the original is the one that describes the defect.
+      throw cause
+    }
+    console.warn(
+      makeUndeclaredTagWarning({ uri: featureUri, scenarioName: name, tags: options.tags }).message
+    )
+  }
+}
+
+/**
+ * The DEFAULT path's concrete `TestApi` — the module-level `describe`/`it` pair, built once PER
+ * FEATURE by this factory. Note (e).
+ *
+ * It used to be a module-scope constant and is not one any more, for exactly one reason: `featureUri`.
+ * D-08's warning has to name the `.feature` file it came from, a uri is per-Feature data, and module
+ * scope is the one place in this file where no Feature exists yet. What did NOT change is the part
+ * note (e) is actually about — the concrete framework objects are still constructed HERE and nowhere
+ * else, and `pnpm verify:testapi-seam` still enforces that. A factory is not a second seam.
+ *
+ * `describe` is vitest's own and is re-exported by the package this module imports it from; the
+ * Effect-aware test constructor is that package's, and its `self` parameter is
+ * `() => Effect<A, E, Scope>`, which is exactly what `TestApi.effect` declares (`TestApi.ts` note
+ * (d), verified against the installed build rather than assumed).
+ *
+ * The thunk is forwarded UNWRAPPED. The framework's own module-level test constructor already
+ * provides a fresh simulated clock and console per test, so `testEnv` has no business on this path —
+ * providing it here as well would be a second, redundant pair layered over the framework's own.
+ *
+ * @param featureUri - the `.feature` file every warning from this adapter is located against
  */
 const vitestTestApi = (featureUri: string): TestApi => ({
   describe,
-  effect: (name, self, options) => {
-    try {
-      it.effect(name, self, { tags: [...options.tags], skip: options.skip })
-    } catch (cause) {
-      try {
-        // The SAME name and the SAME thunk, so the Scenario a reader is looking for is still the one
-        // that appears — and `skip` preserved, because a `@skip` Scenario whose tags were undeclared
-        // is still a skipped Scenario. Only `tags` is dropped, and it is OMITTED rather than passed
-        // as an empty array: an empty array is a value `strictTags` would have to validate, and the
-        // one thing this call must not do is reach the check that just threw.
-        it.effect(name, self, { skip: options.skip })
-      } catch {
-        // Structural discrimination, and the only branch that reaches it: an emission with no tags
-        // cannot fail `strictTags`, so whatever is wrong here was never about tags. `cause` and not
-        // the inner throw — the original is the one that describes the defect.
-        throw cause
-      }
-      console.warn(
-        makeUndeclaredTagWarning({ uri: featureUri, scenarioName: name, tags: options.tags }).message
-      )
-    }
-  }
+  effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
+    it.effect(name, self, emitOptions)
+  })
+})
+
+/**
+ * The SHARED path's concrete `TestApi` — the second one, and the reason note (e) says the seam is a
+ * PARAMETER rather than an import.
+ *
+ * Its `effect` emits through the `it` that `layer(...)` hands its callback, and NEVER through the
+ * module-level one. That is the whole of ARCHITECTURE.md's Anti-Pattern 3: the module-level test
+ * constructor called from inside that callback compiles, lints and PASSES, while silently rebuilding
+ * the "shared" resource once per Scenario. Routing through this object makes the wrong constructor
+ * unreachable from the shared branch rather than merely discouraged.
+ *
+ * Its `describe` is the MODULE-LEVEL one, unchanged, and that is not the same mistake. `describe`
+ * carries no Layer services — it opens a block and nothing else — so there is nothing for it to
+ * silently rebuild. It is also the only way to nest a Rule block at all: the object `layer(...)`
+ * hands back is a `MethodsNonLive`, which has no `describe` member (`TestApi.ts` note (a)).
+ *
+ * Every emitted Effect is wrapped in `Effect.provide(testEnv)`, at the EMISSION boundary. That is
+ * ADR-EC-018's per-Scenario `TestClock`/`TestConsole` isolation, and the placement is deliberate:
+ * doing it inside `ScenarioEffect.ts` would make that module know there are two paths, which is
+ * exactly what its own note (b) says it must not. `excludeTestServices: true` at the `layer(...)` call
+ * site is the other half — without it the framework memoises ONE clock alongside the shared Layer and
+ * every Scenario in the Feature inherits whatever the previous one did to it.
+ *
+ * Pitfall 29, recorded where the two paths differ: `MethodsNonLive` has no `live` member, so a
+ * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. The two paths do
+ * not have identical capability surfaces. Documented limitation, not a defect.
+ *
+ * @param featureUri - the `.feature` file every warning from this adapter is located against
+ * @param sharedIt - the object `layer(...)` hands its callback, carrying the shared Layer's services
+ */
+const sharedLayerTestApi = (featureUri: string, sharedIt: Vitest.MethodsNonLive<any>): TestApi => ({
+  describe,
+  effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
+    sharedIt.effect(name, () => self().pipe(Effect.provide(testEnv)), emitOptions)
+  })
 })
 
 /**
@@ -467,14 +577,14 @@ const vitestTestApi = (featureUri: string): TestApi => ({
  * field's own comment has the argument.
  */
 const splitLayerArgument = (
-  layer: LayerArgument
+  argument: LayerArgument
 ): {
   readonly shared: Layer.Layer<any, any, never> | null
   readonly perScenario: Layer.Layer<any, any, never>
 } =>
-  "perScenario" in layer
-    ? { shared: layer.shared, perScenario: layer.perScenario }
-    : { shared: null, perScenario: layer }
+  "perScenario" in argument
+    ? { shared: argument.shared, perScenario: argument.perScenario }
+    : { shared: null, perScenario: argument }
 
 /**
  * Turn the Rule NAME a test author wrote into the `ruleId` every scope and hook registered inside
@@ -516,7 +626,7 @@ const resolveRuleId = (feature: ParsedFeature, name: string): string => {
  */
 const collect = (
   feature: ParsedFeature,
-  layer: LayerArgument,
+  layerArgument: LayerArgument,
   define: (dsl: FeatureDsl<any>) => void
 ): FeatureCollection => {
   // ONE fresh registry per invocation, built here and never hoisted to module scope or memoised.
@@ -542,7 +652,7 @@ const collect = (
   // container's merge, `Scenario`'s ambient argument, and the returned `layer` field — keeps both
   // its existing spelling and its existing single-source property. What changed is what the name
   // MEANS on the object form: the per-Scenario tier alone, with the shared tier never folded in.
-  const { perScenario: featureLayer, shared: sharedLayer } = splitLayerArgument(layer)
+  const { perScenario: featureLayer, shared: sharedLayer } = splitLayerArgument(layerArgument)
 
   // Every Rule this Feature's define callback actually called `Rule(...)` for, keyed by the id
   // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
@@ -891,12 +1001,17 @@ export function collectFeature<ROut, E>(
   layer: Layer.Layer<ROut, E, never>,
   define: (dsl: FeatureDsl<ROut>) => void
 ): FeatureCollection
+// `layerArgument` in the IMPLEMENTATION signature alone, for the reason `describeFeature`'s own
+// implementation signature states below: the module-level `layer` import would otherwise be shadowed
+// for the whole body. Both OVERLOAD signatures above still name the parameter `layer`, and those are
+// the only ones a caller ever sees. Renamed here as well as there so the two entry points read the
+// same way, not because this body needs the import.
 export function collectFeature(
   feature: ParsedFeature,
-  layer: LayerArgument,
+  layerArgument: LayerArgument,
   define: (dsl: FeatureDsl<any>) => void
 ): FeatureCollection {
-  return collect(feature, layer, define)
+  return collect(feature, layerArgument, define)
 }
 
 /**
@@ -970,14 +1085,19 @@ export function describeFeature<ROut, E>(
   define: (dsl: FeatureDsl<ROut>) => void,
   options?: DescribeFeatureOptions
 ): void
+// `layerArgument` and not `layer` in the IMPLEMENTATION signature alone, for one mechanical reason:
+// the shared branch below calls `@effect/vitest`'s own `layer(...)`, and a parameter named `layer`
+// shadows that import for the whole body. Both OVERLOAD signatures above still name the parameter
+// `layer`, and those are the only ones a caller ever sees or a tooltip ever renders — TypeScript
+// never resolves a call against an implementation signature (`LayerArgument`'s own note).
 export function describeFeature(
   feature: ParsedFeature,
-  layer: LayerArgument,
+  layerArgument: LayerArgument,
   define: (dsl: FeatureDsl<any>) => void,
   options?: DescribeFeatureOptions
 ): void {
   // REGISTER, then PLAN — both inside `collect`, which `collectFeature` shares verbatim.
-  const collection = collect(feature, layer, define)
+  const collection = collect(feature, layerArgument, define)
 
   // D-02 channel 1, and it lives HERE rather than inside `collect` deliberately: `collectFeature`
   // runs that same implementation and must stay SILENT, or every test asserting on
@@ -1030,67 +1150,128 @@ export function describeFeature(
   //
   // `onEmitted` fires as the last statement INSIDE the walk, so it observes final counts under either
   // kind of framework. Anything in this file that needs a count uses it.
-  emitFeature({
-    // ONE adapter per `describeFeature` call, built here rather than at module scope, because
-    // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
-    // Two Features in one file get two adapters, each located against its own uri.
-    api: vitestTestApi(collection.plan.feature.uri),
-    plan: collection.plan,
-    layer: collection.layer,
-    hooks: collection.hooks,
-    ruleHooks: collection.ruleHooks,
-    ruleLayers: collection.ruleLayers,
-    scenarioLayers: collection.scenarioLayers,
-    tagFilter,
-    // D-10's ONE collection-time summary line, and three things about WHERE it is are worth writing
-    // down because none is visible from the code.
-    //
-    // (1) It lives in `describeFeature`'s own body and NOT inside `collect`, for the identical reason
-    //     the unused-definition loop above does: `collectFeature` shares `collect` verbatim and must
-    //     stay silent, or every test asserting on a plan would print the very thing it is asserting
-    //     on. `emitFeature` is silent for the sibling reason `Runner.ts` records — a terminal write
-    //     there would spam `Runner.test.ts`'s dozens of direct calls — which is why it HANDS BACK the
-    //     count instead of printing it. Passing a closure that writes to a terminal INTO that silent
-    //     module does not break the rule; it is the rule, with the composition root still deciding
-    //     what a human sees.
-    //
-    // (2) It necessarily prints AFTER the emitted block rather than above it like the warnings loop,
-    //     which is the one asymmetry in this function's output order. The count does not exist until
-    //     the emission walk has run, and the only way to have it earlier would be to walk the Feature
-    //     a second time before emitting — a duplicate walk that could disagree with the real one.
-    //
-    // (3) It is a CALLBACK and not a read of the return value, which is (2) taken seriously rather
-    //     than assumed: "after the walk has run" and "after the call that starts the walk returns"
-    //     are the same instant only for a synchronous framework. See the comment above this call.
-    //
-    // `notice.message` is passed straight through, never rebuilt and never reformatted, for the
-    // reason the warnings loop states above: a second rendering lets the terminal text and the
-    // structured value say different things, and it drops the `JSON.stringify` quoting that stops a
-    // tag or a Feature name containing a control character from rewriting the terminal line
-    // (T-09-05-01).
-    //
-    // Guarded on `> 0` rather than printed unconditionally: a Feature nothing was filtered out of has
-    // nothing to report, and a "0 Scenario(s) excluded" line on every Feature in a suite is noise
-    // that trains a reader to skip the exact line D-10 exists to make them read. The guard lives HERE
-    // and not in `emitFeature`, so the module that computes stays free of the question of what is
-    // worth telling a human.
-    onEmitted: (outcome) => {
-      if (outcome.excludedScenarioCount > 0) {
-        console.warn(
-          makeExcludedScenariosNotice({
-            featureName: collection.plan.feature.name,
-            uri: collection.plan.feature.uri,
-            count: outcome.excludedScenarioCount,
-            // The NORMALISED arrays, not `options.includeTags`/`options.excludeTags`: those are
-            // optional and the notice's fields are not, and `makeExcludedScenariosNotice` derives its
-            // `reason` from exactly these two lengths. Reading the raw options here would let the
-            // notice's `reason` be computed from a different pair of values than the filter that
-            // produced the count.
-            includeTags: tagFilter.include,
-            excludeTags: tagFilter.exclude
-          }).message
-        )
-      }
+  //
+  // COMPUTED ONCE, ABOVE THE BRANCH, and referenced from both arms. Two copies of this closure — one
+  // per path — is exactly the drift `collect` exists to prevent one layer down: a fix applied to one
+  // arm leaves the other silently wrong, and the wrong one is whichever path that day's test happens
+  // not to cover. The warnings loop above and the `tagFilter` below are computed once for the same
+  // reason and are likewise shared.
+  //
+  // D-10's ONE collection-time summary line, and three things about WHERE it is are worth writing
+  // down because none is visible from the code.
+  //
+  // (1) It lives in `describeFeature`'s own body and NOT inside `collect`, for the identical reason
+  //     the unused-definition loop above does: `collectFeature` shares `collect` verbatim and must
+  //     stay silent, or every test asserting on a plan would print the very thing it is asserting
+  //     on. `emitFeature` is silent for the sibling reason `Runner.ts` records — a terminal write
+  //     there would spam `Runner.test.ts`'s dozens of direct calls — which is why it HANDS BACK the
+  //     count instead of printing it. Passing a closure that writes to a terminal INTO that silent
+  //     module does not break the rule; it is the rule, with the composition root still deciding
+  //     what a human sees.
+  //
+  // (2) It necessarily prints AFTER the emitted block rather than above it like the warnings loop,
+  //     which is the one asymmetry in this function's output order. The count does not exist until
+  //     the emission walk has run, and the only way to have it earlier would be to walk the Feature
+  //     a second time before emitting — a duplicate walk that could disagree with the real one.
+  //
+  // (3) It is a CALLBACK and not a read of the return value, which is (2) taken seriously rather
+  //     than assumed: "after the walk has run" and "after the call that starts the walk returns"
+  //     are the same instant only for a synchronous framework. See the comment above this call.
+  //
+  // `notice.message` is passed straight through, never rebuilt and never reformatted, for the
+  // reason the warnings loop states above: a second rendering lets the terminal text and the
+  // structured value say different things, and it drops the `JSON.stringify` quoting that stops a
+  // tag or a Feature name containing a control character from rewriting the terminal line
+  // (T-09-05-01).
+  //
+  // Guarded on `> 0` rather than printed unconditionally: a Feature nothing was filtered out of has
+  // nothing to report, and a "0 Scenario(s) excluded" line on every Feature in a suite is noise
+  // that trains a reader to skip the exact line D-10 exists to make them read. The guard lives HERE
+  // and not in `emitFeature`, so the module that computes stays free of the question of what is
+  // worth telling a human.
+  const onEmitted = (outcome: EmitOutcome): void => {
+    if (outcome.excludedScenarioCount > 0) {
+      console.warn(
+        makeExcludedScenariosNotice({
+          featureName: collection.plan.feature.name,
+          uri: collection.plan.feature.uri,
+          count: outcome.excludedScenarioCount,
+          // The NORMALISED arrays, not `options.includeTags`/`options.excludeTags`: those are
+          // optional and the notice's fields are not, and `makeExcludedScenariosNotice` derives its
+          // `reason` from exactly these two lengths. Reading the raw options here would let the
+          // notice's `reason` be computed from a different pair of values than the filter that
+          // produced the count.
+          includeTags: tagFilter.include,
+          excludeTags: tagFilter.exclude
+        }).message
+      )
     }
-  })
+  }
+
+  // THE ONE BRANCH between the two provision strategies (ARCHITECTURE.md Pattern 4), and it is an
+  // EXPLICIT read of an explicit field rather than a re-inspection of the caller's argument shape.
+  // `null` means "this Feature never asked for a shared scope" and nothing else can mean it — the
+  // `sharedLayer` field's own comment is why it is not `Layer.empty`.
+  //
+  // Bound to a local first, so the `else` arm has a narrowed, non-null value to pass rather than a
+  // property access the reader has to re-check.
+  const sharedTier = collection.sharedLayer
+
+  if (sharedTier === null) {
+    // THE DEFAULT PATH, unchanged. Every field below is what it was before the shared path existed,
+    // and it must stay that way: a Feature that passes a plain Layer must emit byte-identically to
+    // how it emitted in Phase 9, which is what `pnpm verify:tags-filter` measures from outside.
+    emitFeature({
+      // ONE adapter per `describeFeature` call, built here rather than at module scope, because
+      // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
+      // Two Features in one file get two adapters, each located against its own uri.
+      api: vitestTestApi(collection.plan.feature.uri),
+      plan: collection.plan,
+      layer: collection.layer,
+      hooks: collection.hooks,
+      ruleHooks: collection.ruleHooks,
+      ruleLayers: collection.ruleLayers,
+      scenarioLayers: collection.scenarioLayers,
+      tagFilter,
+      onEmitted
+    })
+  } else {
+    // THE SHARED PATH. `layer(...)` builds `sharedTier` EXACTLY ONCE for everything its callback
+    // registers, and hands back the `it` carrying that Layer's services.
+    //
+    // THE ONE-ARGUMENT CALL FORM, and the two-argument form is FORBIDDEN here. The two-argument form
+    // opens a `describe` of its own named by its first argument, which would wrap a SECOND
+    // Feature-named block around `Runner.ts`'s own `describe(feature.name, …)` and render as
+    // `Feature > Feature > Scenario`. Measured during this phase's planning, both forms, against the
+    // installed build: the one-argument form opens no block at all, runs its callback synchronously
+    // in the CURRENT suite, and still builds the shared Layer exactly once even when every emission
+    // happens inside a `describe` factory vitest defers — two Scenarios nested two `describe` levels
+    // deep, one build.
+    //
+    // `excludeTestServices: true` is the half of ADR-EC-018 that lives here. Without it the framework
+    // composes its own test services INTO the memoised shared Layer, so ONE clock and ONE console are
+    // built alongside it and every Scenario in the Feature inherits whatever the previous Scenario
+    // did to them. With it, the shared Layer carries no test services at all and
+    // `sharedLayerTestApi` provides a fresh pair per emitted node instead. Measured: a Scenario
+    // running after another Scenario adjusted the clock by an hour still reads
+    // `Clock.currentTimeMillis` as 0.
+    layer(sharedTier, { excludeTestServices: true })((sharedIt) => {
+      // Every other field is the SAME value the default arm passes, `layer` included — which is now
+      // the per-Scenario tier, and is exactly what Pattern 4 asks the Scenario's own Effect to
+      // provide. The shared tier is NOT among them: it is already ambient on `sharedIt`, and passing
+      // it here as well would rebuild it once per Scenario, which is the entire defect this branch
+      // exists to remove.
+      emitFeature({
+        api: sharedLayerTestApi(collection.plan.feature.uri, sharedIt),
+        plan: collection.plan,
+        layer: collection.layer,
+        hooks: collection.hooks,
+        ruleHooks: collection.ruleHooks,
+        ruleLayers: collection.ruleLayers,
+        scenarioLayers: collection.scenarioLayers,
+        tagFilter,
+        onEmitted
+      })
+    })
+  }
 }
