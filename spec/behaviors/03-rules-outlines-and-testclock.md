@@ -95,7 +95,8 @@ REQUIREMENT: A step reading Clock.currentTimeMillis (or any Clock-derived
 The REQUIREMENT above is built and asserted on BOTH Layer scopes —
 `packages/vitest/test/emission.test.ts` advances the clock by an hour in one Scenario of a
 `shared`-Layer Feature and asserts the next three still start at 0, and
-[`spec/traceability.md`](../traceability.md) §3's ADR-EC-018 row names every test that carries it.
+[`spec/traceability.md`](../traceability.md) §2's INV-EC-002 row, together with ADR-EC-018's own
+implementation note, names every test and gate script that carries it.
 The caveat below is about THIS EXAMPLE's imports and nothing else, and is narrowed to name exactly
 what still does not resolve, so the `TestClock` guarantee it sits above is no longer hedged by
 association.
