@@ -488,7 +488,65 @@ Resolved at planning time by RUNNING two probe suites against the installed `@ef
   3. Every v1 requirement has at least one `@REQ`-tagged acceptance Scenario, and a traceability check reports 22/22 requirements covered by a passing test.
   4. PITFALLS.md's "Looks Done But Isn't" checklist runs in full and passes, and INV-EC-003's wording is amended to "for step bodies free of `any`" (Pitfall 6).
 
-**Plans**: TBD — set by `/gsd:plan-phase 11`
+**Plans**: 9 plans (9 waves, sequential — every plan after the first either adds `@REQ-EC-NNN` tags
+that `spec/scripts/verify-traceability.sh` check 4 requires rows for in the same commit, or builds a
+gate over the acceptance directory the plan before it populated)
+
+Plans:
+**Wave 1**
+
+- [ ] 11-01-PLAN.md — Tracer: the acceptance directory, its convention README, the `spec/behaviors/01` apples pair (DSL-01/02/03 + RUN-06), the `gherkinTags` wiring in `vitest.config.ts`, and §5 opened — plus a blocking decision checkpoint on the permanent `REQ-EC-001`..`022` allocation
+
+**Wave 2** *(blocked on 11-01)*
+
+- [ ] 11-02-PLAN.md — The `spec/behaviors/02` accounts pair: shared `Database` + per-Scenario `World`, Background container, `@skip`, `excludeTags`, and `TestClock` isolation on the shared path (DSL-04, RUN-03, RUN-04, RUN-05)
+
+**Wave 3** *(blocked on 11-02)*
+
+- [ ] 11-03-PLAN.md — The `spec/behaviors/03` discounts pair: DataTable Background, Rule-scoped Layer, two-row Outline, transparent `TestClock` (PARSE-04, DSL-05, DSL-06)
+
+**Wave 4** *(blocked on 11-03)*
+
+- [ ] 11-04-PLAN.md — The parsing/matching pair: a second load that is data, correlation observable from a step, coerced built-ins, and a custom parameter type across two loads (PARSE-01, PARSE-02, MATCH-01, MATCH-02, RUN-01)
+
+**Wave 5** *(blocked on 11-04)*
+
+- [ ] 11-05-PLAN.md — The hooks pair (DSL-07) plus `scripts/verify-acceptance-ref-state.sh` (RUN-06 / INV-EC-006, SC#2) and `scripts/verify-acceptance-no-any.sh` (D-04b), both wired into `check.yml`
+
+**Wave 6** *(blocked on 11-05)*
+
+- [ ] 11-06-PLAN.md — D-02's five starved fixtures and their wrapper (PARSE-03, MATCH-03/04/05, RUN-02), plus `verify-traceability.sh` check 5 making 22/22 a derived count (SC#3)
+
+**Wave 7** *(blocked on 11-06)*
+
+- [ ] 11-07-PLAN.md — `spec/process/looks-done-but-isnt-checklist.md` (24 items, ids `P-01`..`P-24`, one named executor each) and the thirteen in-process items as fresh dedicated tests (D-03, SC#4)
+
+**Wave 8** *(blocked on 11-07)*
+
+- [ ] 11-08-PLAN.md — `scripts/verify-watch-rerun.sh` (P-14), `scripts/verify-pitfalls-checklist.sh` (the ten CLI items plus the coverage cross-check), `spec/process/rc-bump-checklist.md` (P-18), and both CI steps
+
+**Wave 9** *(blocked on 11-08)*
+
+- [ ] 11-09-PLAN.md — D-04a's consumer lint recommendation, INV-EC-006's first real `Source`, every status document reconciled, RUN-06 marked Complete with per-criterion evidence, and a seventeen-gate sweep
+
+Decisions locked before planning (`11-CONTEXT.md`): a strict 1:1 `REQ-EC-001`..`022` allocation, one
+tag per Scenario, with a §5 mapping table (D-01); the four "fails loudly" requirements proven by a
+satisfied/starved fixture pair whose wrapper is what passes (D-02); a fresh dedicated test for every
+one of the 24 checklist items, automating the watch-mode item rather than leaving it manual (D-03);
+and both halves of the INV-EC-003 lint recommendation — the docs paragraph AND an enforced
+zero-escape-hatch guard over this repo's own acceptance suite (D-04).
+
+Resolved at planning time, and recorded because each is a deviation a later reader would otherwise
+read as drift: the acceptance step modules load through `@effect-cucumber/gherkin`'s own
+Effect-returning `loadFeature` with `NodeFileSystem.layer` + `ParameterTypeStore` provided, NOT through
+ADR-EC-024's unexported `@effect-cucumber/vitest` wrapper (which this phase does not ship), which is
+exactly what `spec/behaviors/03`'s own caveat block says a caller does today; they are named
+`*.steps.test.ts` rather than `*.steps.ts`, because vitest's default include glob would collect
+nothing otherwise and `vitest.config.ts` note (c) forbids changing that glob; `vitest.config.ts`
+imports `gherkinTags` by relative path from `packages/vitest/src/GherkinTags.ts` rather than from the
+package barrel, because the barrel re-exports `describeFeature.ts`, which imports `@effect/vitest`, and
+a config file is loaded outside any test context; and RUN-02 joins D-02's four starved requirements,
+because "`After` runs when a step FAILED" cannot be a green Scenario either.
 
 **Research flag**: Skip — this is validation, not new design.
 
@@ -530,7 +588,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
 | 10. Layer Scopes (per-Scenario + `shared`) | 8/8 | In Progress|  |
-| 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
+| 11. Composition Root and Acceptance Suite | 0/9 | Planned | - |
 
 ---
 *Roadmap created: 2026-08-28 — depth: comprehensive*
