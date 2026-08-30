@@ -233,6 +233,10 @@ None — no external service configuration required.
 - Plan 10-08 is unblocked: this plan's green gate sweep is the precondition it depends on before it records RUN-03/RUN-04 as Complete in `.planning/REQUIREMENTS.md` and updates `spec/invariants.md`/`spec/behaviors/02-shared-layers-and-tags.md`. Neither of those files nor `.planning/REQUIREMENTS.md` was touched by this plan.
 - WR-02 (`10-REVIEW.md`) — the shared path's own tag/`@skip`/filter/D-08-degradation coverage gap — remains open and unaddressed by this plan, as documented in Task 2's own comment; it is a separate, already-recorded coverage gap, not something this plan's routing-flag work substitutes for.
 
+## Self-Check: PASSED
+
+All five modified source/test files confirmed present on disk; all three commit hashes (`743e9a0`, `f3fda7f`, and this SUMMARY's own `557c87c`) confirmed present in `git log --oneline --all`.
+
 ---
 *Phase: 10-layer-scopes-per-scenario-default-shared*
 *Completed: 2026-08-30*
