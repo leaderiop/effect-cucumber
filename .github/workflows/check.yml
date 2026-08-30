@@ -146,4 +146,26 @@ jobs:
       # build and test stayed green and only this script went red. See
       # scripts/verify-testapi-seam.sh.
       - run: pnpm verify:testapi-seam
+      # `pnpm test` exiting 0 does NOT prove that no acceptance step module
+      # closes over a mutable binding. A Scenario whose steps thread a value
+      # through a closure variable PASSES on a clean run — one Scenario is one
+      # Effect and its steps run in order — and leaks only across retries,
+      # re-runs and `-t`-narrowed selections, so observation cannot tell "has no
+      # mutable cross-step state" from "has it and did not trip on it today".
+      # `pnpm lint`, `pnpm build` and `pnpm typecheck:test` are all equally
+      # silent, measured as mutation A. This is INV-EC-006's first automated
+      # enforcement anywhere in the repository, and roadmap Phase 11 Success
+      # Criterion 2. See scripts/verify-acceptance-ref-state.sh.
+      - run: pnpm verify:acceptance-ref-state
+      # `pnpm build` and `pnpm typecheck:test` exiting 0 do NOT prove the
+      # acceptance suite is free of the TypeScript escape-hatch type — the whole
+      # failure mode is the ABSENCE of a diagnostic. One occurrence is
+      # assignable to everything, so a step body carrying one compiles against
+      # every ambient Layer including one providing none of the services it
+      # reaches for, and INV-EC-003 is erased for that step inside the suite
+      # whose job is to prove INV-EC-003. Mutation-proven: with one substituted
+      # into a step body's parameter annotation, build and typecheck stayed
+      # green and only this script went red. See
+      # scripts/verify-acceptance-no-any.sh.
+      - run: pnpm verify:acceptance-no-any
       - run: pnpm verify:spec

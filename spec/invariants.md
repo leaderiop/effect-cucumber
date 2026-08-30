@@ -268,12 +268,21 @@ A value one step computes and a later step in the same Scenario consumes is
 never a bare closure variable declared inside `Scenario`/`Rule`/`Background`'s
 callback.
 
-**Source (planned)**: no automated enforcement yet — this is currently a
-convention stated in [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)
-and demonstrated in [BEH-EC-011](behaviors/03-rules-outlines-and-testclock.md#beh-ec-011-cross-step-state-lives-in-world-never-a-closure).
-A lint rule flagging a `let`/`var` declared inside a DSL callback that a step
-function closes over is a candidate future enforcement mechanism — see
-`spec/roadmap.md` § Planned.
+**Source**: stated in [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md),
+demonstrated in [BEH-EC-011](behaviors/03-rules-outlines-and-testclock.md#beh-ec-011-cross-step-state-lives-in-world-never-a-closure),
+and — as of Phase 11 — enforced over the acceptance suite by
+`scripts/verify-acceptance-ref-state.sh`, which fails if any
+`packages/vitest/test/acceptance/*.steps.test.ts` declares a `let` or `var` at
+any scope, or writes to a value in place.
+
+Be precise about the scope of that enforcement, because it is narrower than the
+invariant. The gate covers the ACCEPTANCE SUITE only — the suite whose whole
+purpose is to run the library the way a consumer does — and it is a structural
+scan of declarations, so PROH-11-03's module-scope `const` holder written to by
+a step is caught only in its common in-place-mutator form. For a CONSUMER's own
+step modules the invariant remains a convention; a lint rule flagging a
+`let`/`var` declared inside a DSL callback that a step function closes over is
+still the candidate mechanism for that half — see `spec/roadmap.md` § Planned.
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare
