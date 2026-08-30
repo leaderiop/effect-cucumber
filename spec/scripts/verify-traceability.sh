@@ -8,7 +8,18 @@
 # of drift impossible to merge.
 #
 # Usage: bash spec/scripts/verify-traceability.sh [--strict]
-#   --strict  treat SKIP as FAIL (the merge gate always passes it)
+#   --strict  treat SKIP as FAIL. The merge gate passes it: `pnpm verify:spec`
+#             in package.json is this script WITH the flag, and CI runs that
+#             script. Omit it only for an exploratory local run.
+#
+#             This comment was false for several phases — the flag was described
+#             as always passed while `pnpm verify:spec` passed nothing — and
+#             spec/process/definitions-of-done.md row 6 recorded the
+#             contradiction instead of resolving it, on the grounds that it was
+#             moot at 0 SKIP. Moot-ness was the load-bearing part: the day a
+#             check SKIPs, a gate that ignores SKIP passes while two documents
+#             say it should not. Resolved in the direction both documents
+#             already claimed.
 
 set -uo pipefail
 
