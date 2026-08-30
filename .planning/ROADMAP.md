@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 5/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
+**Plans**: 6/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
 
 Plans:
 **Wave 1**
@@ -460,7 +460,7 @@ Plans:
 
 **Wave 6** *(blocked on 10-05)*
 
-- [ ] 10-06-PLAN.md — D-05's docs and the spec reconciliation: index/README status flip plus one worked example, INV-EC-002's `shared` clause, ADR-EC-018's implementation note, traceability §1/§3/§4, and RUN-03/RUN-04 marked Complete
+- [x] 10-06-PLAN.md — D-05's docs and the spec reconciliation: index/README status flip plus one worked example, INV-EC-002's `shared` clause, ADR-EC-018's implementation note, traceability §1/§3/§4, and RUN-03/RUN-04 marked Complete
 
 Decisions locked before planning (`10-CONTEXT.md`): both an in-process build-count case AND a real-CLI gate are wanted, not one instead of the other (D-01/D-02); the untested `Rule` × `shared` combination gets its own regression test (D-03); the error-channel constraint applies to `shared` ONLY and never to `perScenario` (D-04); the README gains one small worked example whose fixture mirrors the acceptance test's (D-05).
 
@@ -521,7 +521,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 5/6 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 6/6 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
