@@ -96,6 +96,52 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              once per Scenario.
 ```
 
+> **Correction (2026-08-30, Phase 10 implementation, measured against the installed
+> `@effect/vitest@4.0.0-rc.112` rather than reasoned about):** the BUILD half of the
+> requirement above shipped as written and is asserted on every push. The RELEASE half
+> ships in a **weaker form than the wording claims**, and the divergence is recorded here
+> rather than by narrowing the requirement to fit what was built.
+>
+> **What holds.** `packages/vitest/src/describeFeature.ts` calls the framework's
+> `layer(sharedTier, { excludeTestServices: true })` in its one-argument form, which builds
+> the shared Layer exactly once for everything its callback registers. The shared build
+> ordinals every Scenario reaches are asserted as `[1, 1, 1]` in
+> `packages/vitest/test/emission.test.ts`, and `pnpm verify:shared-layer-once` re-asserts
+> the same count from a real CLI run, whole and `-t`-filtered. Release happens exactly
+> ONCE, never once per Scenario — measured, not assumed.
+>
+> **What does not hold: WHEN.** The scope is closed at the teardown of whatever suite was
+> current when `layer(...)` was called — not at the moment the Feature's own block
+> finishes. The exact branch is `@effect/vitest`'s `dist/internal/internal.js`, the
+> one-argument arm of `layer`: it computes `blockTasks` by filtering the current suite's
+> task list for entries its callback added, and takes the `blockTasks.length === 0` early
+> return, which registers `V.afterAll(() => closeScope())` on the current suite and nothing
+> else. It reaches that branch because this library's emission lands inside a
+> `describe(feature.name, …)` factory that **vitest defers** — at the instant `collectTasks`
+> runs, the newly created suite carries no tests yet, so the filter yields an empty list.
+> The non-empty arm's `beforeEach` + `onTestFinished` countdown, which is what WOULD close
+> the scope immediately after the block's last test, is therefore never registered.
+>
+> **Measured.** Two throwaway probes, both run against the real runner. Probe 1 — a shared
+> Layer whose build body registers a finalizer, two Scenarios, and a trailing sibling test
+> in the same file — observed `["acquired", "scenario read 1", "scenario read 1"]`: no
+> release yet, after every Scenario in the Feature had run. Probe 2 wrapped the same
+> `describeFeature` call in an ordinary `describe`, making that wrapper the current suite,
+> and a test outside the wrapper observed `["acquired", "scenario read 1", "scenario read 1",
+> "released"]`. The release point is the enclosing suite's teardown, and for the ordinary
+> case — a `describeFeature` call at module top level — that is the whole FILE's teardown.
+>
+> **Consequence for a caller**, and the reason this is a correction rather than a footnote:
+> a `shared` Layer holding a scarce external resource (a database connection, a
+> testcontainer) keeps holding it until the file finishes, not until the Feature does. Two
+> Features in one file, each with its own `shared` Layer, hold both resources concurrently
+> for the second Feature's whole run. Nothing here is a leak — every scope is closed once —
+> but "released after every Scenario in the Feature has run" reads as a tighter promise
+> than the runner makes. Tightening it would mean either forbidding the deferred `describe`
+> nesting this library depends on for Feature and Rule blocks, or upstreaming a change to
+> `@effect/vitest`; neither was in Phase 10's scope, and the requirement is left standing so
+> the gap stays visible.
+
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
 > **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)

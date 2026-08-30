@@ -44,6 +44,69 @@ and `AfterAllScenarios` each run whether the thing they guard succeeded or faile
 `BeforeAllScenarios` runs once per Feature, shared across every Scenario, and its failure is reported by every
 Scenario individually.
 
+**Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
+plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
+is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
+through `@effect/vitest`'s own `layer(...)` helper while `perScenario` beside it is still rebuilt every Scenario.
+`perScenario` is a **required** key even for a Feature with no per-Scenario-fresh state at all: write
+`perScenario: Layer.empty`. The two tiers are never merged into one, so where both name the same service the
+`perScenario` implementation is the one a step resolves. Every Scenario keeps its **own** simulated clock and its own
+console on both scopes — one Scenario's `TestClock.adjust` is never observable by another, whichever form the Feature
+used. One constraint comes with `shared`, and it is a type error rather than advice: its error channel must be `never`.
+`@effect/vitest` builds a shared Layer with `Effect.orDie`, so a typed failure there — a testcontainer that will not
+start, the realistic case — becomes an unrecoverable defect raised out of a setup hook, attributed to no Scenario, no
+step and no `.feature` file. Handle it where the types can see the choice instead: `Layer.catchAll` to substitute a
+fallback, or `Layer.orDie` to make the collapse explicit in your own source. One capability does not carry across
+either — the `it` the framework hands a shared block has no live-clock member, so a Feature using `shared` cannot opt a
+single Scenario out of the simulated clock.
+
+A fake counter-based "expensive resource" is the smallest thing that shows what the build-once guarantee buys. Both
+Scenarios in the Feature below read the same build:
+
+```ts
+import { describeFeature } from "@effect-cucumber/vitest"
+import { assert } from "@effect/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
+// `feature` is a ParsedFeature, awaited at module top level from @effect-cucumber/gherkin's
+// `loadFeature`. Both of its Scenarios run the same two steps.
+
+class Catalog extends Context.Service<Catalog, { readonly buildOrdinal: number }>()("Catalog") {}
+
+let catalogBuilds = 0
+
+// `Layer.effect`, not `Layer.succeed`: only `Layer.effect` has a build-time body, and the body is
+// the thing being counted. Its error channel is `never`, which is what `shared` requires.
+const catalogLayer = Layer.effect(
+  Catalog,
+  Effect.gen(function*() {
+    yield* Effect.void
+    catalogBuilds += 1
+    return Catalog.of({ buildOrdinal: catalogBuilds })
+  })
+)
+
+describeFeature(feature, { shared: catalogLayer, perScenario: Layer.empty }, ({ Then, When }) => {
+  When("the catalog is read", function*() {
+    // Build 1 in BOTH Scenarios — the shared Layer was built once for the whole Feature. Pass
+    // `catalogLayer` as a plain Layer instead and this reads 1, then 2.
+    const catalog = yield* Catalog
+    assert.strictEqual(catalog.buildOrdinal, 1)
+  })
+
+  Then("the catalog was built once", function*() {
+    yield* Effect.void
+    assert.strictEqual(catalogBuilds, 1)
+  })
+})
+```
+
+That is the shape `packages/vitest/test/emission.test.ts` asserts on every push, counter and all, so the example above
+stays honest against something that actually runs rather than drifting into a second description of the same
+behaviour.
+
 **A `Rule` can extend the ambient Layer, and so can a single `Scenario`.** `Rule(name, extraLayer, define)` merges
 `extraLayer` onto the Feature's Layer with `Layer.provideMerge`, so the Rule's Layer may itself depend on the Feature's
 services rather than merely sit beside them — and a step inside that Rule can use the extra service while the identical
@@ -101,10 +164,14 @@ tree you did not name. It is why this package carries one non-workspace runtime 
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
 
-**What is not built yet:** the build-once `shared` Layer with its per-Scenario
-`TestClock` isolation (Phase 10) — the `{ shared, perScenario }` argument form is accepted and type-checked today, but
-both halves are currently built per Scenario at runtime. See
-[`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified.
+**What is still ahead of this package:** the dogfooded acceptance suite — this library running its own `.feature`
+files — and the doc-examples compile check that keeps the fences on this page compiling against the real API. Neither
+is a gap in this package's behaviour; both are gates the repository has yet to wire. One export is genuinely still
+missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
+[ADR-EC-024](../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md), so a test
+author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today. See
+[`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
+authority on build status.
 
 ## Install
 

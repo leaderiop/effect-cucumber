@@ -43,20 +43,28 @@ bespoke parser or another library's internals.
 Monorepo under the `@effect-cucumber` npm scope. One package per module, not
 subpath exports of a single package.
 
-| Package                    | Description                                                                                                                                                                                                                                                                        | Status                                                 |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). Effect-native (`effect` peer dep, v4 only — [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)); no concrete platform runtime dependency. | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
-| `@effect-cucumber/vitest`  | `describeFeature`, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, hooks, the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and re-exports `loadFeature`. The package most consumers install directly.                                         | Not yet implemented                                    |
+| Package                    | Description                                                                                                                                                                                                                                                                                                                       | Status                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). Effect-native (`effect` peer dep, v4 only — [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)); no concrete platform runtime dependency.                                                | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
+| `@effect-cucumber/vitest`  | `describeFeature` with both Layer scopes, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, all six hooks, tag routing, and the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin`; ADR-EC-024's wrapped `loadFeature` is the one export still to come. The package most consumers install directly. | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
 
 ## Public API surface
 
-Not yet implemented — there is no package to export from. Once
-`@effect-cucumber/vitest` exists, this section names every export, and a
-`check-api-surface`-style script (see `spec/process/definitions-of-done.md`)
-keeps the table honest. Until then, the intended surface is described in
-`spec/behaviors/`:
+The surface exists. `@effect-cucumber/vitest` ships a single barrel and no subpath
+export, and that barrel's own doc comment in `packages/vitest/src/index.ts` is where
+every export — and, just as deliberately, every internal stage that is NOT exported —
+is documented today. [`spec/roadmap.md`](roadmap.md) stays the single authority on
+build status, exactly as the `@effect-cucumber/gherkin` row above cites it.
 
-| Export (planned)                                                                             | Kind           | Behavior                                                                                                                              |
+What is still planned is the ENFORCEMENT of the table below: a
+`check-api-surface`-style script (see `spec/process/definitions-of-done.md`) that
+keeps this section honest against the barrel rather than beside it. Until that script
+exists, the table names the behavior each export is specified by and nothing checks
+that the two agree — `loadFeature` in particular is the one row that does NOT
+correspond to an export of this package yet (ADR-EC-024), and a consumer reaches
+`@effect-cucumber/gherkin`'s own `loadFeature` instead:
+
+| Export                                                                                       | Kind           | Behavior                                                                                                                              |
 | -------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `loadFeature`                                                                                | function       | [BEH-EC-001](./behaviors/01-steps-and-world.md#beh-ec-001-loading-a-feature-file)                                                     |
 | `describeFeature`                                                                            | function       | [BEH-EC-002](./behaviors/01-steps-and-world.md#beh-ec-002-describefeature-takes-a-layer)                                              |
