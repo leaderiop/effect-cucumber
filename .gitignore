@@ -6,6 +6,11 @@ coverage/
 .claude/worktrees/
 .claude/settings.local.json
 
+# Transient dispatch state written by the GSD workflow harness, not project
+# source. Excluded from dprint as well (see dprint.json), for the same reason
+# `.planning/**` is: it is machine-written and reformatting it is noise.
+.gsd/
+
 # Transient fixtures written by scripts/verify-oxlint-plugin.sh. The script
 # removes them on exit; this entry only guards against a hard kill leaving a
 # deliberate lint violation on disk.

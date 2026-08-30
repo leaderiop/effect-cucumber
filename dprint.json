@@ -19,7 +19,8 @@
     "**/*.tsbuildinfo",
     "**/CHANGELOG.md",
     "pnpm-lock.yaml",
-    ".planning/**"
+    ".planning/**",
+    ".gsd/**"
   ],
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.93.4.wasm",
