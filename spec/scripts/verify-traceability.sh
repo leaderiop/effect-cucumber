@@ -157,8 +157,64 @@ fi
 # ---------------------------------------------------------------------------
 ACCEPTANCE_TAG_DIR="packages/vitest/test/acceptance"
 
-if [[ -f "$SPEC_DIR/traceability.md" ]]; then
-  tags=$(grep -rhoE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null | sort -u)
+# THE SCAN IS DRIVEN FROM GIT, NOT FROM THE FILESYSTEM, and checks 4 and 5 both
+# use it. `grep -r "$ROOT_DIR" --include='*.feature'` limited by NAME but not by
+# DIRECTORY, so the walk descended into node_modules/, .git/, .planning/ and any
+# transient directory a concurrently-running gate had created. Two consequences,
+# and the second is the one that bites: the "carried exactly once" claim was a
+# claim about THE FILESYSTEM rather than about the source tree, and a dependency
+# upgrade that pulls in a `.feature` corpus (the @cucumber/* packages routinely
+# ship testdata) could turn `pnpm verify:spec` red — or silently satisfy the
+# duplicate check.
+#
+# `--untracked` is deliberate and is NOT the same as plain `git grep`. Plain
+# `git grep` sees only what is in the index, so a newly written, not-yet-added
+# acceptance pair would be invisible and the gate would pass by not looking.
+# `--untracked` searches tracked AND untracked files while still honouring
+# .gitignore, which is exactly the set the claim is about: it skips node_modules/
+# and .git/ because they are ignored, and it skips the transient `.feature` files
+# scripts/verify-pitfalls-checklist.sh and scripts/verify-watch-rerun.sh write
+# because those are ignored too — removing the concurrency hazard
+# verify-watch-rerun.sh otherwise mitigates by hand.
+#
+# .planning/ is excluded by pathspec rather than by ignore. It is GSD-internal
+# and partially tracked, and coupling a spec/ gate to its contents is threat
+# T-11-06-05, which check 5's EXPECTED_REQ_COUNT comment records as knowingly
+# accepted rather than mitigated. Excluding it here keeps that acceptance intact.
+# MEASURED, three arms, each run against this repository and reverted:
+#
+#   M1, a tagged `.feature` written into packages/gherkin/test/fixtures/ and NOT
+#       `git add`ed -> BOTH checks RED, naming the file. This is the arm
+#       `--untracked` exists for; plain `git grep` would have passed by not
+#       looking.
+#   M2, the same content written to the transient
+#       packages/vitest/test/acceptance/pitfalls-gate-probe.feature that
+#       scripts/verify-pitfalls-checklist.sh creates -> INVISIBLE, both checks
+#       PASS. It is gitignored (WR-04), so a concurrently-running gate can no
+#       longer turn this one red.
+#   M3, a vendored corpus at node_modules/@cucumber/fake-testdata/vendored.feature
+#       -> INVISIBLE, both checks PASS. Under the old filesystem walk this went
+#       RED, which is the dependency-upgrade failure mode in full.
+feature_tags() { # -h for occurrences, -l for file names
+  git -C "$ROOT_DIR" grep "$1" --untracked -E '@REQ-EC-[0-9]{3}' \
+    -- '*.feature' ':(exclude).planning/' 2>/dev/null
+}
+
+# A non-git checkout cannot answer the question at all, and must say so rather
+# than report an empty scan as a clean one. Under --strict this SKIP is a FAIL,
+# which is correct: the check did not run.
+if ! git -C "$ROOT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  report SKIP "features -> traceability" "not a git checkout — the .feature scan is driven from git"
+  report SKIP "requirement ids carried exactly once" "not a git checkout — the .feature scan is driven from git"
+  GIT_SCAN_AVAILABLE=0
+else
+  GIT_SCAN_AVAILABLE=1
+fi
+
+if [[ "$GIT_SCAN_AVAILABLE" -eq 0 ]]; then
+  : # already reported above
+elif [[ -f "$SPEC_DIR/traceability.md" ]]; then
+  tags=$(feature_tags -ho | sort -u)
   if [[ -z "$tags" ]]; then
     report SKIP "features -> traceability" "no .feature tags yet"
   else
@@ -168,10 +224,9 @@ if [[ -f "$SPEC_DIR/traceability.md" ]]; then
     done <<< "$tags"
 
     # Direction two: the FILES carrying a tag, with the one legal directory
-    # removed. Reported relative to the repo root so the message is diffable
-    # rather than machine-specific.
-    stray=$(grep -rlE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null \
-      | sed "s|^${ROOT_DIR}/||" \
+    # removed. `git grep -l` already yields repo-relative paths, so the message
+    # is diffable rather than machine-specific with no rewriting.
+    stray=$(feature_tags -l \
       | grep -v "^${ACCEPTANCE_TAG_DIR}/" \
       | sort \
       | tr '\n' ' ' | sed 's/ *$//')
@@ -227,9 +282,12 @@ fi
 # ---------------------------------------------------------------------------
 EXPECTED_REQ_COUNT=22
 
-if [[ -f "$SPEC_DIR/traceability.md" ]]; then
-  occurrences=$(grep -rhoE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null \
-    | sed 's/^@//' | sort)
+if [[ "$GIT_SCAN_AVAILABLE" -eq 0 ]]; then
+  : # already reported above
+elif [[ -f "$SPEC_DIR/traceability.md" ]]; then
+  # Same git-driven scan as check 4 — see feature_tags above for why it is not a
+  # filesystem walk. WITH duplicates, so `uniq -d` below can see them.
+  occurrences=$(feature_tags -ho | sed 's/^@//' | sort)
 
   if [[ -z "$occurrences" ]]; then
     report SKIP "requirement ids carried exactly once" "no .feature tags yet"

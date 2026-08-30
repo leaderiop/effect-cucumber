@@ -255,11 +255,16 @@ echo "✓ preconditions: $VITEST present, $SOURCE_FEATURE carries \"Scenario: $E
 # ---------------------------------------------------------------------------
 # Build the copy. The Gherkin is EXTRACTED from the committed fixture rather
 # than invented here, so the gate runs Gherkin this repository already ships.
-# The `@REQ-EC-NNN` tag above the Scenario is deliberately left behind: the copy
-# is about to vanish, and spec/scripts/verify-traceability.sh check 4 greps
-# EVERY `.feature` file in the repository for that pattern — a temp file
-# carrying one would make a concurrent `pnpm verify:spec` assert over a file
-# that no longer exists by the time anyone reads the failure.
+# The `@REQ-EC-NNN` tag above the Scenario is deliberately left behind, and it
+# STAYS left behind even though the hazard it guarded against is now closed at
+# the other end. spec/scripts/verify-traceability.sh used to walk the FILESYSTEM
+# for `.feature` files, so a temp file carrying a tag could make a concurrent
+# `pnpm verify:spec` assert over a file that no longer existed by the time anyone
+# read the failure. That scan is now `git grep --untracked`, which honours
+# .gitignore, and `$WORK_FEATURE` is gitignored — so the copy is invisible to it
+# either way. Two independent reasons to be safe is the correct number here: a
+# copy that needed no tag never had a reason to carry one, and stripping it keeps
+# this gate's correctness from depending on another script's scan mechanism.
 # ---------------------------------------------------------------------------
 awk -v title="Scenario: $EXISTING_TITLE" '
   /^Feature:/ { print; print ""; next }
