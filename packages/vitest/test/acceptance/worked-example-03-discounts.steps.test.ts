@@ -128,6 +128,59 @@
  * this Feature wants. The three expected numbers are 35, 31.5 and 17.5, so a step whose write was
  * deleted reads `0` and fails, which is what the accounts pair's `-1` initialisation had to be
  * chosen to achieve.
+ *
+ * ## Mutation-tested (every one performed, run, then reverted)
+ *
+ * The directory README's standing rule: a passing acceptance test proves nothing on its own, so each
+ * entry below names what went RED and — the part that is easiest to omit — what stayed GREEN.
+ *
+ * - **A. The table really reaches the step.** `Gadget`'s price changed from `25.00` to `26.00` in the
+ *      `.feature` file, nothing in this module touched → **3 of 4 red**, the Feature-level Scenario
+ *      first with `expected 36 to equal 35`, then both Outline rows with `expected 32.4 to equal 31.5`
+ *      and `expected 18 to equal 17.5`. That is one cell of Gherkin text moving three assertions in
+ *      two different Scenarios, which is what proves the number was PARSED rather than hard-coded
+ *      here (PROH-11-01, threat T-11-03-04). The plan predicted one red test; the Background reaches
+ *      every Scenario, so it is three. `Expired discount codes are rejected` stayed GREEN and
+ *      legitimately so: it asserts a rejection MESSAGE and never reads the subtotal into an
+ *      assertion, so no arithmetic of its own can notice.
+ * - **B. The decode is replaceable — and this one is SUPPOSED to stay green.**
+ *      `decodeHashes(CartRow)(table)` replaced by a direct `yield* table.hashes()` and a hand-parse
+ *      (`Number(row["price"])`) → **4 of 4 still pass**, nothing red anywhere. `Schema` is not
+ *      load-bearing for the HAPPY path, and recording that honestly is the point: this mutation is
+ *      kept precisely because it fails to turn anything red, and mutation C is the one that shows why
+ *      the decode is worth having anyway. A reader who sees only C could conclude the schema is
+ *      carrying the Scenario; B is the control that says it is not.
+ * - **C. The decode is load-bearing where it matters.** `CartRow`'s `price` changed from
+ *      `Schema.NumberFromString` to `Schema.Number` → **4 of 4 red**, all on the same located
+ *      `DataTableError`, because every Gherkin table cell is a string (threat T-11-03-01):
+ *
+ *          Row 1 of the DataTable at …/worked-example-03-discounts.feature:4 failed to decode,
+ *          column "price": Expected number
+ *
+ *      with `reason: 'RowDecodeFailed'` and `column: Some('price')`. That is ADR-EC-008's located
+ *      error and BEH-EC-016's locator REQUIREMENT — the 1-based BODY-ROW ordinal, the column, the
+ *      feature uri and the STEP's line (`:4`, the `Given`, not the row) — observed here from a real
+ *      Feature file for the first time rather than from a synthetic `PickleTable`.
+ * - **D. The Rule Layer really is Rule-scoped.** `Scenario("Expired discount codes are rejected", …)`
+ *      moved out of the `Rule` callback to Feature level as `dsl.Scenario(...)`, its body
+ *      byte-identical → **fails to COMPILE**, at the two step bodies that yield the service:
+ *
+ *          error TS377004: This Effect requires a service that is missing from the expected Effect
+ *          context: `DiscountRegistry`. effect(missingEffectContext)
+ *
+ *      beneath a `TS2345` whose structural tail reads `is missing the following properties from type
+ *      '{ subtotal; total; rejection }'` — the Feature-level dsl's `ROut` is `World` alone. So
+ *      INV-EC-005's compile-time boundary holds and there is no defect to report; this is the same
+ *      diagnostic NAME that `scripts/verify-tsgo-gate.sh` assertions 12/13 assert as the standing
+ *      guard (threat T-11-03-02). `pnpm test` was not reached, which is the correct outcome: the
+ *      claim is about code that never runs.
+ * - **E. The Outline rows are independent.** The second Examples row's `expected` changed from
+ *      `17.50` to the first row's `31.50` → **exactly 1 of 4 red**, `expected 17.5 to equal 31.5` on
+ *      the `SAVE50` row alone. The library computed 17.5 from that row's OWN `percent` while the
+ *      Feature file demanded the other row's number, so no shared `Ref` and no last-row-wins capture
+ *      is in play (Pitfall 34, threat T-11-03-03). The failing test's TITLE also re-rendered as
+ *      `(code=SAVE50, percent=50, expected=31.50)`, which is a free second proof that BEH-EC-018's
+ *      suffix is derived per row rather than from the Outline.
  */
 import { type DataTable, decodeHashes, loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
