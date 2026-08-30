@@ -71,19 +71,25 @@
  * hands a Feature to `describeFeature`, and it does so because its claim is observable from nowhere
  * else.
  *
- * The cost, stated plainly rather than left to be discovered: `scripts/verify-acceptance-ref-state.sh`
- * scans `*.steps.test.ts`, and `scripts/verify-acceptance-no-any.sh` scans `*.steps.test.ts` and
- * `*.feature`. **Neither scans this file** — confirmed by reading both scripts' `find` invocations,
- * not assumed, and the same category `./negative-requirements.test.ts` already sits in. Both rules
- * are nonetheless honoured here by hand: no `let` and no `var` at any scope, no mutable binding at
- * module scope at all, and no standalone occurrence of the escape-hatch type (PROH-11-02,
- * PROH-11-03). Both were CHECKED after the fact against the two gates' own regexes, comment lines
- * stripped first exactly as those gates strip them — which matters here because this comment block
- * names the gate script, and its filename contains the forbidden token: counting raw text would make
- * the claim self-invalidating, the shape this repository has now recorded five times. Two test
- * bodies build a function-local `const` array and push emission records into it —
- * `packages/vitest/test/Runner.test.ts`'s recording-fake shape, rewritten rather than imported — and
- * that array holds emission records, never cross-step Scenario state.
+ * **BOTH STRUCTURAL GATES NOW SCAN THIS FILE.** They did not when it was written:
+ * `scripts/verify-acceptance-ref-state.sh` scanned `*.steps.test.ts` and
+ * `scripts/verify-acceptance-no-any.sh` scanned `*.steps.test.ts` and `*.feature`, so this file — the
+ * largest TypeScript module in the directory — and `./negative-requirements.test.ts` were outside
+ * both, with their rules honoured by hand. Both gates now scan every `.ts` here. The rules are
+ * unchanged: no `let` and no `var` at any scope, no mutable binding at module scope at all, and no
+ * standalone occurrence of the escape-hatch type (PROH-11-02, PROH-11-03). Comment lines are stripped
+ * before either gate counts, which matters here because this comment block names the gate script and
+ * its filename contains the forbidden token — counting raw text would make the claim
+ * self-invalidating, the shape this repository has now recorded five times.
+ *
+ * ONE CARVE-OUT EXISTS AND IT IS MARKED AT ITS SITE. `makeRecordingApi` below builds a
+ * function-local `const` array and pushes emission records into it —
+ * `packages/vitest/test/Runner.test.ts`'s recording-fake shape, rewritten rather than imported. That
+ * array is created fresh per call inside a factory and holds emission records, never cross-step
+ * Scenario state, so it is the opposite of the module-scope holder PROH-11-03 forbids. Its two lines
+ * carry a trailing `// GATE-ALLOW-MUTATION: <reason>` marker, and the ref-state gate asserts that
+ * EXACTLY TWO such markers exist repo-wide (`ALLOWED_MUTATIONS`) and prints both on every run, so the
+ * exemption cannot grow or go quiet.
  *
  * ## Thirteen items, fourteen test nodes — a deliberate divergence from 11-07-PLAN.md
  *
@@ -317,11 +323,11 @@ const makeRecordingApi = (): {
   const records: Array<EmissionRecord> = []
   const api: TestApi = {
     describe: (name, define) => {
-      records.push({ kind: "describe", name, self: null, options: null })
+      records.push({ kind: "describe", name, self: null, options: null }) // GATE-ALLOW-MUTATION: function-local array, created fresh per makeRecordingApi() call and never shared across steps or Scenarios — the opposite of the module-scope holder PROH-11-03 forbids.
       define()
     },
     effect: (name, self, options) => {
-      records.push({ kind: "effect", name, self, options })
+      records.push({ kind: "effect", name, self, options }) // GATE-ALLOW-MUTATION: same function-local array as above; a TestApi callback is synchronous and cannot yield a Ref update.
     }
   }
   return { api, records }

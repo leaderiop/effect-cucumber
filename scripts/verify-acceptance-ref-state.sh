@@ -123,6 +123,30 @@
 #        language (or to this project's style) means re-running this probe, not
 #        reasoning about the pattern.
 #
+#     B3. THE POPULATION HOLE, measured after SCANNED_TS widened assertions 3 and
+#        4 from `*.steps.test.ts` to every `.ts`. Four arms, each reverted:
+#
+#        B3a, `let leaked = 0` appended to negative-requirements.test.ts (463
+#             lines, previously unscanned) -> RED, naming the file and line.
+#             BEFORE the widening: GREEN.
+#        B3b, an UNMARKED `holder.push(s)` appended to pitfalls-checklist.test.ts
+#             (936 lines, previously unscanned) -> RED, naming the file and line.
+#             BEFORE the widening: GREEN.
+#        B3c, one GATE-ALLOW-MUTATION marker deleted, ALLOWED_MUTATIONS left at 2
+#             -> RED on the carve-out count. This is the direction that is easy
+#             to forget: the exemption must not leave SLACK behind for the next
+#             real violation to slip into.
+#        B3d, a marker reduced to a bare `// GATE-ALLOW-MUTATION:` with no reason
+#             -> RED. The marker does not exempt anything on its own; the reason
+#             is part of the pattern.
+#
+#        B3a and B3b are the measurement that matters. Both files stated in their
+#        own headers that these rules were "honoured here by hand", and both were
+#        telling the truth — the widening turned nothing red on the real tree.
+#        What changed is that the claim is now MEASURED. 1,399 of this directory's
+#        ~2,900 TypeScript lines were previously governed by convention inside the
+#        phase whose Success Criterion 2 is automated enforcement.
+#
 # Usage: bash scripts/verify-acceptance-ref-state.sh
 
 set -euo pipefail
@@ -177,6 +201,36 @@ MUTATOR_RE='\.(push|pop|shift|unshift|splice|sort|reverse|fill)\('
 # whitespace, then a double slash, a bare asterisk, or a slash-star.
 COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'
 
+# The per-occurrence carve-out for assertion 4, and every word of its shape is
+# load-bearing.
+#
+# A line matching MUTATOR_RE is exempt ONLY when it carries this marker as a
+# TRAILING comment followed by a colon and a reason. Three properties follow, and
+# none of them is optional:
+#
+#   PER-OCCURRENCE, never per-file. A file-level exemption for
+#   pitfalls-checklist.test.ts would re-open the 936-line hole widening the scan
+#   was meant to close — which is the failure this carve-out exists to avoid, not
+#   a cost of it.
+#
+#   A REASON IS REQUIRED. The marker alone does not exempt anything; the regex
+#   demands `: ` and a non-space character after it, so the justification lives
+#   at the site a reader is looking at.
+#
+#   IT CANNOT BE SILENT. Every use is PRINTED by assertion 4 on the success path,
+#   and ALLOWED_MUTATIONS below pins how many exist. Adding one is a visible,
+#   deliberate edit to a constant in this file, exactly as EXPECTED_CHECKLIST_ROWS
+#   is in scripts/verify-pitfalls-checklist.sh. An escape hatch nobody counts is
+#   how a gate becomes decoration.
+ALLOW_MARKER_RE='//[[:space:]]*GATE-ALLOW-MUTATION:[[:space:]]*[^[:space:]]'
+
+# How many carve-outs may exist. TWO, both in the FUNCTION-LOCAL recording fake
+# `makeRecordingApi` in pitfalls-checklist.test.ts — an array created fresh per
+# call inside a factory, which is the opposite of the module-scope holder
+# PROH-11-03 forbids and is documented as deliberate at the site. Raising this
+# number is a review decision, and making it one is the point.
+ALLOWED_MUTATIONS=2
+
 fail() {
   echo ""
   echo "✗ acceptance suite cross-step state via Ref only: NOT ENFORCED"
@@ -190,7 +244,23 @@ fail() {
 [[ -d "$ACCEPTANCE_DIR" ]] || fail "missing directory $ACCEPTANCE_DIR — the tree this gate scans is absent, so nothing was verified. If the acceptance suite moved, update ACCEPTANCE_DIR in this script."
 [[ -f "$CONTROL_FILE" ]] || fail "missing file $CONTROL_FILE — the regex control's target is absent, so assertion 2 cannot run. Pick another file containing a real mutable binding and name it here."
 
+# TWO LISTS, AND THEY ARE DELIBERATELY DIFFERENT.
+#
+# STEP_MODULES drives the POPULATION control only, and has to stay
+# `*.steps.test.ts` because that suffix is what the control is a control ON.
+#
+# SCANNED_TS drives ASSERTIONS 3 AND 4, and is every `.ts` in the directory. It
+# used to be STEP_MODULES, which left `negative-requirements.test.ts` (463 lines)
+# and `pitfalls-checklist.test.ts` (936 lines) unscanned — the two LARGEST
+# TypeScript modules here, about half the directory's TypeScript. Both headers
+# said the rules were "honoured here by hand". That is a convention, and this
+# phase's Success Criterion 2 is AUTOMATED enforcement.
+#
+# The population control made it worse rather than better: it printed
+# "5 acceptance step module(s)" and the script then closed with a claim about
+# "the acceptance suite" — a claim about seven modules, made from a scan of five.
 STEP_MODULES="$(find "$ACCEPTANCE_DIR" -type f -name '*.steps.test.ts' | sort)"
+SCANNED_TS="$(find "$ACCEPTANCE_DIR" -type f -name '*.ts' | sort)"
 
 # Prefix every line with its number, drop comment lines, then match. The
 # filtering happens BEFORE any count, so a doc comment that merely NAMES the
@@ -230,9 +300,10 @@ fi
 echo "✓ regex control: $CONTROL_HITS mutable-binding declaration(s) found in $CONTROL_FILE — the scan reaches real declarations"
 
 # ---------------------------------------------------------------------------
-# Assertion 3: THE GATE. No acceptance step module may DECLARE a mutable
-# binding, at any scope. Every value one step writes for a later step goes
-# through a Ref on a Layer-provided service (INV-EC-006, ADR-EC-009).
+# Assertion 3: THE GATE. No TypeScript module in the acceptance directory may
+# DECLARE a mutable binding, at any scope. Every value one step writes for a
+# later step goes through a Ref on a Layer-provided service (INV-EC-006,
+# ADR-EC-009).
 # ---------------------------------------------------------------------------
 VIOLATIONS=""
 while IFS= read -r file; do
@@ -244,15 +315,16 @@ while IFS= read -r file; do
       VIOLATIONS+="    $file:$hit"$'\n'
     done <<<"$hits"
   fi
-done <<<"$STEP_MODULES"
+done <<<"$SCANNED_TS"
 
 if [[ -n "$VIOLATIONS" ]]; then
   echo ""
   echo "  mutable binding declarations found:"
   printf '%s' "$VIOLATIONS"
-  fail "an acceptance step module declares a mutable binding (listed above). Cross-step Scenario state must live in a Ref obtained from a Layer-provided service, never in a closure variable — INV-EC-006, ADR-EC-009, and the 'Every cross-step value lives in a Ref obtained from a Layer-provided service' section of $ACCEPTANCE_DIR/README.md. A closure variable passes on a clean run and leaks across retries, re-runs and -t-narrowed selections."
+  fail "a TypeScript module under $ACCEPTANCE_DIR declares a mutable binding (listed above). Cross-step Scenario state must live in a Ref obtained from a Layer-provided service, never in a closure variable — INV-EC-006, ADR-EC-009, and the 'Every cross-step value lives in a Ref obtained from a Layer-provided service' section of $ACCEPTANCE_DIR/README.md. A closure variable passes on a clean run and leaks across retries, re-runs and -t-narrowed selections."
 fi
-echo "✓ no acceptance step module declares a mutable binding"
+SCANNED_TS_COUNT="$(printf '%s\n' "$SCANNED_TS" | wc -l | tr -d '[:space:]')"
+echo "✓ no .ts module under $ACCEPTANCE_DIR declares a mutable binding ($SCANNED_TS_COUNT file(s) scanned)"
 
 # ---------------------------------------------------------------------------
 # Assertion 4: the narrow half of PROH-11-03. An in-place array mutator call is
@@ -261,24 +333,54 @@ echo "✓ no acceptance step module declares a mutable binding"
 # if it did.
 # ---------------------------------------------------------------------------
 MUTATORS=""
+ALLOWED=""
+ALLOWED_COUNT=0
 while IFS= read -r file; do
   [[ -n "$file" ]] || continue
   hits="$(scan "$file" "$MUTATOR_RE")"
   if [[ -n "$hits" ]]; then
     while IFS= read -r hit; do
       [[ -n "$hit" ]] || continue
-      MUTATORS+="    $file:$hit"$'\n'
+      # The carve-out, applied per LINE. A hit carrying the marker plus a reason
+      # is recorded as allowed and printed below; everything else is a violation.
+      if printf '%s' "$hit" | grep -qE "$ALLOW_MARKER_RE"; then
+        ALLOWED+="    $file:$hit"$'\n'
+        ALLOWED_COUNT=$((ALLOWED_COUNT + 1))
+      else
+        MUTATORS+="    $file:$hit"$'\n'
+      fi
     done <<<"$hits"
   fi
-done <<<"$STEP_MODULES"
+done <<<"$SCANNED_TS"
 
 if [[ -n "$MUTATORS" ]]; then
   echo ""
   echo "  in-place mutator calls found:"
   printf '%s' "$MUTATORS"
-  fail "an acceptance step module mutates a value in place (listed above). PROH-11-03: a module-scope array, object or counter a step writes to satisfies the letter of the no-let rule while defeating INV-EC-006's intent, and unlike a Ref it cannot observe per-Scenario Layer freshness — one array is one array however many times the Layer was built. Build a new value with spread and put it in a Ref instead."
+  fail "a TypeScript module under $ACCEPTANCE_DIR mutates a value in place (listed above). PROH-11-03: a module-scope array, object or counter a step writes to satisfies the letter of the no-let rule while defeating INV-EC-006's intent, and unlike a Ref it cannot observe per-Scenario Layer freshness — one array is one array however many times the Layer was built. Build a new value with spread and put it in a Ref instead. If the value is genuinely FUNCTION-LOCAL — created fresh inside a factory and never shared across steps — mark that one line \`// GATE-ALLOW-MUTATION: <reason>\` and raise ALLOWED_MUTATIONS in this script in the same commit."
 fi
-echo "✓ no acceptance step module mutates a value in place"
+
+# The carve-out count is an ASSERTION, not a tally. Both directions fail: an
+# unused allowance means a marker was deleted without the constant following it
+# (so the next real one slips in under the slack), and an extra one means a
+# marker was added without review. This is the same growth-direction argument
+# scripts/verify-pitfalls-checklist.sh makes for its ROW-COUNT CONTROL.
+if [[ "$ALLOWED_COUNT" -ne "$ALLOWED_MUTATIONS" ]]; then
+  if [[ -n "$ALLOWED" ]]; then
+    echo ""
+    echo "  carve-outs found:"
+    printf '%s' "$ALLOWED"
+  fi
+  fail "found $ALLOWED_COUNT GATE-ALLOW-MUTATION carve-out(s), expected exactly $ALLOWED_MUTATIONS. A marker was added or removed without ALLOWED_MUTATIONS following it in the same commit. If the change is intended, edit that constant; do not widen the marker to cover more lines."
+fi
+
+if [[ -n "$ALLOWED" ]]; then
+  echo ""
+  echo "  $ALLOWED_COUNT documented carve-out(s), printed so none of them is silent:"
+  printf '%s' "$ALLOWED"
+  echo ""
+fi
+echo "✓ no .ts module under $ACCEPTANCE_DIR mutates a value in place, outside $ALLOWED_MUTATIONS documented carve-out(s)"
 
 echo ""
 echo "acceptance suite cross-step state via Ref only: ENFORCED"

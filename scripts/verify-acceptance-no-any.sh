@@ -80,7 +80,7 @@
 #        prose, AND the token added to a Scenario TITLE on the very next line
 #        -> the comment line was NOT reported and the Scenario title WAS,
 #           `hooks.feature:9`. That single run states both halves at once — the
-#           `#` arm of COMMENT_RE strips Gherkin comments, and the `.feature`
+#           `#` arm (now FEATURE_COMMENT_RE) strips Gherkin comments, and the `.feature`
 #           half of the scan is live rather than nominally present. E on its own
 #           could not say the second thing: a scan that reached no `.feature`
 #           file at all would also have stayed green.
@@ -173,8 +173,23 @@ fail() {
 [[ -d "$ACCEPTANCE_DIR" ]] || fail "missing directory $ACCEPTANCE_DIR — the tree this gate scans is absent, so nothing was verified. If the acceptance suite moved, update ACCEPTANCE_DIR in this script."
 [[ -f "$CONTROL_FILE" ]] || fail "missing file $CONTROL_FILE — the regex control's target is absent, so assertion 2 cannot run. Pick another file containing a real occurrence and name it here."
 
+# TWO LISTS, AND THEY ARE DELIBERATELY DIFFERENT.
+#
+# STEP_MODULES drives the POPULATION control only. It has to stay `*.steps.test.ts`
+# because that suffix is what the control is a control ON: it is how a renamed
+# directory, a moved pair or a mis-suffixed `*.steps.ts` is detected.
+#
+# SCANNED_FILES drives THE GATE, and it is EVERY `.ts` in the directory plus
+# every `.feature`. It used to be `*.steps.test.ts` plus `*.feature`, which left
+# `negative-requirements.test.ts` (463 lines) and `pitfalls-checklist.test.ts`
+# (936 lines) — the two LARGEST TypeScript modules here, roughly half the
+# directory's TypeScript — outside the scan entirely. Both files said so in their
+# own headers and stated that the rule was "honoured here by hand", which is a
+# convention, and this phase's Success Criterion 2 is AUTOMATED enforcement. The
+# closing line below claims something about "the acceptance suite"; scanning five
+# of its seven TypeScript modules did not entitle it to.
 STEP_MODULES="$(find "$ACCEPTANCE_DIR" -type f -name '*.steps.test.ts' | sort)"
-SCANNED_FILES="$(find "$ACCEPTANCE_DIR" -type f \( -name '*.steps.test.ts' -o -name '*.feature' \) | sort)"
+SCANNED_FILES="$(find "$ACCEPTANCE_DIR" -type f \( -name '*.ts' -o -name '*.feature' \) | sort)"
 
 # Prefix every line with its number, drop comment lines, then match. The
 # filtering happens BEFORE any count, so a doc comment that merely NAMES the
@@ -221,8 +236,9 @@ fi
 echo "✓ regex control: $CONTROL_HITS occurrence(s) found in $CONTROL_FILE — the scan reaches real occurrences"
 
 # ---------------------------------------------------------------------------
-# Assertion 3: THE GATE. Zero standalone occurrences across every acceptance
-# step module AND every acceptance .feature file, comment lines stripped.
+# Assertion 3: THE GATE. Zero standalone occurrences across EVERY TypeScript
+# module in the acceptance directory AND every acceptance .feature file, comment
+# lines stripped. Not just the `*.steps.test.ts` pairs — see SCANNED_FILES.
 # ---------------------------------------------------------------------------
 VIOLATIONS=""
 while IFS= read -r file; do
@@ -242,7 +258,8 @@ if [[ -n "$VIOLATIONS" ]]; then
   printf '%s' "$VIOLATIONS"
   fail "the escape-hatch type occurs in the acceptance suite (listed above). It is assignable to everything, so one occurrence in a step body makes that body compile against every ambient Layer and disables INV-EC-003 for it — inside the suite whose whole job is to prove INV-EC-003. Never introduce one to make something compile: annotate the real type, or fix the Layer. See spec/invariants.md INV-EC-003, D-04b, and the 'Zero' section of $ACCEPTANCE_DIR/README.md. If the hit is in a .feature file or a string literal, reword it — this gate counts a standalone token wherever it appears in that directory, and the README says so."
 fi
-echo "✓ no acceptance step module or .feature file contains the escape-hatch type as a standalone token"
+SCANNED_COUNT="$(printf '%s\n' "$SCANNED_FILES" | wc -l | tr -d '[:space:]')"
+echo "✓ no .ts module or .feature file under $ACCEPTANCE_DIR contains the escape-hatch type as a standalone token ($SCANNED_COUNT file(s) scanned)"
 
 echo ""
 echo "acceptance suite free of the escape-hatch type: ENFORCED"

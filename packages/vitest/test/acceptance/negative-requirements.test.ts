@@ -29,13 +29,17 @@
  * Scenario as a test node — it drives `loadFeature`, `collectFeature` and `buildScenarioEffect`
  * directly and reads back values.
  *
- * The consequence is worth stating plainly rather than leaving to be discovered: the two structural
+ * **BOTH STRUCTURAL GATES NOW SCAN THIS FILE**, and that is a correction rather than a note. The two
  * gates plan 11-05 built — `scripts/verify-acceptance-ref-state.sh` and
- * `scripts/verify-acceptance-no-any.sh` — scan `*.steps.test.ts` (and, for the second, `*.feature`),
- * so **neither scans this file**. Both of their rules are nonetheless honoured here by hand: no
- * mutable binding at module scope, and no occurrence of the escape-hatch type (PROH-11-02,
- * PROH-11-03). The `negative/` fixtures themselves ARE scanned by the no-escape-hatch gate, because
- * its `find` is recursive — verified, and recorded in `./negative/README.md`.
+ * `scripts/verify-acceptance-no-any.sh` — originally scanned `*.steps.test.ts` (and, for the second,
+ * `*.feature`), so this file and `./pitfalls-checklist.test.ts` sat outside them: roughly half the
+ * directory's TypeScript, governed by convention, inside the phase whose Success Criterion 2 is
+ * AUTOMATED enforcement. Both gates now scan every `.ts` under this directory. Their rules are
+ * unchanged and were already honoured here by hand — no mutable binding at module scope, no
+ * occurrence of the escape-hatch type (PROH-11-02, PROH-11-03) — so widening them turned nothing red;
+ * the point is that "honoured by hand" is no longer the mechanism. The `negative/` fixtures were
+ * always scanned by the no-escape-hatch gate, because its `find` is recursive — verified, and
+ * recorded in `./negative/README.md`.
  *
  * It still lives in the acceptance directory because the tagged artifacts it drives do. Moving it out
  * would separate the five `@REQ-EC-NNN` tags from the only file that redeems them.
