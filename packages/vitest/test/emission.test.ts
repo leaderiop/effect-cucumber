@@ -2732,9 +2732,13 @@ describe("a shared Layer with every Scenario excluded stays unbuilt, even with a
     // Without this assertion, the counter test above would pass VACUOUSLY the moment the warning
     // stops being produced — a definition that accidentally matched a step, or a future change that
     // suppressed warnings under a total exclusion, would both leave this block green while measuring
-    // nothing (mutation 4). The console line and the `⚠` node come from the same `plan.warnings`
-    // array (`describeFeature.ts` lines ~1147-1155), so the line's presence is a sound proxy for the
-    // node's emission — the node's own body, `Effect.void`, offers nothing else to observe.
+    // nothing (mutation 4). NOT a proxy for the ⚠ NODE's emission: the console line comes from
+    // describeFeature.ts's own body loop (~:1154) and the node from Runner.ts's emission loop
+    // (~:680) — two independent code paths over one shared `plan.warnings` array. Suppressing the
+    // node alone would leave this assertion green. What pins the node under a total exclusion is
+    // `Runner.test.ts`'s "emits identical ⚠ nodes with no filter and with a filter that excludes
+    // every Scenario"; what THIS control rules out is a Feature that produced no warning at all,
+    // which is the other way the build-0 assertion above could go vacuous.
     const unusedDefinitionLines = warningsFor(excludedEverythingFeature.uri).filter((line) =>
       line.includes("UnusedStepDefinition")
     )
