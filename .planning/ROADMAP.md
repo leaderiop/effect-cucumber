@@ -435,7 +435,36 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: TBD — set by `/gsd:plan-phase 10`
+**Plans**: 6 plans (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
+
+Plans:
+**Wave 1**
+
+- [ ] 10-01-PLAN.md — D-04's type constraint: `shared` narrowed to `Layer<R, never, never>` on both entry points, plus `SharedLayerConstraint.types.ts` asserting it in all three directions (SC#4, Pitfall 27)
+
+**Wave 2** *(blocked on 10-01)*
+
+- [ ] 10-02-PLAN.md — The dual provision split: `FeatureCollection.sharedLayer`, the second `TestApi` closing over `layer(shared, { excludeTestServices: true })`'s own `it`, a per-emission `TestEnv`, and the three forward-references that named this phase retired
+
+**Wave 3** *(blocked on 10-02)*
+
+- [ ] 10-03-PLAN.md — Build counts by real run: default path 3 Scenarios → 3 builds with state not carried across, shared path 3 Scenarios → 1 build, and D-04's collision rule re-proven at runtime (SC#1, SC#2)
+
+**Wave 4** *(blocked on 10-03)*
+
+- [ ] 10-04-PLAN.md — RUN-04's `TestClock`/`TestConsole` per-Scenario isolation on the shared path, and D-03's `Rule`-under-`shared` regression (SC#3's in-process half)
+
+**Wave 5** *(blocked on 10-04)*
+
+- [ ] 10-05-PLAN.md — D-02's real-CLI gate `scripts/verify-shared-layer-once.sh`: one Scenario's status compared between a whole run and a `-t`-narrowed run, wired into `package.json` and `check.yml` (SC#3's whole-vs-filtered half)
+
+**Wave 6** *(blocked on 10-05)*
+
+- [ ] 10-06-PLAN.md — D-05's docs and the spec reconciliation: index/README status flip plus one worked example, INV-EC-002's `shared` clause, ADR-EC-018's implementation note, traceability §1/§3/§4, and RUN-03/RUN-04 marked Complete
+
+Decisions locked before planning (`10-CONTEXT.md`): both an in-process build-count case AND a real-CLI gate are wanted, not one instead of the other (D-01/D-02); the untested `Rule` × `shared` combination gets its own regression test (D-03); the error-channel constraint applies to `shared` ONLY and never to `perScenario` (D-04); the README gains one small worked example whose fixture mirrors the acceptance test's (D-05).
+
+Resolved at planning time by RUNNING two probe suites against the installed `@effect/vitest@4.0.0-rc.112`: the ONE-argument form of `layer(...)` is used, because the two-argument form opens its own block and would nest a second Feature-named `describe` around `Runner.ts`'s own; `TestEnv` is NOT exported by `@effect/vitest` and is reconstructed as `Layer.mergeAll(TestConsole.layer, TestClock.layer())` from the two public `effect/testing/*` modules; `MethodsNonLive` has no `describe` member, so the shared-path `TestApi` satisfies `describe` with the module-level import — legitimate because `describe` carries no Layer services, unlike the module-level `it` Anti-Pattern 3 forbids; and a `Rule`'s `extraLayer` composed onto the per-Scenario tier alone still resolves a shared service at run time, because the unsatisfied `RIn` is left on the Effect for the ambient `layer()` context to satisfy.
 
 **Research flag**: Skip — the fix is already verified working. Remaining work is a recorded decision plus implementation. This phase must not be deprioritized.
 
@@ -492,7 +521,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 0/TBD | Not started | - |
+| 10. Layer Scopes (per-Scenario + `shared`) | 0/6 | Planned | - |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
