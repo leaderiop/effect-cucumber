@@ -116,6 +116,44 @@ jobs:
       # triple its cost to re-prove the identical fact.
       - if: matrix.node-version == 24
         run: pnpm verify:shared-layer-once
+      # `pnpm test` exiting 0 does NOT prove that editing a `.feature` file
+      # under a WATCHING runner reruns anything. It cannot: `pnpm test` is
+      # `vitest run`, one shot, one collection — it never watches, so it has no
+      # opinion about watching. The place a non-watched fixture is discovered is
+      # a consumer's dev loop, where they add a Scenario, see stale results and
+      # conclude the library is broken (PITFALLS Pitfall 3). Measured both ways
+      # by the gate itself: the `?raw` import form reruns in ~620ms, and the
+      # path-based `loadFeature` form does not rerun at all inside a 60s poll.
+      # This is also the ONE gate in the repository that mutates a file, and it
+      # mutates a copy under a trap — a failed run leaves the tree clean, which
+      # is asserted on both paths. See scripts/verify-watch-rerun.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before this
+      # narrower gate's output. Node 24 ONLY: this is a structural claim about
+      # what the runner watches, which does not vary by Node version, and the
+      # gate holds a watching runner open across two collections — running it on
+      # both matrix legs would double its cost to re-prove the identical fact.
+      - if: matrix.node-version == 24
+        run: pnpm verify:watch-rerun
+      # `pnpm test` exiting 0 does NOT prove that the 24-item checklist in
+      # spec/process/looks-done-but-isnt-checklist.md still runs in full, and it
+      # proves nothing at all about ten of its items: a packed tarball's
+      # manifest does not exist during a test run, a README's install line is
+      # not compiled, a compile gate's behaviour when a directive becomes UNUSED
+      # is the ABSENCE of a diagnostic, a shuffled run and a tag-filtered run
+      # are properties of an invocation, and reading a failure panel requires a
+      # run that failed. It also carries the completeness cross-check that makes
+      # roadmap success criterion 4 a counted claim: mutation-proven, a test that
+      # loses its `P-NN` id leaves `pnpm test` green at identical counts and
+      # only this script goes red. See scripts/verify-pitfalls-checklist.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before this
+      # narrower gate's output. Node 24 ONLY: every claim it makes is structural
+      # and does not vary by Node version, and the gate invokes vitest FOUR times
+      # and packs both packages — running it on both matrix legs would double a
+      # substantial cost to re-prove the identical fact.
+      - if: matrix.node-version == 24
+        run: pnpm verify:pitfalls
 
   package:
     name: Packaging and structure

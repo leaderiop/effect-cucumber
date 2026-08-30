@@ -38,17 +38,31 @@
 #
 #   THE CROSS-CHECK ANCHORS ON THE EXECUTING FORM, NEVER ON THE BARE ID, and
 #   that is the single most load-bearing decision in this file. Plan 11-07
-#   stripped `P-04 — ` out of a test title and measured that a whole-file
+#   stripped `P-04` out of a test title and measured that a whole-file
 #   `grep -c 'P-04'` STILL returned 2, satisfied by the header prose documenting
-#   the id — so the obvious cross-check would have been green against exactly
-#   the loss it exists to catch. This is the fifth time this repository has hit
-#   the count-your-own-prose shape (STATE.md 03-04, 10-01, 10-02, plan 11-06's
-#   check 4, plan 11-07's mutation A′). The anchored forms are:
+#   the id; re-measured while writing this file, after that header grew, it
+#   returns TEN — and NINE with the title's id stripped. So the obvious
+#   cross-check would have been green against
+#   exactly the loss it exists to catch, and increasingly green over time. This
+#   is the fifth time this repository has hit the count-your-own-prose shape
+#   (STATE.md 03-04, 10-01, 10-02, plan 11-06's check 4, plan 11-07's mutation
+#   A′). The anchored forms are:
 #
-#     - the in-process test file -> `"P-NN — `, the opening quote of a test TITLE
-#     - a gate script            -> a line matching `echo "✓ P-NN — `
+#     - a gate script -> `echo`, a quote, the check glyph, the id, a space, an
+#       em dash and a space, at the START of a line: an assertion's own success
+#       line, which only an executing assertion emits.
+#     - the in-process test file -> the id preceded by a string literal's
+#       opening quote OR by a Gherkin `Scenario: ` (P-12's two nodes are
+#       Scenario titles inside an inline Feature source), AND followed by an
+#       ASCII LETTER.
 #
-#   Both are things an EXECUTING artifact emits; neither is satisfiable by
+#   THE TRAILING LETTER IS LOAD-BEARING AND WAS ALSO MEASURED. The tighter
+#   `"P-04 — ` still returns 2 in that file today, because its header quotes
+#   that very anchor while explaining this hazard. Prose about a title is
+#   followed by punctuation — an apostrophe there, an ellipsis in the two `P-12`
+#   quotations — and a real title is followed by a word.
+#
+#   Both forms are things an EXECUTING artifact emits; neither is satisfiable by
 #   describing an item in a comment. This file's own METHOD NOTE names all ten
 #   of its ids in prose above and satisfies the anchor for none of them.
 #
@@ -76,35 +90,49 @@
 #
 # MUTATION RECORD (performed, observed, reverted — plan 11-08 Task 3):
 #
-#   D. `P-04 — ` was stripped from its test title in
+#   D. The `P-04` id was stripped from its test title in
 #      packages/vitest/test/acceptance/pitfalls-checklist.test.ts, assertions
 #      untouched. `pnpm test` STAYED GREEN at the identical counts — 39 files,
-#      816 passed — and `pnpm verify:pitfalls` went RED naming the id:
-#        "P-04 is in the checklist but its executor does not carry it".
-#      This is the exact mutation plan 11-07 recorded as uncatchable at the time
-#      it was measured. It is caught now.
+#      816 passed, 4 skipped — and `pnpm verify:pitfalls` went RED naming the id:
+#        "P-04 is in the checklist, but its executor does not CARRY it".
+#      Nine bare occurrences of the string P-04 remained in that file after the
+#      strip, so a bare-id grep would have counted nine and stayed green. This
+#      is the exact mutation plan 11-07 recorded as uncatchable at the time it
+#      measured it. It is caught now.
 #
-#   E. P-09's **Executed by** column was repointed from this script to
-#      scripts/verify-watch-rerun.sh, which does not carry that id. `pnpm test`
-#      stayed green and the cross-check went RED naming P-09 and the artifact it
-#      had been pointed at. Neither the document nor either script was otherwise
-#      touched — a row that lies about who runs it is a one-cell edit.
+#   E. P-09's **Executed by** cell was repointed from this script to
+#      scripts/verify-watch-rerun.sh, which does not carry that id. Nothing else
+#      was touched — a row that lies about who runs it is a ONE-CELL edit — and
+#      the cross-check went RED naming P-09 and the artifact it had been pointed
+#      at.
 #
-#   F. The table's header separator row was deleted and the leading pipe removed
-#      from four rows, so the parse yielded 20 rows instead of the expected
-#      count. The ROW-COUNT CONTROL went red first, naming both numbers. Without
-#      it the id assertions would have passed VACUOUSLY on the surviving subset
-#      — and taken to its limit, a parse yielding zero rows makes every
-#      per-id assertion below trivially true while the script still prints a
-#      completeness line. That is ASSUMPTION-11-B, and this is its mitigation
-#      proven rather than argued.
+#   F. The leading pipe was removed from four rows, so the parse yielded 20 rows.
+#      The ROW-COUNT CONTROL fired FIRST, naming both numbers and naming the
+#      constant. Then, measured rather than assumed: with the control's early
+#      return disabled and the same breakage in place, the CONTIGUITY check
+#      caught it anyway, printing four "P-0N is missing from the table" lines.
 #
-#   G. P-22's assertion was weakened to "the filtered run reported at least one
-#      pass", dropping the claim that the UNSELECTED Scenarios did not run. It
-#      STAYED GREEN when the filter was then changed to one that selects
-#      everything in the file. The blunt form cannot tell a filter that selected
-#      one Scenario from a filter that selected all of them, which is the whole
-#      of what P-22 asserts. Do not simplify the sharp form back into it.
+#      So the honest reading is narrower than "without this control the checks
+#      pass vacuously" — for a SHRINKING parse they do not, because the
+#      contiguity loop runs P-01 upwards independently of what parsed. What the
+#      control adds is (i) one message naming both numbers instead of N messages
+#      that read as though the document lost N rows, and (ii) the one case the
+#      contiguity loop structurally cannot see: a parse that yields MORE rows
+#      than expected. That loop iterates 1..EXPECTED_CHECKLIST_ROWS, so a 25th
+#      item is outside it. Keep the control; the reason is the growth direction,
+#      not the shrink one.
+#
+#   G. THE MOST USEFUL ENTRY HERE. P-22's two unselected-Scenario checks were
+#      disabled, leaving the blunt form — "the filtered run reported at least
+#      one pass, and the tagged Scenario passed" — and the `--tagsFilter` flag
+#      was then removed from the invocation ENTIRELY. The gate STAYED GREEN,
+#      exit 0, and went on printing
+#        "P-22 — --tagsFilter=@slow selected exactly the tagged Scenario".
+#      A run with NO FILTER AT ALL satisfies the blunt form, because every
+#      Scenario passing includes the tagged one passing. The blunt form is
+#      therefore not a weaker assertion about filtering; it is not an assertion
+#      about filtering. Only "an unselected Scenario is PRESENT and SKIPPED"
+#      makes the item about a filter. Do not simplify it back.
 #
 # Usage: bash scripts/verify-pitfalls-checklist.sh
 
@@ -972,7 +1000,7 @@ for (const row of rows) {
   } else {
     fails.push(
       row.id + " is in the checklist, but its executor does not CARRY it: " + row.executor +
-        " has no " + kind + " anchored on " + row.id + ". A bare mention in a comment or a doc " +
+        " carries no " + kind + " anchored on " + row.id + ". A bare mention in a comment or a doc " +
         "block does NOT count, and that is the whole point of the anchored form — plan 11-07 " +
         "measured a bare-id grep green against a test that had lost its id. Either the executor " +
         "lost the id, or this row was pointed at an artifact that never ran the item."
