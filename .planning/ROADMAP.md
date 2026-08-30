@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 2/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
+**Plans**: 3/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
 
 Plans:
 **Wave 1**
@@ -448,7 +448,7 @@ Plans:
 
 **Wave 3** *(blocked on 10-02)*
 
-- [ ] 10-03-PLAN.md — Build counts by real run: default path 3 Scenarios → 3 builds with state not carried across, shared path 3 Scenarios → 1 build, and D-04's collision rule re-proven at runtime (SC#1, SC#2)
+- [x] 10-03-PLAN.md — Build counts by real run: default path 3 Scenarios → 3 builds with state not carried across, shared path 3 Scenarios → 1 build, and D-04's collision rule re-proven at runtime (SC#1, SC#2)
 
 **Wave 4** *(blocked on 10-03)*
 
@@ -521,7 +521,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 2/6 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 3/6 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
