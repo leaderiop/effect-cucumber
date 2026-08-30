@@ -400,7 +400,16 @@ for tracked in "$PROBE_FEATURE" "$PROBE_STEPS" "$FAILING_FEATURE" "$FAILING_STEP
   if git ls-files --error-unmatch "$tracked" >/dev/null 2>&1; then
     fail "$tracked is TRACKED BY GIT. This gate writes and then deletes that path, so running it would delete a committed file. Rename the constant at the top of this script; do not delete the committed file to make the gate run."
   fi
-  [[ -e "$tracked" ]] && fail "$tracked already exists on disk. A previous run did not clean up, or something else owns that path. Remove it and re-run; if it keeps reappearing, the trap in this script is not firing."
+  # `if` rather than `[[ ... ]] && fail ...`. The AND-list form is CORRECT under
+  # `set -euo pipefail` — errexit exempts the left-hand side of an `&&` list, so
+  # a false test does not end the script — and that is exactly the problem: the
+  # line's correctness depends on it being the LAST command in the list, inside
+  # this loop. Move it out of the loop, or add a command after it, and the
+  # semantics change silently with nothing to notice. One extra line does not
+  # depend on the exemption.
+  if [[ -e "$tracked" ]]; then
+    fail "$tracked already exists on disk. A previous run did not clean up, or something else owns that path. Remove it and re-run; if it keeps reappearing, the trap in this script is not firing."
+  fi
 done
 
 grep -qF -- "$FILTER_TAG" vitest.config.ts ||
