@@ -19,10 +19,17 @@ and one `it.effect` per Scenario, runs each Scenario's Background steps first in
 loudly on a step that matches no registered pattern or more than one. A `Rule` can extend the ambient Layer for the
 Scenarios inside it — and scope its own `Background` and hooks the same way — while a `Scenario Outline` emits one
 test per Examples row, typed by the step pattern's own coercion and titled with every column's value for that row.
+All six hooks run in a fixed order with `After` guaranteed on failure; every Gherkin tag reaches the emitted test as a
+native vitest tag, with `@skip` skipping and `@only` never breaking a CI run that forbids only-marking; and a `shared`
+Layer is built exactly once per Feature while every Scenario still keeps its own `TestClock`.
 
-Still specified rather than built, each waiting on its own phase: tag routing and `@skip`/`@only` (Phase 9), and the
-build-once `shared` Layer with its
-per-Scenario `TestClock` isolation (Phase 10).
+**The library runs its own spec.** The worked examples from `spec/behaviors/` execute as real `.feature` +
+`.steps.test.ts` pairs under [`packages/vitest/test/acceptance/`](./packages/vitest/test/acceptance), and all 22 v1
+requirements carry an acceptance tag that a traceability check counts on every push.
+
+Still ahead, and stated so nobody discovers it the hard way: the doc-examples compile check is not wired; ADR-EC-024's
+wrapped `loadFeature` is not exported, so a `.feature` file is loaded through `@effect-cucumber/gherkin` directly; and
+editing a `.feature` file under a watching runner does not trigger a rerun when the file was loaded by path.
 
 [`spec/roadmap.md`](./spec/roadmap.md) is the single source of truth for what is built versus what is only specified.
 The install instructions below describe the intended shape; they will not work until the first release.

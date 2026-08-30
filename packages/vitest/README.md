@@ -164,14 +164,103 @@ tree you did not name. It is why this package carries one non-workspace runtime 
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
 
-**What is still ahead of this package:** the dogfooded acceptance suite — this library running its own `.feature`
-files — and the doc-examples compile check that keeps the fences on this page compiling against the real API. Neither
-is a gap in this package's behaviour; both are gates the repository has yet to wire. One export is genuinely still
-missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
+**This package now runs its own spec.** The dogfooded acceptance suite is built: real `.feature` files under
+[`test/acceptance/`](./test/acceptance), paired with `.steps.test.ts` modules, driven by the real `describeFeature`
+and producing real passing `it.effect` tests as part of the ordinary `pnpm test`. The three worked examples from
+`spec/behaviors/01`–`03` are among them, so the specification's examples are executed rather than merely read. All 22
+v1 requirements carry a `@REQ-EC-NNN` acceptance tag.
+
+**What is still ahead of this package:** the doc-examples compile check that would keep the fences on this page
+compiling against the real API. That is a gate the repository has yet to wire, not a gap in this package's behaviour.
+One export is genuinely still missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
 [ADR-EC-024](../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md), so a test
-author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today. See
+author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today — and so
+does the acceptance suite, which is one of the two deliberate deviations from the worked examples recorded in
+[`test/acceptance/README.md`](./test/acceptance/README.md). One further limitation is worth knowing before you rely
+on it: editing a `.feature` file under a watching runner does **not** trigger a rerun when the file was loaded by
+path, because a filesystem read is invisible to Vite's module graph; the `?raw` import form does rerun. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
 authority on build status.
+
+## Recommended lint and compiler configuration for your step modules
+
+**The claim this package makes.** A step whose Effect requires a service the ambient Layer does not provide is a
+compile error where the step is written. That is
+[INV-EC-003](../../spec/invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides), and
+it is the package's whole reason to exist.
+
+**The boundary on it.** The guarantee holds for step bodies free of `any`. A bare `any`, and an `Effect<any, any, any>`,
+are assignable to everything — so a step body containing either compiles against **any** ambient Layer, including one
+that provides none of the services the body reaches for. The requirement the step would otherwise declare is erased
+before the check has anything to check, and what you get instead is a runtime "service not found" in a suite that
+type-checks. No DSL signature can prevent that, because the erasure happens inside your own step body and not at the
+boundary the invariant guards.
+
+That is not a caveat better types could remove, so the remedy is configuration in your build rather than a change in
+ours. Three settings, covering three different ways the escape hatch gets in:
+
+```jsonc
+// tsconfig.json — the IMPLICIT half: a parameter or binding TypeScript would
+// otherwise infer as `any` because nothing annotated it.
+{
+  "compilerOptions": {
+    "noImplicitAny": true, // implied by "strict": true, which is what this repository runs
+  },
+}
+```
+
+```jsonc
+// .oxlintrc.json — the EXPLICIT half: an `any` you wrote. This one rule flags a
+// bare `any` annotation and each of the three in `Effect<any, any, any>`
+// separately, and it needs nothing beyond the `typescript` plugin.
+{
+  "plugins": ["typescript"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+  },
+}
+```
+
+```jsonc
+// .oxlintrc.json — the FLOW half: a value that is ALREADY `any` arriving from an
+// untyped dependency, where your own source contains no `any` token for either
+// setting above to see. This is Pitfall 6's "one dependency shipping
+// Effect<any, any, any>" case.
+//
+// These are TYPE-AWARE rules. They require `options.typeAware` AND the separate
+// `oxlint-tsgolint` package; without it oxlint reports
+// "Failed to find tsgolint executable" and, if you enable the rules WITHOUT
+// `--type-aware`, they are silently inert — measured against oxlint 1.80.0.
+// Named here with that cost stated rather than recommended as if it were free.
+{
+  "options": { "typeAware": true },
+  "rules": {
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
+  },
+}
+```
+
+Using ESLint rather than oxlint? The same rules are `@typescript-eslint/no-explicit-any` and
+`@typescript-eslint/no-unsafe-*`.
+
+**Why this is a recommendation and not an enforcement.** This package cannot see your build. There is no signature it
+could ship that would close the hole, and no runtime check that could observe it — the whole failure mode is the
+_absence_ of a diagnostic, so there is nothing to catch. The honest thing is to tell you where the guarantee ends and
+which switch extends it.
+
+**What this repository does about it, so the advice is not merely advice.** This library's own acceptance suite — the
+code here that plays the consumer's part — is scanned by
+[`scripts/verify-acceptance-no-any.sh`](../../scripts/verify-acceptance-no-any.sh) on every push, which fails naming
+the file and the line. The compile-gate fixtures under [`test/tsgo-gate/`](./test/tsgo-gate) carry the same
+prohibition, stated in [`scripts/verify-tsgo-gate.sh`](../../scripts/verify-tsgo-gate.sh)'s own failure message: do not
+add `any` to a fixture to make it pass. Both exist because `pnpm build`, `pnpm typecheck:test`, `pnpm test` and
+`pnpm lint` were all measured GREEN against an acceptance step body with one `any` substituted into it — no oxlint rule
+enabled in this repository objects to the escape-hatch type, which is exactly why the rules above are worth turning on
+in yours. See [`test/acceptance/README.md`](./test/acceptance/README.md) § "Zero `any`".
 
 ## Install
 

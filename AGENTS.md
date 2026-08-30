@@ -14,40 +14,45 @@ file end to end.
 behavior means updating the relevant behavior doc, invariant, and the
 traceability matrix in the same change.
 
-This project has no code yet — `spec/` currently describes an intended
-contract, not a verified one. That is a real, temporary state, not a shortcut:
-every behavior, invariant, and decision in `spec/` was designed and stress-tested
-against worked examples before any package existed (see `spec/roadmap.md` for
-exactly what's built vs. specified). Once `packages/*` exists, the rule above
-takes over in the normal direction — a code change that isn't reflected in
-`spec/` in the same commit is incomplete, not merely undocumented.
+Both packages are built, so the rule above applies in its normal direction: a
+code change that isn't reflected in `spec/` in the same commit is incomplete,
+not merely undocumented. `spec/roadmap.md`'s "Current state" remains the single
+place that says what's built vs. specified — cite it rather than re-asserting
+status elsewhere.
 
-Two gates are described in `spec/process/definitions-of-done.md` as **planned**,
-not yet wired: a script that extracts and type-checks every `` ```typescript ``
-fence under `spec/behaviors/` against the real API, and
-`spec/scripts/verify-traceability.sh`, which already exists and can be run
-today (`bash spec/scripts/verify-traceability.sh`) — it checks `spec/`'s own
-internal consistency (index.yaml ↔ disk, every invariant and decision traced,
-no broken relative links) independent of whether any code exists.
+`spec/` is no longer only described; it is EXECUTED. The worked examples in
+`spec/behaviors/01`–`03` run as real `.feature` + `.steps.test.ts` pairs under
+`packages/vitest/test/acceptance/`, and every v1 requirement carries a
+`@REQ-EC-NNN` tag there. Run
+`bash spec/scripts/verify-traceability.sh` before committing a spec change: it
+checks `spec/`'s own internal consistency (index.yaml ↔ disk, every invariant
+and decision traced, every `@REQ-EC-NNN` tag carried exactly once with a §5 row,
+no broken relative links).
+
+One gate in `spec/process/definitions-of-done.md` is still **planned, not
+wired**: the script that extracts and type-checks every `` ```typescript ``
+fence under `spec/behaviors/` against the real API. Until it exists nothing
+compiles those fences — treat them as reviewed, not verified.
 
 ## 2. Specification code fences
 
 `spec/` uses three TypeScript fence languages, and the distinction is
 load-bearing:
 
-- `` ```typescript `` — a **runnable example**. Once `packages/*` exists, this is
-  extracted and compiled against the real API by a doc-examples check; it must
-  import what it uses.
+- `` ```typescript `` — a **runnable example**. Intended to be extracted and
+  compiled against the real API by the doc-examples check, which is not wired
+  yet; write it as though it were, and it must import what it uses.
 - `` ```tsx `` — a runnable example **containing JSX**. Unlikely to be needed here
   (this is a headless testing library), kept for parity with the convention.
 - `` ```ts `` — an **API signature listing or fragment**. Reference material,
   not compiled.
 
-Prefer `typescript` wherever an example can be made to compile once there's an
-API to compile it against. Until then, worked examples in `spec/behaviors/`
-are written as `typescript` fences with a comment noting they're pre-implementation.
+Prefer `typescript` wherever an example can be made to compile. The API exists
+now, so a new example has no excuse to be a fragment; the pre-implementation
+comments on the existing worked examples in `spec/behaviors/` are historical and
+those examples are separately proven by the acceptance pairs that execute them.
 
-## 3. Imports (once code exists)
+## 3. Imports
 
 Submodule namespace imports, matching Effect's own convention:
 
@@ -65,12 +70,22 @@ mechanism doesn't exist yet — say "not yet implemented" or "planned" instead.
 `spec/roadmap.md`'s "Current state" table is the single place that says what's
 actually built; everything else can cite it rather than re-asserting status.
 
-## 5. Tests (once code exists)
+This cuts both ways, and the second direction is the one that rots quietly: a
+capability that HAS shipped must not still be described as planned. A status
+sentence left behind by a phase that overtook it is as false as one written too
+early, and it is harder to notice because nothing about it looks like a claim.
+
+## 5. Tests
 
 `@effect/vitest`: `it.effect`, `it.layer`, `TestClock`. Every behavior in
 `spec/behaviors/` gets tests; every `.feature` file used in the library's own
 test suite is tagged `@REQ-EC-NNN` so acceptance scenarios join the
-traceability chain (see `spec/traceability.md` §5).
+traceability chain (see `spec/traceability.md` §5). One exception, enforced in
+both directions by `spec/scripts/verify-traceability.sh` check 4: the parser
+corpus under `packages/gherkin/test/fixtures/` and the tag-scanning fixtures
+under `packages/vitest/test/fixtures/` are never handed to a runner and must
+NOT carry the tag — `packages/vitest/test/acceptance/` is the only directory
+where a `.feature` file may.
 
 ## 6. Identifier scheme
 

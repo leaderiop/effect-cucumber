@@ -12,32 +12,41 @@
   relevant directory's `index.yaml`.
 - `bash spec/scripts/verify-traceability.sh` passes.
 
-## Merge gate (planned — no code exists yet)
+## Merge gate
 
-This table is aspirational until `packages/*` exists — see
-`spec/roadmap.md` § Current state for what's actually wired today. Once code
-exists, this table must be the literal, in-order list of commands a single
-`pnpm check` (or equivalent) runs — not a paraphrase of it — so the table and
-CI cannot drift apart. Per `AGENTS.md` §4, don't mark a row "passing" here
-until it's true.
+`packages/*` exists and most of this table is wired. `.github/workflows/check.yml`
+is the live gate; `spec/roadmap.md` § Current state remains the single authority
+on build status. This table is still not the literal, in-order list of commands a
+single `pnpm check` runs — there is no `pnpm check` — so it is a MAP of the gate
+rather than the gate itself, and the two can still drift. Per `AGENTS.md` §4, a
+row says what is true of it today and nothing more.
 
-| Step | Command (planned)                                   | Enforces                                                                                 |
-| ---- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| 1    | `tsc -b`                                            | Type-checks sources and tests                                                            |
-| 2    | lint                                                | House style                                                                              |
-| 3    | `vitest run`                                        | Unit + `@effect/vitest` tests                                                            |
-| 4    | Cucumber acceptance suite                           | `@REQ-EC-NNN`-tagged `.feature` scenarios pass — this library dogfooding itself          |
-| 5    | doc-examples check                                  | Every `` ```typescript ``/`` ```tsx `` fence under `spec/` compiles against the real API |
-| 6    | `bash spec/scripts/verify-traceability.sh --strict` | Spec self-consistency                                                                    |
-| 7    | coverage thresholds                                 | See `spec/traceability.md` §6                                                            |
+| Step | Command                                          | Status        | Enforces                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---- | ------------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | `pnpm build` (`tsc -b`) + `pnpm typecheck:test`  | Wired         | Type-checks sources and tests, with `@effect/tsgo`'s Layer diagnostics failing the build (ADR-EC-016)                                                                                                                                                                                                                                                                                                                                                  |
+| 2    | `pnpm lint` (`oxlint` + `dprint check`)          | Wired         | House style, plus the vendored Effect rules                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 3    | `pnpm test` (`vitest run`)                       | Wired         | Unit + `@effect/vitest` tests                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 4    | `pnpm test`, plus the two acceptance-suite gates | Wired         | The `@REQ-EC-NNN`-tagged `.feature` scenarios under `packages/vitest/test/acceptance/` run through the real `describeFeature` as part of the ordinary `vitest run` — there is no separate acceptance command, deliberately, because a suite behind its own command is a suite that stops being run. Its two discipline gates are separate: `pnpm verify:acceptance-ref-state` (INV-EC-006) and `pnpm verify:acceptance-no-any` (INV-EC-003's boundary) |
+| 5    | doc-examples check                               | **Not wired** | Every `` ```typescript ``/`` ```tsx `` fence under `spec/` compiles against the real API. The last unbuilt row in this table                                                                                                                                                                                                                                                                                                                           |
+| 6    | `pnpm verify:spec`                               | Wired         | Spec self-consistency, including check 5 — 22 of 22 requirements carried exactly once, each with a §5 row. Note: CI runs it WITHOUT `--strict`, contrary to that script's own usage comment. Currently moot (the run reports 9 PASS, 0 FAIL, 0 SKIP), and recorded here rather than left as a comment nobody checks                                                                                                                                    |
+| 7    | coverage thresholds                              | **Not wired** | See `spec/traceability.md` §6                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-## Test pyramid (planned)
+Beyond the rows above, `check.yml` runs nine further `verify:*` gates —
+`pack`, `tsgo-gate`, `oxlint-plugin`, `no-runner-dep`, `testapi-seam`,
+`tags-filter`, `shared-layer-once`, `watch-rerun` and `pitfalls` — plus
+`pnpm circular`, for seventeen commands in total. Each exists because something
+it now catches was once green while being wrong.
 
-| Level      | Tool                                                         | Convention                            |
-| ---------- | ------------------------------------------------------------ | ------------------------------------- |
-| Unit       | `@effect/vitest` (`it.effect`, `it.layer`)                   | `packages/*/test/*.test.ts`           |
-| Type-level | a type-testing tool (tstyche or equivalent — not yet chosen) | `packages/*/test/*.test-d.ts`         |
-| Acceptance | `@effect-cucumber/vitest` itself, dogfooded                  | `.feature` files tagged `@REQ-EC-NNN` |
+## Test pyramid
+
+All three levels exist. The Type-level row settled differently from how it was
+planned, and says so rather than being quietly reworded.
+
+| Level      | Tool                                                                                                                                           | Convention                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit       | `@effect/vitest` (`it.effect`, `it.layer`)                                                                                                     | `packages/*/test/*.test.ts`                                                                                                                                                                                                                                                                                                                          |
+| Type-level | plain `tsc --noEmit` via `pnpm typecheck:test`, plus `scripts/verify-tsgo-gate.sh` for the cases whose whole claim is that they do NOT compile | `packages/*/test/*.types.ts` — **not** `.test-d.ts`, and no tstyche. The suffix is outside vitest's include glob on purpose, so these files are compiled and never collected; renaming one to `.test.ts` breaks `pnpm test` with "No test suite found". A claim about what does not compile needs a separate process, which is what the tsgo gate is |
+| Acceptance | `@effect-cucumber/vitest` itself, dogfooded                                                                                                    | `.feature` + `.steps.test.ts` pairs under `packages/vitest/test/acceptance/`, the `.feature` files tagged `@REQ-EC-NNN`, run by the ordinary `pnpm test`. Guarded by `pnpm verify:acceptance-ref-state` and `pnpm verify:acceptance-no-any`; every pair carries a numbered mutation record in its module doc comment, per that directory's README    |
 
 ## What "done" means for a spec doc
 

@@ -3,14 +3,24 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-Four of these — INV-EC-001, INV-EC-002, INV-EC-003 and INV-EC-004 — are enforced by
-code today, and each entry names the mechanism and the assertions that back it.
-INV-EC-002 now holds on BOTH Layer scopes: the per-Scenario scope was built first,
+All six are enforced by code today, and each entry names the mechanism and the
+assertions that back it. No entry on this page describes a **planned** mechanism
+any more; INV-EC-006 was the last one that did, and Phase 11 built it.
+INV-EC-002 holds on BOTH Layer scopes: the per-Scenario scope was built first,
 and Phase 10 built the `shared` clause of its own wording, so its entry names two
-mechanisms rather than one. The remaining two are not enforced at all: each still
-names the **planned** enforcement mechanism and says so in its `Source` label, per
-`AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single source of
-truth for what's actually built.
+mechanisms rather than one. INV-EC-005 has been enforced on both sides at once —
+runtime and compile time — since Phase 8.
+
+INV-EC-006 is enforced WITHIN THIS REPOSITORY and the difference is not
+cosmetic, so the count above is stated with it attached rather than left to be
+discovered in the entry: `scripts/verify-acceptance-ref-state.sh` scans this
+repository's own acceptance suite, which is the code here that plays a
+consumer's part, and nothing scans a consumer's step modules. For a consumer the
+invariant remains a reviewed convention, and LINT-01 — deferred to a later
+milestone, see `spec/roadmap.md` § Planned — is the mechanism that would close
+that half. Stated per `AGENTS.md` §4 ("say only what is true"), which cuts both
+ways: an enforced invariant must not be described as unenforced either.
+`spec/roadmap.md` is the single source of truth for what's actually built.
 
 ---
 
@@ -144,7 +154,13 @@ implicit so the invariant claims only what a type system can actually deliver
 (`.planning/research/PITFALLS.md` Pitfall 6). The practical rule: an `any`
 reaching a step body's declared type is a defect in that step, not a permitted
 escape hatch — the compile-gate fixtures under
-`packages/vitest/test/tsgo-gate/` are asserted to contain none.
+`packages/vitest/test/tsgo-gate/` are asserted to contain none. As of Phase 11
+the same prohibition is asserted over the acceptance suite by
+`scripts/verify-acceptance-no-any.sh`, and the configuration a CONSUMER sets in
+their own build to keep this boundary from opening in their step modules — this
+repository cannot see that build, so it is a recommendation and not an
+enforcement — is in
+[`packages/vitest/README.md` § Recommended lint and compiler configuration](../packages/vitest/README.md#recommended-lint-and-compiler-configuration-for-your-step-modules).
 
 **Source**: `packages/vitest/src/Dsl.ts`'s `StepRegistrar<ROut>`, which binds a
 step's required context to the ambient Layer's output type rather than leaving
@@ -275,14 +291,29 @@ and — as of Phase 11 — enforced over the acceptance suite by
 `packages/vitest/test/acceptance/*.steps.test.ts` declares a `let` or `var` at
 any scope, or writes to a value in place.
 
-Be precise about the scope of that enforcement, because it is narrower than the
-invariant. The gate covers the ACCEPTANCE SUITE only — the suite whose whole
-purpose is to run the library the way a consumer does — and it is a structural
-scan of declarations, so PROH-11-03's module-scope `const` holder written to by
-a step is caught only in its common in-place-mutator form. For a CONSUMER's own
-step modules the invariant remains a convention; a lint rule flagging a
-`let`/`var` declared inside a DSL callback that a step function closes over is
-still the candidate mechanism for that half — see `spec/roadmap.md` § Planned.
+Be precise about the scope of that enforcement, because it is narrower in one
+direction and wider in another, and both matter.
+
+WIDER than the invariant, on the files it reaches: the invariant forbids a bare
+closure variable _declared inside a `Scenario`/`Rule`/`Background` callback_,
+whereas the gate forbids a `let` or `var` declared **at any scope** in an
+acceptance step module — module scope, a helper function's body, a Layer
+constructor. That is a deliberate superset. A structural scan cannot tell which
+declarations a step body closes over without resolving scope, and the wider rule
+is one this repository's own suite can live under, so it is asserted rather than
+approximated.
+
+NARROWER than the invariant, on two counts. First, it is a scan of
+DECLARATIONS, so PROH-11-03's module-scope `const` holder written to by a step —
+a `const` array that a step `push`es to — is caught only in its common
+in-place-mutator form (assertion 4), not in general. Second and more
+importantly, it covers the ACCEPTANCE SUITE only: the suite whose whole purpose
+is to run the library the way a consumer does. For a CONSUMER's own step modules
+the invariant remains a reviewed convention, and nothing this package ships can
+change that. **LINT-01** — a lint rule flagging a `let`/`var` declared inside a
+DSL callback that a step function closes over — is the mechanism that would
+close that half, and it is deferred to a later milestone: see
+`spec/roadmap.md` § Planned and `.planning/REQUIREMENTS.md` § v2.
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare
