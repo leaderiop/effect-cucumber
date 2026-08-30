@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Rule and Scenario Outline** - Rule-scoped extra Layers and per-row-typed Outline examples (completed 2026-08-29)
 - [x] **Phase 9: Tags** - Gherkin tags become native vitest tags; `@skip` skips, `@only` never breaks CI (completed 2026-08-29)
 - [ ] **Phase 10: Layer Scopes (per-Scenario default + `shared`)** - Both scopes work, and `TestClock` stays per-Scenario even on the shared path
-- [ ] **Phase 11: Composition Root and Dogfooded Acceptance Suite** - The spec's worked examples run green end to end, closing traceability
+- [x] **Phase 11: Composition Root and Dogfooded Acceptance Suite** - The spec's worked examples run green end to end, closing traceability (completed 2026-08-30)
 
 ## Phase Details
 
@@ -495,39 +495,39 @@ gate over the acceptance directory the plan before it populated)
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — Tracer: the acceptance directory, its convention README, the `spec/behaviors/01` apples pair (DSL-01/02/03 + RUN-06), the `gherkinTags` wiring in `vitest.config.ts`, and §5 opened — plus a blocking decision checkpoint on the permanent `REQ-EC-001`..`022` allocation
+- [x] 11-01-PLAN.md — Tracer: the acceptance directory, its convention README, the `spec/behaviors/01` apples pair (DSL-01/02/03 + RUN-06), the `gherkinTags` wiring in `vitest.config.ts`, and §5 opened — plus a blocking decision checkpoint on the permanent `REQ-EC-001`..`022` allocation
 
 **Wave 2** *(blocked on 11-01)*
 
-- [ ] 11-02-PLAN.md — The `spec/behaviors/02` accounts pair: shared `Database` + per-Scenario `World`, Background container, `@skip`, `excludeTags`, and `TestClock` isolation on the shared path (DSL-04, RUN-03, RUN-04, RUN-05)
+- [x] 11-02-PLAN.md — The `spec/behaviors/02` accounts pair: shared `Database` + per-Scenario `World`, Background container, `@skip`, `excludeTags`, and `TestClock` isolation on the shared path (DSL-04, RUN-03, RUN-04, RUN-05)
 
 **Wave 3** *(blocked on 11-02)*
 
-- [ ] 11-03-PLAN.md — The `spec/behaviors/03` discounts pair: DataTable Background, Rule-scoped Layer, two-row Outline, transparent `TestClock` (PARSE-04, DSL-05, DSL-06)
+- [x] 11-03-PLAN.md — The `spec/behaviors/03` discounts pair: DataTable Background, Rule-scoped Layer, two-row Outline, transparent `TestClock` (PARSE-04, DSL-05, DSL-06)
 
 **Wave 4** *(blocked on 11-03)*
 
-- [ ] 11-04-PLAN.md — The parsing/matching pair: a second load that is data, correlation observable from a step, coerced built-ins, and a custom parameter type across two loads (PARSE-01, PARSE-02, MATCH-01, MATCH-02, RUN-01)
+- [x] 11-04-PLAN.md — The parsing/matching pair: a second load that is data, correlation observable from a step, coerced built-ins, and a custom parameter type across two loads (PARSE-01, PARSE-02, MATCH-01, MATCH-02, RUN-01)
 
 **Wave 5** *(blocked on 11-04)*
 
-- [ ] 11-05-PLAN.md — The hooks pair (DSL-07) plus `scripts/verify-acceptance-ref-state.sh` (RUN-06 / INV-EC-006, SC#2) and `scripts/verify-acceptance-no-any.sh` (D-04b), both wired into `check.yml`
+- [x] 11-05-PLAN.md — The hooks pair (DSL-07) plus `scripts/verify-acceptance-ref-state.sh` (RUN-06 / INV-EC-006, SC#2) and `scripts/verify-acceptance-no-any.sh` (D-04b), both wired into `check.yml`
 
 **Wave 6** *(blocked on 11-05)*
 
-- [ ] 11-06-PLAN.md — D-02's five starved fixtures and their wrapper (PARSE-03, MATCH-03/04/05, RUN-02), plus `verify-traceability.sh` check 5 making 22/22 a derived count (SC#3)
+- [x] 11-06-PLAN.md — D-02's five starved fixtures and their wrapper (PARSE-03, MATCH-03/04/05, RUN-02), plus `verify-traceability.sh` check 5 making 22/22 a derived count (SC#3)
 
 **Wave 7** *(blocked on 11-06)*
 
-- [ ] 11-07-PLAN.md — `spec/process/looks-done-but-isnt-checklist.md` (24 items, ids `P-01`..`P-24`, one named executor each) and the thirteen in-process items as fresh dedicated tests (D-03, SC#4)
+- [x] 11-07-PLAN.md — `spec/process/looks-done-but-isnt-checklist.md` (24 items, ids `P-01`..`P-24`, one named executor each) and the thirteen in-process items as fresh dedicated tests (D-03, SC#4)
 
 **Wave 8** *(blocked on 11-07)*
 
-- [ ] 11-08-PLAN.md — `scripts/verify-watch-rerun.sh` (P-14), `scripts/verify-pitfalls-checklist.sh` (the ten CLI items plus the coverage cross-check), `spec/process/rc-bump-checklist.md` (P-18), and both CI steps
+- [x] 11-08-PLAN.md — `scripts/verify-watch-rerun.sh` (P-14), `scripts/verify-pitfalls-checklist.sh` (the ten CLI items plus the coverage cross-check), `spec/process/rc-bump-checklist.md` (P-18), and both CI steps
 
 **Wave 9** *(blocked on 11-08)*
 
-- [ ] 11-09-PLAN.md — D-04a's consumer lint recommendation, INV-EC-006's first real `Source`, every status document reconciled, RUN-06 marked Complete with per-criterion evidence, and a seventeen-gate sweep
+- [x] 11-09-PLAN.md — D-04a's consumer lint recommendation, INV-EC-006's first real `Source`, every status document reconciled, RUN-06 marked Complete with per-criterion evidence, and a seventeen-gate sweep
 
 Decisions locked before planning (`11-CONTEXT.md`): a strict 1:1 `REQ-EC-001`..`022` allocation, one
 tag per Scenario, with a §5 mapping table (D-01); the four "fails loudly" requirements proven by a
@@ -588,7 +588,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
 | 10. Layer Scopes (per-Scenario + `shared`) | 8/8 | In Progress|  |
-| 11. Composition Root and Acceptance Suite | 0/9 | Planned | - |
+| 11. Composition Root and Acceptance Suite | 9/9 | Complete    | 2026-08-30 |
 
 ---
 *Roadmap created: 2026-08-28 — depth: comprehensive*
