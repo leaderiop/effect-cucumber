@@ -124,7 +124,7 @@ const noop = function*() {
  * Read the ambient `Marker` back out of a collected Layer — the only way to observe D-03/D-04.
  *
  * The error channel is `unknown` rather than `never` because `FeatureCollection.layer` erases the
- * two overloads' `E1`/`E2` (describeFeature.ts's `LayerArgument` note). A Layer that fails to build
+ * two overloads' error channels (describeFeature.ts's `LayerArgument` note). A Layer that fails to build
  * would surface here as a test failure, which is the right outcome; narrowing it would need a cast.
  */
 const whoProvides = (collected: FeatureCollection): Effect.Effect<string, unknown> =>

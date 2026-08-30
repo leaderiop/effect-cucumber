@@ -13,7 +13,7 @@
  * `packages/gherkin/src/loadFeature.ts` is the same role in the sibling package, and its doc comment
  * calls it "the only file that knows the order they run in". This is that file for this package.
  *
- * Five things about this module are not visible from the code.
+ * Six things about this module are not visible from the code.
  *
  * (a) **The plain-Layer overload is declared LAST, and the order is load-bearing — in the OPPOSITE
  *     direction from `Dsl.ts` note (a).** TypeScript reports a failed overloaded call as "No overload
@@ -89,6 +89,35 @@
  *     `import type { TestOptions } from "vitest"` in `TestApi.ts` or `Runner.ts` the plausible,
  *     type-checking, lint-clean way to undo the seam.
  *
+ * (f) **`shared`'s error channel is pinned to `never`, and `perScenario`'s deliberately is not.**
+ *     The object form's `shared` field is `Layer.Layer<RShared, never, never>` on BOTH overloads
+ *     below, so a `Layer<Db, DbConnectError>` — the realistic case, a testcontainer that fails to
+ *     start — does not compile in that position. The reason is upstream and verified by reading it
+ *     rather than assumed: the installed `@effect/vitest@4.0.0-rc.112`'s
+ *     `dist/internal/internal.js` line 147 builds the Layer with
+ *     `Layer.buildWithMemoMap(withTestEnv, memoMap, scope).pipe(Effect.orDie, Effect.cached,
+ *     Effect.runSync)`. `Effect.orDie` turns a typed Layer failure into an unrecoverable DEFECT,
+ *     and that defect is raised out of a `beforeAll`/`beforeEach` hook — detached from every
+ *     Scenario. The report names no Scenario, no step and no `.feature` file, which is a failure
+ *     nothing can be attributed to. The constraint does not remove that failure mode; it moves the
+ *     choice to where the types can see it, so the caller writes `Layer.catchAll` or `Layer.orDie`
+ *     themselves and the collapse is visible in their own source.
+ *
+ *     `perScenario` keeps its `E2` and is NOT constrained. That asymmetry is the decision (D-04 of
+ *     `10-CONTEXT.md`, Pitfall 27), not an oversight: a `perScenario` Layer is provided INSIDE each
+ *     Scenario's own Effect, so a typed failure there already surfaces through the Effect test
+ *     constructor's `unknown` error channel as that Scenario's own failure, named and located.
+ *     A Layer meant to fail one Scenario is a legitimate thing to write, and constraining it would
+ *     forbid it for no safety gain.
+ *
+ *     The claim is carried in all three directions — the rejection, the positive control, and the
+ *     `perScenario` asymmetry — by `packages/vitest/test/SharedLayerConstraint.types.ts`, which
+ *     `pnpm typecheck:test` compiles on every push. Note (a)'s reporting rule still applies to the
+ *     rejection: TypeScript reports it against the LAST overload, so the diagnostic a consumer
+ *     reads names a missing-properties mismatch against the plain-Layer form rather than the error
+ *     channel. The call is rejected either way, which is what the constraint is for; the exact text
+ *     is recorded in `10-01-SUMMARY.md` rather than asserted on.
+ *
  * Neither `collectFeature` nor the registry behind it is re-exported from
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
@@ -130,6 +159,11 @@ import type { TestApi } from "./TestApi.ts"
  * Only the implementation and the module-scope helpers below refer to this. TypeScript never
  * resolves a call against an implementation signature, so nothing here is part of the public
  * contract.
+ *
+ * Note (f)'s `shared: Layer<R, never, never>` constraint therefore lives on the OVERLOADS and
+ * deliberately not here: narrowing this union would only make the implementation body disagree with
+ * itself — the body normalises whatever the overloads already let through — while changing nothing a
+ * caller can observe.
  */
 type LayerArgument =
   | Layer.Layer<any, any, never>
@@ -764,10 +798,10 @@ const collect = (
  * first, since planning and warning deliberately cover the WHOLE Feature and only emission is
  * filtered. The absence is the contract, not an oversight awaiting a follow-up.
  */
-export function collectFeature<RShared, RScenario, E1, E2>(
+export function collectFeature<RShared, RScenario, E2>(
   feature: ParsedFeature,
   layer: {
-    readonly shared: Layer.Layer<RShared, E1, never>
+    readonly shared: Layer.Layer<RShared, never, never>
     readonly perScenario: Layer.Layer<RScenario, E2, never>
   },
   define: (dsl: FeatureDsl<RShared | RScenario>) => void
@@ -799,6 +833,13 @@ export function collectFeature(
  * REQUIRED in the object form even when a Feature has no per-Scenario-fresh state — write
  * `perScenario: Layer.empty` (D-03). Where both name the same service, `perScenario` wins — note (d).
  *
+ * In the object form, `shared` must be a `Layer<R, never, never>`: its error channel is pinned to
+ * `never`, so a Layer that can FAIL is a compile error in that position. Handle the failure where
+ * the types can see it — `Layer.catchAll` to substitute a fallback, `Layer.orDie` to say the
+ * collapse is intended — and pass the result. `perScenario` is deliberately not constrained; a
+ * per-Scenario Layer that fails fails its own Scenario, by name and in place. Note (f) has the
+ * upstream reason for the asymmetry.
+ *
  * Emits one running test per Scenario, nested inside a block named after the Feature, with a further
  * nested block per `Rule` (RUN-01, ADR-EC-004). A Background's steps are the leading `yield*`s of the
  * same Effect rather than a separate hook, so they run first and the first failure ends the Scenario
@@ -823,14 +864,15 @@ export function collectFeature(
  * passed.
  *
  * @param feature - a `ParsedFeature` from `@effect-cucumber/gherkin`'s `loadFeature`/`parseFeature`
- * @param layer - the ambient Layer, or `{ shared, perScenario }`
+ * @param layer - the ambient Layer, or `{ shared, perScenario }` where `shared` is a
+ *   `Layer<R, never, never>` — note (f)
  * @param define - runs synchronously; registers steps and containers. Note (c)
  * @param options - the registration-time tag filter; absent means no filter, and so does `[]`
  */
-export function describeFeature<RShared, RScenario, E1, E2>(
+export function describeFeature<RShared, RScenario, E2>(
   feature: ParsedFeature,
   layer: {
-    readonly shared: Layer.Layer<RShared, E1, never>
+    readonly shared: Layer.Layer<RShared, never, never>
     readonly perScenario: Layer.Layer<RScenario, E2, never>
   },
   define: (dsl: FeatureDsl<RShared | RScenario>) => void,

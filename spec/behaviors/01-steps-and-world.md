@@ -76,10 +76,11 @@ REQUIREMENT: loadFeature MUST parse Gherkin via @cucumber/gherkin
 
 ```ts
 // Two overloads. The object form is declared FIRST; the plain-Layer form LAST.
-export function describeFeature<RShared, RScenario, E1, E2>(
+// `shared`'s error channel is pinned to `never`; `perScenario`'s deliberately is not.
+export function describeFeature<RShared, RScenario, E2>(
   feature: ParsedFeature,
   layer: {
-    readonly shared: Layer.Layer<RShared, E1, never>
+    readonly shared: Layer.Layer<RShared, never, never>
     readonly perScenario: Layer.Layer<RScenario, E2, never>
   },
   define: (dsl: FeatureDsl<RShared | RScenario>) => void
@@ -118,6 +119,24 @@ export function describeFeature<ROut, E>(
 > See `packages/vitest/src/describeFeature.ts` note (a) and `scripts/verify-tsgo-gate.sh` assertion
 > 8, which fails by name if the two overloads are swapped.
 
+> **Correction (2026-08-30, Phase 10 plan 10-01, verified by reading the installed
+> `@effect/vitest@4.0.0-rc.112`'s `dist/internal/internal.js` line 147):** `shared`'s error channel
+> is now pinned to `never`, where this behavior previously published a free `E1`. `layer()` builds
+> the shared Layer with
+> `Layer.buildWithMemoMap(withTestEnv, memoMap, scope).pipe(Effect.orDie, Effect.cached,
+> Effect.runSync)`, and `Effect.orDie` converts a typed shared-Layer failure into an unrecoverable
+> DEFECT raised out of a `beforeAll`/`beforeEach` hook — detached from every Scenario, so the report
+> names no Scenario, no step and no `.feature` file. A published `E1` invited exactly the realistic
+> case (a testcontainer Layer with a `DbConnectError`) into that position. The constraint does not
+> remove the failure mode; it forces the caller to collapse it with `Layer.catchAll`/`Layer.orDie`
+> where the types make the choice visible.
+>
+> `perScenario` keeps its free `E2` and is deliberately NOT constrained. It is provided inside each
+> Scenario's own Effect, so a typed failure there already surfaces as that Scenario's own failure,
+> named and located; a Layer meant to fail one Scenario is a legitimate thing to write. The
+> asymmetry is asserted in all three directions — the rejection, the positive control, and the
+> unconstrained `perScenario` — by `packages/vitest/test/SharedLayerConstraint.types.ts`.
+
 ```
 REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
              provided by `layer` MUST fail to compile. It MUST NOT be
@@ -133,6 +152,13 @@ REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
              make an omitted `perScenario` indistinguishable from a caller
              mistake. Where both Layers name the same service, `perScenario`
              wins (D-04).
+
+             `shared` MUST be a Layer<R, never, never>: a shared Layer that
+             can fail MUST NOT compile, because @effect/vitest's layer()
+             pipes the build through Effect.orDie and raises the failure as a
+             defect out of a beforeAll hook, naming no Scenario. `perScenario`
+             MUST NOT carry the same constraint — a per-Scenario Layer that
+             fails fails its own Scenario, by name and in place.
 ```
 
 ## BEH-EC-003: A step is an Effect-returning function
