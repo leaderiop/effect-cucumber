@@ -129,10 +129,16 @@
  * Plan 10-03's second block records its own three mutations (i, ii and iii) in its own header, beside
  * the arrangement they mutate — 08-07's precedent, and the same reason. Plan 10-04's two blocks at
  * the very bottom of this file do the same with mutations iv and v (the shared-clock/console block)
- * and vi and vii (the Rule-under-`shared` block). Mutation iv is the one to read if you are only
- * going to read one: it is the reason the `TestConsole` half of that block cannot be deleted as
+ * and vi, vi-b and vii (the Rule-under-`shared` block). Mutation iv is the one to read if you are
+ * only going to read one: it is the reason the `TestConsole` half of that block cannot be deleted as
  * redundant beside the clock half, because the two are guarded by DIFFERENT halves of ADR-EC-018's
  * fix and only the console half notices when `excludeTestServices: true` goes missing.
+ *
+ * Mutations iv and vi both turned up the SAME underlying mechanism from opposite directions —
+ * `Effect.provide` forks the `CurrentMemoMap` that `@effect/vitest`'s `layer(...)` leaves in the
+ * ambient context, so a Layer that is the same OBJECT as one already built there is a memo hit no
+ * matter how it is composed. Anyone reasoning about build counts on the shared path in a future
+ * phase should read both records before predicting what a change will do.
  *
  * **Mutation C SURVIVED the first version of this file, and that is why the last block exists.**
  * The first draft asserted only on what the emitted tests did while running. With nothing emitted,
@@ -2285,6 +2291,283 @@ describe("a shared Layer keeps every Scenario its own TestClock and TestConsole 
       `Shared clock isolation${nameSeparator}the second shared clock scenario still starts at time zero`,
       `Shared clock isolation${nameSeparator}the third shared clock scenario still starts at time zero and shares one build`,
       `Shared clock isolation${nameSeparator}the fourth shared clock scenario gets its own test console`
+    ])
+  })
+})
+
+/**
+ * Plan 10-04, Task 2 — a `Rule`'s own `extraLayer` under a `shared` Feature. The FOURTEENTH real
+ * `describeFeature` call in this file, and the LAST block in it.
+ *
+ * This closes `10-CONTEXT.md`'s D-03: the combination of ADR-EC-006's `shared` scope with
+ * ADR-EC-010's Rule-scoped `extraLayer`. Both ADRs describe that combination only in PROSE. Neither
+ * ADR-EC-010's own Rule-isolation tests (the `Rule composition` block halfway up this file) nor plan
+ * 10-03's shared-Layer block exercises it, and the composition it depends on CHANGED in plan 10-02 —
+ * a Rule's `extraLayer` is now composed onto the per-Scenario tier alone, with any shared service it
+ * needs left on the composed Layer's `RIn` for the ambient `layer(...)` context to satisfy. That
+ * property was measured during planning and is asserted here; this block is what keeps it true.
+ *
+ * ## The two claims, and why one array cannot carry both
+ *
+ * - `ruleExtraOrdinals` is `[1, 2]` — the Rule's Layer is per-Scenario scoped (ADR-EC-010), so two
+ *   Scenarios in the Rule mean two builds.
+ * - `ruleSharedOrdinals` is `[1, 1]` — the Feature's `shared` Layer is built ONCE for the whole run,
+ *   and being READ by a Rule's Layer must not cause it to be REBUILT.
+ *
+ * Those are two different properties across one trust boundary, and the pair distinguishes three
+ * arrangements a single array cannot: "both memoised" (`[1, 1]` / `[1, 1]`), "both fresh" (`[1, 2]` /
+ * `[1, 2]`), and the one correct arrangement. Scenario two additionally asserts `sharedCatalogBuilds`
+ * is exactly 1 from INSIDE its own body, which is plan 10-03's pattern and for its reason: that makes
+ * the claim observable from outside the process as a test node's pass/fail status, which a reporter
+ * has a field for and a module counter does not.
+ *
+ * ## `netPrice` is DERIVED, and the derivation is the evidence
+ *
+ * `ruleDiscountLayer` reads `SharedCatalog` while it builds and returns `listPrice - 10`. 90 is a
+ * number this file never writes down, so its presence is evidence about HOW the two Layers composed
+ * rather than merely that both are reachable — the `Rule composition` block's own argument, applied
+ * one tier up. It is also the only assertion here that would fail if plan 10-02's `RIn` claim were
+ * wrong, because a Rule Layer whose shared dependency went unsatisfied does not build at all.
+ *
+ * Derivation is NOT sufficient on its own, and mutation vii below is the proof: a hardcoded
+ * `Layer.succeed` still satisfies `ruleNetPrices`. That is exactly why the build-ordinal assertion is
+ * kept BESIDE the derived-value one rather than folded into it (T-10-04-04).
+ *
+ * ## The name assertion is restated here rather than inherited from the `Rule composition` block
+ *
+ * That block already proves a Rule's name sits BETWEEN the Feature's and the Scenario's — on the
+ * DEFAULT path. The shared path reaches `describe` through a different `TestApi` object, and could
+ * nest differently with every other assertion in this block still green (T-10-04-05). So
+ * `sharedRuleScenarioNames` is compared in full.
+ *
+ * ## Mutation-tested (each performed, run, then reverted)
+ *
+ * - vi.  `describeFeature.ts`'s `Rule` container changed to compose `extraLayer` onto BOTH tiers,
+ *        `Layer.provideMerge(Layer.merge(featureLayer, sharedLayer))(extraLayer)` — the plausible
+ *        "the Rule should see the whole ambient Layer" tidy-up, and the exact change the comment at
+ *        that line warns against.
+ *
+ *        **NOTHING went red. 768 passed, the same as unmutated.** The plan predicted
+ *        `ruleSharedOrdinals` would become `[1, 2]`, and the reason it does not is the same
+ *        memo-map mechanism mutation iv turned up one block above: `Effect.provide` forks the
+ *        `CurrentMemoMap` that `layer(...)`'s `buildWithMemoMap` left in the ambient context, and
+ *        `sharedLayer` here is the SAME OBJECT `layer(...)` already built. Merging it into the
+ *        Rule's provide is therefore a memo HIT, not a rebuild. Recorded rather than smoothed over,
+ *        because it is a real limit on what this assertion can see: the composition change plan
+ *        10-02 made is guarded by `verify:testapi-seam` and by the `RIn` claim below, NOT by the
+ *        shared build count, and anyone reading `[1, 1]` as proof that the tiers stayed separate
+ *        would be reading more into it than it says.
+ * - vi-b. The same change with the memoisation defeated — `Layer.merge(featureLayer,
+ *        Layer.fresh(sharedLayer))` — which is what a composition that genuinely rebuilds the shared
+ *        tier per Rule Scenario looks like. Run because mutation vi left `ruleSharedOrdinals`
+ *        unproven, and an assertion no mutation can turn red is not yet known to assert anything.
+ *        5 fail, all this block's and nothing else in the repo:
+ *
+ *        ```
+ *        FAIL  Shared rule composition > … > the second rule scenario under a shared feature rebuilds only the rule tier
+ *              AssertionError: expected 3 to equal 1
+ *        FAIL  … > gave both Rule Scenarios the SAME single shared build
+ *              AssertionError: expected [ 2 ] to deeply equal [ 1, 1 ]
+ *        FAIL  … > rebuilt the Rule's own extraLayer once per Scenario in the Rule
+ *              AssertionError: expected [ 1 ] to deeply equal [ 1, 2 ]
+ *        FAIL  … > computed the Rule tier's price from the SHARED tier's, in both Scenarios
+ *              AssertionError: expected [ 90 ] to deeply equal [ 90, 90 ]
+ *        FAIL  … > emitted both Scenarios under the Feature AND under the Rule
+ *              AssertionError: expected [ Array(1) ] to deeply equal [ …(2) ]
+ *        ```
+ *
+ *        Scenario ONE already reads shared ordinal `2` under this mutation, because the Rule's
+ *        provide rebuilds the catalog before that Scenario's first step runs. So `ruleSharedOrdinals`
+ *        IS a real build-count assertion; what mutation vi establishes is only that Layer identity,
+ *        not composition shape, is what the count actually tracks.
+ * - vii. `ruleDiscountLayer` changed from a `Layer.effect` reading `SharedCatalog` to a
+ *        `Layer.succeed` with a hardcoded `netPrice: 90`. **Exactly 1 fails**, and it is the ordinal
+ *        assertion:
+ *
+ *        ```
+ *        FAIL  … > rebuilt the Rule's own extraLayer once per Scenario in the Rule
+ *              AssertionError: expected [ 1, 1 ] to deeply equal [ 1, 2 ]
+ *        ```
+ *
+ *        `ruleNetPrices` stays `[90, 90]` and passes, exactly as predicted. That is the whole
+ *        argument for keeping the build-ordinal assertion BESIDE the derived-value one instead of
+ *        folding the two together: a derived value proves the tiers composed, and says nothing at all
+ *        about how often either of them built (T-10-04-04).
+ */
+
+/** The FEATURE's `shared` tier: built ONCE for the whole run, and read by the Rule's Layer. */
+class SharedCatalog extends Context.Service<SharedCatalog, {
+  readonly listPrice: number
+  readonly buildOrdinal: number
+}>()("SharedCatalog") {}
+
+/**
+ * The RULE's own tier, DERIVED from the shared one.
+ *
+ * `netPrice` is computed from `SharedCatalog` while this Layer builds — see the block header on why
+ * that is evidence and why `buildOrdinal` beside it is still not redundant.
+ */
+class RuleDiscount extends Context.Service<RuleDiscount, {
+  readonly netPrice: number
+  readonly buildOrdinal: number
+}>()("RuleDiscount") {}
+
+/** How many times the Feature's `shared` Layer has been built. Must be 1 for the whole run. */
+let sharedCatalogBuilds = 0
+
+/** How many times the Rule's `extraLayer` has been built. Must be one per Scenario in the Rule. */
+let ruleDiscountBuilds = 0
+
+/** The Feature's `shared` tier. `Layer.effect` for plan 10-03's reason: only it has a build body. */
+const sharedCatalogLayer = Layer.effect(
+  SharedCatalog,
+  Effect.gen(function*() {
+    // Same `require-yield` satisfaction as the other build bodies in this file — the counter IS the
+    // observation, so there is nothing to await, and `Layer.succeed` would delete the measurement.
+    yield* Effect.void
+    sharedCatalogBuilds += 1
+    return SharedCatalog.of({ listPrice: 100, buildOrdinal: sharedCatalogBuilds })
+  })
+)
+
+/**
+ * The Rule's `extraLayer`, and the whole point of this block.
+ *
+ * It DEPENDS on `SharedCatalog`, which plan 10-02 left on this composed Layer's `RIn` rather than
+ * satisfying it here: `Layer.provideMerge(featureLayer)(extraLayer)` feeds only the PER-SCENARIO tier
+ * in, and the ambient context `layer(...)` establishes around the emitted node is what resolves the
+ * shared half at run time. Nothing in the repo asserted that until this block; `describeFeature.ts`
+ * line ~843 names this block by number as the thing that keeps it true.
+ */
+const ruleDiscountLayer = Layer.effect(
+  RuleDiscount,
+  Effect.gen(function*() {
+    ruleDiscountBuilds += 1
+    const catalog = yield* SharedCatalog
+    return RuleDiscount.of({ netPrice: catalog.listPrice - 10, buildOrdinal: ruleDiscountBuilds })
+  })
+)
+
+/** The SHARED build each Rule Scenario reached. Both entries must name the same single build. */
+const ruleSharedOrdinals: Array<number> = []
+
+/** The RULE build each Rule Scenario reached, in the same run. The two entries must differ. */
+const ruleExtraOrdinals: Array<number> = []
+
+/** The derived price each Rule Scenario read — 90, which this file never writes down. */
+const ruleNetPrices: Array<number> = []
+
+/** The full name of each Rule Scenario under the shared Feature that ran to completion. */
+const sharedRuleScenarioNames: Array<string> = []
+
+/**
+ * ONE `Rule:` containing two Scenarios, under a Feature declared with `{ shared, perScenario }`.
+ *
+ * Two and not three: unlike plan 10-03's build-count blocks, the defect this block guards against
+ * shows up on the SECOND Scenario (a shared Layer rebuilt for the Rule reads ordinal 2 there, and a
+ * Rule Layer that stopped rebuilding reads ordinal 1). A third Scenario would add a third sample of
+ * a claim two already separate.
+ *
+ * The Rule name and both Scenario TITLES are fixed: plan 10-05's real-CLI gate asserts on them by
+ * exact suffix match, so renaming one here without renaming it there turns that gate vacuously true.
+ */
+const sharedRuleFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Shared rule composition
+
+  Rule: discounted checkout under a shared catalog
+
+    Scenario: the first rule scenario under a shared feature reads both tiers
+      When the first shared rule scenario reads both tiers
+      Then the shared rule scenario is done
+
+    Scenario: the second rule scenario under a shared feature rebuilds only the rule tier
+      When the second shared rule scenario reads both tiers and the shared build count
+      Then the shared rule scenario is done
+`,
+    "test/shared-rule-composition.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE FOURTEENTH real `describeFeature` call in this file, and the THIRD to pass the object form.
+// `perScenario: Layer.empty` again, for the same reason as the block above: with nothing in that
+// tier, the Rule's Layer reaching `SharedCatalog` at all can only have happened through the ambient
+// `layer(...)` context, which is precisely plan 10-02's `RIn` claim.
+describeFeature(sharedRuleFeature, { shared: sharedCatalogLayer, perScenario: Layer.empty }, ({ Rule }) => {
+  Rule("discounted checkout under a shared catalog", ruleDiscountLayer, ({ Then, When }) => {
+    When("the first shared rule scenario reads both tiers", function*() {
+      const catalog = yield* SharedCatalog
+      const discount = yield* RuleDiscount
+
+      // 100 is the shared tier's own constant; 90 is reachable ONLY if the Rule's Layer built with
+      // `SharedCatalog` resolved from the ambient context — see the block header.
+      assert.strictEqual(catalog.listPrice, 100)
+      assert.strictEqual(discount.netPrice, 90)
+
+      ruleSharedOrdinals.push(catalog.buildOrdinal)
+      ruleExtraOrdinals.push(discount.buildOrdinal)
+      ruleNetPrices.push(discount.netPrice)
+    })
+
+    When("the second shared rule scenario reads both tiers and the shared build count", function*() {
+      // FIRST, and deliberately so: this is the assertion plan 10-05's CLI gate can observe from
+      // outside the process as this node's pass/fail status. It fails the moment the shared tier is
+      // rebuilt for the Rule, which is the defect this whole block exists to catch.
+      assert.strictEqual(sharedCatalogBuilds, 1)
+
+      const catalog = yield* SharedCatalog
+      const discount = yield* RuleDiscount
+
+      assert.strictEqual(catalog.listPrice, 100)
+      assert.strictEqual(discount.netPrice, 90)
+
+      ruleSharedOrdinals.push(catalog.buildOrdinal)
+      ruleExtraOrdinals.push(discount.buildOrdinal)
+      ruleNetPrices.push(discount.netPrice)
+    })
+
+    // ONE definition matched by both Scenarios — `currentTestName()` differs per running test.
+    Then("the shared rule scenario is done", function*() {
+      // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
+      yield* Effect.void
+      sharedRuleScenarioNames.push(currentTestName())
+    })
+  })
+})
+
+/**
+ * DECLARED LAST IN THIS FILE, after the block that registered the Feature, for the declaration-order
+ * reason every other reader here uses.
+ */
+describe("a Rule's own extraLayer under a shared Feature rebuilds only the Rule tier (10-04)", () => {
+  it("gave both Rule Scenarios the SAME single shared build", () => {
+    // D-03's first half, and roadmap SC #2 one nesting level deeper: a `Rule` inside a `shared`
+    // Feature must not cost that Feature its build-once guarantee.
+    expect(ruleSharedOrdinals).toEqual([1, 1])
+  })
+
+  it("rebuilt the Rule's own extraLayer once per Scenario in the Rule", () => {
+    // D-03's second half, and ADR-EC-010's per-Scenario scope. Paired with the assertion above for
+    // the reason the block header gives: neither array alone can tell the correct arrangement from
+    // "both memoised" or "both fresh" (T-10-04-03).
+    expect(ruleExtraOrdinals).toEqual([1, 2])
+  })
+
+  it("computed the Rule tier's price from the SHARED tier's, in both Scenarios", () => {
+    // Plan 10-02's `RIn` claim, asserted rather than trusted: a Rule Layer whose shared dependency
+    // went unsatisfied would not build at all, so 90 twice is the composition working. Mutation vii
+    // is why this does not replace the ordinal assertion above.
+    expect(ruleNetPrices).toEqual([90, 90])
+  })
+
+  it("emitted both Scenarios under the Feature AND under the Rule", () => {
+    // The Rule's name must sit BETWEEN the Feature's and the Scenario's. Restated on the shared path
+    // rather than inherited from the `Rule composition` block, because this path reaches `describe`
+    // through a different `TestApi` object (T-10-04-05) — and, as ever, an implementation that
+    // emitted nothing would leave all three assertions above comparing empty arrays.
+    expect(sharedRuleScenarioNames).toEqual([
+      `Shared rule composition${nameSeparator}discounted checkout under a shared catalog${nameSeparator}the first rule scenario under a shared feature reads both tiers`,
+      `Shared rule composition${nameSeparator}discounted checkout under a shared catalog${nameSeparator}the second rule scenario under a shared feature rebuilds only the rule tier`
     ])
   })
 })
