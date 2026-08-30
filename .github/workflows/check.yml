@@ -95,6 +95,27 @@ jobs:
       # double its cost to re-prove the identical fact.
       - if: matrix.node-version == 24
         run: pnpm verify:tags-filter
+      # `pnpm test` exiting 0 does NOT prove that a shared-Layer Scenario reports
+      # the SAME status run whole and run narrowed with `-t` to that Scenario
+      # alone. No in-process assertion can state it: a test cannot re-invoke the
+      # CLI with a narrower selection and compare its own status across the two
+      # runs, and ADR-EC-018 names exactly that divergence as the symptom of the
+      # defect — "a suite that passes run as a whole can fail under -t filtering
+      # (which changes which Scenario runs 'first' against the shared clock), or
+      # vice versa". Plans 10-03 and 10-04 do assert build counts and clock
+      # readings from inside the process and they do go red for the obvious
+      # mutations; this is the whole-versus-filtered EQUIVALENCE half of roadmap
+      # SC#3, which `pnpm test` never claims in either direction, and the only
+      # place the `-t` half is exercised at all. See
+      # scripts/verify-shared-layer-once.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before this
+      # narrower gate's output. Node 24 ONLY: this is a structural claim about
+      # what the runner registers, which does not vary by Node version, and the
+      # gate invokes vitest THREE times — running it on both matrix legs would
+      # triple its cost to re-prove the identical fact.
+      - if: matrix.node-version == 24
+        run: pnpm verify:shared-layer-once
 
   package:
     name: Packaging and structure

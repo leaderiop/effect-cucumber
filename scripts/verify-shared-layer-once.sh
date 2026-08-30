@@ -40,15 +40,41 @@
 #   only asserted equality would be satisfied by two failing runs. Assertion B2
 #   asserts BOTH halves for that reason, and neither half is redundant.
 #
-#   WHAT THIS GATE ADDS OVER `pnpm test` IS MEASURED, NOT ASSERTED — and the
-#   measurement is not in this file yet. Plan 10-05 Task 2 runs three mutations
-#   (drop `excludeTestServices: true`; hoist the per-emission
-#   `Effect.provide(testEnv)`; route the shared branch through the module-level
-#   `it`) against BOTH `pnpm test` and this gate, and rewrites this paragraph with
-#   the observed result. Until it does, this header deliberately claims NO
-#   asymmetry. `verify-tags-filter.sh` cites its sharp mutation 1c over its blunt
-#   1a because 1c demonstrates a real one; if no such mutation exists here, the
-#   honest analog is to say so and state what the gate contributes instead.
+#   WHAT THIS GATE ADDS OVER `pnpm test`, MEASURED. Three mutations, each applied
+#   to `describeFeature.ts`, run against BOTH `pnpm test` and this gate, then
+#   reverted (10-05-SUMMARY.md has the full output):
+#
+#     m1  drop `excludeTestServices: true`     pnpm test RED (2)   gate RED at A5
+#     m2  hoist the per-emission provide       pnpm test RED (5)   gate RED at A3
+#     m3  shared branch via `vitestTestApi`    pnpm test RED (15)  gate RED at A2
+#
+#   NO mutation among the three turns this gate red while `pnpm test` stays green,
+#   and that is stated plainly rather than papered over. This gate is NOT
+#   justified by an asymmetry it does not have. `verify-tags-filter.sh` can cite
+#   its sharp mutation 1c over its blunt 1a because 1c demonstrates a real one;
+#   the honest analog here is to report that no such mutation was found. If you
+#   are re-verifying and you find one, cite it here and delete this paragraph.
+#
+#   What the gate contributes instead, and it is not nothing: it is the ONLY thing
+#   in the repo that asserts roadmap SC#3's whole-versus-filtered EQUIVALENCE — a
+#   claim `pnpm test` never makes in either direction — and the only place the
+#   `-t` half is exercised at all. That the claim is worth asserting was itself
+#   measured, under m2: the clock Scenario FAILED in the whole-file run and PASSED
+#   under `-t` narrowed to it alone, with the filtered process exiting 0. So a
+#   developer debugging that failure by narrowing to the Scenario gets a green run
+#   and concludes the suite is flaky. ADR-EC-018's sentence is not hypothetical
+#   here; it is reproducible in this repo in one edit, and B2's equality half is
+#   what names it as a defect rather than as flake.
+#
+#   Two things the measurement also settles about the assertion ORDER:
+#     - m1 leaks the CONSOLE and not the clock (10-04's mutation iv finding), so
+#       every shared-Layer-specific assertion here — A2, A3, A4, B2, C2 — passes
+#       under it and only A5, the generic failed-count catch-all, fires. That is
+#       A5 earning its place, and its message correctly sends the reader to
+#       `pnpm test` rather than claiming a filtering defect.
+#     - m2 and m3 fire at A3 and A2 respectively, each with a message naming the
+#       right half of the mechanism. The narrow assertions get to speak before
+#       A5's blunt one, which is exactly why A5 is last.
 #
 #   Every title this gate depends on is asserted to exist in the test file,
 #   spelled EXACTLY, before any run happens. `title_is_declared` matches a line
