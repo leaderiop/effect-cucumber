@@ -164,12 +164,21 @@ tree you did not name. It is why this package carries one non-workspace runtime 
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
 
-**What is still ahead of this package:** the dogfooded acceptance suite — this library running its own `.feature`
-files — and the doc-examples compile check that keeps the fences on this page compiling against the real API. Neither
-is a gap in this package's behaviour; both are gates the repository has yet to wire. One export is genuinely still
-missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
+**This package now runs its own spec.** The dogfooded acceptance suite is built: real `.feature` files under
+[`test/acceptance/`](./test/acceptance), paired with `.steps.test.ts` modules, driven by the real `describeFeature`
+and producing real passing `it.effect` tests as part of the ordinary `pnpm test`. The three worked examples from
+`spec/behaviors/01`–`03` are among them, so the specification's examples are executed rather than merely read. All 22
+v1 requirements carry a `@REQ-EC-NNN` acceptance tag.
+
+**What is still ahead of this package:** the doc-examples compile check that would keep the fences on this page
+compiling against the real API. That is a gate the repository has yet to wire, not a gap in this package's behaviour.
+One export is genuinely still missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
 [ADR-EC-024](../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md), so a test
-author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today. See
+author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today — and so
+does the acceptance suite, which is one of the two deliberate deviations from the worked examples recorded in
+[`test/acceptance/README.md`](./test/acceptance/README.md). One further limitation is worth knowing before you rely
+on it: editing a `.feature` file under a watching runner does **not** trigger a rerun when the file was loaded by
+path, because a filesystem read is invisible to Vite's module graph; the `?raw` import form does rerun. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
 authority on build status.
 

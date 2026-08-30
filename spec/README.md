@@ -7,10 +7,12 @@ rules this implies.
 Every document here is meant to be mechanically checked. Run
 `bash spec/scripts/verify-traceability.sh` before committing a spec change —
 it verifies that the registries (`index.yaml`) match the files on disk, that
-every invariant and decision is traced in `traceability.md`, and that no
-relative link is broken. A doc-examples compile check (extracting every
-`` ```typescript `` fence and type-checking it against the real API) is planned
-for once `packages/*` exists — see `spec/roadmap.md`.
+every invariant and decision is traced in `traceability.md`, that every
+`@REQ-EC-NNN` tag in the repository has a §5 row, and that no relative link is
+broken. A doc-examples compile check (extracting every `` ```typescript `` fence
+and type-checking it against the real API) is still **not wired** — `packages/*`
+exists now, so the thing it was waiting on is no longer what blocks it. See
+`spec/roadmap.md`, which stays the single authority on build status.
 
 ## Contents
 
@@ -34,7 +36,7 @@ for once `packages/*` exists — see `spec/roadmap.md`.
 
 ### Decisions
 
-Thirteen ADRs — see [`decisions/index.yaml`](./decisions/index.yaml) for the
+Twenty-six ADRs — see [`decisions/index.yaml`](./decisions/index.yaml) for the
 full list, or [Traceability §3](./traceability.md#3-decision-traceability) for
 each one's affected invariants.
 
@@ -43,7 +45,7 @@ each one's affected invariants.
 | Document                                                                       | Purpose                                                                                             |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                               |
-| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist and the (currently planned) merge gate                                         |
+| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist, and a map of the merge gate — five of its seven rows wired, two still not     |
 | ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited |
 | [rc-bump checklist](./process/rc-bump-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward. Checklist item `P-18` is its existence    |
 
@@ -59,13 +61,13 @@ entries, then check `traceability.md` still has them, then check
 
 ## Identifier scheme
 
-| Prefix       | Meaning                                                                                       |
-| ------------ | --------------------------------------------------------------------------------------------- |
-| `BEH-EC-NNN` | Behavior                                                                                      |
-| `INV-EC-NNN` | Invariant                                                                                     |
-| `ADR-EC-NNN` | Decision                                                                                      |
-| `REQ-EC-NNN` | Acceptance requirement — a tag on a `.feature` file under `packages/vitest/test/acceptance/`  |
-| `P-NN`       | A "Looks Done But Isn't" checklist item. **No `EC` infix**, deliberately — see the note below |
+| Prefix       | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BEH-EC-NNN` | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `INV-EC-NNN` | Invariant                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ADR-EC-NNN` | Decision                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `REQ-EC-NNN` | Acceptance requirement — a tag on a `.feature` file under `packages/vitest/test/acceptance/`. Twenty-two exist, one per v1 requirement, each carried exactly once and each with a row in [Traceability §5](./traceability.md#5-acceptance-scenario-traceability); `bash spec/scripts/verify-traceability.sh` check 5 reports the count and fails if it drifts. That directory is the ONLY place a `.feature` file may carry one |
+| `P-NN`       | A "Looks Done But Isn't" checklist item. **No `EC` infix**, deliberately — see the note below                                                                                                                                                                                                                                                                                                                                   |
 
 Full rules for the four `EC`-infixed families in
 [`process/requirement-id-scheme.md`](./process/requirement-id-scheme.md); full rules for `P-NN` in
