@@ -45,6 +45,7 @@ each one's affected invariants.
 | [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                               |
 | [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist and the (currently planned) merge gate                                         |
 | ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited |
+| [rc-bump checklist](./process/rc-bump-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward. Checklist item `P-18` is its existence    |
 
 ## Reading order
 
