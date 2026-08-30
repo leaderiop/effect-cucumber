@@ -24,7 +24,7 @@ current_phase_name: Composition Root and Dogfooded Acceptance Suite
 See: .planning/PROJECT.md (updated 2026-08-30)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Milestone v1.0 complete — all 11 phases shipped, ready to close via `/gsd-complete-milestone`
+**Current focus:** Milestone v1.0 shipped and archived — planning next milestone via `/gsd-new-milestone`
 
 ## Current Position
 
