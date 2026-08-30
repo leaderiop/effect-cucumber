@@ -71,6 +71,19 @@
  *     type: one more `any` in that position is assignable to everything and disables the whole
  *     guarantee.
  *
+ *     THE CONSEQUENCE THIS NOTE OWES A READER, because BEH-EC-016 now cites it by name. `Params` is
+ *     inferred FROM THE BODY and is never compared to `StepArgs<pattern>`, so a step body's
+ *     parameter list is unchecked against its own pattern in BOTH directions. BEH-EC-016 requires
+ *     the author to annotate a step's trailing `stepArguments` parameter — `(table: DataTable)` —
+ *     precisely because nothing can infer it; the corollary is that nothing VERIFIES it either.
+ *     `Given("the cart contains:", function*(table: string) { … })` compiles, and so does a body
+ *     that omits the parameter and silently drops a table its `.feature` file carries.
+ *     Constraining `Params` to `StepArgs<P>` is what would close this, and it breaks generator
+ *     inference — which is the whole reason the `any` above is here. The gap is pinned as a fact by
+ *     `test/tsgo-gate/src/step-table-annotation-unchecked.ts`, which `scripts/verify-tsgo-gate.sh`
+ *     asserts must keep compiling clean; if it ever stops, this paragraph and BEH-EC-016's matching
+ *     one come out in the same commit.
+ *
  *     The `any` in `Layer.Layer<R2, E2, any>` — the `extraLayer` parameter of `FeatureDsl.Rule` and
  *     of `ScenarioRegistrar`'s three-argument signature — is a DIFFERENT position and is not covered
  *     by that prohibition. It sits in a Layer's `RIn` (what the Layer itself still needs), not in a

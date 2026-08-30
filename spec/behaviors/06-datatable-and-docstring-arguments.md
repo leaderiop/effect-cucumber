@@ -176,6 +176,30 @@ REQUIREMENT: A step body MUST receive its stepArguments POSITIONALLY, APPENDED
              MUST annotate the trailing parameter explicitly — (table: DataTable)
              — and the annotation is the only place that claim exists.
 
+             AND THE ANNOTATION IS UNVERIFIED. Stated as part of the REQUIREMENT
+             rather than as a footnote, because "the only place that claim
+             exists" reads as though something checks it. Nothing does, in either
+             direction. StepRegistrar infers Params FROM THE BODY and never
+             compares it to StepArgs<pattern>, so:
+
+               Given("the cart contains:", function*(table: string) { ... })
+
+             compiles, lints and type-checks, and hands that parameter a
+             DataTable object at runtime. A body that OMITS the parameter
+             type-checks too, and silently ignores a table its .feature file
+             carries. An author who gets it wrong gets a runtime shape error at a
+             frame that names the step pattern but not the annotation — not a
+             compile error.
+
+             This is not an oversight being excused. Constraining Params to
+             StepArgs<P> breaks generator inference, which is why the `any` in
+             that constraint is the one `any` packages/vitest permits in a body's
+             declared type at all; see Dsl.ts note (d). It is the same hole
+             parsing-and-matching.steps.test.ts's mutation C already records for
+             PATTERN arguments — "a pattern and a body can disagree with each
+             other and only a runtime assertion notices" — and the table and doc
+             string arms inherit it.
+
              APPENDED, never prepended, and the ordering is load-bearing rather
              than conventional. Prepending would place an un-inferrable
              parameter ahead of every inferred one, so StepArgs<P> would report
@@ -190,11 +214,12 @@ REQUIREMENT was written while only one of them was guarded — the same shape as
 preamble describes, one layer down. The clauses are (1) the arguments are delivered at all, (2) they
 are APPENDED rather than prepended, and (3) a `DocString` is covered as well as a `DataTable`.
 
-| Clause                     | Enforced by                                                                                                                                                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| (1), (2), (3) — unit       | `packages/vitest/test/Plan.test.ts`, `planFeature — the step-argument join (BEH-EC-016)`. Three cases over one fixture whose steps carry an `{int}` BESIDE the table and the doc string.                       |
-| (1), (2), (3) — end to end | `packages/vitest/test/acceptance/parsing-and-matching.feature`'s untagged `A table and a doc string arrive AFTER the pattern's own arguments`, run by that pair's step module.                                 |
-| Type-level shape           | `packages/gherkin/test/StepArgs.types.ts`. Unaffected by the runtime order — `StepArgs` returns the same tuple whether `planStep` appends or prepends — so it pins the inference and nothing about clause (2). |
+| Clause                     | Enforced by                                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| (1), (2), (3) — unit       | `packages/vitest/test/Plan.test.ts`, `planFeature — the step-argument join (BEH-EC-016)`. Three cases over one fixture whose steps carry an `{int}` BESIDE the table and the doc string.                                                                                                                                             |
+| (1), (2), (3) — end to end | `packages/vitest/test/acceptance/parsing-and-matching.feature`'s untagged `A table and a doc string arrive AFTER the pattern's own arguments`, run by that pair's step module.                                                                                                                                                       |
+| Type-level shape           | `packages/gherkin/test/StepArgs.types.ts`. Unaffected by the runtime order — `StepArgs` returns the same tuple whether `planStep` appends or prepends — so it pins the inference and nothing about clause (2).                                                                                                                       |
+| The annotation gap         | `packages/vitest/test/tsgo-gate/src/step-table-annotation-unchecked.ts`, asserted by `scripts/verify-tsgo-gate.sh` to compile CLEAN. A characterization fixture pinning the four wrong forms the paragraph above says are accepted, so the claim that a hole exists is measured and cannot go stale in the GOOD direction unnoticed. |
 
 The PATTERN PARAMETER in each of those fixtures is the load-bearing part and is easy to drop by
 accident. With ZERO pattern arguments an append and a prepend produce the identical one-element

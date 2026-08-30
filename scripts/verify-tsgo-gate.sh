@@ -40,6 +40,7 @@ STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
 WORLD_FIELD_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.world-field.json"
 LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
 STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-error.json"
+STEP_TABLE_ANNOTATION_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-table-annotation.json"
 HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
 HOOK_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-missing.json"
 RULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-ok.json"
@@ -60,7 +61,7 @@ fail() {
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
   "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
   "$HOOK_NEG_CONFIG" "$RULE_OK_CONFIG" \
-  "$RULE_NEG_CONFIG"; do
+  "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -277,6 +278,32 @@ if [[ "$STEP_EXPECT_ERROR_EXIT" -ne 0 ]]; then
   fail "the suppressed-directive fixture stopped compiling clean. Two causes, and the output above says which. (1) 'TS2578: Unused @ts-expect-error directive' or 'TS377000: @effect-diagnostics directive has no effect' means NO error occurs on the marked line any more — the DSL type was loosened, or the fixture's ambient Layer now provides Db, and DSL-01's guarantee is gone. (2) An unsuppressed TS377004 alongside TS377000 means the two directive comment lines were REORDERED: '@effect-diagnostics-next-line' must be the line IMMEDIATELY above the code, with '@ts-expect-error' above it. TypeScript skips intervening comment lines when resolving \"next line\"; the plugin does not. See the fixture's own header and RESEARCH.md Finding 3(A)."
 fi
 echo "✓ the supplementary suppressed-directive fixture compiles clean (exit 0)"
+
+# ---------------------------------------------------------------------------
+# THE CHARACTERIZATION ASSERTION. The only one in this file that pins a GAP
+# rather than a guarantee, and the only one whose failure is GOOD NEWS.
+#
+# BEH-EC-016 requires the author to annotate a step body's trailing
+# `stepArguments` parameter, and states that the annotation is UNVERIFIED —
+# `StepRegistrar` infers `Params` from the BODY, never checks it against
+# `StepArgs<pattern>`, and Dsl.ts note (d) records why it cannot without breaking
+# generator inference. A spec sentence claiming a hole exists is exactly as
+# capable of going stale as one claiming a guarantee does (AGENTS.md §4 cuts both
+# ways), and this is the only thing in the repository that measures it.
+#
+# The fixture declares four wrong forms — a mis-annotated DataTable parameter, a
+# mis-annotated DocString one, a body that omits the parameter entirely, and a
+# body that declares one for a step carrying no argument — and MUST compile
+# clean. A non-zero exit means the compiler started catching one of them.
+# ---------------------------------------------------------------------------
+STEP_TABLE_ANNOTATION_OUTPUT="$($TSC -p "$STEP_TABLE_ANNOTATION_CONFIG" 2>&1)" &&
+  STEP_TABLE_ANNOTATION_EXIT=0 || STEP_TABLE_ANNOTATION_EXIT=$?
+
+if [[ "$STEP_TABLE_ANNOTATION_EXIT" -ne 0 ]]; then
+  echo "$STEP_TABLE_ANNOTATION_OUTPUT"
+  fail "the step-argument annotation characterization fixture stopped compiling clean (output above). This is very likely an IMPROVEMENT, not a break: something now type-checks a step body's trailing stepArguments parameter against its pattern, which BEH-EC-016 records as impossible. Do NOT loosen anything to make this pass. Delete whichever wrong-annotation case is now caught, and remove the matching sentence from BEH-EC-016's step-body-signature REQUIREMENT and from Dsl.ts note (d), in the same commit."
+fi
+echo "✓ characterization: a step body's trailing stepArguments annotation is still UNCHECKED in both directions (BEH-EC-016 records this as a known gap)"
 
 # ---------------------------------------------------------------------------
 # Assertions 10 and 11: THE HOOK SATISFIED/STARVED FLIP PAIR.
