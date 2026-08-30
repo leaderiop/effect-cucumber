@@ -189,12 +189,20 @@ TITLE_NOT_SLOW="Creating a user"
 # errors rather than matching nothing.
 FILTER_TAG="@slow"
 
+# The banner goes to STDERR, and that is load-bearing rather than stylistic.
+# `fail` is reachable from inside a command substitution (packed_manifest used to
+# be called that way), and a `$( )` captures STDOUT — so a stdout banner is
+# swallowed into a variable nobody prints while the `exit 1` kills only the
+# subshell, leaving errexit to end the run with an EMPTY log. stderr is not
+# captured by `$( )`, so the diagnostic survives regardless of the call shape.
 fail() {
-  echo ""
-  echo "✗ pitfalls checklist: NOT ENFORCED"
-  echo ""
-  echo "  $1"
-  echo ""
+  {
+    echo ""
+    echo "✗ pitfalls checklist: NOT ENFORCED"
+    echo ""
+    echo "  $1"
+    echo ""
+  } >&2
   exit 1
 }
 
@@ -270,10 +278,20 @@ run_vitest() {
     "$@" >"$log" 2>&1 || true
 }
 
-# Pack one workspace package and print the path to the UNPACKED manifest. The
-# packing itself is not re-implemented here — this is `pnpm pack`, the same
-# command scripts/verify-pack.sh drives, and the assertions below are this
-# file's own.
+# Pack one workspace package and set PACKED_MANIFEST to the path of the UNPACKED
+# manifest. The packing itself is not re-implemented here — this is `pnpm pack`,
+# the same command scripts/verify-pack.sh drives, and the assertions below are
+# this file's own.
+#
+# THE RESULT IS RETURNED VIA A GLOBAL, NOT VIA STDOUT, AND THAT IS DELIBERATE.
+# This function contains three `fail` calls. Called as
+# `M="$(packed_manifest …)"` the `exit 1` inside `fail` terminates only the
+# SUBSHELL, so the top-level script dies by errexit on the assignment instead —
+# and every `fail` diagnostic that had gone to stdout was captured into `M` and
+# discarded, producing exit 1 with no output at all. Writing to a global keeps
+# the `exit 1` in the top-level shell where it prints and stops the run; `fail`
+# writing to stderr is the belt to this braces.
+PACKED_MANIFEST=""
 packed_manifest() {
   local name="$1" slug="$2"
   local dest="$TMP_DIR/pack-$slug"
@@ -285,7 +303,7 @@ packed_manifest() {
   [[ -n "$tgz" ]] || fail "pnpm pack produced no tarball for $name in $dest."
   tar -xzf "$tgz" -C "$dest"
   [[ -f "$dest/package/package.json" ]] || fail "the $name tarball contains no package/package.json."
-  echo "$dest/package/package.json"
+  PACKED_MANIFEST="$dest/package/package.json"
 }
 
 # A title counts as declared only if some line of the file ENDS with
@@ -725,8 +743,12 @@ echo "✓ P-24 — a deliberately failing step names its Gherkin step pattern an
 # STATE.md's Phase 01-04 entry records that finding, and PITFALLS Pitfall 20 is
 # the mechanism: a `catalog:` specifier expands VERBATIM at pack time.
 # ===========================================================================
-VITEST_MANIFEST="$(packed_manifest "@effect-cucumber/vitest" "vitest")"
-GHERKIN_MANIFEST="$(packed_manifest "@effect-cucumber/gherkin" "gherkin")"
+# NOT `$( )` — see packed_manifest's comment: a command substitution swallows
+# its three `fail` diagnostics and reduces the run to a silent exit 1.
+packed_manifest "@effect-cucumber/vitest" "vitest"
+VITEST_MANIFEST="$PACKED_MANIFEST"
+packed_manifest "@effect-cucumber/gherkin" "gherkin"
+GHERKIN_MANIFEST="$PACKED_MANIFEST"
 
 P15_RESULT="$(
   MANIFEST_A="$VITEST_MANIFEST" MANIFEST_B="$GHERKIN_MANIFEST" node -e '
