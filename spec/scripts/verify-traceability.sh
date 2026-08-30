@@ -66,7 +66,13 @@ for index in "$SPEC_DIR"/*/index.yaml; do
     report FAIL "$name/index.yaml -> disk" "missing:${missing}"
   else
     count=$(wc -w <<< "$declared" | tr -d ' ')
-    report PASS "$name/index.yaml -> disk" "$count entr(y|ies) resolve"
+    # `entr(y|ies)` was printed verbatim here — a regex alternation that never
+    # ran, in the line a reader scans while looking for a FAIL.
+    if [[ "$count" -eq 1 ]]; then
+      report PASS "$name/index.yaml -> disk" "1 entry resolves"
+    else
+      report PASS "$name/index.yaml -> disk" "$count entries resolve"
+    fi
   fi
 
   # Reverse: any .md on disk not declared in the registry is an orphan.
