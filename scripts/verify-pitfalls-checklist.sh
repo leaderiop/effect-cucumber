@@ -88,6 +88,16 @@
 #   installed before the first write. `git status --porcelain` is empty on the
 #   success path and on every failure path.
 #
+#   AND `git status` IS NO LONGER THE EVIDENCE FOR THAT, so do not read it as
+#   such. All six paths are now in `.gitignore` — the trap covers EXIT, INT and
+#   TERM but not SIGKILL, an OOM kill or a CI timeout, and one of the files it
+#   writes is a test that FAILS ON PURPOSE that vitest's default include glob
+#   collects. Being ignored, they are now absent from `git status` whether the
+#   trap fired or not. The live detector is the `[[ -e "$tracked" ]]`
+#   precondition below, which fails the NEXT run by name if a hard kill left one
+#   behind; the `git ls-files --error-unmatch` precondition beside it is what
+#   keeps the ignore entries from becoming permission to commit one.
+#
 # MUTATION RECORD (performed, observed, reverted — plan 11-08 Task 3):
 #
 #   D. The `P-04` id was stripped from its test title in

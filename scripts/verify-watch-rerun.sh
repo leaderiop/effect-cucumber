@@ -27,6 +27,15 @@
 #   and on every failure path, and mutation C in the record below is the
 #   measurement of what happens without the trap.
 #
+#   MUTATION C IS ALSO WHY BOTH COPY PATHS ARE NOW IN `.gitignore`, and why
+#   `git status` is no longer the evidence for the sentence above. The trap
+#   covers EXIT, INT and TERM; it does not cover SIGKILL, an OOM kill or a CI
+#   runner timeout, and mutation C is what a survivor looks like — an untagged
+#   `.feature` in the one directory `vitest.config.ts` derives its tag universe
+#   from. Being ignored, the copies are now absent from `git status` whether the
+#   trap fired or not; the live detector is the `[[ -e ... ]]` precondition,
+#   which fails the NEXT run by name.
+#
 #   WHY THE COPY USES THE `?raw` IMPORT FORM, AND WHY THAT IS THE HONEST FORM.
 #   Measured here, both directions, against this repository at plan 11-08:
 #

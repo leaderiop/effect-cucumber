@@ -15,3 +15,25 @@ coverage/
 # removes them on exit; this entry only guards against a hard kill leaving a
 # deliberate lint violation on disk.
 .oxlint-probe/
+
+# Transient fixtures written by scripts/verify-pitfalls-checklist.sh and
+# scripts/verify-watch-rerun.sh. Both remove them on exit; these entries only
+# guard against a hard kill leaving a DELIBERATELY FAILING TEST on disk.
+#
+# Same reason as .oxlint-probe/ above, and the stakes are higher here. Each
+# script's `trap ... EXIT INT TERM` covers ordinary exits, its own `fail`, Ctrl-C
+# and SIGTERM — it does NOT cover SIGKILL, an OOM kill, or a CI runner timeout.
+# In those cases a `*.gate.test.ts` that vitest's DEFAULT include glob collects
+# is left behind, and `pitfalls-gate-failing.gate.test.ts` asserts a step that
+# fails on purpose. An untagged `.feature` in this directory is worse than
+# untidy: `vitest.config.ts` derives half its tag universe from exactly these
+# files. Either way the next `pnpm test` goes red for a reason no source change
+# explains.
+#
+# These are IGNORES, not permission to commit one. Both scripts still refuse to
+# run when any of these paths is TRACKED BY GIT, by name, before writing a byte.
+packages/vitest/test/acceptance/*.gate.test.ts
+packages/vitest/test/acceptance/pitfalls-gate-*.feature
+packages/vitest/test/acceptance/watch-rerun-gate.feature
+packages/vitest/test/tsgo-gate/src/pitfalls-gate-*.ts
+packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-*.json
