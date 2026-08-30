@@ -411,7 +411,13 @@ if [[ "$STATUS_NEW_2" != "passed" ]]; then
   cat "$LOG"
   fail "the rerun picked \"$NEW_TITLE\" up but reported it \"$STATUS_NEW_2\", expected \"passed\". The rerun happened; the newly added Scenario did not run correctly. Presence alone is NOT what this item claims — see mutation A."
 fi
-echo "✓ rerun after ~${RERUN_SECONDS}s: \"$NEW_TITLE\" is PRESENT and passed — the edit reached the watching runner"
+# The `✓ P-14 — ` prefix is the ANCHORED FORM the coverage cross-check in
+# scripts/verify-pitfalls-checklist.sh reads back out of this file. It is not
+# decoration: a bare `P-14` in a comment does not count, because plan 11-07
+# measured that a bare-id grep is satisfied by prose documenting the id. If this
+# line's shape changes, `pnpm verify:pitfalls` goes red naming P-14 — which is
+# the intended behaviour, not a bug in the cross-check.
+echo "✓ P-14 — rerun after ~${RERUN_SECONDS}s: \"$NEW_TITLE\" is PRESENT and passed — the edit reached the watching runner"
 
 # ---------------------------------------------------------------------------
 # Assertion 4: assertion 3's ANTI-VACUITY PARTNER. Run 2's total is STRICTLY
