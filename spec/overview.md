@@ -20,7 +20,10 @@ Effect service (see [Glossary — World](./glossary.md#world)).
 **A missing dependency is a compile error.** `describeFeature` takes a `Layer`;
 if a step's Effect needs an `R` the Layer doesn't provide, that's a type error
 at the step definition, not a runtime failure discovered when the scenario
-runs.
+runs. That guarantee has one boundary, stated in full at
+[INV-EC-003](./invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides);
+the configuration a consumer sets in their own build to keep it intact is in
+[`packages/vitest/README.md` § Recommended lint and compiler configuration](../packages/vitest/README.md#recommended-lint-and-compiler-configuration-for-your-step-modules).
 
 **Fail-fast is structural, not bookkept.** A Scenario's steps are sequential
 `yield*`s inside one `Effect.gen`. Effect's own error channel short-circuits on

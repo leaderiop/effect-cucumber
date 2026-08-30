@@ -144,7 +144,13 @@ implicit so the invariant claims only what a type system can actually deliver
 (`.planning/research/PITFALLS.md` Pitfall 6). The practical rule: an `any`
 reaching a step body's declared type is a defect in that step, not a permitted
 escape hatch — the compile-gate fixtures under
-`packages/vitest/test/tsgo-gate/` are asserted to contain none.
+`packages/vitest/test/tsgo-gate/` are asserted to contain none. As of Phase 11
+the same prohibition is asserted over the acceptance suite by
+`scripts/verify-acceptance-no-any.sh`, and the configuration a CONSUMER sets in
+their own build to keep this boundary from opening in their step modules — this
+repository cannot see that build, so it is a recommendation and not an
+enforcement — is in
+[`packages/vitest/README.md` § Recommended lint and compiler configuration](../packages/vitest/README.md#recommended-lint-and-compiler-configuration-for-your-step-modules).
 
 **Source**: `packages/vitest/src/Dsl.ts`'s `StepRegistrar<ROut>`, which binds a
 step's required context to the ambient Layer's output type rather than leaving
