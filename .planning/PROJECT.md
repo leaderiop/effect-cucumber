@@ -103,26 +103,63 @@ authoring time, never a runtime failure discovered when the Scenario runs.
       `scripts/verify-tags-filter.sh`. `gherkinTags(pattern)` (D-09) derives
       the config's declared tag universe from `.feature` files themselves.
       743 tests passing; full `check.yml` gate green.
+- [x] `Rule` can extend the ambient Layer with an extra per-Scenario Layer,
+      visible only to Scenarios inside that Rule; `Scenario Outline` Examples
+      are typed for free via cucumber-expression coercion — no separate
+      typed "example row" mechanism — ADR-EC-007, ADR-EC-010. Validated in
+      Phase 8 (Rule and Scenario Outline): `FeatureDsl.Rule` composes
+      `Layer.provideMerge(featureLayer)(extraLayer)` at registration; a
+      Rule-scoped `Before`/`After`/`BeforeStep`/`AfterStep` carries that
+      Rule's id and never leaks into the Feature's own hooks or another
+      Rule's (three-way isolation test, mutation-proven); an Outline's rows
+      share one `Scenario(...)` registration keyed on the AST node's own
+      un-interpolated name, each row titled `name (col=value, ...)` from its
+      own Examples row.
+- [x] Two Layer scopes only: per-Scenario (default, fresh every Scenario) and
+      an opt-in `shared` Layer built once via `@effect/vitest`'s `layer(...)`
+      with `excludeTestServices: true` so `TestClock` stays per-Scenario even
+      on the shared path — ADR-EC-006, ADR-EC-018. `TestClock` composes
+      transparently on both scopes — a step reading `Clock` sees the
+      simulated clock with zero test-specific code, confirmed against real
+      `effect@4.0.0-rc.112` — BEH-EC-012. Validated in Phase 10 (Layer
+      Scopes): both entry-point overloads constrain `shared` to
+      `Layer<R, never, never>` at compile time (`SharedLayerConstraint.types.ts`,
+      6 pinned cases); `emission.test.ts` asserts shared-build ordinals
+      `[1,1,1]` against per-Scenario ordinals `[1,2,3]` on the same Feature,
+      simulated-clock readings `[0,0,0,0]` across four Scenarios sharing a
+      Layer, and Rule-scoped-extra-Layer-over-shared-tier ordinals
+      `[1,1]`/`[1,2]` in the same run; `scripts/verify-shared-layer-once.sh`
+      re-asserts the shared-build-once count from a real, external `vitest`
+      CLI run rather than only the in-process recording fake. One measured
+      correction recorded rather than silently narrowed: the `shared` tier's
+      resources release at the enclosing suite's teardown (the whole file's,
+      for a module-top-level call), not literally "after every Scenario in
+      the Feature," documented in `spec/behaviors/02-shared-layers-and-tags.md`
+      against the exact `@effect/vitest` internals this was measured
+      against.
+- [x] Cross-step scenario state lives in a `Ref` from `World`, never a bare
+      closure variable — ADR-EC-009, INV-EC-006. Validated in Phase 11
+      (Composition Root and Dogfooded Acceptance Suite):
+      `scripts/verify-acceptance-ref-state.sh` structurally scans every
+      `packages/vitest/test/acceptance/*.steps.test.ts` module and fails,
+      naming file and line, on any mutable binding (including destructured
+      forms) a step could close over — the first automated enforcement of
+      this convention anywhere in the repository, with a population control
+      and a regex control so it cannot pass by scanning nothing. The
+      library's own three worked examples (`spec/behaviors/01`-`03`) run
+      green end to end as real `.feature` + `.steps.test.ts` pairs
+      exercising this convention, and all 22 v1 requirements now carry a
+      `@REQ-EC-NNN` acceptance tag (`pnpm verify:spec` reports 22/22 as a
+      derived count). The 24-item "Looks Done But Isn't" checklist
+      (`spec/process/looks-done-but-isnt-checklist.md`) runs in full across
+      three executors (13 in-process tests, 10 CLI assertions, one
+      watch-mode gate), with a coverage cross-check proving no item lost its
+      executor.
 
 ### Active
 
-Derived from `spec/behaviors/` (BEH-EC-001 through BEH-EC-013). Each maps to
-one or more ADRs in `spec/decisions/` for full rationale.
-- [ ] Two Layer scopes only: per-Scenario (default, fresh every Scenario) and
-      an opt-in `shared` Layer built once via `@effect/vitest`'s `layer(...)`
-      with `excludeTestServices: true` so `TestClock` stays per-Scenario even
-      on the shared path — ADR-EC-006, ADR-EC-018
-- [ ] `Rule` can extend the ambient Layer with an extra per-Scenario Layer,
-      visible only to Scenarios inside that Rule — ADR-EC-010
-- [ ] `Scenario Outline` Examples are typed for free via cucumber-expression
-      coercion (`{int}`/`{float}`) — no separate typed "example row"
-      mechanism needed — ADR-EC-007
-- [ ] Cross-step scenario state lives in a `Ref` from `World`, never a bare
-      closure variable — ADR-EC-009
-- [ ] `TestClock` composes transparently on **both** Layer scopes — a step
-      reading `Clock` sees `@effect/vitest`'s simulated clock with zero
-      test-specific code, confirmed against real `effect@4.0.0-rc.112` —
-      BEH-EC-012, ADR-EC-018
+None — all requirements derived from `spec/behaviors/` (BEH-EC-001 through
+BEH-EC-013) are validated as of Phase 11. This milestone (v1.0) is complete.
 
 ### Out of Scope
 
@@ -211,10 +248,10 @@ one or more ADRs in `spec/decisions/` for full rationale.
 | Full spec (20 ADRs, 13 behaviors) written and stress-tested before any code | Design decisions and third-party API assumptions verified cheaply, before implementation cost was sunk into a wrong assumption | ✓ Good — multiple real conflicts with third-party libraries, and real bugs in the spec itself, caught by research before writing code against them |
 | GSD execution flow chosen over a plain coding session or a second wayfinder map | Wanted phase-based planning with a verification loop, on top of (not replacing) the existing spec | ✓ Good — GSD's own 4-dimension research pass found the spec's three critical bugs, which a plain coding session likely wouldn't have surfaced before implementation started |
 | Build order: `@effect-cucumber/gherkin` before `@effect-cucumber/vitest` | No Effect-specific logic in gherkin, lower-risk to get right standalone; vitest package depends on it | ✓ Good — corroborated independently by GSD Architecture research's dependency-graph analysis |
-| Adopt the `excludeTestServices` shared-Layer TestClock fix (ADR-EC-018) rather than a documented carve-out | Fully verified working, costs nothing but isolated internal complexity in the `shared`-Layer runner path | — Pending |
+| Adopt the `excludeTestServices` shared-Layer TestClock fix (ADR-EC-018) rather than a documented carve-out | Fully verified working, costs nothing but isolated internal complexity in the `shared`-Layer runner path | ✓ Good — shipped in Phase 10; `TestClock` confirmed per-Scenario on the shared path against real `effect@4.0.0-rc.112`, with the shared tier's actual release-timing boundary measured and documented rather than assumed |
 | Fold step-drift detection (BEH-EC-013) into this milestone rather than deferring | Table stakes across every comparable library; the one failure-mode gap the Layer check doesn't cover; low-medium cost since it reuses ADR-EC-014's correlation data | ✓ Good — shipped in Phase 6 as `StepMatchError`/`UnusedStepDefinitionWarning`, wired through `describeFeature`'s Plan → Warn → Emit sequence |
-| Defer reusable step definitions (Gap 2) to a later milestone | Genuinely harder here than in any comparable library — a shared step's `R` must reconcile against every consuming Layer, no ecosystem precedent | — Pending |
+| Defer reusable step definitions (Gap 2) to a later milestone | Genuinely harder here than in any comparable library — a shared step's `R` must reconcile against every consuming Layer, no ecosystem precedent | ✓ Good — v1.0 shipped without it as scoped; remains Out of Scope for a future milestone |
 | Adopt vitest v4 native tags for `@skip`/`@only`/custom tags instead of `it.effect.only` | `it.effect.only` fails CI by design (verified); native tags nearly close the parked "custom tags" item for free | ✓ Good — shipped in Phase 9 as registration-time filtering (ADR-EC-026, superseding ADR-EC-020's forbid-filtering stance once the trade-off was re-examined against real usage) |
 
 ---
-*Last updated: 2026-08-30 after Phase 9 (Tags) completion*
+*Last updated: 2026-08-30 after Phase 11 (Composition Root and Dogfooded Acceptance Suite) completion — milestone v1.0 complete, all 11 phases shipped*
