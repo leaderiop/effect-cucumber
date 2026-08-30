@@ -1,17 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
+current_phase: 10
+current_phase_name: Layer Scopes (per-Scenario default + `shared`)
 status: executing
-stopped_at: Phase 10 context gathered
-last_updated: "2026-08-30T00:50:57.048Z"
-last_activity: 2026-08-30 -- Phase 10 planning complete
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-08-30T01:06:34.974Z"
+last_activity: 2026-08-30
+last_activity_desc: Phase 10 execution started
+state_head: 4513a17554259cba7f3ee45fb1f44335667c8094
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 74
-  completed_plans: 68
-  percent: 82
+  completed_plans: 69
+milestone_name: milestone
 ---
 
 # Project State
@@ -21,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-28)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 10 — layer scopes (per scenario default + `shared`)
+**Current focus:** Phase 10 — Layer Scopes (per-Scenario default + `shared`)
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: 10 (Layer Scopes (per-Scenario default + `shared`)) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-08-30 -- Phase 10 planning complete
+Last activity: 2026-08-30 — Phase 10 execution started
 
 **Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
 
@@ -75,6 +78,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 03-04 | ~9m | 2 | 2 |
 | 03-05 | ~14m | 3 | 4 |
 | 03-06 | ~8m | 3 | 7 |
+| Phase 10 P01 | 12m | 2 tasks | 7 files |
 
 **Recent Trend:**
 
@@ -147,6 +151,11 @@ Recent decisions affecting current work:
 - [03-06]: spec/traceability.md §4 is enumerated FROM DISK and includes one deliberate non-suite row, `StepArgs.types.ts`, with a sentence above the table saying why. Do not "fix" it by renaming the file to `.test.ts` — that breaks `pnpm test` with "No test suite found".
 - [03-06]: No `REQ-EC-` row was added to traceability §5. The `.feature` files under `packages/gherkin/test/fixtures/` are parser fixtures, not acceptance scenarios; a `REQ-EC-` row there turns verify-traceability check 4's clean SKIP into a claim the repo cannot back. A `grep -c 'REQ-EC-[0-9]' spec/traceability.md` of 0 is the guard.
 - [03-06]: A `typescript` fence in `spec/behaviors/` imports ONLY from a package barrel and imports everything it uses — the planned doc-examples check compiles it against the real API. A `ts` fence is reference material but must still be syntactically valid TypeScript, or `dprint` cannot format it and `pnpm lint` fails.
+- [Phase 10]: [10-01]: `shared` is pinned to Layer<R, never, never> on BOTH describeFeature and collectFeature; `perScenario` keeps its free E2 and must NOT be narrowed. Two directive-free asymmetry controls in packages/vitest/test/SharedLayerConstraint.types.ts fail the build if anyone "restores symmetry" — mutation m2 is the recorded proof.
+- [Phase 10]: [10-01]: The rejection diagnostic for a failable `shared` Layer is RECORDED, never asserted on. Note (a)'s last-overload rule means TypeScript reports "Object literal may only specify known properties, and 'shared' does not exist in type 'Layer<unknown, unknown, never>'" — a missing-property mismatch that never mentions the error channel. The call is still rejected, which is what D-04 requires.
+- [Phase 10]: [10-01]: LayerArgument (the implementation-signature union) stays Layer<any, any, never> deliberately. TypeScript never resolves a call against an implementation signature, so narrowing it changes nothing observable while making the body disagree with itself. Its doc comment now says so.
+- [Phase 10]: [10-01]: A grep acceptance criterion of `grep -c ' as [A-Z]'` = 0 is unsatisfiable in any file importing Effect — AGENTS.md section 3 mandates `import * as Layer from "effect/Layer"`. Use `grep -v '^import ' | grep -c ' as [A-Z]'`; both existing .types.ts precedents behave identically. Second instance of the 03-04 literal-collision lesson in one plan.
+- [Phase 10]: [10-01]: RUN-03/RUN-04 stay Pending. This plan shipped the type-level half only; 10-02 owns the build-once runtime fix and 10-06 owns .planning/REQUIREMENTS.md. Same precedent as 03-01 through 03-04. Repo test count unchanged at 743 passed / 3 skipped across 32 files — the .types.ts suffix is why.
 
 ### Pending Todos
 
@@ -282,6 +291,6 @@ New since 03-06 (not blockers, constraints to respect):
 
 ## Session Continuity
 
-Last session: 2026-08-30T00:17:05.922Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-layer-scopes-per-scenario-default-shared/10-CONTEXT.md
+Last session: 2026-08-30T01:06:18.131Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None
