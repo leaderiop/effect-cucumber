@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 4/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
+**Plans**: 5/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
 
 Plans:
 **Wave 1**
@@ -456,7 +456,7 @@ Plans:
 
 **Wave 5** *(blocked on 10-04)*
 
-- [ ] 10-05-PLAN.md — D-02's real-CLI gate `scripts/verify-shared-layer-once.sh`: one Scenario's status compared between a whole run and a `-t`-narrowed run, wired into `package.json` and `check.yml` (SC#3's whole-vs-filtered half)
+- [x] 10-05-PLAN.md — D-02's real-CLI gate `scripts/verify-shared-layer-once.sh`: one Scenario's status compared between a whole run and a `-t`-narrowed run, wired into `package.json` and `check.yml` (SC#3's whole-vs-filtered half)
 
 **Wave 6** *(blocked on 10-05)*
 
@@ -521,7 +521,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 4/6 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 5/6 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
