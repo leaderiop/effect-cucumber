@@ -39,7 +39,7 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 - [x] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
 - [x] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
 - [x] **RUN-05**: Every tag on a Scenario is emitted as a native vitest tag; `@skip` additionally routes to `it.effect.skip`; `@only` is never routed to `it.effect.only` (which fails CI). Running just one Scenario locally is a `--tagsFilter` choice, but not a bare one: a tag must be DECLARED in the runner's `test.tags` before any filter can select it — an undeclared tag does not fail the Feature, it is re-emitted untagged with a located warning, and `gherkinTags("<glob>")` generates the declarations from the consumer's own `.feature` files. `includeTags`/`excludeTags` on `describeFeature`'s optional fourth argument additionally filter at REGISTRATION time, so an excluded Scenario is absent from the report rather than skipped in it, and compose with `--tagsFilter` rather than replacing it (ADR-EC-026 — which supersedes ADR-EC-020 — BEH-EC-008)
-- [ ] **RUN-06**: Cross-step scenario state (a running total, a caught error) lives in a `Ref` obtained from `World`, demonstrated consistently in every worked example — not yet automatable, but the convention is load-bearing given retries reuse the same registered step closures (ADR-EC-009, INV-EC-006)
+- [x] **RUN-06**: Cross-step scenario state (a running total, a caught error) lives in a `Ref` obtained from `World`, demonstrated consistently in every worked example — not yet automatable, but the convention is load-bearing given retries reuse the same registered step closures (ADR-EC-009, INV-EC-006)
 
 ## v2 Requirements
 
@@ -102,20 +102,131 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | RUN-03 | Phase 10 | Complete |
 | RUN-04 | Phase 10 | Complete |
 | RUN-05 | Phase 9 | Complete |
-| RUN-06 | Phase 11 | Pending |
+| RUN-06 | Phase 11 | Complete |
 
 **Coverage:**
 
 - v1 requirements: 22 total (21 originally defined + PARSE-04 added during roadmap creation)
 - Mapped to phases: 22 ✓
+- **Complete: 22 ✓ — Pending: 0**, as of Phase 11 plan 09
 - Unmapped: 0
 - Duplicated across phases: 0
+
+Each of the 22 also carries a `@REQ-EC-NNN` acceptance tag on a `.feature` file under
+`packages/vitest/test/acceptance/`, asserted by `spec/scripts/verify-traceability.sh` check 5 —
+contiguous ids, each occurring exactly once, each with a row in `spec/traceability.md` §5. That
+check is a different claim from the table above and neither substitutes for the other: the table
+says a phase delivered the requirement, the check says a tagged Scenario exists for it.
 
 Phase 1 (Workspace, toolchain, dependency policy) carries no v1 requirement — it is an
 enabling phase citing ADR-EC-012/013/015/016 rather than a user-facing behavior.
 
 ---
 *Requirements defined: 2026-08-28*
+
+*Last updated: 2026-08-30 after Phase 11 (Composition Root and Dogfooded Acceptance Suite) — RUN-06 is
+Complete, and with it the v1 set reads 22 of 22. RUN-06 was the last requirement standing and the
+only one that had ever been described in its own text as "not yet automatable". That clause is now
+false, which is the reason it can be marked: what follows names, for each of Phase 11's four roadmap
+success criteria, the artifact that goes RED if the criterion stops being true. Nothing here is
+marked on the strength of a document.*
+
+***Criterion 1 — the worked examples run green end to end.*** *The three pairs under
+`packages/vitest/test/acceptance/` are `worked-example-01-apples`, `worked-example-02-accounts` and
+`worked-example-03-discounts`, each a `.feature` file beside a `.steps.test.ts` module, each driven
+by the real `describeFeature` and collected by the ordinary `pnpm test`. What makes them evidence
+rather than decoration is the numbered mutation record each carries in its own module doc comment,
+performed, run and reverted. Two entries from pair 01 carry the whole argument. Mutation **C**:
+`When I eat 1 apples` became `When I eat 2 apples` in the `.feature` file with no TypeScript touched,
+and the Scenario went red with `expected 1 to equal 2` — so both numbers travelled out of the Gherkin
+text, through the parser and the cucumber-expression matcher, into the step body; a Scenario with the
+value hard-coded survives that mutation untouched. Mutation **D**: the `Given I have {int} apples`
+body was emptied, and the Scenario went red with `expected -1 to equal 2` — the `-1` being the
+Layer's own fresh `Ref.make(0)` minus the `When`'s 1, which proves the `Then` read the `Ref` the
+earlier steps WROTE rather than recomputing anything. Mutation **B** is the standing warning beside
+them: with `Ref.get` replaced by the literal the assertion expects, all four tests STAYED GREEN. A
+passing acceptance test is not evidence by itself, and this file says so in writing.*
+
+***Criterion 2 — cross-step state flows through a `Ref` from World, with no closed-over mutable
+binding.*** *`scripts/verify-acceptance-ref-state.sh` (`pnpm verify:acceptance-ref-state`) is the
+enforcement, and it is a structural scan rather than a review note. Four assertions: a POPULATION
+control requiring at least five `*.steps.test.ts` modules under the acceptance directory, so the gate
+cannot pass by scanning nothing; a REGEX control requiring the same declaration pattern to find real
+mutable bindings in `packages/vitest/src/Runner.ts`, so it cannot pass by running a dead pattern; the
+gate itself, forbidding a `let` or `var` at any scope in an acceptance step module; and the narrow
+half of PROH-11-03, an in-place array-mutator call standing in for one. Comment lines are stripped
+first, or the gate would forbid its own documentation. Its recorded mutation is the reason it exists:
+with ONE mutable binding added to an acceptance step module, `pnpm test` (37 files, 796 passed),
+`pnpm build`, `pnpm lint` and `pnpm typecheck:test` were all measured GREEN, and only this gate went
+red. Both controls were themselves mutation-proven (B1/B2 against the directory, C against the
+regex).*
+
+***Criterion 3 — 22 of 22 covered.*** *`spec/scripts/verify-traceability.sh` check 5
+(`pnpm verify:spec`) asserts that the `@REQ-EC-NNN` ids are contiguous, that each occurs exactly
+once across every `.feature` file in the repository, and that each has a row in
+`spec/traceability.md` §5 — and it prints the count. The current run reports
+"22/22 requirements covered by a passing test, each tagged once, each with a §5 row", with 9 PASS / 0
+FAIL / 0 SKIP overall. Check 4 is the other half, in the opposite direction: it fails on a
+`@REQ-EC-NNN` tag found on a `.feature` file OUTSIDE the acceptance directory, so the parser corpus
+cannot quietly inflate the count. That row requirement is not theoretical — mutation E on pair 01
+deleted the `REQ-EC-022` row from §5 and `pnpm verify:spec` exited 1 naming the tag.*
+
+***Criterion 4 — the checklist runs in full, and the escape-hatch wording is addressed.***
+*`spec/process/looks-done-but-isnt-checklist.md` is normative and carries 24 ids, P-01 through P-24,
+each with a named executor rather than a citation. Three artifacts execute them:
+`packages/vitest/test/acceptance/pitfalls-checklist.test.ts` (13),
+`scripts/verify-pitfalls-checklist.sh` (10) and `scripts/verify-watch-rerun.sh` (1). "Runs in full"
+is COUNTED rather than claimed: that second script ends in a coverage cross-check that parses the
+document's own table and proves each id's named executor really carries it in the anchored form,
+printing the 13 / 10 / 1 split. Two of its mutations are what make that non-vacuous — with `P-04`
+stripped from its test title, `pnpm test` stayed green at IDENTICAL counts and only the cross-check
+went red; with P-09's Executed by cell repointed at the wrong artifact, the same. D-04's two halves:
+`scripts/verify-acceptance-no-any.sh` (`pnpm verify:acceptance-no-any`) enforces INV-EC-003's
+boundary condition over the acceptance suite, and the consumer-facing recommendation lives in
+`packages/vitest/README.md` § "Recommended lint and compiler configuration for your step modules",
+cross-referenced from `spec/overview.md` and from INV-EC-003 itself.*
+
+***What RUN-06 does NOT claim, stated so the marking is honest.*** *The enforcement covers THIS
+repository's own acceptance step modules and nothing else. A shell script scanning
+`packages/vitest/test/acceptance/` cannot travel to a consumer's repository, so for a consumer the
+`Ref`-through-World convention remains exactly that — a reviewed convention, demonstrated by every
+worked example and enforced by nothing. **LINT-01** (see § v2 above) — a lint rule flagging a
+`let`/`var` declared inside a `Scenario`/`Rule`/`Background` callback that a step function closes
+over — is the mechanism that would close that half, and it is deferred to a later milestone. The gate
+is also narrower than the invariant in a second way: it scans DECLARATIONS, so PROH-11-03's
+module-scope `const` holder written to by a step is caught only in its common in-place-mutator form,
+and the general case stays a review rule. Do not read a green run as "no module-scope holder
+exists".*
+
+***Three assumptions from the spec-less edge probe, carried out of this phase OPEN rather than
+closed.*** *Recorded here because a phase-closing document is where they would otherwise be lost.*
+
+- ***ASSUMPTION-11-A (adjacency)*** *— the acceptance step modules each declare a same-named
+  `Context.Service` id and are assumed not to collide because vitest isolates modules per file.
+  Unresolved, and now permanent for this milestone. It held in practice, and plan 11-08's mutation G
+  is evidence the separation it forces earns its cost.*
+- ***ASSUMPTION-11-B (empty / single-element)*** *— partly mitigated by the population and parse
+  controls in plans 11-05 and 11-08, and still an assumption in that both controls depend on external
+  files continuing to contain what they contain. Plan 11-08 measured the mitigation to be narrower
+  than predicted: the row-count control's irreplaceable job is the GROWTH direction (a 25th row is
+  outside a `1..N` loop and only the count sees it), not the shrink direction, which the contiguity
+  loop catches on its own.*
+- ***ASSUMPTION-11-C (ordering)*** *— unresolved, and the most consequential of the three. Several
+  acceptance assertions depend on vitest running a file's tests in DECLARATION ORDER, which is
+  observed behavior rather than a documented contract; shuffled sequencing would break them. Checklist
+  item P-21 runs the Outline case under shuffled sequencing, but no acceptance file is run shuffled as
+  a whole. This is an open follow-up, not a closed question.*
+
+*Two further open items measured by plan 11-08 and not to be lost either, both product gaps rather
+than test gaps: an acceptance `.feature` edit does NOT trigger a watch-mode rerun for the path-based
+`loadFeature` + `NodeFileSystem` form every committed pair uses (only the `?raw` form reruns, in
+~620 ms); and a failing step's entry in the runner's failure panel names the Scenario and the
+assertion but neither the step text nor the `.feature` file and line — the step PATTERN does reach a
+separate stdout block via ADR-EC-005's `Effect.fn(pattern)` span, which is not the same thing. Both
+are recorded as Notes on their checklist rows (P-14, P-24) with the fix named.*
+
+*No requirement outside RUN-06 changed status.*
+
 *Last updated: 2026-08-29 after Phase 8 (Rule and Scenario Outline) — DSL-05 and DSL-06 are Complete,
 each backed by a named automated assertion that fails if the requirement stops being true.*
 
