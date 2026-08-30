@@ -85,6 +85,24 @@
 #           could not say the second thing: a scan that reached no `.feature`
 #           file at all would also have stayed green.
 #
+#     E3. THE ONE THAT FOUND A HOLE, and the reason the comment pattern is now
+#        chosen per language. A `*`-KEYWORD Gherkin step carrying the forbidden
+#        token — `    * a step mentioning <token> thing` — added to
+#        `hooks.feature` between two ordinary steps. `*` is a legal step keyword
+#        anywhere `Given`/`When`/`Then` is; this is not an exotic form.
+#
+#        BEFORE, with one union `COMMENT_RE` carrying a `\*` alternative for
+#              JSDoc: NO HIT. The gate printed its ENFORCED line against a live
+#              violation, because the JSDoc alternative had stripped the STEP.
+#        AFTER, with TS_COMMENT_RE and FEATURE_COMMENT_RE split: RED, naming
+#              `hooks.feature:6`.
+#
+#        E and E2 were both re-measured against the split and are unchanged — a
+#        `#` Gherkin comment naming the token is still not reported, and neither
+#        is a TypeScript JSDoc continuation line naming it. The split removes the
+#        hole without weakening either carve-out, which is the whole reason it is
+#        a split rather than a deletion of the `\*` alternative.
+#
 # Usage: bash scripts/verify-acceptance-no-any.sh
 
 set -euo pipefail
@@ -123,10 +141,24 @@ MIN_STEP_MODULES=5
 TOKEN='any'
 TOKEN_RE="(^|[^A-Za-z0-9_\$])${TOKEN}([^A-Za-z0-9_\$]|\$)"
 
-# A comment line, once `grep -n ''` has prefixed it with `NN:`. Leading
-# whitespace, then a double slash, a bare asterisk, a slash-star — or, for
-# `.feature` files, Gherkin's own `#`.
-COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*|#)'
+# A comment line, once `grep -n ''` has prefixed it with `NN:`. TWO patterns,
+# selected by the file's language, NEVER one union of both.
+#
+# THE UNION WAS A HOLE, AND IT WAS IN THE `*` ALTERNATIVE. A bare `*` opens a
+# JSDoc continuation line in TypeScript, so the TS pattern needs it — but `*` is
+# also a LEGAL GHERKIN STEP KEYWORD, valid anywhere `Given`/`When`/`Then` is, a
+# fact `packages/vitest/src/Plan.ts`'s keyword handling documents explicitly and
+# `test/Plan.test.ts`'s `starKeyword` fixture exercises. Applied to a `.feature`
+# file the union therefore stripped every `*`-keyword STEP before the scan saw
+# it, so a step carrying the forbidden token passed this gate in silence — the
+# exact state assertion 3's silence is asked to certify against. Measured as
+# mutation E3 below.
+#
+# Gherkin's only comment form is `#`, and TypeScript has no `#`-comment, so
+# neither pattern needs the other's alternatives. Splitting them costs one `case`
+# and removes the whole class.
+TS_COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'
+FEATURE_COMMENT_RE='^[0-9]+:[[:space:]]*#'
 
 fail() {
   echo ""
@@ -147,9 +179,18 @@ SCANNED_FILES="$(find "$ACCEPTANCE_DIR" -type f \( -name '*.steps.test.ts' -o -n
 # Prefix every line with its number, drop comment lines, then match. The
 # filtering happens BEFORE any count, so a doc comment that merely NAMES the
 # forbidden token cannot register as a hit — mutation E.
+#
+# The comment pattern is chosen PER LANGUAGE, on the extension: see the two
+# constants above for why one union of both was a hole rather than a shorthand.
+# Anything that is not a `.feature` file is treated as TypeScript, which is the
+# safe direction — the TS pattern strips strictly fewer Gherkin lines.
 scan() {
-  local file="$1" pattern="$2"
-  grep -n '' "$file" | grep -vE "$COMMENT_RE" | grep -E "$pattern" || true
+  local file="$1" pattern="$2" comment
+  case "$file" in
+    *.feature) comment="$FEATURE_COMMENT_RE" ;;
+    *) comment="$TS_COMMENT_RE" ;;
+  esac
+  grep -n '' "$file" | grep -vE "$comment" | grep -E "$pattern" || true
 }
 
 # ---------------------------------------------------------------------------
