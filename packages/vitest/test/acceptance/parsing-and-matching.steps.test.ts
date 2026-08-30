@@ -122,8 +122,55 @@
  *
  * The directory README's standing rule: a passing acceptance test proves nothing on its own, so
  * each entry names what went RED and — the part that is easiest to omit — what stayed GREEN. This
- * pair's record is written in full beneath the parameter-type section below, once both halves of
- * the file exist to mutate.
+ * pair emits SEVEN tests: five tagged Scenarios and the Outline's two rows.
+ *
+ * - **A. The second load's data really reaches the step.** The second `.feature` file's Feature name
+ *      changed, nothing in this module touched → **exactly 1 of 7 red**,
+ *      `expected 'Parsing and matching, a renamed second load' to equal 'Parsing and matching, the
+ *      second load'`. `@REQ-EC-006` stayed GREEN and legitimately so: it reads the SAME second
+ *      feature, but only its registry and its step text, and a Feature name cannot reach either.
+ *      That narrow blast radius is the point — the assertion is bound to the file's contents rather
+ *      than to the fact that a second load happened.
+ * - **B. Background steps really lead, and the count really matters.** The `Background:` block
+ *      deleted from `parsing-and-matching.feature`, this module untouched → **3 of 7 red**:
+ *      `@REQ-EC-002`'s origin assertion (`expected 'the first step of this scenario carries the
+ *      Background origin' to equal 'the recorder is empty'` — with the Background gone, the first
+ *      `ParsedStep` is the Scenario's own), `@REQ-EC-017`'s ordering (`expected 'first,second' to
+ *      equal 'the recorder is empty,first,second'`) and `@REQ-EC-005`'s recorded prefix. Stayed
+ *      GREEN: `@REQ-EC-001`, `@REQ-EC-006` and both Outline rows, none of which read the prefix.
+ *
+ *      The entry is worth more than its three red tests. An EIGHTH test appeared —
+ *      `⚠ unused step definition: Given "the recorder is empty"`, emitted by the library and named
+ *      after the now-orphaned registration — so the collected count went 7 → 8. This directory's
+ *      README says to assert the collected COUNT because a pair that silently stops running looks
+ *      like a smaller number nobody is watching; here the same rule catches a number moving the
+ *      other way, and the number moving is the runner reporting the defect by name.
+ * - **C. The coercion comes from the PATTERN, not from the body.** `{int}` changed to `{word}` for
+ *      the integer argument, in this module only, the `.feature` file untouched → **exactly 1 red**,
+ *      `expected 'string' to equal 'number'` on the first `typeof` assertion. The body's declared
+ *      parameter type stayed `number` and the compiler said nothing, which is the finding rather
+ *      than an aside: `StepRegistrar` infers `Params` from the body it is given, so a pattern and a
+ *      body can disagree with each other and only a runtime assertion notices. That is exactly why
+ *      MATCH-01's type-level half lives in `packages/gherkin/test/StepArgs.types.ts` and not here.
+ * - **D. BOTH loads really carry the custom type.** The SECOND load only, swapped from this file's
+ *      store to the built-ins-only layer → **exactly 1 red**, `expected undefined to not equal
+ *      undefined`: `lookupByTypeName("fruit")` on the second registry found nothing. Note which
+ *      assertion did NOT fail — the reference-inequality one directly above it still passed, because
+ *      two loads still produced two objects. D and E fail on two different assertions in the same
+ *      step body and neither substitutes for the other.
+ * - **E. Reference inequality is the assertion carrying MATCH-02.** Measured twice, and the second
+ *      measurement is the one that matters:
+ *
+ *      **E1**, both sides of the inequality pointed at `feature.parameterTypes` → **exactly 1 red**,
+ *      `expected ParameterTypeRegistry{ …(2) } to not equal ParameterTypeRegistry{ …(2) }`.
+ *
+ *      **E2**, the inequality assertion DELETED outright and nothing else touched → **the whole
+ *      suite green, 793 passed, 0 failed.** Both loads still succeed, both registries still resolve
+ *      `fruit`, and the second registry still matches the second file's step text through
+ *      `createStepMatcher`. Every remaining assertion in this Scenario is equally satisfied by a
+ *      MEMOISED registry handed to both calls — which is precisely the Pitfall 14 bug MATCH-02
+ *      exists to forbid. One line is the whole difference between traceability theater and coverage,
+ *      and E2 is the measurement that says so instead of the record asserting it.
  */
 import { createParameterTypeStore, createStepMatcher, loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"

@@ -231,9 +231,9 @@ requirements, in the order written there, per
 written" rule. They are permanent: never renumbered and never reused
 (AGENTS.md §6).
 
-**Not all 22 are carried yet, and this list says which.** `REQ-EC-001` through
-`REQ-EC-003`, `REQ-EC-005` through `REQ-EC-009`, and `REQ-EC-016` through
-`REQ-EC-018`, are ALLOCATED but their
+**Not all 22 are carried yet, and this list says which.** Six remain:
+`REQ-EC-003`, `REQ-EC-007`, `REQ-EC-008`, `REQ-EC-009`, `REQ-EC-016` and
+`REQ-EC-018` are ALLOCATED but their
 fixtures have not landed; only the rows in the table below name a `.feature`
 file that exists on disk today. Two structural facts about the remaining
 allocation are worth stating before the fixtures arrive, because neither is
@@ -247,11 +247,19 @@ visible from a row:
   assert the specific named error. The wrapper is what passes. This mirrors
   `scripts/verify-tsgo-gate.sh`'s satisfied/starved fixture pair, one level up:
   a runtime error instead of a compile diagnostic.
-- Four of them have a compile-time half no running test can state, because it is
-  a claim about what does NOT compile. Their Scenario proves the positive,
-  observable half and their **Verified by** column additionally names the gate
-  that carries the negative half — see the `REQ-EC-010`, `REQ-EC-012`,
-  `REQ-EC-014` and `REQ-EC-019` rows below, all four of which have now landed.
+- Several rows that HAVE landed carry only half their requirement, and each says
+  so in its **Verified by** column rather than leaving the gap implied. Two
+  shapes recur. A claim about what does NOT compile — `REQ-EC-010`,
+  `REQ-EC-012`, `REQ-EC-014` and `REQ-EC-019` — is carried by
+  `scripts/verify-tsgo-gate.sh` or a `.types.ts` pin, because no running test can
+  state it. A claim about ABSENCE, or about a value only the type system holds,
+  is the same problem from a different direction: `REQ-EC-001`'s "contributes
+  zero tests" is carried by `scripts/verify-no-runner-dep.sh`, `REQ-EC-005`'s
+  compile-time coercion by `packages/gherkin/test/StepArgs.types.ts`,
+  `REQ-EC-006`'s definition-time rejections by the two parameter-type test files,
+  and `REQ-EC-017`'s fail-fast half by
+  `packages/vitest/test/ScenarioEffect.test.ts`. A row whose Scenario is the
+  whole of its claim names no second artifact.
 
 One more structural fact, stated here because it applies to every row and to
 none of them visibly. A row's Scenario passing is not by itself evidence that
