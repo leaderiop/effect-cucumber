@@ -15,10 +15,12 @@
  *
  * Eight things about this module are not visible from the code.
  *
- * (a) **No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here —
- *     not even an `import type`.** Neither name is written out anywhere in this file, comments
- *     included, because the acceptance grep that enforces the rule cannot tell a citation from an
- *     import; `TestApi.ts` note (a) spells both out and is the place to read them.
+ * (a) **No IMPORT of a test framework may ever appear here — not even an `import type`.**
+ *     `scripts/verify-testapi-seam.sh` enforces this structurally: it strips comment lines before
+ *     matching, so a framework named in PROSE (as it is several times below, and in `TestApi.ts`
+ *     note (a)) is not a violation and cannot false-positive the gate. Only an import position —
+ *     `from "…"`, `import "…"`, `import("…")`, `require("…")` — is scanned; `TestApi.ts` note (a)
+ *     spells both out and is the place to read them.
  *     ARCHITECTURE.md's Anti-Pattern 3 is the verified failure this rule exists
  *     for: `layer(sharedLayer)` hands its callback a `Vitest.MethodsNonLive<R>` carrying the shared
  *     Layer's services, and calling the MODULE-LEVEL `it.effect` inside that callback still
@@ -209,7 +211,7 @@
  *     (`describeFeature.ts`'s `sharedLayerTestApi`) decides where it goes — a node whose body requires
  *     nothing from either Layer tier is routed through the module-level, Layer-free constructor even on
  *     the shared path, so nothing about it can force a build. Named here as a property of the EMISSION
- *     ROUTE, without importing or naming a framework specifier, exactly as note (a) refuses to.
+ *     ROUTE, without importing or naming a framework specifier.
  *
  * (h) **The `EmitOutcome` is reported on TWO channels, and the RETURN VALUE is the unsafe one.** This
  *     function both returns an `EmitOutcome` and calls an optional `onEmitted` with one. They are not
