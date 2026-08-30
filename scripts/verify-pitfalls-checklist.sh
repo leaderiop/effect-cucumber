@@ -176,8 +176,18 @@ P08_PROBE_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-p08-prob
 
 # Use the repo-local runner and the repo-local, effect-tsgo-patched compiler,
 # never a global `vitest` or `tsc`.
+#
+# TSC IS AN ARRAY, expanded as `"${TSC[@]}"`. As a plain string it was a
+# two-word command relying on UNQUOTED word splitting at four call sites, which
+# works only for as long as no element ever contains a space — and the second
+# element is a PATH. `node_modules` under a checkout directory with a space in
+# it (a macOS "Application Support" path, a Windows user profile) splits into
+# two arguments and node reports a missing module rather than this gate
+# reporting a missing compiler. An array says what is meant and does not depend
+# on the surrounding filesystem.
 VITEST="node_modules/.bin/vitest"
-TSC="node node_modules/typescript/bin/tsc"
+TSC_BIN="node_modules/typescript/bin/tsc"
+TSC=(node "$TSC_BIN")
 
 # The number of rows the checklist table must yield. WRITTEN EXACTLY ONCE in
 # this file, and it is ASSUMPTION-11-B's whole mitigation: without it, a table
@@ -375,6 +385,10 @@ title_is_declared() {
 # later assertion vacuous.
 # ---------------------------------------------------------------------------
 [[ -x "$VITEST" ]] || fail "missing runner $VITEST — run \`pnpm install\` first. Without it this gate cannot invoke anything, so nothing was verified."
+# The compiler got no precondition while the runner did, so a missing
+# node_modules/typescript surfaced as an opaque node error from inside P-08 —
+# four assertions after the point at which nothing could be verified.
+[[ -f "$TSC_BIN" ]] || fail "missing compiler $TSC_BIN — run \`pnpm install\` first. P-08 and P-09 both invoke it, so without it neither the @ts-expect-error fixture nor the resolution listing was checked."
 for f in "$CHECKLIST_DOC" "$INPROCESS_EXECUTOR" "$ROOT_README" "$VITEST_README" "$GHERKIN_README" \
   "$ACCOUNTS_STEPS" "$STEP_EXPECT_ERROR_FIXTURE" "$STEP_EXPECT_ERROR_CONFIG" "$STEP_OK_FIXTURE" \
   "$STEP_OK_CONFIG"; do
@@ -405,7 +419,7 @@ echo ""
 # if the directive becomes unused. TWO CHECKS, never one: an exit-0 alone is
 # equally consistent with a file that has no directives left in it.
 # ===========================================================================
-P08_OK_OUTPUT="$($TSC -p "$STEP_EXPECT_ERROR_CONFIG" 2>&1)" && P08_OK_EXIT=0 || P08_OK_EXIT=$?
+P08_OK_OUTPUT="$("${TSC[@]}" -p "$STEP_EXPECT_ERROR_CONFIG" 2>&1)" && P08_OK_EXIT=0 || P08_OK_EXIT=$?
 if [[ "$P08_OK_EXIT" -ne 0 ]]; then
   echo "$P08_OK_OUTPUT" >&2
   fail "P-08: $STEP_EXPECT_ERROR_FIXTURE no longer compiles clean (exit $P08_OK_EXIT, output above). Either the DSL type was loosened so no error occurs on the marked line (TS2578 / TS377000 — DSL-01's guarantee is gone), or the two directive comment lines were reordered. That fixture's own header says which is which."
@@ -429,7 +443,7 @@ cat >"$P08_PROBE_CONFIG" <<'P08_CONFIG'
 }
 P08_CONFIG
 
-P08_DEAD_OUTPUT="$($TSC -p "$P08_PROBE_CONFIG" 2>&1)" && P08_DEAD_EXIT=0 || P08_DEAD_EXIT=$?
+P08_DEAD_OUTPUT="$("${TSC[@]}" -p "$P08_PROBE_CONFIG" 2>&1)" && P08_DEAD_EXIT=0 || P08_DEAD_EXIT=$?
 if [[ "$P08_DEAD_EXIT" -eq 0 ]]; then
   echo "$P08_DEAD_OUTPUT" >&2
   fail "P-08: with Db provided, the copy of $STEP_EXPECT_ERROR_FIXTURE STILL compiles clean — so the @ts-expect-error directive there is suppressing nothing and its file could lose its defect without anything going red. An expected error that stopped happening must become a build failure; that is the entire mechanism of a directive-based negative type test."
@@ -447,11 +461,11 @@ echo "✓ P-08 — the @ts-expect-error negative type-test compiles clean, and F
 grep -q "Effect.acquireRelease" "$STEP_OK_FIXTURE" ||
   fail "P-09: $STEP_OK_FIXTURE no longer contains Effect.acquireRelease, so compiling it says nothing about a SCOPED step. Dsl.ts note (b) is the claim under assertion — Scope must not leak into the step's required context — and this fixture is where it is exercised."
 
-P09_LISTED="$($TSC -p "$STEP_OK_CONFIG" --listFiles 2>&1 || true)"
+P09_LISTED="$("${TSC[@]}" -p "$STEP_OK_CONFIG" --listFiles 2>&1 || true)"
 grep -qF -- "$STEP_OK_FIXTURE" <<<"$P09_LISTED" ||
   fail "P-09: $STEP_OK_CONFIG did not include $STEP_OK_FIXTURE in its compiled file set. A config that compiles NOTHING exits 0, so without this control the assertion below would be vacuously true."
 
-P09_OUTPUT="$($TSC -p "$STEP_OK_CONFIG" 2>&1)" && P09_EXIT=0 || P09_EXIT=$?
+P09_OUTPUT="$("${TSC[@]}" -p "$STEP_OK_CONFIG" 2>&1)" && P09_EXIT=0 || P09_EXIT=$?
 if [[ "$P09_EXIT" -ne 0 ]]; then
   echo "$P09_OUTPUT" >&2
   fail "P-09: a step using Effect.acquireRelease no longer compiles (exit $P09_EXIT, output above). Most likely Scope.Scope has leaked into the step type in packages/vitest/src/Dsl.ts — a step using acquireRelease must still compile against a PLAIN Layer, because the runner provides the Scope. Do not add \`any\` to the fixture to make this pass."
