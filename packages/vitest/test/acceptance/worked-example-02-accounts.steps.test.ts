@@ -56,6 +56,44 @@
  * threat T-11-02-01's mitigation, and it is deliberately carried by a Scenario OTHER than the one
  * that looks like it should carry it.
  *
+ * ## `TestClock` isolation, and what the declaration ORDER does and does not buy
+ *
+ * `An hour passes for one account check` advances the simulated clock by an hour;
+ * `The next account check starts at zero` is declared IMMEDIATELY AFTER it and asserts the clock it
+ * reads is still 0 (RUN-04, BEH-EC-012, ADR-EC-018). The adjacency exists so a reader can see the
+ * claim without cross-referencing, and because both Scenarios need to be in the same `shared`-Layer
+ * Feature for the claim to be about the shared path at all.
+ *
+ * The adjacency is NOT the guarantee, and the distinction is ASSUMPTION-11-C. That vitest runs a
+ * file's tests in DECLARATION order is observed behaviour of the installed runner, not a documented
+ * contract — `--sequence.shuffle` would break the reading of these two Scenarios as "one after the
+ * other" while breaking nothing about the isolation itself. Mutation C in the record below is what
+ * separates the two: swapping the pair's declaration order leaves both assertions GREEN, because
+ * each Scenario gets its own `TestEnv` regardless of who ran before it. So the assumption is about
+ * this file's READABILITY, never about the mechanism.
+ *
+ * ## RUN-05, and the claim this file deliberately does NOT make
+ *
+ * `Every tag on this Scenario reaches the runner` carries `@REQ-EC-021` and `@slow`, and it runs
+ * green. It is tempting to write that its RUNNING proves both tags were accepted by the runner's
+ * validator, on the theory that an undeclared tag collapses its whole file to zero tests. **That
+ * theory is false, and it was measured false by the pair beside this one** (plan 11-01, mutation A;
+ * `packages/vitest/test/acceptance/README.md`'s closing section; `vitest.config.ts` note (e)).
+ * `describeFeature.ts`'s D-08 catch-and-degrade intercepts the collection-time throw and re-emits
+ * each Scenario UNTAGGED behind one located warning, so with every acceptance tag undeclared
+ * `pnpm test` still exits 0 and this file still produces every one of its tests. What actually
+ * breaks is the thing the declaration exists for: `--tagsFilter` fails inside the runner's own
+ * `createTagsFilter`.
+ *
+ * So this Scenario's green status is evidence for exactly two things — a Scenario carrying more than
+ * one tag is registered and runs, and the tag universe `vitest.config.ts` derives from this
+ * directory's `.feature` files really does cover a tag that appears in BOTH halves of that config's
+ * de-duplication (`@slow` is hand-written AND found by the glob; nothing before this file exercised
+ * that overlap). The half about tags reaching the emitted node is carried by
+ * `scripts/verify-tags-filter.sh`, and the absence of an `UndeclaredTagWarning` naming this file on
+ * stderr is the in-process corroboration. Mutation D below records what an undeclared tag does to
+ * THIS pair, rather than assuming it matches the prediction.
+ *
  * ## Cross-step state goes through a `Ref`, and the one module-scope holder is not an exception
  *
  * Every value one step writes for a later step in the same Scenario lives in a `Ref` obtained from
@@ -70,18 +108,26 @@
  *
  * `assert` from `@effect/vitest` inside step bodies, never `expect`: oxlint's
  * `vitest/no-standalone-expect` does not recognise an Effect-bodied test as a test block. The worked
- * example's `expect(...)` calls and its barrel `import { Context, Effect, ... } from "effect"` are
- * both translated — submodule namespace imports per AGENTS.md section 3.
+ * example's `expect(...)` calls are translated to `assert`, and its single barrel import of the
+ * `effect` package root is translated to one submodule namespace import per module, per AGENTS.md
+ * section 3. `effect/testing` has no barrel at all, so `TestClock` is reached at its own path.
+ *
+ * That paragraph is worded around the barrel import rather than quoting it, deliberately: this
+ * plan's acceptance criterion counts the literal in this file and expects zero, and a criterion that
+ * forbids a literal forbids spelling it out to explain the rule as well. The repo has now hit that
+ * same edge four times (STATE.md 03-04, 10-01, 10-02, and here).
  */
 import { loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
+import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
+import * as TestClock from "effect/testing/TestClock"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
 
@@ -173,21 +219,29 @@ class Database extends Context.Service<Database, {
 /**
  * Per-Scenario: fresh every Scenario, from the worked example's own declaration.
  *
- * `lastError` is that declaration verbatim. `observedOrdinal` is this pair's own addition and exists
- * for the same reason every field in the apples pair's `World` does — the `@REQ-EC-019` Scenario's
+ * `lastError` is that declaration verbatim. `observedOrdinal` and `observedMillis` are this pair's
+ * own additions and exist for the same reason every field in the apples pair's `World` does — a
  * `When` writes what it observed and its `Then` reads it back, so the value crosses a step boundary
  * and therefore has to cross it through a `Ref` (RUN-06).
+ *
+ * Both observation fields start at `-1` and not at `0`, and that is the difference between a sharp
+ * assertion and a vacuous one. `The next account check starts at zero` asserts a reading of `0`; a
+ * field initialised to `0` would make that Scenario pass with its writing step DELETED, which is
+ * exactly the mutation the directory README's minimum set calls D. `-1` is not a reachable clock
+ * reading and not a reachable build ordinal, so the reading step's write is load-bearing for both.
  */
 class World extends Context.Service<World, {
   readonly lastError: Ref.Ref<Option.Option<DatabaseError>>
   readonly observedOrdinal: Ref.Ref<number>
+  readonly observedMillis: Ref.Ref<number>
 }>()("World") {
   static readonly layer = Layer.effect(
     this,
     Effect.gen(function*() {
       return World.of({
         lastError: yield* Ref.make<Option.Option<DatabaseError>>(Option.none()),
-        observedOrdinal: yield* Ref.make(0)
+        observedOrdinal: yield* Ref.make(-1),
+        observedMillis: yield* Ref.make(-1)
       })
     })
   )
@@ -200,7 +254,14 @@ class World extends Context.Service<World, {
 describeFeature(
   feature,
   { shared: Database.layer, perScenario: World.layer },
-  ({ Background, Scenario }) => {
+  (dsl) => {
+    // Destructured for the two CONTAINERS only. The one FEATURE-level step definition below is
+    // written as `dsl.Then(...)` rather than pulled into this binding list, and that is not a style
+    // wobble: a bare `Then` here would shadow the `Then` every `Scenario(...)` callback receives —
+    // oxlint's `eslint(no-shadow)` says so — and the two are genuinely different registrars writing
+    // into different scopes. Spelling the Feature-level one out is what keeps that visible.
+    const { Background, Scenario } = dsl
+
     // DSL-04 / ADR-EC-017. A Background is a step-definition CONTAINER and not a hook: the patterns
     // registered here are matched against the literal Gherkin text in the `.feature` file exactly
     // like any other step, and both bodies run as the first `yield*`s of every Scenario's own Effect
@@ -271,6 +332,67 @@ describeFeature(
     // registered at all and no step definition for it is needed here. That absence is the assertion:
     // an `excludeTags` that filtered at RUN time instead would leave two unmatched steps and a red
     // Feature. Unlike `--tagsFilter '!@wip'`, which would report the Scenario as skipped.
+
+    // RUN-04 / BEH-EC-012 / ADR-EC-018, first half. This Scenario is the one that breaks the clock
+    // for everyone after it — and it is not exempt from the claim it breaks: it reads 0 at its own
+    // start like every other Scenario in this Feature does.
+    Scenario("An hour passes for one account check", ({ When }) => {
+      When("the account check waits an hour", function*() {
+        const { observedMillis } = yield* World
+        // The anchor for "one hour PAST 0". Without it, `3600000` would be consistent with a clock
+        // that started at 3600000 and ignored the adjustment entirely.
+        assert.strictEqual(yield* Clock.currentTimeMillis, 0)
+
+        // THE one clock mutation in this file. A second one anywhere would make the next Scenario's
+        // "still starts at zero" ambiguous about which adjustment it survived.
+        yield* TestClock.adjust("1 hour")
+
+        // BEH-EC-012's other half, and the reason this is not merely an isolation test: a step MUST
+        // be able to advance the simulated clock deterministically. A `TestClock` that silently
+        // ignored the adjustment would leave the NEXT Scenario's assertion green.
+        yield* Ref.set(observedMillis, yield* Clock.currentTimeMillis)
+      })
+    })
+
+    // RUN-04's second half, and the assertion the whole `shared` path exists to keep true. Declared
+    // IMMEDIATELY AFTER the Scenario above — see the header's note on ASSUMPTION-11-C for what that
+    // adjacency does and does not buy.
+    Scenario("The next account check starts at zero", ({ When }) => {
+      When("the next account check reads the clock", function*() {
+        const { observedMillis } = yield* World
+        yield* Ref.set(observedMillis, yield* Clock.currentTimeMillis)
+      })
+    })
+
+    // ONE definition matched by BOTH clock Scenarios, so the two bodies cannot drift apart into
+    // asserting two different things about one claim. The expected value comes out of each
+    // Scenario's own `.feature` line — `3600000` for the one that advanced the clock, `0` for the
+    // one after it — so the two readings are compared against numbers that travelled through the
+    // parser and the cucumber-expression matcher rather than against constants written here.
+    dsl.Then("the account check clock reads {int}", function*(expected: number) {
+      const { observedMillis } = yield* World
+      assert.strictEqual(yield* Ref.get(observedMillis), expected)
+    })
+
+    // RUN-05, and the Scenario that also closes threat T-11-02-01. `Ada` was written into the SHARED
+    // database by the first Scenario in this Feature, so a total of 1 here is only reachable if the
+    // Background's `clear` really ran against the shared tier between the two. Delete the `clear` and
+    // this Scenario reads 2 — which is what makes `clear`'s presence on the service load-bearing
+    // rather than decorative, the point `spec/behaviors/02`'s closing paragraph makes in prose.
+    //
+    // What this Scenario does NOT prove on its own is that its two tags reached the runner — see the
+    // header's RUN-05 note. It proves a multi-tag Scenario is registered and runs; the ABSENCE of an
+    // `UndeclaredTagWarning` for this file on stderr is the other half of that observation, and
+    // `scripts/verify-tags-filter.sh` carries the `--tagsFilter` half no in-process test can.
+    Scenario("Every tag on this Scenario reaches the runner", ({ Then, When }) => {
+      When("this scenario adds a second account named {string}", function*(name: string) {
+        yield* (yield* Database).create(name)
+      })
+
+      Then("the account total across both scenarios is {int}", function*(expected: number) {
+        assert.strictEqual(yield* (yield* Database).count, expected)
+      })
+    })
   },
   { excludeTags: ["@wip"] }
 )

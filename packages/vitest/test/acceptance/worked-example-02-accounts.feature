@@ -23,3 +23,17 @@ Feature: Worked example 02 - accounts
   Scenario: Renaming a user
     When I rename a user
     Then nothing happens yet
+
+  @REQ-EC-020
+  Scenario: An hour passes for one account check
+    When the account check waits an hour
+    Then the account check clock reads 3600000
+
+  Scenario: The next account check starts at zero
+    When the next account check reads the clock
+    Then the account check clock reads 0
+
+  @REQ-EC-021 @slow
+  Scenario: Every tag on this Scenario reaches the runner
+    When this scenario adds a second account named "Grace"
+    Then the account total across both scenarios is 1
