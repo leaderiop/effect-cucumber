@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 3/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
+**Plans**: 4/6 plans executed (6 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed)
 
 Plans:
 **Wave 1**
@@ -452,7 +452,7 @@ Plans:
 
 **Wave 4** *(blocked on 10-03)*
 
-- [ ] 10-04-PLAN.md — RUN-04's `TestClock`/`TestConsole` per-Scenario isolation on the shared path, and D-03's `Rule`-under-`shared` regression (SC#3's in-process half)
+- [x] 10-04-PLAN.md — RUN-04's `TestClock`/`TestConsole` per-Scenario isolation on the shared path, and D-03's `Rule`-under-`shared` regression (SC#3's in-process half)
 
 **Wave 5** *(blocked on 10-04)*
 
@@ -521,7 +521,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 3/6 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 4/6 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
