@@ -435,7 +435,7 @@ Plans:
 
 **Spec decision**: already made and applied — the `excludeTestServices` fix was adopted (not a carve-out), see `spec/decisions/018-shared-layer-testclock-isolation.md`. No open blocker here.
 
-**Plans**: 7/8 plans executed (8 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed). Plans 10-01 through 10-06 are executed; 10-07 and 10-08 close the one gap `10-VERIFICATION.md` found (a `shared` Layer still built when the tag filter excluded every Scenario, because the always-passing `⚠` warning nodes travelled the shared emission route).
+**Plans**: 8/8 plans executed (8 waves, sequential — every plan either shares `describeFeature.ts` or `emission.test.ts` with the one before it, or depends on the Scenario titles it fixed). Plans 10-01 through 10-06 are executed; 10-07 and 10-08 close the one gap `10-VERIFICATION.md` found (a `shared` Layer still built when the tag filter excluded every Scenario, because the always-passing `⚠` warning nodes travelled the shared emission route).
 
 Plans:
 **Wave 1**
@@ -468,7 +468,7 @@ Plans:
 
 **Wave 8** *(blocked on 10-07)*
 
-- [ ] 10-08-PLAN.md — The record: INV-EC-002's Mechanism/Assertions and BEH-EC-007's second dated correction gain the zero-runnable-Scenario clause, the duplicated CLI-gate misdescription is corrected in both locations, and RUN-03/RUN-04 go back to Complete behind a thirteen-gate sweep
+- [x] 10-08-PLAN.md — The record: INV-EC-002's Mechanism/Assertions and BEH-EC-007's second dated correction gain the zero-runnable-Scenario clause, the duplicated CLI-gate misdescription is corrected in both locations, and RUN-03/RUN-04 go back to Complete behind a thirteen-gate sweep
 
 Decisions locked before planning (`10-CONTEXT.md`): both an in-process build-count case AND a real-CLI gate are wanted, not one instead of the other (D-01/D-02); the untested `Rule` × `shared` combination gets its own regression test (D-03); the error-channel constraint applies to `shared` ONLY and never to `perScenario` (D-04); the README gains one small worked example whose fixture mirrors the acceptance test's (D-05).
 
@@ -529,7 +529,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Hooks | 8/8 | Complete   | 2026-08-29 |
 | 8. Rule and Scenario Outline | 9/9 | Complete   | 2026-08-29 |
 | 9. Tags | 9/9 | Complete   | 2026-08-29 |
-| 10. Layer Scopes (per-Scenario + `shared`) | 7/8 | In Progress|  |
+| 10. Layer Scopes (per-Scenario + `shared`) | 8/8 | In Progress|  |
 | 11. Composition Root and Acceptance Suite | 0/TBD | Not started | - |
 
 ---
