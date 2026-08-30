@@ -293,7 +293,17 @@ if [[ "$GIT_SCAN_AVAILABLE" -eq 0 ]]; then
 elif [[ -f "$SPEC_DIR/traceability.md" ]]; then
   # Same git-driven scan as check 4 — see feature_tags above for why it is not a
   # filesystem walk. WITH duplicates, so `uniq -d` below can see them.
-  occurrences=$(feature_tags -ho | sed 's/^@//' | sort)
+  # `LC_ALL=C` ON EVERY SORT THAT FEEDS `comm`, and it is a correctness fix
+  # rather than a tidy-up. `expected` below is built by a printf loop, so it is
+  # in C order by construction; `distinct` and `rows` come from `sort`, which
+  # collates by LOCALE. `comm` requires both inputs to be sorted THE SAME WAY and
+  # merely WARNS on input it thinks is unsorted — it does not fail — so a
+  # mismatch yields a wrong `missing`/`outofrange`/`unrowed` set rather than an
+  # error. Today every id is same-shape ASCII and the two orders coincide, which
+  # is exactly the kind of accident that stops being true when a differently
+  # shaped id family is introduced. Pinning the collation costs nothing and
+  # removes the dependency on that coincidence.
+  occurrences=$(feature_tags -ho | sed 's/^@//' | LC_ALL=C sort)
 
   if [[ -z "$occurrences" ]]; then
     report SKIP "requirement ids carried exactly once" "no .feature tags yet"
@@ -320,7 +330,7 @@ elif [[ -f "$SPEC_DIR/traceability.md" ]]; then
     # check 4.
     rows=$(awk '/^## §5 /{ inside = 1; next } /^## /{ inside = 0 } inside' "$SPEC_DIR/traceability.md" \
       | grep -oE '^\|[[:space:]]*REQ-EC-[0-9]{3}[[:space:]]*\|' \
-      | grep -oE 'REQ-EC-[0-9]{3}' | sort -u)
+      | grep -oE 'REQ-EC-[0-9]{3}' | LC_ALL=C sort -u)
     unrowed=$(comm -23 <(printf '%s\n' "$distinct") <(printf '%s\n' "$rows") | tr '\n' ' ' | sed 's/ *$//')
 
     covered=$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')
