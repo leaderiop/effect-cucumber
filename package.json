@@ -21,7 +21,8 @@
     "verify:oxlint-plugin": "bash scripts/verify-oxlint-plugin.sh",
     "verify:no-runner-dep": "bash scripts/verify-no-runner-dep.sh",
     "verify:testapi-seam": "bash scripts/verify-testapi-seam.sh",
-    "verify:tags-filter": "bash scripts/verify-tags-filter.sh"
+    "verify:tags-filter": "bash scripts/verify-tags-filter.sh",
+    "verify:shared-layer-once": "bash scripts/verify-shared-layer-once.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",
