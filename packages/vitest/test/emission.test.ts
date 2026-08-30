@@ -120,6 +120,14 @@
  *      exactly-one-`beforeAllScenarios:start` count assertion fail.
  * - F, G, H. Plan 08-07's three, recorded on the Rule-composition block at the bottom of this file
  *      rather than here, beside the arrangement they mutate.
+ * - I. Plan 10-03's per-Scenario build-count block: `perScenarioProbeLayer` replaced by a
+ *      `Layer.succeed` built ONCE at module scope → 2 fail, both that block's. The ordinals assertion
+ *      reads `[1, 1, 1]` instead of `[1, 2, 3]`, and Scenario two's own body fails on a `Ref` that
+ *      already contains `"first"`. Nothing outside the block moves, which is the point: three
+ *      Scenarios sharing one Layer build resolve every step and pass every other assertion here.
+ *
+ * Plan 10-03's second block records its own three mutations (i, ii and iii) in its own header, beside
+ * the arrangement they mutate — 08-07's precedent, and the same reason.
  *
  * **Mutation C SURVIVED the first version of this file, and that is why the last block exists.**
  * The first draft asserted only on what the emitted tests did while running. With nothing emitted,
@@ -1589,5 +1597,167 @@ describe("an undeclared tag warns and keeps running; a filter excludes without a
     // And no notice: nothing was excluded, so there is nothing to report. A "0 Scenario(s) excluded"
     // line on every unfiltered Feature is the noise D-10's `> 0` guard exists to prevent.
     expect(warningsFor("test/empty-filter.feature")).toEqual([])
+  })
+})
+
+/**
+ * Plan 10-03, Task 1 — the DEFAULT (per-Scenario) Layer scope, counted. The ELEVENTH real
+ * `describeFeature` call in this file.
+ *
+ * ## Appended at the END, after Phase 9's tag blocks, for this file's own declaration-order reason
+ *
+ * Every reader block here reads a module-scope array and depends on vitest running a file's suites in
+ * declaration order. Appending is the only placement that leaves all of them meaning exactly what they
+ * meant — nothing this block registers can run before a pre-Phase-10 reader has already asserted. This
+ * block also brings its OWN counters and its OWN service class, the rule the tag blocks above already
+ * follow: a counter shared with another block would make this block's assertion depend on that block's
+ * arrangement (T-10-03-05).
+ *
+ * ## What only a real run can see here, and why the existing blocks above cannot see it
+ *
+ * `logLayer` at the top of this file is already a per-Scenario `Layer.effect`, and the first block's
+ * whole-log comparison already fails if two Scenarios share one build. That is a claim about STATE.
+ * It is NOT a claim about the BUILD COUNT, and the two come apart: a runner that built the Layer once
+ * and then somehow handed each Scenario a fresh `Ref` would satisfy every assertion above this line
+ * while violating INV-EC-002's mechanism. Nothing in this repo counted builds until this block. A
+ * counter is also the only assertion that can tell the default scope from the `shared` scope at all —
+ * every step resolves identically either way, which is ARCHITECTURE.md Anti-Pattern 3's entire danger.
+ *
+ * So this block asserts BOTH halves, deliberately, because they are different claims:
+ *
+ * - `perScenarioBuildOrdinals` is `[1, 2, 3]` — N Scenarios, N builds, in Scenario order. The ordinal
+ *   is read back out of the SERVICE VALUE, not off the module counter, so a Layer that built three
+ *   times and was then handed to nobody could not produce it (T-10-03-01).
+ * - Scenario two finds its own `entries` `Ref` EMPTY before it writes. The `Ref` is created INSIDE the
+ *   Layer's build effect, so this is per-Scenario STATE isolation rather than the counter restated.
+ *
+ * `perScenarioScenarioNames` is `completedScenarios`'s argument applied here: an implementation that
+ * emitted nothing passes both in-body assertions vacuously, because nothing runs to assert
+ * (T-10-03-03).
+ *
+ * ## Mutation-tested (performed, run, then reverted) — see mutation I in this file's header.
+ */
+
+/**
+ * The per-Scenario probe. TWO readonly fields, and both are load-bearing.
+ *
+ * `buildOrdinal` is captured at BUILD time, so the value a step reads names the build it reached.
+ * `entries` is a `Ref` created inside the same build effect, so it is per-BUILD state and not a
+ * module-scope array — the distinction the `Log` service at the top of this file already makes.
+ */
+class PerScenarioProbe extends Context.Service<PerScenarioProbe, {
+  readonly buildOrdinal: number
+  readonly entries: Ref.Ref<ReadonlyArray<string>>
+}>()("PerScenarioProbe") {}
+
+/** How many times the per-Scenario Layer below has been BUILT. Read only through `buildOrdinal`. */
+let perScenarioBuilds = 0
+
+/**
+ * The plain-`Layer` argument form, which IS the default per-Scenario scope.
+ *
+ * `Layer.effect` and not `Layer.succeed`: only the effectful constructor has a build-time body to
+ * count in. A `Layer.succeed` built once at module scope carries a value, not a build, and would make
+ * every ordinal below read `1` — which is mutation I.
+ */
+const perScenarioProbeLayer = Layer.effect(
+  PerScenarioProbe,
+  Effect.gen(function*() {
+    perScenarioBuilds += 1
+    const entries = yield* Ref.make<ReadonlyArray<string>>([])
+    return PerScenarioProbe.of({ buildOrdinal: perScenarioBuilds, entries })
+  })
+)
+
+/** The build each Scenario REACHED, pushed from inside the running step. */
+const perScenarioBuildOrdinals: Array<number> = []
+
+/** The full name of each per-Scenario Scenario that ran to completion — `completedScenarios`'s role. */
+const perScenarioScenarioNames: Array<string> = []
+
+/**
+ * Three Scenarios, one per build.
+ *
+ * The three Scenario TITLES are fixed: plan 10-05's real-CLI gate asserts on them by exact suffix
+ * match, so renaming one here without renaming it there turns that gate's assertion vacuously true.
+ */
+const perScenarioBuildFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Per-Scenario build count
+
+  Scenario: the first per-scenario scenario records its own build
+    When the first per-scenario step runs
+    Then the per-scenario scenario is done
+
+  Scenario: the second per-scenario scenario sees a fresh build
+    When the second per-scenario step runs
+    Then the per-scenario scenario is done
+
+  Scenario: the third per-scenario scenario sees a third build
+    When the third per-scenario step runs
+    Then the per-scenario scenario is done
+`,
+    "test/per-scenario-build-count.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// THE ELEVENTH real `describeFeature` call in this file, and the PLAIN-Layer form deliberately — that
+// argument shape is what selects the default per-Scenario scope, and the block below it is the same
+// Feature under `{ shared, perScenario }`.
+describeFeature(perScenarioBuildFeature, perScenarioProbeLayer, ({ Then, When }) => {
+  When("the first per-scenario step runs", function*() {
+    const probe = yield* PerScenarioProbe
+    perScenarioBuildOrdinals.push(probe.buildOrdinal)
+    yield* Ref.update(probe.entries, (seen) => [...seen, "first"])
+  })
+
+  When("the second per-scenario step runs", function*() {
+    const probe = yield* PerScenarioProbe
+    // SC #1's second half, and a DIFFERENT claim from the build count beside it: Scenario one wrote
+    // `"first"` into the `Ref` it got from its own build. If any of that state reached this Scenario,
+    // this array is non-empty. The ordinal assertion in the reader below cannot see this — a runner
+    // could rebuild the Layer three times and still hand all three builds one shared `Ref`.
+    assert.deepStrictEqual(yield* Ref.get(probe.entries), [])
+    perScenarioBuildOrdinals.push(probe.buildOrdinal)
+    yield* Ref.update(probe.entries, (seen) => [...seen, "second"])
+  })
+
+  When("the third per-scenario step runs", function*() {
+    const probe = yield* PerScenarioProbe
+    perScenarioBuildOrdinals.push(probe.buildOrdinal)
+    yield* Ref.update(probe.entries, (seen) => [...seen, "third"])
+  })
+
+  // ONE definition, matched by all three Scenarios. `currentTestName()` differs per running test, so
+  // one body records three distinct names — which is the whole of what this recorder needs.
+  Then("the per-scenario scenario is done", function*() {
+    // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
+    yield* Effect.void
+    perScenarioScenarioNames.push(currentTestName())
+  })
+})
+
+/**
+ * DECLARED AFTER the block that registered the Feature, for the declaration-order reason every other
+ * reader in this file uses.
+ */
+describe("the default per-Scenario Layer scope builds once per Scenario (10-03)", () => {
+  it("built the Layer three times for three Scenarios, in Scenario order", () => {
+    // THE assertion that carries N-builds, and the only one in this repo that does. A memoized or
+    // hoisted Layer produces `[1, 1, 1]` — and every step still resolves, every other assertion in
+    // this file still passes, and nothing anywhere goes red. That is exactly why it is written as an
+    // exact ordinal array rather than as `perScenarioBuilds === 3`: the ordinals also prove each
+    // Scenario REACHED a distinct build, which a bare counter cannot (T-10-03-01).
+    expect(perScenarioBuildOrdinals).toEqual([1, 2, 3])
+  })
+
+  it("emitted and ran all three Scenarios, each nested under the Feature", () => {
+    // `completedScenarios`'s argument, applied to this block: with nothing emitted, nothing runs, the
+    // two in-body assertions above assert nothing, and only this array notices (T-10-03-03).
+    expect(perScenarioScenarioNames).toEqual([
+      `Per-Scenario build count${nameSeparator}the first per-scenario scenario records its own build`,
+      `Per-Scenario build count${nameSeparator}the second per-scenario scenario sees a fresh build`,
+      `Per-Scenario build count${nameSeparator}the third per-scenario scenario sees a third build`
+    ])
   })
 })
