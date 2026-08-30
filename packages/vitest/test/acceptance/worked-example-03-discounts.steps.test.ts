@@ -408,9 +408,13 @@ describeFeature(feature, World.layer, (dsl) => {
       Then("the discount is rejected with {string}", function*(message: string) {
         const rejection = yield* Ref.get((yield* World).rejection)
         // The message the REGISTRY produced, compared against the one the `.feature` file carries.
-        // `Option.isSome` first, so a Scenario in which nothing was rejected fails rather than
-        // comparing two absences.
-        assert.strictEqual(Option.isSome(rejection) && rejection.value.message, message)
+        // TWO assertions, not one `&&` chain: presence first, so a Scenario in which nothing was
+        // rejected fails on the ABSENCE and says so. The chained form compares a `boolean | string`
+        // against a `string` and reports `expected false to equal "code expired"`, which is a
+        // correct failure for the wrong-looking reason — it reads as a message mismatch when what
+        // actually happened is that the discount was accepted.
+        assert.isTrue(Option.isSome(rejection), "no DiscountError was captured — the code was accepted")
+        assert.strictEqual(Option.getOrThrow(rejection).message, message)
       })
     })
   })

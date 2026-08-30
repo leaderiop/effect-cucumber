@@ -421,7 +421,14 @@ describeFeature(
 
       Then("the operation fails with {string}", function*(expected: string) {
         const error = yield* Ref.get((yield* World).lastError)
-        assert.strictEqual(Option.isSome(error) && error.value.message, expected)
+        // TWO assertions, not one `&&` chain, and the split is what makes the failures
+        // distinguishable. `strictEqual(Option.isSome(e) && e.value.message, expected)` compares a
+        // `boolean | string` against a `string`, so the absent case reports
+        // `expected false to equal "not found"` — correct, and opaque about which of the two things
+        // went wrong. This Scenario is `@skip`ped, so that message has never actually been read by
+        // anyone; a reader meeting it for the first time would be meeting it while debugging.
+        assert.isTrue(Option.isSome(error), "no DatabaseError was captured — the delete did not fail")
+        assert.strictEqual(Option.getOrThrow(error).message, expected)
       })
     })
 
