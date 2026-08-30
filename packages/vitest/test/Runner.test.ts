@@ -1398,6 +1398,30 @@ describe("EmitOptions.contextFree routes each node kind correctly (10-07)", () =
       }
     ])
   })
+
+  // 10-REVIEW.md WR-03: the assertion above drives `checkout`, which has no Rule, so it pins only
+  // `Runner.ts`'s Feature-level Scenario loop (:577-593). The Rule-nested loop (:638-650) is written
+  // out a second time and is not covered by anything structural without this test — flipping its
+  // `contextFree: false` to `true` leaves the assertion above, and every other assertion in this
+  // file, green. `shop` has one Rule with two Scenarios, so this pins the second loop the same way.
+  it("marks a RULE-NESTED Scenario NOT context-free — Runner.ts's second Scenario loop", () => {
+    const { api, records } = makeRecordingApi()
+    emitFeature({
+      api,
+      plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+    assert.deepStrictEqual(routingOf(records), [
+      { kind: "describe", name: "Shop", contextFree: null },
+      { kind: "effect", name: "browsing", contextFree: false },
+      { kind: "describe", name: "refunds", contextFree: null },
+      { kind: "effect", name: "refund granted", contextFree: false },
+      { kind: "effect", name: "refund denied", contextFree: false }
+    ])
+  })
 })
 
 /**
