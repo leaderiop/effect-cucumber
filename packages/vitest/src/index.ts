@@ -37,6 +37,23 @@
  * mask its error; `BeforeAllScenarios` runs once per Feature and its failure reaches every Scenario;
  * `AfterAllScenarios` runs as a trailing node regardless of what failed before it.
  *
+ * **Both Layer scopes are real at run time, not only in the types** (RUN-03, RUN-04,
+ * [ADR-EC-018](../../../spec/decisions/018-shared-layer-testclock-isolation.md)). A plain `Layer` in
+ * the second argument IS the per-Scenario scope and is built fresh for every Scenario. The `shared`
+ * half of `{ shared, perScenario }` is built EXACTLY ONCE for the whole Feature, through the test
+ * framework's own `layer(...)` helper, while the `perScenario` half beside it is still rebuilt for
+ * every Scenario — the two tiers travel as two values and are never merged, and where both name the
+ * same service the `perScenario` implementation is the one a step resolves. Every Scenario gets its
+ * OWN simulated clock and its OWN console on both forms, so one Scenario's `TestClock.adjust` is
+ * never observable by another. A `shared` Layer's error channel must be `never`, and that constraint
+ * is not stylistic: the framework builds a shared Layer with `Effect.orDie`, so a typed failure there
+ * becomes an unrecoverable defect raised out of a setup hook, attributed to no Scenario, no step and
+ * no `.feature` file. Pinning the channel moves the choice to where the types can see it — a caller
+ * writes `Layer.catchAll` or `Layer.orDie` themselves and the collapse is visible in their own
+ * source. One capability does not carry across, and it is stated here rather than left to be
+ * discovered: the `it` the framework hands the shared block has no live-clock member, so a Feature
+ * using a `shared` Layer cannot opt a single Scenario out of the simulated clock.
+ *
  * **Tags** (RUN-05, [ADR-EC-020](../../../spec/decisions/020-vitest-native-tags-for-skip-only.md)).
  * Every tag on a Scenario reaches the emitted test as a native runner tag, including the ones it
  * inherits from its `Feature`, its `Rule` and its `Examples` block. `@skip` additionally emits the
@@ -56,15 +73,18 @@
  * below, is the supported way to produce those declarations from the same `.feature` files the tags
  * are written in.
  *
- * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: the opt-in
- * `shared` Layer built once per Feature, together with the per-Scenario `TestClock` isolation that
- * has to accompany it, is Phase 10 (RUN-03, RUN-04) — the `{ shared, perScenario }` argument form is
- * accepted and type-checked today, but both halves are built per Scenario at runtime. A `Rule` that
- * extends the ambient Layer with its own per-Scenario Layer, and typed `Scenario Outline` Examples,
- * were on this list until Phase 8 and are built now (DSL-05, DSL-06): a Rule takes an extra Layer
- * merged onto the Feature's with `Layer.provideMerge`, registers its own `Background` and its own
- * `Before`/`After`/`BeforeStep`/`AfterStep`, and every Outline row emits its own test titled with
- * that row's values.
+ * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: the wrapped,
+ * `ManagedRuntime`-backed `loadFeature` of
+ * [ADR-EC-024](../../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md),
+ * which this barrel does not export — a test author reaches `@effect-cucumber/gherkin`'s own
+ * Effect-returning `loadFeature` directly today and provides its requirements themselves. The
+ * build-once `shared` Layer with its per-Scenario `TestClock`/`TestConsole` isolation was on this
+ * list until Phase 10 and is built now (RUN-03, RUN-04 — the paragraph on Layer scopes above says
+ * what it does). A `Rule` that extends the ambient Layer with its own per-Scenario Layer, and typed
+ * `Scenario Outline` Examples, were on it until Phase 8 and are built now (DSL-05, DSL-06): a Rule
+ * takes an extra Layer merged onto the Feature's with `Layer.provideMerge`, registers its own
+ * `Background` and its own `Before`/`After`/`BeforeStep`/`AfterStep`, and every Outline row emits its
+ * own test titled with that row's values.
  *
  * ## Export policy
  *
@@ -101,15 +121,15 @@
  * not that it is more useful than the rest — it is that there is no internal stage to freeze. It is
  * called from a consumer's own config file rather than from inside the register → plan → emit
  * pipeline, so exporting it commits this project to a single function signature it already has to
- * keep, not to the shape of a join between two stages that Phase 10 is going to change.
+ * keep, not to the shape of a join between two stages — a join Phase 10 has since changed.
  *
  * The omission is a decision, not an oversight, and the cost of getting it wrong is asymmetric: a
  * published internal stage is a contract this project then has to keep, through every change to the
  * pipeline it is a stage of. `collectFeature` is the sharpest case — it is the in-package join point
  * a test asserts a `FeatureCollection` against, and exporting it would freeze that collection's
- * shape, `plan` field included, into the package's contract. `TestApi` is the next sharpest: Phase
- * 10 (RUN-03/RUN-04) changes which implementation flows through it, and a consumer never constructs
- * one.
+ * shape, `plan` field included, into the package's contract. `TestApi` is the next sharpest: TWO
+ * implementations now flow through it since Phase 10 (RUN-03/RUN-04) — the module-level one and the
+ * one `layer(...)` hands the shared block — and a consumer never constructs either.
  */
 
 /** The entry point. Everything else in this package is reached through the dsl it hands `define`. */
