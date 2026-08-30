@@ -1,432 +1,424 @@
 ---
 phase: 10-layer-scopes-per-scenario-default-shared
-reviewed: 2026-08-30T02:48:17Z
+reviewed: 2026-08-30T13:56:25Z
 depth: standard
-files_reviewed: 23
+files_reviewed: 8
 files_reviewed_list:
-  - .github/workflows/check.yml
-  - .gitignore
-  - dprint.json
-  - package.json
-  - packages/vitest/README.md
-  - packages/vitest/src/Runner.ts
-  - packages/vitest/src/ScenarioEffect.ts
   - packages/vitest/src/TestApi.ts
+  - packages/vitest/src/Runner.ts
   - packages/vitest/src/describeFeature.ts
-  - packages/vitest/src/index.ts
-  - packages/vitest/test/SharedLayerConstraint.types.ts
-  - packages/vitest/test/describeFeature.test.ts
+  - packages/vitest/test/Runner.test.ts
   - packages/vitest/test/emission.test.ts
-  - scripts/verify-shared-layer-once.sh
-  - spec/behaviors/01-steps-and-world.md
   - spec/behaviors/02-shared-layers-and-tags.md
-  - spec/behaviors/03-rules-outlines-and-testclock.md
-  - spec/decisions/006-two-layer-scopes-only.md
-  - spec/decisions/018-shared-layer-testclock-isolation.md
   - spec/invariants.md
-  - spec/overview.md
-  - spec/roadmap.md
   - spec/traceability.md
 findings:
-  critical: 2
-  warning: 6
+  critical: 0
+  warning: 7
   info: 3
-  total: 11
+  total: 10
 status: issues_found
 ---
 
 # Phase 10: Code Review Report
 
-**Reviewed:** 2026-08-30T02:48:17Z
+**Reviewed:** 2026-08-30T13:56:25Z
 **Depth:** standard
-**Files Reviewed:** 23
+**Files Reviewed:** 8
 **Status:** issues_found
 
 ## Summary
 
-Phase 10 replaced the collapsing `normalizeLayer` with `splitLayerArgument`, added a second
-`TestApi` implementation (`sharedLayerTestApi`) routed through `@effect/vitest`'s `layer(...)`,
-pinned `shared`'s error channel to `never`, and added an out-of-process CLI gate. The only
-executable source change in the phase is in `packages/vitest/src/describeFeature.ts`; `Runner.ts`,
-`ScenarioEffect.ts` and `TestApi.ts` changed in prose only.
+Reviewed the current state of the eight files carrying plans 10-07 (the `EmitOptions.contextFree`
+routing flag) and 10-08 (the spec write-up). The routing mechanism itself is **correct**, and I
+verified that rather than accepting it:
 
-Baseline verification performed during this review: `pnpm test` (32 files / 768 passed / 3 skipped),
-`pnpm lint`, `pnpm typecheck:test`, `bash spec/scripts/verify-traceability.sh` and
-`bash scripts/verify-shared-layer-once.sh` all pass on the reviewed tree. That green baseline is
-what makes the two Critical findings below worth reading: both are silent, both were reproduced
-with throwaway probes against the real runner in this working tree, and neither is visible from any
-assertion currently in the repo.
+- Read the installed `@effect/vitest@4.0.0-rc.112` `dist/internal/internal.js` directly. The shared
+  constructor really is `effect => Effect.flatMap(contextEffect, context => effect.pipe(Effect.scoped,
+  Effect.provide(context)))`, so any body — including `Effect.void` — forces the memoised build. The
+  module-level constructor is `makeTester(flow(Effect.scoped, Effect.provide(TestEnv)), V.it)`, which
+  supplies its own clock/console and touches no shared Layer. Routing `⚠` nodes to the second one is
+  a real fix, not a re-labelling.
+- Confirmed the `blockTasks.length === 0` early-return arm of `layer(...)` is reached identically
+  before and after the change (emission is always inside a deferred `describe(feature.name, …)`
+  factory, so `collectTasks` sees an empty task list either way), so release timing is unchanged.
+- Traced the residual build paths for a totally-excluded Feature: `describe` (no build), `⚠` nodes
+  (now routed off), `⚙ AfterAllScenarios` (already suppressed by `runnableScenarioCount > 0`),
+  `@skip` nodes (`it.skip` never invokes the body). No remaining path forces a build. The gap is
+  genuinely closed.
+- Ran the gates: `vitest run` on both test files (107 passed / 3 skipped), `tsc --noEmit -p
+  packages/vitest/tsconfig.test.json`, `oxlint`, `dprint check`, and
+  `spec/scripts/verify-traceability.sh` (7 PASS / 0 FAIL). All clean.
 
-The two Critical findings are resource-lifetime defects, not type or logic errors:
+**No BLOCKER-class defect found.** That is a measured result, not a default.
 
-1. A `BeforeAllScenarios` hook's scoped resources are finalized at the end of the **first** Scenario
-   while every later Scenario receives a cached success — measured as
-   `["acquired", "step", "released", "step"]`.
-2. On the shared path the `shared` Layer is built even when the tag filter excluded **every**
-   Scenario in the Feature, because the always-passing `⚠ unused step definition` nodes are emitted
-   through `sharedIt.effect` and that constructor flat-maps the shared context before running
-   anything — measured as build count `1` with zero runnable Scenarios.
-
-Documentation quality in this repo is unusually high, and the phase honestly recorded one upstream
-limitation it discovered (the shared scope's release timing, `spec/behaviors/02-shared-layers-and-tags.md`).
-The findings below are the ones that survived that filter.
-
-## Narrative Findings (AI reviewer)
-
-## Critical Issues
-
-### CR-01: `BeforeAllScenarios` scoped resources are released after the FIRST Scenario, and every later Scenario silently gets a dead resource
-
-**File:** `packages/vitest/src/Runner.ts:384-399`, `packages/vitest/src/Runner.ts:507-509`
-**Severity:** BLOCKER
-
-**Issue:** `makeOnce` builds the once-cell as
-`Effect.suspend(() => Effect.flatMap(Deferred.into(body, deferred), () => Deferred.await(deferred)))`
-and the cell is composed into each Scenario's Effect via
-`Effect.flatMap(beforeAllScenariosCell, () => buildScenarioEffect(...))` (lines 539-543 and 597-601).
-The cell's `body` is typed `Effect<void, unknown, Scope.Scope>`, and `Hook.ts` types every hook body
-as `() => Effect<any, any, any>`, so a hook body may legitimately acquire a scoped resource. The
-`Scope` it acquires against is whichever Scenario ran first — `@effect/vitest`'s `makeTester`
-applies `Effect.scoped` **per test**. When that first Scenario finishes, the scope closes and the
-resource is finalized. Every later Scenario reaches `Deferred.await`, which replays the cached
-**success value** and nothing else, so it proceeds with a released resource and no error anywhere.
-
-`spec/behaviors/07-hook-ordering-and-guarantees.md:111` states "BeforeAllScenarios runs AT MOST ONCE
-per Feature, shared across ..."; what is actually shared is only the hook's exit value, not its
-effect. Nothing in `test/Runner.test.ts` (recording fake, never runs anything) or
-`test/emission.test.ts` (hooks are pure array pushes with no finalizers) can see this.
-
-**Reproduced in this working tree** with a throwaway fixture — two Scenarios, one
-`BeforeAllScenarios` doing `Effect.acquireRelease`:
-
-```
-ZZ_LOG=["acquired","step","released","step"]
-```
-
-The `"released"` sits between the two `"step"` entries. Phase 10 makes this materially worse in
-practice: a `shared` Layer is the tier people put testcontainers and DB pools on, and
-`BeforeAllScenarios` is the hook they will reach for to seed them.
-
-**Fix:** the once-cell must own a scope whose lifetime is the Feature's, not the first Scenario's.
-Two workable shapes:
-
-```ts
-// (a) Forbid the failure mode in the types: pin the batch to a Scope-free requirement so a
-//     scoped acquisition in a BeforeAllScenarios body is a compile error rather than a
-//     silently truncated lifetime.
-const makeOnce = (
-  body: Effect.Effect<void, unknown, never>
-): Effect.Effect<void, unknown, never> => { /* ... */ }
-
-// (b) Or give the cell its own scope, closed by the ⚙ AfterAllScenarios node (which already
-//     exists and is already suppressed when no Scenario was runnable):
-const featureScope = Effect.runSync(Scope.make())
-const beforeAllScenariosCell = hooks.BeforeAllScenarios.length > 0
-  ? makeOnce(
-    runHookBatch(hooks.BeforeAllScenarios).pipe(
-      Effect.provide(layer),
-      Effect.provideService(Scope.Scope, featureScope)
-    )
-  )
-  : null
-// ... and close `featureScope` in the AfterAllScenarios node's finalizer.
-```
-
-Whichever is chosen, add a regression test with a real finalizer — the current hook fixtures use
-plain array pushes and cannot fail.
-
----
-
-### CR-02: On the shared path the `shared` Layer is built even when the tag filter excluded every Scenario
-
-**File:** `packages/vitest/src/describeFeature.ts:1266-1283`, `packages/vitest/src/Runner.ts:630-632`
-**Severity:** BLOCKER
-
-**Issue:** `Runner.ts` deliberately emits the `⚠ unused step definition` nodes **unconditionally**
-(note (g): "they describe REGISTRATION and not execution"), and equally deliberately suppresses the
-`⚙ AfterAllScenarios` node when `runnableScenarioCount === 0` (note (e): it "would tear down
-resources nothing ever set up"). On the shared path those warning nodes are emitted through
-`sharedLayerTestApi`, whose `emit` calls `sharedIt.effect`, and the installed
-`@effect/vitest@4.0.0-rc.112` implements that as
-
-```js
-effect: makeTester(effect => Effect.flatMap(contextEffect, context =>
-  effect.pipe(Effect.scoped, Effect.provide(context))), it)
-```
-
-`contextEffect` is the cached build of the shared Layer. So **any** node emitted through
-`sharedIt.effect` — including an always-passing node whose whole body is `Effect.void` — forces the
-shared Layer to build. The `AfterAllScenarios` suppression is therefore defeated from the other
-direction: the teardown node is correctly not emitted, but a warning node sets the resource up
-anyway.
-
-**Reproduced in this working tree.** Feature with one `@excluded-tag` Scenario, `excludeTags:
-["@excluded-tag"]`, `{ shared: countingLayer, perScenario: Layer.empty }`, plus one unused step
-definition:
-
-```
-ZZ_PROBE_BUILDS=1      # every Scenario excluded, shared Layer still built
-```
-
-Deleting only the unused step definition (so no `⚠` node is emitted) returns the count to `0`,
-which confirms the warning node is the cause and not the Scenario walk.
-
-For a `shared` tier holding a testcontainer or a database connection, this starts the container for
-a Feature the caller explicitly filtered out, and does so on the strength of a stray unused pattern
-that is otherwise a lint-grade warning. That is behavioural, not merely wasteful: the documented
-contract of `excludeTags` is that "a Scenario the filter removes never becomes a test node at all"
-(`describeFeature.ts:196-206`), and the whole point of the `shared` tier is that building it is
-expensive and observable.
-
-**Fix:** route the synthetic nodes away from the shared context, or suppress the shared block when
-nothing runnable was emitted. The narrowest fix keeps `Runner.ts` framework-free by adding the
-suppression at the composition root:
-
-```ts
-// In describeFeature.ts's shared arm — emit the warning/synthetic nodes through the
-// module-level api, which carries no Layer services, and reserve `sharedIt` for
-// Scenario nodes. Requires one extra member (or an `EmitOptions.synthetic` flag)
-// on TestApi so Runner.ts can say WHICH kind of node it is without naming a framework.
-const plainApi = vitestTestApi(collection.plan.feature.uri)
-const sharedApi = sharedLayerTestApi(collection.plan.feature.uri, sharedIt)
-```
-
-Alternatively, keep the emission uniform and make the *shared build* lazy per node by wrapping the
-synthetic bodies so they never touch `contextEffect` — but the `TestApi` seam currently gives
-`Runner.ts` no way to express that distinction, so the flag has to be added deliberately rather than
-inferred.
+What the diff *does* carry is a cluster of truth-and-coverage defects that this repo's own conventions
+(`AGENTS.md` §1 "spec/ is normative" and §4 "Say only what is true") make material: a load-bearing
+doc note in `Runner.ts` that the file itself falsifies; a `contextFree` contract documented as a
+property of a node's *body* while the code uses it as a *route selector*, with no guard on the one
+direction that fails silently; a structural routing assertion that covers only one of `Runner.ts`'s
+two Scenario loops; a "load-bearing non-vacuity control" whose stated proxy argument does not hold;
+and a normative REQUIREMENT block left asserting a MUST the implementation now deliberately does not
+satisfy, while the requirements it backs were re-marked Complete.
 
 ## Warnings
 
-### WR-01: `testEnv`'s safety argument is contradicted by this repo's own measured memoisation behaviour
+### WR-01: `Runner.ts` note (a) asserts a rule the file violates ten times, on a rationale that is factually wrong about the gate
 
-**File:** `packages/vitest/src/describeFeature.ts:376-382`
-**Severity:** WARNING
+**File:** `packages/vitest/src/Runner.ts:18-21` (claim), contradicted at `:9`, `:36`, `:37`, `:64`,
+`:65`, `:222`, `:260`, `:476`, `:700`; reinforced by 10-07's own added text at `:211-212`
 
-**Issue:** the doc comment states, without qualification:
+**Issue:** Note (a) states:
 
-> A MODULE-SCOPE binding is safe precisely because a Layer is a BLUEPRINT and not a built value:
-> every `Effect.provide(testEnv)` builds its own clock and its own console, so one constant serves
-> every Scenario in every Feature without any of them sharing state.
+> "No import from `vitest`, or from the `@effect` package wrapping it, may ever appear here — not even
+> an `import type`. **Neither name is written out anywhere in this file, comments included, because
+> the acceptance grep that enforces the rule cannot tell a citation from an import**"
 
-That claim is false in exactly the configuration the rest of the file warns about. Lines 1255-1265
-of the same file, and ADR-EC-018's implementation note 4, record the measured mechanism: Layer
-memoisation is by **object identity** against the ambient `CurrentMemoMap`, `TestConsole.layer` is a
-module-level constant identical to the framework's own, and removing `excludeTestServices: true`
-therefore makes `Effect.provide(testEnv)` a memo **hit** for the console. `testEnv` is safe because
-of `excludeTestServices: true`, not because "a Layer is a blueprint".
+Both halves are false.
 
-A maintainer reading only the `testEnv` block — which is where they will look when touching that
-line — gets a general-sounding guarantee that would justify removing the option or hoisting the
-provide, both of which are the mutations 10-04 measured as leaks.
+1. `vitest` *is* written out, in comments, nine times — `grep -n vitest packages/vitest/src/Runner.ts`
+   returns lines 9, 18, 36, 37, 64, 65, 222, 260, 476, 700.
+2. The acceptance grep **can** tell a citation from an import. `scripts/verify-testapi-seam.sh` builds
+   `COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'` and pipes every line through
+   `grep -vE "$COMMENT_RE"` *before* matching `IMPORT_RE`, precisely so that a doc comment naming a
+   framework cannot register as a hit. Its own METHOD NOTE says so.
 
-**Fix:** restate the paragraph conditionally, e.g.
+Plan 10-07 then added, at `:211-212`, "Named here as a property of the EMISSION ROUTE, without
+importing or **naming** a framework specifier, exactly as note (a) refuses to" — propagating the false
+claim into new text.
 
-```
- * A MODULE-SCOPE binding is safe HERE because `excludeTestServices: true` keeps the framework's own
- * `TestEnv` out of the memo map `layer(...)` leaves ambient. It is NOT safe in general: Layer
- * memoisation is by object IDENTITY, and `TestConsole.layer` is the same module-level constant the
- * framework's `TestEnv` uses — see the `layer(...)` call site below and ADR-EC-018 note 4.
-```
+This is not cosmetic in this repo. `AGENTS.md` §4 ("Say only what is true") makes a doc comment that
+states an unenforced/violated rule a defect in its own right, and a future maintainer acting on note
+(a) would strip legitimate, useful citations (e.g. `:222`, the deferred-`describe` explanation that
+note (h) depends on) to satisfy a constraint that does not exist.
 
----
-
-### WR-02: `sharedLayerTestApi` has no test coverage for tags, `@skip`, tag filtering or the D-08 degradation
-
-**File:** `packages/vitest/src/describeFeature.ts:558-563`, `packages/vitest/test/emission.test.ts`
-**Severity:** WARNING
-
-**Issue:** every one of the six tag blocks in `emission.test.ts` (lines 1126, 1263, 1305, 1419,
-1494, 1528) passes `Layer.empty` as a plain Layer, i.e. the default path. Every shared-path block
-(1949, 2198, 2496) uses untagged Features. So the `makeDegradingEffect` extraction — the phase's
-one non-trivial refactor of existing behaviour, whose stated purpose is that "duplicating it is how
-the shared path silently loses the degradation" — is only ever exercised through `vitestTestApi`.
-The shared path's `tags`/`skip` forwarding and its `strictTags` recovery are unasserted.
-
-I verified manually that all three work today (an undeclared tag on a shared Feature produces
-exactly one `UndeclaredTag` warning and an untagged re-emission; `@skip` produces a real skip). The
-finding is that nothing keeps them working — a future edit to `sharedLayerTestApi`'s emit closure
-that drops `emitOptions`, or wraps `self` without preserving the fallback path, turns nothing red.
-
-**Fix:** add one shared-path Feature to `emission.test.ts` carrying a `@skip` Scenario, a declared
-tag, and one Scenario whose tag is undeclared, asserted through the existing `collectionWarnings`
-capture. Reuse the shape of the Phase 9 blocks with the layer argument swapped for
-`{ shared: Layer.empty, perScenario: Layer.empty }`.
-
----
-
-### WR-03: the structural discrimination in `makeDegradingEffect` can emit a false "undeclared tag" warning for a non-tag failure
-
-**File:** `packages/vitest/src/describeFeature.ts:474-495`
-**Severity:** WARNING
-
-**Issue:** the recovery reasons "an emission with no tags cannot fail `strictTags`, so if the
-fallback succeeded the original failure was about tags". That inference is one-directional. It is
-sound that a fallback *failure* means the problem was not about tags; it is **not** sound that a
-fallback *success* means it was. Any throw from the first `emit` that does not reproduce on the
-second call — an order-dependent or state-dependent framework rejection, a duplicate-title guard
-that only fires the first time, a future validator that mutates state on its first pass — leaves the
-Scenario registered untagged *and* prints a `UndeclaredTagWarning` naming tags that were perfectly
-valid, while the real cause is swallowed entirely.
-
-Given the file's own rule that upstream prose must never become a contract, the message cannot be
-matched, but the outcome can be narrowed.
-
-**Fix:** narrow the recovery to the case it was measured for by only retrying when the emission
-actually carried tags, and re-throw otherwise:
+**Fix:** Narrow the claim to what the gate actually enforces:
 
 ```ts
-} catch (cause) {
-  // A tagless emission cannot have failed strictTags, so there is nothing to degrade to.
-  if (options.tags.length === 0) throw cause
-  try {
-    emit(name, self, { skip: options.skip })
-  } catch {
-    throw cause
-  }
-  console.warn(/* ... */)
-}
+ * (a) **No IMPORT of a test framework may ever appear here — not even an `import type`.**
+ *     `scripts/verify-testapi-seam.sh` enforces this structurally: it strips comment lines before
+ *     matching, so a framework named in PROSE (as it is several times below, and in `TestApi.ts`
+ *     note (a)) is not a violation and cannot false-positive the gate. Only an import position —
+ *     `from "…"`, `import "…"`, `import("…")`, `require("…")` — is scanned.
 ```
 
-This does not close the hole entirely, but it removes the whole class of untagged-Scenario false
-positives and costs nothing.
+Then delete the "exactly as note (a) refuses to" clause at `:212`.
 
----
+### WR-02: `EmitOptions.contextFree` is documented as a property of a node's BODY but is only ever a ROUTE selector — and the silent-failure direction is undocumented and unguarded
 
-### WR-04: `spec/invariants.md` misdescribes what `verify-shared-layer-once.sh` asserts
+**File:** `packages/vitest/src/TestApi.ts:152-180`; consumer at
+`packages/vitest/src/describeFeature.ts:596-600`; producers at `packages/vitest/src/Runner.ts:376`,
+`:389`, `:592`, `:649`
 
-**File:** `spec/invariants.md:76-81`
-**Severity:** WARNING
+**Issue:** The field is specified as a *predicate over the body*:
 
-**Issue:** the new INV-EC-002 "Assertions" paragraph says the gate
+> "`true` when this node's body requires NOTHING from either of the Feature's Layer tiers"
 
-> runs the real `vitest` CLI against a committed fixture Feature **twice**, once whole and once
-> narrowed with `-t` to a single Scenario, and asserts **the shared build count is identical in
-> both**
+But `Runner.ts` does not compute that predicate — it hard-codes the value per node *kind*. Every
+Scenario is `contextFree: false` (`:592`, `:649`) regardless of whether its steps need anything, so
+the code establishes only the one-way implication `contextFree ⇒ body needs nothing`, never the
+converse the doc asserts.
 
-The script runs vitest **three** times (runs A, B and C — its own header and
-`.github/workflows/check.yml:117` both say "invokes vitest THREE times"), and its whole-vs-filtered
-**equality** assertion (B2, lines 364-373) compares the status of the *clock-isolation* Scenario,
-not a build count. The build-once claim is carried separately by A2 and C2 as two independent
-"passed" assertions. In a repo whose AGENTS.md §4 is "say only what is true" and whose spec is
-normative, a normative document describing a gate's assertions incorrectly is the kind of drift the
-rule exists to prevent.
+The doc then warns about exactly one misuse — setting `true` on `⚙ AfterAllScenarios` (`:158-166`) —
+and says nothing about the symmetrical, more likely one: a maintainer reading the documented
+predicate literally and marking a Scenario whose steps look service-free `contextFree: true`. On the
+shared path that Scenario is routed to `contextFreeEffect`, which supplies neither the shared tier nor
+`testEnv`. Two outcomes, and only one is loud:
+
+- the Scenario names a shared service → runtime missing-service defect (loud, but attributed to the
+  step, not to the flag);
+- the Scenario reads only the clock or console → it silently runs against the *framework's* per-test
+  `TestEnv` instead of `sharedLayerTestApi`'s `Effect.provide(testEnv)`. Nothing goes red, and
+  ADR-EC-018's isolation reasoning no longer applies to that node.
+
+Nothing in the type system, in `Runner.ts`, or in any test prevents a Scenario emission from carrying
+`contextFree: true` — the field is a bare `boolean` on a struct any of the four call sites builds
+inline.
+
+**Fix:** State the contract as the routing directive it is, and name the second failure direction:
+
+```ts
+  /**
+   * Which EMISSION ROUTE this node takes on the shared path — `true` selects the Layer-free route.
+   *
+   * The emitter sets this per node KIND, never by analysing a body: only the library's own `⚠`
+   * nodes are `true`. Every Scenario is `false` unconditionally, even one whose steps happen to
+   * need nothing, because the flag is a routing decision and a Scenario's body is the author's.
+   *
+   * Setting `true` on a Scenario is the mirror of the `⚙ AfterAllScenarios` mistake below and is
+   * WORSE, because one of its two outcomes is silent: a Scenario naming a shared service fails
+   * loudly with a missing-service defect, but one that only reads the clock or console runs against
+   * the framework's own per-test services instead of `sharedLayerTestApi`'s `Effect.provide(testEnv)`
+   * — ADR-EC-018's isolation argument no longer covers it, and nothing goes red.
+   */
+  readonly contextFree: boolean
+```
+
+Consider additionally narrowing the emitted value at the two Scenario call sites to the literal
+`false` via a shared `const scenarioEmitBase = { contextFree: false } as const`, so a future edit has
+to be deliberate.
+
+### WR-03: the structural routing assertion covers only one of `Runner.ts`'s two Scenario loops
+
+**File:** `packages/vitest/test/Runner.test.ts:1361-1401`; uncovered source at
+`packages/vitest/src/Runner.ts:649`
+
+**Issue:** `Runner.ts` deliberately writes its Scenario emission out **twice** — once for
+Feature-level Scenarios (`:577-593`) and once for Rule-nested ones (`:638-650`) — and `Runner.test.ts`
+already records why that duplication needs paired coverage, in the `filtering` fixture's own header
+(`:604-607`):
+
+> "the filter is written out twice in `Runner.ts`, once per loop, and a fixture with no Rule would
+> leave the second copy free to be deleted with every assertion still green."
+
+The new `routingOf` assertion drives the `checkout` fixture (`:489-501`), which declares **no `Rule`**.
+`routingOf` is referenced exactly once in the file (`:1389`). So `Runner.ts:649`'s
+`contextFree: false` is pinned by nothing structural: flipping it to `true` leaves every assertion in
+`Runner.test.ts` green.
+
+The mitigation is real but incidental rather than structural: `emission.test.ts`'s "Shared rule
+composition" block (`:2551-2582`) would go red, but only because that particular fixture's Rule Layer
+is derived from the shared tier (`ruleNetPrices` `[90, 90]`). A Rule fixture that did *not* read a
+shared service would leave the mutation entirely undetected — which is the same "covered by accident"
+condition the file's own header rejects for `shapeOf` vs `emissionOf`.
+
+**Fix:** Reuse the existing `shop` fixture (it has one Rule with two Scenarios, and `shopRule` is
+already resolved at `:814`) for a second `routingOf` assertion, so both loops are pinned:
+
+```ts
+  it("marks a RULE-NESTED Scenario NOT context-free — Runner.ts's second Scenario loop", () => {
+    const { api, records } = makeRecordingApi()
+    emitFeature({
+      api,
+      plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+    assert.deepStrictEqual(routingOf(records), [
+      { kind: "describe", name: "Shop", contextFree: null },
+      { kind: "effect", name: "browsing", contextFree: false },
+      { kind: "describe", name: "refunds", contextFree: null },
+      { kind: "effect", name: "refund granted", contextFree: false },
+      { kind: "effect", name: "refund denied", contextFree: false }
+    ])
+  })
+```
+
+### WR-04: the 10-07 block's "load-bearing non-vacuity control" does not observe what its own comment claims it observes
+
+**File:** `packages/vitest/test/emission.test.ts:2726-2745` (comment at `:2735-2737`)
+
+**Issue:** The control asserts that a `console.warn` line containing `UnusedStepDefinition` was
+printed for this Feature's uri, and justifies it as:
+
+> "The console line and the `⚠` node come from the same `plan.warnings` array (`describeFeature.ts`
+> lines ~1147-1155), so the line's presence is a **sound proxy** for the node's emission"
+
+They come from the same *array*, but from two independent *code paths* in two different modules:
+
+- the console line: `describeFeature.ts:1154-1156`, a loop in `describeFeature`'s own body, executed
+  synchronously at call time;
+- the `⚠` node: `Runner.ts:679-681`, a loop inside `emitFeature`'s deferred `describe` callback.
+
+Nothing links them. `Runner.ts` note (g) (`:194-199`) records that "the `⚠` warning nodes emit [even
+when every Scenario is filtered out]" as a **decision**, i.e. exactly the thing that could be reverted.
+Add `if (excludedScenarioCount === 0)` around `Runner.ts:679` and this block stays **fully green** —
+the console line is still printed, `excludedEverythingSharedBuilds` is still `0`, and the build-0
+assertion has become vacuous for precisely the reason the control was written to rule out.
+
+Mutation 4 as recorded (`:2631-2636`) deletes the *step definition*, which kills both channels at
+once, so it cannot discriminate between them.
+
+The claim is recoverable at repo level — `Runner.test.ts:2013-2030` ("emits identical ⚠ nodes with no
+filter and with a filter that excludes every Scenario") does pin the node — but that is in another
+file, is not cited here, and the comment asserts a soundness property that is false.
+
+**Fix:** Replace the soundness claim with an honest one and cite the assertion that actually carries
+it:
+
+```ts
+    // NOT a proxy for the ⚠ NODE's emission: the console line comes from describeFeature.ts's own
+    // body loop (~:1154) and the node from Runner.ts's emission loop (~:680) — two independent code
+    // paths over one shared `plan.warnings` array. Suppressing the node alone would leave this
+    // assertion green. What pins the node under a total exclusion is
+    // `Runner.test.ts`'s "emits identical ⚠ nodes with no filter and with a filter that excludes
+    // every Scenario"; what THIS control rules out is a Feature that produced no warning at all,
+    // which is the other way the build-0 assertion above could go vacuous.
+```
+
+### WR-05: BEH-EC-007's normative REQUIREMENT block now contradicts shipped behaviour, and RUN-03/RUN-04 were re-marked Complete against it
+
+**File:** `spec/behaviors/02-shared-layers-and-tags.md:91-97` (REQUIREMENT, unchanged) vs `:145-181`
+(the new correction)
+
+**Issue:** The normative block still reads:
+
+```
+REQUIREMENT: When describeFeature's second argument has a `shared` field, that
+             Layer MUST be built exactly once for the whole Feature ...
+```
+
+The correction added by 10-08 concedes the divergence in its own words (`:152-153`): *"Read literally,
+'exactly once' would say once. The answer that matches the rest of the system is zero"* — and then
+labels the change *"a STRENGTHENING of the requirement, not a divergence from it"* (`:148-149`). Those
+two sentences cannot both be true: 0 ≠ 1, and a MUST the implementation intentionally does not satisfy
+in a named case is a divergence by definition.
+
+This matters for three concrete reasons, not as an editorial preference:
+
+1. `AGENTS.md` §1: *"`spec/` is normative. Code follows the spec, not the reverse."* Here the code
+   deliberately does not.
+2. The **sibling** correction directly above it (`:99-143`, the RELEASE half) handles the identical
+   situation the opposite way — it calls itself a divergence and explicitly says *"the requirement is
+   left standing so the gap stays visible."* Two adjacent corrections on one requirement now use two
+   incompatible conventions, so a reader cannot tell from the document whether a "correction" means
+   "the requirement is wrong" or "the requirement is fine".
+3. Commit `6b95833` re-marked RUN-03/RUN-04 **Complete** in `.planning/REQUIREMENTS.md` in the same
+   plan. A requirement marked Complete against a MUST clause the implementation knowingly violates is
+   exactly the state `spec/process/definitions-of-done.md` exists to prevent.
+
+Note also that `AGENTS.md` §2's planned doc-fence check and any future conformance reader parse the
+` ``` `-fenced REQUIREMENT block, not the `>`-quoted corrections around it.
+
+**Fix:** Amend the normative block so the boundary is *in* the requirement, and reduce the correction
+to a dated pointer:
+
+```
+REQUIREMENT: When describeFeature's second argument has a `shared` field, that
+             Layer MUST be built AT MOST ONCE for the whole Feature (via
+             @effect/vitest's layer(...) helper): exactly once when the Feature
+             emits at least one node whose body needs it, and ZERO times when it
+             emits none — a Feature whose every Scenario a registration-time tag
+             filter removed never builds its shared tier, because the library's
+             own always-passing warning nodes are routed off the shared emission
+             path (ADR-EC-026, plan 10-07). Its resources MUST be released once,
+             after every Scenario in the Feature has run — not once per Scenario.
+```
+
+If the append-only-correction convention must be preserved instead, then at minimum drop the
+"STRENGTHENING, not a divergence" framing and match the RELEASE correction's wording, and re-open
+RUN-03/RUN-04 until the requirement text and the implementation agree.
+
+### WR-06: the new correction attributes BEH-EC-017's carve-out to "this behavior"
+
+**File:** `spec/behaviors/02-shared-layers-and-tags.md:165-167`
+
+**Issue:**
+
+> "The `AfterAllScenarios` teardown node was already suppressed in this situation (**this behavior's
+> own carve-out**, [BEH-EC-017](./07-hook-ordering-and-guarantees.md))"
+
+The enclosing behavior is **BEH-EC-007**. The carve-out belongs to **BEH-EC-017**, in a different
+document (`spec/behaviors/07-hook-ordering-and-guarantees.md:89-102`). The link target is right; the
+attribution is wrong, and in a spec whose whole navigational contract is `BEH-EC-NNN` identity, "this
+behavior's own" pointing at a different behavior is the kind of drift `spec/traceability.md` exists to
+make impossible.
 
 **Fix:**
 
 ```
-`scripts/verify-shared-layer-once.sh` (`pnpm verify:shared-layer-once`) is the other half: it runs
-the real `vitest` CLI against the committed fixture Feature three times — whole, narrowed to the
-clock-isolation Scenario, and narrowed to the build-count Scenario — asserting that the build-count
-Scenario passes in both the whole and the narrowed run, and that the clock-isolation Scenario
-reports the SAME status whole and filtered. No in-process test can make the second claim.
+> `AfterAllScenarios` teardown node was already suppressed in this situation by
+> [BEH-EC-017](./07-hook-ordering-and-guarantees.md)'s own carve-out; the warning node that
 ```
 
----
+### WR-07: the behaviour change and its spec update landed in different commits, against `AGENTS.md` §1
 
-### WR-05: `report_query`'s output is consumed without validation, so a parse failure aborts the gate opaquely
+**File:** `packages/vitest/src/Runner.ts`, `packages/vitest/src/TestApi.ts`,
+`packages/vitest/src/describeFeature.ts` (commit `743e9a0`) vs `spec/invariants.md`,
+`spec/behaviors/02-shared-layers-and-tags.md` (commit `e63ba4f`), `spec/traceability.md`
+(commit `6b95833`)
 
-**File:** `scripts/verify-shared-layer-once.sh:198-219`, `285-289`, `346-350`, `388-392`
-**Severity:** WARNING
+**Issue:** `AGENTS.md` §1 is explicit:
 
-**Issue:** `report_query` runs `node -e` inside a command substitution under `set -euo pipefail`. If
-the report is truncated or malformed, `JSON.parse` throws, the substitution fails, and the script
-exits with a raw Node stack trace and no `fail()` message — bypassing every diagnostic the file
-invests so heavily in. Separately, the numeric results are consumed as `[[ "$TOTAL_A" -eq 0 ]]`,
-which coerces any non-numeric string to `0` and would therefore report "the unfiltered run reported
-ZERO test results" for what is actually a query failure — a confidently misleading message, which is
-precisely the failure mode the `title_is_declared` comment (lines 237-244) says the file exists to
-avoid.
+> "Changing public behavior means updating the relevant behavior doc, invariant, and the traceability
+> matrix **in the same change** … a code change that isn't reflected in `spec/` in the same commit is
+> **incomplete**, not merely undocumented."
 
-**Fix:** capture and validate:
+`git show --stat 743e9a0` lists five files, all under `packages/vitest/` — no `spec/` file. The
+behaviour change (a Feature with every Scenario excluded no longer builds its shared tier: an
+observable change for any caller with a testcontainer in `shared`) therefore sat on `main` across
+`b7349e5`, `2cd2c92`, `d2a2139` and `557c87c` with `spec/` describing the old behaviour, and
+`spec/behaviors/02` in particular still asserting an unqualified build-once MUST.
 
-```bash
-report_query() {
-  local report="$1" mode="$2" title="${3-}" out
-  if ! out="$(REPORT="$report" QUERY_MODE="$mode" QUERY_TITLE="$title" node -e '...' 2>&1)"; then
-    fail "could not read $report as a vitest JSON report (mode=$mode): $out"
-  fi
-  printf '%s\n' "$out"
-}
-```
-
-and guard the numeric call sites with `[[ "$TOTAL_A" =~ ^[0-9]+$ ]] || fail "..."`.
-
----
-
-### WR-06: `emission.test.ts` has grown to 2574 lines with 14 `describeFeature` calls coupled by module-scope mutable state and declaration order
-
-**File:** `packages/vitest/test/emission.test.ts`
-**Severity:** WARNING
-
-**Issue:** the file now carries fourteen real `describeFeature` calls, roughly twenty module-scope
-mutable accumulators (`completedScenarios`, `hookLog`, `outlineRowValues`, `ruleScenarioNames`,
-`sharedBuildOrdinals`, `scopedBuildOrdinals`, `collisionWinners`, `sharedScenarioNames`,
-`clockReadings`, `clockScenarioNames`, `sharedBuilds`, `scopedBuilds`, `clockSharedBuilds`, ...) and
-at least eight reader `describe` blocks whose correctness depends on vitest running a file's suites
-in declaration order. Every block's header restates that dependency, which is the right mitigation
-for one or two blocks and is not a substitute for isolation at fourteen. Adding a block in the wrong
-position, or vitest changing its ordering guarantee, breaks assertions in blocks nobody touched, and
-the failure will surface as an array-comparison mismatch several hundred lines away from the edit.
-
-This is not a defect today — the suite is green and the gate confirms the reported titles — but the
-per-file blast radius is now large enough that the next addition should split rather than append.
-
-**Fix:** split by concern into sibling files that each own their fixtures and accumulators, e.g.
-`emission.hooks.test.ts`, `emission.tags.test.ts`, `emission.shared-layer.test.ts`. Note that
-`scripts/verify-shared-layer-once.sh:109` hard-codes `TEST_FILE="packages/vitest/test/emission.test.ts"`
-and would need to move with the four titles it depends on.
+**Fix:** Process, not code — squash or amend so a behaviour-changing commit carries its
+`spec/behaviors/`, `spec/invariants.md` and `spec/traceability.md` edits, and treat the split as a
+finding against the plan-decomposition step (a gap-closure plan that changes behaviour should not
+defer its spec half to a downstream plan).
 
 ## Info
 
-### IN-01: `.gsd/` agent-harness state added to the published library's `.gitignore` and `dprint.json`
+### IN-01: dangling JSDoc block attached to no declaration
 
-**File:** `.gitignore:9-12`, `dprint.json:23`
-**Severity:** INFO
+**File:** `packages/vitest/src/Runner.ts:340-366`
 
-**Issue:** commit `79cc407` adds ignore rules for a workflow harness's transient dispatch directory
-to a public library's repo configuration, inside a phase whose subject is Layer scopes. It is
-harmless and correctly commented, but it is tool-specific state in a shared project file and is
-unrelated to everything else in the change set.
+**Issue:** A `/** … */` block opens at `:340`, closes at `:366`, and is followed by a blank line and
+then a *second* `/** … */` at `:368` that attaches to `warningEmitOptions`. The first block therefore
+documents nothing: TypeScript, the language server and every doc-generation tool associate a JSDoc
+comment with the declaration that immediately follows it, and here that is another comment. The
+shared rationale it carries — why both synthetic-node constants are untagged and unskipped, and why
+one shared value per kind is safe — is invisible from either constant's hover, which is the exact
+reader this repo's comment style targets.
 
-**Fix:** consider `.git/info/exclude` for personal-tooling paths, or keep it and accept that the
-repo now documents one agent harness by name.
+**Fix:** Either demote it to a non-JSDoc section comment (`// ---- both synthetic-node option
+constants ----` / `/* … */`), or fold its two load-bearing paragraphs into `warningEmitOptions`' and
+`afterAllScenariosEmitOptions`' own doc comments with a cross-reference between them.
+
+### IN-02: a whole `TestApi` is constructed to take one member, and the "ONLY reference" claim cites an unrunnable gate
+
+**File:** `packages/vitest/src/describeFeature.ts:586`, `:589-590`
+
+**Issue:** Two small things on adjacent lines.
+
+`const contextFreeEffect = vitestTestApi(featureUri).effect` builds the default path's full adapter
+object — `describe` included — and discards everything but `.effect`. The intent ("reuse the one
+`makeDegradingEffect` implementation") is right and worth keeping; the expression reads as if the
+whole adapter mattered.
+
+The comment at `:589-590` says the shared closure is *"still the ONLY reference to `sharedIt.effect`
+in this file (`pnpm verify:testapi-seam`-adjacent grep in the plan's own `<done>` counts it)"*. The
+claim is true today (`grep -n sharedIt packages/vitest/src/describeFeature.ts` shows one code
+reference, `:592`), but the cited enforcement lives in a `.planning/` plan document and is not
+runnable in CI. `scripts/verify-testapi-seam.sh` does not scan this file at all — it scans only
+`Runner.ts` and `TestApi.ts`, and only for framework imports.
+
+**Fix:** Extract the shared factory so the reuse is explicit, and drop the enforcement claim or make
+it real:
+
+```ts
+// Both adapters' `effect` comes from the same degrade-wrapper; the default path's IS the
+// context-free route.
+const contextFreeEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
+  it.effect(name, self, emitOptions)
+})
+```
+(with `vitestTestApi` rewritten in terms of it), and replace the parenthetical with a plain "one
+reference, `:592`" note — or add the `sharedIt.effect` occurrence count to
+`scripts/verify-testapi-seam.sh` so the sentence is backed by something `pnpm lint` runs.
+
+### IN-03: the two module-scope `EmitOptions` constants share a runtime-mutable `tags` array process-wide
+
+**File:** `packages/vitest/src/Runner.ts:376`, `:389`
+
+**Issue:** `warningEmitOptions` and `afterAllScenariosEmitOptions` are single module-scope values
+reused for every `⚠` and `⚙` node in every Feature in the process. `readonly` / `ReadonlyArray` are
+erased at runtime, so `warningEmitOptions.tags` is one live `[]` shared by every warning node ever
+emitted. The comment at `:362-365` argues this is safe, and today it is — `describeFeature.ts:476`
+copies with `[...options.tags]` before the array reaches the framework, and `Runner.test.ts`'s fake
+only reads. But the safety rests entirely on every current consumer's discipline, and `EmitOptions`
+crosses a seam whose whole point is that the consumer is injected and swappable.
+
+**Fix:** Low cost to make structural — `Object.freeze` the arrays, so an accidental mutation from any
+future `TestApi` implementation throws in strict mode rather than corrupting every later node:
+
+```ts
+const warningEmitOptions: EmitOptions = { tags: Object.freeze([]), skip: false, contextFree: true }
+const afterAllScenariosEmitOptions: EmitOptions = { tags: Object.freeze([]), skip: false, contextFree: false }
+```
 
 ---
 
-### IN-02: the gate's title precondition assumes every target Scenario stays a plain Scenario
-
-**File:** `scripts/verify-shared-layer-once.sh:255-268`
-**Severity:** INFO
-
-**Issue:** `title_is_declared` matches a source line ending in `Scenario: <title>`, but the gate then
-queries the **reported** title. For a plain Scenario those are equal; for a `Scenario Outline` row
-`OutlineTitle.ts` appends D-03's `(col=value, ...)` suffix. If one of the four fixture Scenarios were
-ever converted to an Outline, the precondition would pass on the source line while every status query
-returned `ABSENT` — and B2's equality half (`ABSENT == ABSENT`) would hold vacuously, exactly the
-failure the precondition was written to prevent, arrived at from a direction it does not cover.
-
-**Fix:** add one line to the precondition loop rejecting `Scenario Outline:` for these four titles,
-or note the assumption beside the `TITLE_*` constants.
-
----
-
-### IN-03: `whoProvidesShared` throws synchronously from a function whose return type is an `Effect`
-
-**File:** `packages/vitest/test/describeFeature.test.ts:328-345`
-**Severity:** INFO
-
-**Issue:** the helper is typed `(collected: FeatureCollection) => Effect.Effect<string, unknown>` but
-throws a plain `Error` before constructing one when `sharedLayer` is `null`. Inside the callers'
-`Effect.gen` bodies this surfaces as a defect rather than a typed failure, which is acceptable for a
-guard that should be unreachable, but it makes the signature a mild lie and differs from how the rest
-of the file reports impossible states.
-
-**Fix:** `Effect.die(new Error(...))` (or `Effect.dieMessage`) keeps the signature honest and produces
-the same reported outcome.
-
----
-
-_Reviewed: 2026-08-30T02:48:17Z_
+_Reviewed: 2026-08-30T13:56:25Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
