@@ -99,6 +99,30 @@
 #        every file was exactly where it should be — it was the pattern that was
 #        dead, and a population control cannot see that.
 #
+#     A′. THE COMPLETENESS MEASUREMENT, and the reason DECLARATION_RE now carries
+#        its `\{`/`\[` alternatives. Mutation A proved the gate catches
+#        `let identifier`; mutation C proved the pattern is live. NEITHER proved
+#        it is complete, and it was not. Run against a five-line probe —
+#        `const x = 1` / `let {a} = obj` / `let [b] = arr` / `var {c} = obj` /
+#        `let plain = 1` — through this script's own `scan` pipeline:
+#
+#          BEFORE  1 of 5 reported: only `5:let plain = 1`
+#          AFTER   5 of 5 reported
+#
+#        Then the live arm, the one that matters: `let { probe } = { probe: 0 }`
+#        appended at module scope to hooks.steps.test.ts, exactly the shape
+#        INV-EC-006 forbids and exactly the shape this suite writes everywhere.
+#
+#          BEFORE  gate GREEN, printed "acceptance suite cross-step state via
+#                  Ref only: ENFORCED" against a live violation
+#          AFTER   gate RED, exit 1, naming hooks.steps.test.ts:280
+#
+#        A regex that reports ENFORCED against the defect it names is the same
+#        count-your-own-prose failure this file warns about one paragraph up,
+#        arriving from the other direction. Adding a NEW declaration form to the
+#        language (or to this project's style) means re-running this probe, not
+#        reasoning about the pattern.
+#
 # Usage: bash scripts/verify-acceptance-ref-state.sh
 
 set -euo pipefail
@@ -124,12 +148,24 @@ CONTROL_FILE="packages/vitest/src/Runner.ts"
 # shrinking of what this gate covers.
 MIN_STEP_MODULES=5
 
-# A mutable binding DECLARATION: `let` or `var` followed by an identifier, with
-# a non-identifier character (or start of line) in front so `outlet x` and
-# `varsity` are not matched. `const` is deliberately absent — a `const` binding
-# cannot be reassigned, and this gate is about the binding, not about what a
-# value it points at might allow (see the METHOD NOTE's carve-out).
-DECLARATION_RE='(^|[^A-Za-z0-9_$])(let|var)[[:space:]]+[A-Za-z_$]'
+# A mutable binding DECLARATION: `let` or `var` followed by an identifier OR by
+# a BINDING PATTERN (`{` or `[`), with a non-identifier character (or start of
+# line) in front so `outlet x` and `varsity` are not matched. `const` is
+# deliberately absent — a `const` binding cannot be reassigned, and this gate is
+# about the binding, not about what a value it points at might allow (see the
+# METHOD NOTE's carve-out).
+#
+# THE `\{`/`\[` ALTERNATIVES ARE NOT DEFENSIVE PADDING. Without them the trailing
+# class required an IDENTIFIER character after the keyword, so every destructured
+# form was invisible: `let {a} = obj`, `let [b] = arr` and `var {c} = obj` all
+# passed a gate that reported ENFORCED. That hole mattered more than its arity
+# suggests, because destructuring is this suite's DOMINANT binding style — every
+# acceptance step body is written `const { apples } = yield* World`, so a
+# module-scope `let { count } = { count: 0 }` reads as ordinary house style while
+# being exactly the defect INV-EC-006 forbids. Mutation C only ever proved the
+# pattern was LIVE (a dead pattern is caught); mutation A′ below is what proves
+# it is COMPLETE for the destructured form.
+DECLARATION_RE='(^|[^A-Za-z0-9_$])(let|var)[[:space:]]+([A-Za-z_$]|\{|\[)'
 
 # The common form of writing to a module-scope holder: an in-place array
 # mutator. Narrow on purpose — see the METHOD NOTE. Every acceptance step module
