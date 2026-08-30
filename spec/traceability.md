@@ -236,17 +236,19 @@ requirements, in the order written there, per
 written" rule. They are permanent: never renumbered and never reused
 (AGENTS.md §6).
 
-**Not all 22 are carried yet, and this list says which.** Six remain:
-`REQ-EC-003`, `REQ-EC-007`, `REQ-EC-008`, `REQ-EC-009`, `REQ-EC-016` and
+**Not all 22 are carried yet, and this list says which.** Five remain:
+`REQ-EC-003`, `REQ-EC-007`, `REQ-EC-008`, `REQ-EC-009` and
 `REQ-EC-018` are ALLOCATED but their
 fixtures have not landed; only the rows in the table below name a `.feature`
 file that exists on disk today. Two structural facts about the remaining
 allocation are worth stating before the fixtures arrive, because neither is
 visible from a row:
 
-- Five of them — `REQ-EC-003` (PARSE-03), `REQ-EC-007` (MATCH-03),
+- ALL FIVE — `REQ-EC-003` (PARSE-03), `REQ-EC-007` (MATCH-03),
   `REQ-EC-008` (MATCH-04), `REQ-EC-009` (MATCH-05) and `REQ-EC-018` (RUN-02) —
-  cover "fails loudly" behaviors. A Scenario demonstrating one of those directly
+  cover "fails loudly" behaviors, and that is now the whole of what is missing:
+  `REQ-EC-016` (DSL-07) was the last remaining green-Scenario requirement and
+  landed in Phase 11. A Scenario demonstrating a fails-loudly behavior directly
   would be a RED test, so the tag will sit on a deliberately-failing fixture that
   is never emitted as a test, and a wrapper test will drive the fixture and
   assert the specific named error. The wrapper is what passes. This mirrors
@@ -263,8 +265,12 @@ visible from a row:
   compile-time coercion by `packages/gherkin/test/StepArgs.types.ts`,
   `REQ-EC-006`'s definition-time rejections by the two parameter-type test files,
   and `REQ-EC-017`'s fail-fast half by
-  `packages/vitest/test/ScenarioEffect.test.ts`. A row whose Scenario is the
-  whole of its claim names no second artifact.
+  `packages/vitest/test/ScenarioEffect.test.ts`. `REQ-EC-016` is the row that
+  carries the most of its claim elsewhere and is worth naming for that reason:
+  its Scenarios state the ORDERING and nothing else, because every other
+  requirement in BEH-EC-017 is about what happens when something FAILS, and a
+  green Scenario cannot state one. A row whose Scenario is the whole of its
+  claim names no second artifact.
 
 One more structural fact, stated here because it applies to every row and to
 none of them visibly. A row's Scenario passing is not by itself evidence that

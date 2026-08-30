@@ -104,10 +104,27 @@
  *
  * The directory README's standing rule: a passing acceptance test proves nothing on its own, so each
  * entry names what went RED and — the part that is easiest to omit — what stayed GREEN. This pair
- * emits THREE tests — the two Scenarios plus the `⚙ AfterAllScenarios` node. Mutations A and D belong
- * to the two gate scripts this plan also builds and are recorded below once those scripts exist; B, C
- * and E attack the scripts themselves and are recorded in the METHOD NOTE of the script each one
- * attacks, beside the code they mutate.
+ * emits THREE tests — the two Scenarios plus the `⚙ AfterAllScenarios` node. B, C and E attack the
+ * two gate scripts this plan also builds and are recorded in the METHOD NOTE of the script each one
+ * attacks, beside the code they mutate; A and D are recorded here, because this file is what they
+ * mutate.
+ *
+ * - **A. A mutable binding at an acceptance step module's own module scope.** `let
+ *      mutationProbeCount = 0` added beside this module's `record` helper and incremented from a step
+ *      body — the exact defect INV-EC-006 forbids and the exact shape a step would close over →
+ *      `pnpm verify:acceptance-ref-state` RED, naming
+ *      `packages/vitest/test/acceptance/hooks.steps.test.ts:183`, while **`pnpm test` (37 files, 796
+ *      passed, 4 skipped), `pnpm lint`, `pnpm build` and `pnpm typecheck:test` ALL stayed GREEN**.
+ *      Those four are the entry. Before that gate existed this repository had NOTHING that could see
+ *      this, and `pnpm lint` staying green is the sharpest part of it: no oxlint rule enabled here
+ *      objects to a module-scope `let`, so the linter never was the missing enforcement.
+ * - **D. The escape-hatch type in a step body's parameter annotation.** The `expected` parameter of
+ *      `the hook log reads {string} with {string} logged {int} time` re-annotated from `string` to the
+ *      escape-hatch type → `pnpm verify:acceptance-no-any` RED, naming this file at line 242, while
+ *      **`pnpm build`, `pnpm typecheck:test`, `pnpm test` and `pnpm lint` ALL stayed GREEN**. That is
+ *      INV-EC-003's boundary condition made observable rather than merely stated: the whole failure
+ *      mode is the ABSENCE of a diagnostic, so there is nothing for a compiler or a runner to report
+ *      — inside the suite whose entire job is to prove INV-EC-003 by running it.
  *
  * - **F. The expected sequence really comes from the `.feature` file.** `AfterStep` and `BeforeStep`
  *      transposed in the SECOND Scenario's expected string in `hooks.feature`, this module untouched →

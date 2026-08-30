@@ -23,9 +23,19 @@
 #
 #   MEASURED, not argued — mutation A, recorded in full in
 #   packages/vitest/test/acceptance/hooks.steps.test.ts's module doc comment. One
-#   mutable binding added at an acceptance step module's own module scope, and
-#   the four commands above ALL stayed green while this gate went red naming the
-#   file and the line.
+#   mutable binding added at an acceptance step module's own module scope, then
+#   FIVE commands run against that state:
+#
+#     pnpm verify:acceptance-ref-state   RED   hooks.steps.test.ts:183
+#     pnpm test                          GREEN 37 files, 796 passed, 4 skipped
+#     pnpm lint                          GREEN oxlint + dprint check, exit 0
+#     pnpm build                         GREEN tsc -b, exit 0
+#     pnpm typecheck:test                GREEN both projects, exit 0
+#
+#   The four green lines are the reason this script exists, and they are the
+#   part of the record that is easiest to leave out. `pnpm lint` in particular:
+#   oxlint has no rule enabled here that objects to a module-scope `let`, so the
+#   linter is not a substitute for this gate and must not be treated as one.
 #
 #   Comment lines are stripped before any occurrence is counted, and the reason
 #   is not cosmetic: every acceptance step module explains this rule in its own
@@ -54,22 +64,40 @@
 #
 #   MUTATIONS PERFORMED AGAINST THIS SCRIPT (each run, then reverted):
 #
-#     B. ACCEPTANCE_DIR pointed at a directory that does not exist
-#        -> assertion 1 FAILED by name on the population control, rather than
-#           assertion 3 passing vacuously over an empty file list. This is the
-#           renamed-directory case, and it is the one ASSUMPTION-11-B in
-#           11-01-PLAN.md flags as the way a structural gate silently switches
-#           itself off.
+#     B. ACCEPTANCE_DIR pointed away from the real directory. Measured TWICE,
+#        because the two arms are caught by DIFFERENT things and only the second
+#        one exercises the population control:
 #
-#     C. assertion 2 (the regex control) DELETED, then DECLARATION_RE broken to
-#        a pattern that can never match (`zzzz-never-matches-anything`)
-#        -> the gate PASSED, printing its ENFORCED line, against a regex
-#           incapable of finding a violation. That is exactly what the control
-#           exists to prevent. DO NOT "simplify" assertion 2 away as redundant
-#           with assertion 1: assertion 1 was still green throughout mutation C,
-#           because the files were all there — it was the regex that was dead.
-#           With assertion 2 restored and the regex still broken, the gate fails
-#           by name on the control.
+#        B1, pointed at `packages/vitest/test/acceptance-renamed`, which does
+#            not exist -> the `[[ -d ... ]]` PRECONDITION failed, naming the
+#            missing directory. Assertion 1 never ran.
+#        B2, pointed at `packages/vitest/test/fixtures`, which DOES exist and
+#            contains no `*.steps.test.ts` -> assertion 1 failed by name,
+#            "population control found 0 file(s) ... expected at least 5".
+#
+#        B2 is the arm that matters and B1 is why it had to be measured
+#        separately: a moved directory trips the precondition, but a directory
+#        that still exists while its contents are renamed, or whose pairs
+#        acquired the wrong suffix, reaches assertion 3 with an EMPTY file list
+#        and would pass vacuously without the population control. That is
+#        ASSUMPTION-11-B in 11-01-PLAN.md, and B2 is its mitigation measured
+#        rather than asserted.
+#
+#     C. DECLARATION_RE broken to a pattern that can never match
+#        (`zzzz-never-matches-anything`). Measured in two states:
+#
+#        C1, with assertion 2 still in place -> the gate FAILED by name on the
+#            regex control, "found ZERO mutable-binding declarations in
+#            packages/vitest/src/Runner.ts".
+#        C2, with assertion 2 DELETED and the regex still dead -> the gate
+#            PASSED and printed its ENFORCED line, against a pattern incapable
+#            of finding a violation.
+#
+#        C2 is what the control exists to prevent, and C1 is what it does
+#        instead. DO NOT "simplify" assertion 2 away as redundant with assertion
+#        1: assertion 1 printed its green line throughout BOTH arms, because
+#        every file was exactly where it should be — it was the pattern that was
+#        dead, and a population control cannot see that.
 #
 # Usage: bash scripts/verify-acceptance-ref-state.sh
 

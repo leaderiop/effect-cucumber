@@ -22,10 +22,19 @@
 #   diagnostic. Only a structural scan can state it.
 #
 #   MEASURED, not argued — mutation D, recorded in full in
-#   packages/vitest/test/acceptance/hooks.steps.test.ts's module doc comment: the
-#   escape-hatch type substituted into one acceptance step body's parameter
-#   annotation turned this gate red naming the file and the line, while
-#   `pnpm build` and `pnpm typecheck:test` both stayed green.
+#   packages/vitest/test/acceptance/hooks.steps.test.ts's module doc comment. The
+#   escape-hatch type substituted for `string` in one acceptance step body's
+#   first parameter annotation, then five commands run against that state:
+#
+#     pnpm verify:acceptance-no-any      RED   hooks.steps.test.ts:242
+#     pnpm build                         GREEN tsc -b, exit 0
+#     pnpm typecheck:test                GREEN both projects, exit 0
+#     pnpm test                          GREEN 37 files, 796 passed, 4 skipped
+#     pnpm lint                          GREEN oxlint + dprint check, exit 0
+#
+#   `pnpm lint` staying green is worth its own sentence: no oxlint rule enabled
+#   in this repository objects to the escape-hatch type, so the linter is not a
+#   substitute for this gate and must not be treated as one.
 #
 #   Comment lines are stripped before any occurrence is counted, for the same
 #   reason as in scripts/verify-acceptance-ref-state.sh and with more force
@@ -58,12 +67,23 @@
 #   MUTATIONS PERFORMED AGAINST THIS SCRIPT (each run, then reverted):
 #
 #     E. A comment line containing the forbidden token as PROSE added to an
-#        acceptance step module
+#        acceptance step module (`// ... names the forbidden token, <token>, as
+#        prose.`, immediately above the `describeFeature` call)
 #        -> the gate STILL PASSED and printed its ENFORCED line. That is the
 #           intended behaviour and the reason the comment filter runs before any
 #           count. A gate that failed here would be one that forbids explaining
 #           itself, which is the defect STATE.md 03-04 records this repository
 #           shipping once already.
+#
+#     E2. The same thing done to a `.feature` file, in ONE run with two halves
+#        that go opposite ways: a Gherkin `#` comment line naming the token as
+#        prose, AND the token added to a Scenario TITLE on the very next line
+#        -> the comment line was NOT reported and the Scenario title WAS,
+#           `hooks.feature:9`. That single run states both halves at once — the
+#           `#` arm of COMMENT_RE strips Gherkin comments, and the `.feature`
+#           half of the scan is live rather than nominally present. E on its own
+#           could not say the second thing: a scan that reached no `.feature`
+#           file at all would also have stayed green.
 #
 # Usage: bash scripts/verify-acceptance-no-any.sh
 
