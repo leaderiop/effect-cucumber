@@ -98,9 +98,26 @@
  *   runs are needed and neither alone says it — the red run shows the sharp assertion can fail, and
  *   only the green run shows what the blunt one lets through. This is the whole reason the two-check
  *   rule exists, and the reason the sharp form must never be "simplified" back into the blunt one.
- * - **B and C** attack `spec/scripts/verify-traceability.sh` check 5, which does not exist as of this
- *   file's own commit. They are recorded here once that check lands, in the commit that lands it —
- *   claiming a measurement before it has been taken is the one thing AGENTS.md §4 forbids outright.
+ * - **B. A duplicated requirement id.** `@REQ-EC-009` added beside `@REQ-EC-011` on a Scenario in
+ *   `../worked-example-01-apples.feature`, so two Scenarios in two files claim one requirement →
+ *   **`verify-traceability.sh` check 5 RED**, `duplicated (D-01 allows one Scenario per id):
+ *   REQ-EC-009`, while **check 4 stayed PASS** and **`pnpm test` stayed GREEN** at 802 passed. Check 4
+ *   asks only whether every tag USED is DEFINED, and a tag used twice is still defined. It cannot see
+ *   that a requirement now looks covered twice while the total still reads right to anyone not
+ *   counting.
+ * - **C. A missing requirement id.** `@REQ-EC-018` deleted outright from
+ *   `./negative/after-on-failure.feature` → **check 5 RED**, `missing, so coverage is 21/22:
+ *   REQ-EC-018`, while **check 4 stayed PASS** and **`pnpm test` stayed GREEN** at 802 passed. Check 4
+ *   iterates the tags that EXIST, so a deleted tag is one fewer thing to check rather than a failure:
+ *   completeness is the claim it structurally cannot make. B and C together are the whole argument
+ *   for check 5 being a separate check rather than a stronger check 4, and both name check 4's
+ *   staying green because that is the part that is easy to leave out.
+ *
+ *   A third data point arrived for free, before the §5 rows landed: with the five fixtures tagged and
+ *   `spec/traceability.md` still only MENTIONING their ids in its not-yet-carried sentence, check 4
+ *   was PASS and check 5 was **RED** — `tagged but with no §5 TABLE ROW (a prose mention is not a
+ *   row)`, naming all five. That is the fourth recorded instance of check 4's prose-mention weakness
+ *   (11-03, 11-04, 11-05, here) and the first time anything in the repository catches it.
  * - **D. The `After` hook made a no-op.** The `@REQ-EC-018` block's `After` registration replaced with
  *   an empty body that records nothing → **the After-ran assertion RED** (`expected [ 'step1',
  *   'step2' ] to deeply equal [ 'step1', 'step2', 'After' ]`), while **the exit-is-a-failure

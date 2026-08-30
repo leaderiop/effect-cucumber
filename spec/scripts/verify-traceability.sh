@@ -143,7 +143,95 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. No broken relative markdown links.
+# 5. Every v1 requirement id is carried EXACTLY ONCE, the set is contiguous and
+#    complete, and each id has a real ROW in traceability.md §5.
+#
+# Check 4 above is necessary and it is not sufficient. It asks one question —
+# is every tag that is USED also DEFINED — and that question is silent about
+# all three of the failures this check exists to catch:
+#
+#   * COMPLETENESS. Check 4 iterates the tags that exist. Delete a tag and
+#     there is simply one fewer thing to check, so it stays green. "22/22" is
+#     precisely the claim it cannot make.
+#   * DUPLICATION. A tag used twice is still defined, so check 4 stays green.
+#     D-01 requires each requirement on exactly one Scenario; two Scenarios
+#     claiming one requirement lets it look covered twice while another is
+#     uncovered, and the total still looks right if nobody counts.
+#   * A REAL ROW. Check 4's second half is `grep -q "REQ-EC-NNN"` over the
+#     WHOLE of traceability.md, so an id merely MENTIONED in §5's prose
+#     satisfies it. That is not a hypothetical: it is recorded four times in
+#     this repository's planning history (11-03, 11-04, 11-05, 11-06), and in
+#     11-06 the mention that kept it green was a sentence listing the ids as
+#     NOT YET CARRIED. This check therefore matches the §5 TABLE — an id in the
+#     first cell of a row — and never a substring of the file.
+#
+# Mutations B and C (recorded in
+# packages/vitest/test/acceptance/negative-requirements.test.ts's module doc
+# comment) are the measurement: a duplicated id and a deleted id each turn this
+# check RED while check 4 stays PASS and `pnpm test` stays green.
+#
+# The expected count is written ONCE, below, as a named constant. A future
+# phase adding a 23rd requirement changes that one number and gets a loud,
+# named failure here in the meantime rather than a silent pass. It is
+# deliberately NOT derived from .planning/REQUIREMENTS.md: that would couple a
+# spec/ gate to GSD-internal files, which is threat T-11-06-05, accepted
+# knowingly rather than mitigated.
+# ---------------------------------------------------------------------------
+EXPECTED_REQ_COUNT=22
+
+if [[ -f "$SPEC_DIR/traceability.md" ]]; then
+  occurrences=$(grep -rhoE '@REQ-EC-[0-9]{3}' "$ROOT_DIR" --include='*.feature' 2>/dev/null \
+    | sed 's/^@//' | sort)
+
+  if [[ -z "$occurrences" ]]; then
+    report SKIP "requirement ids carried exactly once" "no .feature tags yet"
+  else
+    # WITH duplicates, so `uniq -d` can see them. `distinct` is the set.
+    duplicated=$(printf '%s\n' "$occurrences" | uniq -d | tr '\n' ' ' | sed 's/ *$//')
+    distinct=$(printf '%s\n' "$occurrences" | uniq)
+
+    # The contiguous range the ids must form, built from the constant with a
+    # bash loop rather than `seq -f` so the format is identical on every
+    # platform this runs on.
+    expected=""
+    for ((n = 1; n <= EXPECTED_REQ_COUNT; n++)); do
+      expected+="$(printf 'REQ-EC-%03d' "$n")"$'\n'
+    done
+    expected="${expected%$'\n'}"
+
+    missing=$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$distinct") | tr '\n' ' ' | sed 's/ *$//')
+    outofrange=$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$distinct") | tr '\n' ' ' | sed 's/ *$//')
+
+    # §5's TABLE, and only §5's: from its heading to the next one. An id counts
+    # only when it is the FIRST CELL of a row — that is what makes this a row
+    # and not a mention, which is the whole reason this check is separate from
+    # check 4.
+    rows=$(awk '/^## §5 /{ inside = 1; next } /^## /{ inside = 0 } inside' "$SPEC_DIR/traceability.md" \
+      | grep -oE '^\|[[:space:]]*REQ-EC-[0-9]{3}[[:space:]]*\|' \
+      | grep -oE 'REQ-EC-[0-9]{3}' | sort -u)
+    unrowed=$(comm -23 <(printf '%s\n' "$distinct") <(printf '%s\n' "$rows") | tr '\n' ' ' | sed 's/ *$//')
+
+    covered=$(printf '%s\n' "$distinct" | wc -l | tr -d ' ')
+
+    if [[ -n "$duplicated" ]]; then
+      report FAIL "requirement ids carried exactly once" "duplicated (D-01 allows one Scenario per id): $duplicated"
+    elif [[ -n "$outofrange" ]]; then
+      report FAIL "requirement ids carried exactly once" "outside REQ-EC-001..$(printf '%03d' "$EXPECTED_REQ_COUNT"): $outofrange"
+    elif [[ -n "$missing" ]]; then
+      report FAIL "requirement ids carried exactly once" "missing, so coverage is $covered/$EXPECTED_REQ_COUNT: $missing"
+    elif [[ -n "$unrowed" ]]; then
+      report FAIL "requirement ids carried exactly once" "tagged but with no §5 TABLE ROW (a prose mention is not a row): $unrowed"
+    else
+      report PASS "requirement ids carried exactly once" \
+        "$covered/$EXPECTED_REQ_COUNT requirements covered by a passing test, each tagged once, each with a §5 row"
+    fi
+  fi
+else
+  report SKIP "requirement ids carried exactly once" "traceability.md absent"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. No broken relative markdown links.
 #
 # Links inside fenced code blocks are illustrative syntax examples, not real
 # references, and are skipped — otherwise every doc that documents the link
