@@ -48,7 +48,9 @@
  *
  * `scripts/verify-pitfalls-checklist.sh` (plan 11-08) cross-checks the checklist document against
  * this file by grepping for those ids. A renamed or deleted test is then a coverage GAP with a name,
- * rather than a smaller pass count nobody is watching.
+ * rather than a smaller pass count nobody is watching. **That grep must anchor on the TITLE**, not on
+ * the file — mutation A below is the measurement, and a whole-file grep is satisfied by the header
+ * paragraph that documents the id.
  *
  * ## Fixtures: reused by path, never copied
  *
@@ -94,12 +96,66 @@
  * the id set is still exactly thirteen and plan 11-08's cross-check is unaffected. The count was not
  * reconciled by weakening the item.
  *
- * ## Mutation record
+ * ## Mutation record (every one performed, run, then reverted)
  *
- * NOT YET TAKEN. The four mutations this file is required to carry are performed, run and reverted in
- * plan 11-07's task 3, and their results are written here then. Recording a measurement before taking
- * it is what `AGENTS.md` §4 forbids, so this section says what it is rather than leaving a gap that
- * reads like an omission. If you are reading this sentence in a merged commit, task 3 did not land.
+ * Recorded per `./README.md`'s standing rule: each entry names the mutation, what went RED, and — the
+ * part that is easiest to omit — what stayed GREEN. The baseline every entry is measured against is
+ * **14 passed in this file, 816 passed across 39 files**.
+ *
+ * - **A. A `P-NN` id deleted from a test title, the test itself untouched.** `P-04 — ` stripped from
+ *   its title string, the assertions byte-identical. Result: `pnpm test` **GREEN at the SAME COUNT**
+ *   — 14 in this file, 816 in the run. Nothing went red and no number shrank, because no number
+ *   changed: the test still runs, it is simply no longer FINDABLE as P-04's executor. That is
+ *   precisely what `scripts/verify-pitfalls-checklist.sh` (plan 11-08) exists to catch, and it is why
+ *   the ids live in the TITLES rather than only in the checklist document.
+ *
+ *   A second measurement came out of the same run and it is a WARNING TO PLAN 11-08, not a detail.
+ *   With the title mutated, a whole-file `grep -c 'P-04'` on this file still returned **2** — the
+ *   per-item line in the header above, and this block's own section comment. A cross-check that
+ *   greps the FILE for each id would therefore have stayed green against mutation A, satisfied by the
+ *   prose that DOCUMENTS the id. `grep -c '"P-04 — '`, anchored on the title's opening quote,
+ *   returned **1** before and **0** after. This repository has now hit the count-your-own-prose shape
+ *   five times (STATE.md 03-04, 10-01, 10-02, and plan 11-06's check 4); 11-08 must anchor on the
+ *   title, not on the file.
+ * - **B. `P-11`'s equality made blunt, in two runs, against a genuinely starved emission.** One run
+ *   cannot state this, for 11-06 mutation A's reason: showing the sharp assertion can fail is a
+ *   different measurement from showing what the blunt one lets through.
+ *
+ *   **B1** — `emitAll`'s `tagFilter` swapped from `noTagFilter` to
+ *   `makeTagFilter({ includeTags: ["@absent"], excludeTags: [] })`, so the registration filter removes
+ *   every Scenario and the Feature emits ZERO test nodes while the parse still compiles four pickles.
+ *   That is Pitfall 2's literal shape. Against it the DERIVED form went **RED**,
+ *   `expected +0 to equal 4`. (P-23 went red too, at `expected 1 to equal 2`: it shares `emitAll`, and
+ *   its own emission count is derived as well.)
+ *
+ *   **B2** — with that starved emission left in place, `P-11`'s assertion rewritten to compare a
+ *   hard-coded `4` against `feature.pickles.length`, so the emitted count is never read. Result:
+ *   **`P-11` GREEN**, against a Feature emitting nothing at all. The only thing still red in the file
+ *   was P-23, a different item. So the hard-coded form passes in exactly the state the item exists to
+ *   detect, and both sides must stay derived from one `ParsedFeature`.
+ *
+ *   One thing B could NOT be arranged as, and it is worth recording because it is the obvious first
+ *   attempt: emptying `collected.plan.scenarios` does not produce a silent under-emission at all.
+ *   `Runner.ts`'s `planFor` dies with
+ *   `emitFeature: no ScenarioPlan for scenario id "…"`. A plan that has LOST a Scenario is already
+ *   loud; the reachable quiet state is the one the filter produces.
+ * - **C. A Background step's `origin` read from the wrong field.** `P-04`'s first assertion changed
+ *   from `steps[0]!.origin` to `steps[0]!.keyword` — the cheapest simulation of a library that
+ *   stopped setting the field, and one needing no source edit. Result: **`P-04` RED**,
+ *   `expected 'Given' to equal 'feature-background'`, and **13 passed, 1 failed**: every other test in
+ *   this file stayed GREEN. That is the measure of how much this suite separates. The thirteen items
+ *   share fixtures and helpers, and a defect in the one field P-04 is about reddens exactly one of
+ *   them; a suite where C reddened three would be a suite whose items overlap rather than partition.
+ * - **D. The per-Scenario Layer built OUTSIDE the twice-executed Effect for `P-10`.** Arranged with no
+ *   library-source change: `Layer.build(collected.layer)` run once in the test body, the Scenario
+ *   built with `Layer.empty` instead, and the already-built `Context` handed to both executions via
+ *   `Effect.provideContext`. Result: **`P-10` RED**, `expected 1 to equal 2` — the builder count the
+ *   item asks for, reported as 1 — with **13 passed, 1 failed** and everything else GREEN.
+ *
+ *   The mutation is available without a source edit precisely because `buildScenarioEffect` takes the
+ *   Layer as an ARGUMENT rather than closing over one, which is the property INV-EC-002 rests on. A
+ *   version that composed the Layer internally could not be mutated this way, and could not be tested
+ *   this way either.
  */
 import {
   createParameterTypeStore,
