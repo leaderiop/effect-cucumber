@@ -5,3 +5,4 @@ Feature: Parsing and matching, the second load
 
   Scenario: Also parsed and also never emitted
     Given this file is handed to no runner
+    And a crate holds a banana

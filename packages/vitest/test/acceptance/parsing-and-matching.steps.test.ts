@@ -10,7 +10,8 @@
  * claims every prior phase proved against synthetic values and inline fixture strings. Here each
  * one is observed from inside a running step whose input is a real `.feature` file on disk.
  *
- * Three claims carry a `@REQ-EC-NNN` tag in this task's half of the file, one Scenario each (D-01):
+ * Five claims carry a `@REQ-EC-NNN` tag, one Scenario each (D-01), and one Scenario Outline carries
+ * none because it is evidence for another Scenario rather than a requirement of its own:
  *
  * - `@REQ-EC-001` (PARSE-01) on `A second loaded feature is data and nothing else`, whose steps
  *   read the SECOND loaded feature's `name` and `allScenarios.length` back out of the value the
@@ -18,6 +19,11 @@
  * - `@REQ-EC-002` (PARSE-02) on `Correlation reaches the step`, whose steps read the running
  *   Scenario's own correlated model: the Background origin on its first `ParsedStep`, the
  *   Feature-level tag it inherited, and a sibling Outline's interpolated names.
+ * - `@REQ-EC-005` (MATCH-01) on `Cucumber-expression arguments arrive coerced`, whose one step
+ *   receives `{int}`, `{float}`, `{string}` and `{word}` and asserts the runtime type of each.
+ * - `@REQ-EC-006` (MATCH-02) on `A custom parameter type resolves in both loads`, whose steps prove
+ *   a type declared ONCE as data resolves in two `loadFeature` calls in one process, against two
+ *   provably different registries.
  * - `@REQ-EC-017` (RUN-01) on `Background steps lead and the Scenario's own follow`, whose recorded
  *   order is the observable form of "one Scenario is one Effect with sequential yields".
  *
@@ -33,6 +39,30 @@
  * What this file does contribute to that half is the second load itself: a real, tagless
  * `.feature` file sitting in this directory, parsed at module scope and deliberately never handed
  * to `describeFeature`. `secondLoadedFeature` is named for that reason and no other.
+ *
+ * ## MATCH-02 is carried by ONE assertion, and it is not the one a reader expects
+ *
+ * Both module-scope loads are given `ParameterTypeStore.layerOf(acceptanceStore)` — this file's own
+ * store — and never the built-ins-only layer the other three pairs in this directory use. That is
+ * not isolation hygiene; it is the setup MATCH-02 needs, because a custom parameter type has to
+ * exist before "does it survive a second load" is a question at all.
+ *
+ * The trap is that the setup looks like the proof. Two `loadFeature` calls both returning without
+ * throwing is what a duplicate-registration bug would break, so it is tempting to stop there — and
+ * it stays GREEN against the failure this requirement actually guards, which is a MEMOISED registry
+ * handed to both calls. BEH-EC-015 requires a FRESH `ParameterTypeRegistry` per call with every
+ * recorded definition replayed into it, and `Model.ts` spells out the consequence: a
+ * `CucumberExpression` binds permanently to the registry it was compiled against, which is why
+ * `StepMatcher.ts`'s compilation cache is keyed on the registry INSTANCE. So the assertion carrying
+ * MATCH-02 is the reference INEQUALITY between the two `parameterTypes` values, and mutation E
+ * below is the measurement: make the two sides reference-equal and only that assertion goes red
+ * while both loads keep succeeding.
+ *
+ * MATCH-01 has a half this file cannot state either. Every assertion here is a runtime `typeof`,
+ * and the requirement is "both at runtime and in the type system". The compile-time half — that
+ * `StepArgs<"I have {int} cukes">` IS `[number]` — is carried by
+ * `packages/gherkin/test/StepArgs.types.ts`, and the `REQ-EC-005` row in `spec/traceability.md` §5
+ * names it.
  *
  * ## ASSUMPTION-11-B, observed rather than assumed
  *
@@ -95,12 +125,13 @@
  * pair's record is written in full beneath the parameter-type section below, once both halves of
  * the file exist to mutate.
  */
-import { loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
+import { createParameterTypeStore, createStepMatcher, loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
@@ -114,7 +145,58 @@ const featurePath = fileURLToPath(new URL("./parsing-and-matching.feature", impo
  */
 const secondLoadPath = fileURLToPath(new URL("./parsing-and-matching-second-load.feature", import.meta.url))
 
-const parseRequirements = Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)
+/**
+ * What the `{fruit}` custom parameter type's transform produces.
+ *
+ * A structured value rather than a prettier string, deliberately: the transform's OUTPUT has to be
+ * distinguishable from its INPUT, or a step body receiving the raw matched text back unchanged is
+ * indistinguishable from one receiving a transformed value.
+ */
+interface Fruit {
+  readonly name: string
+  readonly grams: number
+}
+
+const fruitWeights: ReadonlyMap<string, number> = new Map([["banana", 118], ["apple", 182], ["fig", 50]])
+
+/**
+ * This file's OWN store, sharing no state with the process-wide one.
+ *
+ * The repo reserves exactly one probe of the process-wide default store, in
+ * `packages/gherkin/test/ParameterTypes.test.ts`, and this file must not become a second: that store
+ * is append-only for the life of the process, so a definition added to it from here would be visible
+ * to every other test file that loads a feature afterwards, in whatever order vitest happened to run
+ * them. A private store is what keeps MATCH-02's claim about THIS file's two loads.
+ */
+const acceptanceStore = createParameterTypeStore()
+
+// Module scope, and it touches no registry — BEH-EC-015's first requirement for a custom parameter
+// type: declaring one appends a plain record to a store, and the registry does not exist yet. The
+// regexp is the ARRAY form, three alternatives for one name, so nothing here has to reason about how
+// an alternation inside a single source string is grouped. `definedAt` is what a duplicate-name
+// rejection would quote, and this file is the honest answer.
+acceptanceStore.define<Fruit>({
+  name: "fruit",
+  regexp: ["banana", "apple", "fig"],
+  // Synchronous by requirement: the matched value is read back UNWRAPPED, so a promise here would
+  // reach the step body where its declared parameter type says `Fruit`.
+  transform: (matched: string): Fruit => ({ name: matched, grams: fruitWeights.get(matched) ?? 0 }),
+  definedAt: Option.some("packages/vitest/test/acceptance/parsing-and-matching.steps.test.ts"),
+  useForSnippets: Option.none(),
+  preferForRegexpMatch: Option.none()
+})
+
+/**
+ * The requirements BOTH loads below are given — and `layerOf(acceptanceStore)` rather than the
+ * built-ins-only `Default` layer, which is the whole of MATCH-02's setup.
+ *
+ * One store, two `loadFeature` calls, in one process. BEH-EC-015 requires each call to construct a
+ * FRESH `ParameterTypeRegistry` and replay every recorded definition into it, and that is the
+ * property Pitfall 14 records `cypress-cucumber-preprocessor` getting wrong three separate times
+ * behind a module-level singleton registry: the second load either throws on the first load's
+ * registrations or silently loses them.
+ */
+const parseRequirements = Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.layerOf(acceptanceStore))
 
 /** Real bytes off disk, through the real parser, at module top level. This one IS emitted. */
 const feature = await Effect.runPromise(loadFeature(featurePath).pipe(Effect.provide(parseRequirements)))
@@ -126,16 +208,23 @@ const feature = await Effect.runPromise(loadFeature(featurePath).pipe(Effect.pro
 const secondLoadedFeature = await Effect.runPromise(loadFeature(secondLoadPath).pipe(Effect.provide(parseRequirements)))
 
 /**
- * Per-Scenario, and deliberately the smallest World in this directory: one ordered log of what the
- * Scenario's steps observed, in the order they observed it.
+ * Per-Scenario: one ordered log of what the Scenario's steps observed, in the order they observed
+ * it, plus the one value `@REQ-EC-006` carries across a step boundary.
+ *
+ * `weighed` starts as `Option.none()` rather than as a zero-weight placeholder, so a Scenario whose
+ * writing step was deleted fails on the absence instead of comparing two empty values.
  */
 class World extends Context.Service<World, {
   readonly recorder: Ref.Ref<ReadonlyArray<string>>
+  readonly weighed: Ref.Ref<Option.Option<Fruit>>
 }>()("World") {
   static readonly layer = Layer.effect(
     this,
     Effect.gen(function*() {
-      return World.of({ recorder: yield* Ref.make<ReadonlyArray<string>>([]) })
+      return World.of({
+        recorder: yield* Ref.make<ReadonlyArray<string>>([]),
+        weighed: yield* Ref.make<Option.Option<Fruit>>(Option.none())
+      })
     })
   )
 }
@@ -259,6 +348,79 @@ describeFeature(feature, World.layer, (dsl) => {
 
   dsl.Then("the recorder holds {string}", function*(expected: string) {
     assert.strictEqual((yield* Ref.get((yield* World).recorder)).join(","), expected)
+  })
+
+  // ── @REQ-EC-005 (MATCH-01) ────────────────────────────────────────────────────────────────────
+  // Four built-ins in one pattern. Every value in the Gherkin text below is written as text, and
+  // every parameter this body declares is a TypeScript type — the coercion between them comes from
+  // the pattern and from nothing else, which is what mutation C measures by changing `{int}` to
+  // `{word}` and watching the first assertion report a string. The value assertions are the second
+  // half of the claim and are not redundant with the `typeof` ones: `strictEqual(whole, 42)` is
+  // what separates a coerced `42` from the string `"42"`, and `{bigdecimal}` is the built-in that
+  // proves the distinction is real rather than incidental — it keeps its raw text on purpose.
+
+  dsl.When(
+    "{int} and {float} and {string} and {word} reach a step",
+    function*(whole: number, fraction: number, quoted: string, bare: string) {
+      assert.strictEqual(typeof whole, "number")
+      assert.strictEqual(typeof fraction, "number")
+      assert.strictEqual(typeof quoted, "string")
+      assert.strictEqual(typeof bare, "string")
+      assert.strictEqual(whole, 42)
+      assert.strictEqual(fraction, 3.5)
+      // `{string}` arrives with its surrounding quotes already stripped; `{word}` never had any.
+      assert.strictEqual(quoted, "quoted text")
+      assert.strictEqual(bare, "bareword")
+      yield* record(typeof whole)
+      yield* record(typeof fraction)
+      yield* record(typeof quoted)
+      yield* record(typeof bare)
+    }
+  )
+
+  // ── @REQ-EC-006 (MATCH-02) ────────────────────────────────────────────────────────────────────
+  // The custom parameter type declared at module scope, resolving in a step body and in the SECOND
+  // load's own registry. Three separate claims, and only the third one is MATCH-02:
+  //
+  //   1. the transform ran — a step body declaring `Fruit` receives a structured value, not the
+  //      matched text;
+  //   2. both loads carry the definition — neither threw a duplicate-registration error and neither
+  //      lost it;
+  //   3. the two registries are DIFFERENT OBJECTS. That is the assertion doing the work. Two loads
+  //      both succeeding stays green against a memoised registry, which is exactly what mutation E
+  //      measures; only reference inequality distinguishes "replayed into a fresh registry per call"
+  //      from "handed the same registry twice", and a `CucumberExpression` binds permanently to the
+  //      registry it was compiled against, so the difference is not academic.
+
+  dsl.When("I weigh a {fruit}", function*(fruit: Fruit) {
+    yield* Ref.set((yield* World).weighed, Option.some(fruit))
+  })
+
+  dsl.Then("the weighed fruit is {string} at {int} grams", function*(name: string, grams: number) {
+    const weighed = yield* Ref.get((yield* World).weighed)
+    // The Gherkin text supplied the bare word `banana`; what crossed the step boundary is an object
+    // carrying a numeric weight the text never mentioned.
+    assert.deepStrictEqual(Option.getOrUndefined(weighed), { name, grams })
+    yield* record("weighed")
+  })
+
+  dsl.Then("both loaded features resolve the custom parameter type against different registries", function*() {
+    assert.notStrictEqual(feature.parameterTypes, secondLoadedFeature.parameterTypes)
+    assert.notStrictEqual(feature.parameterTypes.lookupByTypeName("fruit"), undefined)
+    assert.notStrictEqual(secondLoadedFeature.parameterTypes.lookupByTypeName("fruit"), undefined)
+
+    // Resolution, not mere presence. The matcher is built from the SECOND feature's registry and run
+    // against that file's own step text, so the second load's custom type is exercised end to end
+    // rather than counted in a lookup table — BEH-EC-015's "the registry comes off the feature this
+    // matcher will be used against, never from a registry built independently".
+    const matcher = createStepMatcher({
+      registry: secondLoadedFeature.parameterTypes,
+      entries: [{ pattern: "a crate holds a {fruit}", definition: "crate" }]
+    })
+    const matches = matcher.match(secondLoadedFeature.allScenarios[1]?.steps[1]?.text ?? "")
+    assert.strictEqual(matches.length, 1)
+    assert.deepStrictEqual(matches[0]?.args, [{ name: "banana", grams: 118 }])
+    yield* record("different registries")
   })
 
   // ── The untagged Outline ──────────────────────────────────────────────────────────────────────

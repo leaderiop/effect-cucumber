@@ -16,6 +16,17 @@ Feature: Parsing and matching
     And the sibling outline's names arrived interpolated
     And the recorder holds "the recorder is empty,feature-background,@featuretag,interpolated"
 
+  @REQ-EC-005
+  Scenario: Cucumber-expression arguments arrive coerced
+    When 42 and 3.5 and "quoted text" and bareword reach a step
+    Then the recorder holds "the recorder is empty,number,number,string,string"
+
+  @REQ-EC-006
+  Scenario: A custom parameter type resolves in both loads
+    When I weigh a banana
+    Then the weighed fruit is "banana" at 118 grams
+    And both loaded features resolve the custom parameter type against different registries
+
   @REQ-EC-017
   Scenario: Background steps lead and the Scenario's own follow
     When I record "first"
