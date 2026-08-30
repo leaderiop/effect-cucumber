@@ -104,6 +104,73 @@
  * immutable `buildOrdinal` field the build captured out of it. Its own comment says so at the
  * declaration.
  *
+ * ## Mutation-tested (every one performed, run, then reverted)
+ *
+ * A passing acceptance test is not evidence by itself — the pair beside this one records that as its
+ * own mutation B. `packages/vitest/test/acceptance/README.md` makes this record a standing
+ * requirement for every pair in this directory, minimum set C/D/E; the four below are this pair's
+ * own, and they are the ones the plan named because this is the only file that reaches the object
+ * form. Each entry names the mutation, what went RED, and — the part that matters and the part that
+ * is easiest to omit — what stayed GREEN. `git diff --exit-code` over the `.feature` file, this file
+ * and `vitest.config.ts` confirmed the tree was byte-identical to its pre-mutation state afterwards.
+ *
+ * - **A. The `{ shared, perScenario }` form is what makes the tier shared.** The second argument was
+ *      replaced with the plain-Layer form, `Layer.mergeAll(Database.layer, World.layer)`, which keeps
+ *      everything resolving and compiling — a plain Layer IS the per-Scenario scope (ADR-EC-006), so
+ *      both services simply rebuild per Scenario. RED: FOUR tests, reading `expected 2 to equal 1`,
+ *      `3`, `4` and `5` — in Scenario order, one extra build each. GREEN: `Creating a user`, the
+ *      FIRST Scenario, which legitimately reaches build 1 and cannot tell the two arrangements apart,
+ *      plus the skipped Scenario. That single green is the whole argument for putting the ordinal
+ *      assertion in the BACKGROUND rather than in one designated witness Scenario: had only the
+ *      `@REQ-EC-019` Scenario carried it, this mutation would have turned exactly one test red, and
+ *      had that Scenario been declared first it would have turned NONE red while the tier rebuilt
+ *      five times.
+ * - **B. `excludeTags` is what removes the Scenario, and removal happens at REGISTRATION.**
+ *      `excludeTags: ["@wip"]` was deleted from the fourth argument. RED: `Renaming a user`, which
+ *      APPEARS in the report — this is the fact the decision to register no step definitions for it
+ *      hinges on — and fails with `StepMatchError` / `reason: 'UndefinedStep'`, located at
+ *      `worked-example-02-accounts.feature:24`, naming the step, the Scenario and a suggested
+ *      registration. GREEN: the other 5, and the skip. So the filter is not cosmetic and it is not a
+ *      run-time skip: with it, the Scenario is absent and needs no definitions; without it, the
+ *      Scenario is present and demands them. It also means the worked example's own shape — no
+ *      definitions for the excluded Scenario — is correct as published, which is what this mutation
+ *      was run to find out rather than assume.
+ * - **C. The clock isolation is real, not an artifact of declaration order — and this one STAYS
+ *      GREEN, which is the point.** `An hour passes for one account check` and
+ *      `The next account check starts at zero` had their declaration order swapped in the `.feature`
+ *      file, with no TypeScript touched. RED: nothing. GREEN: all 5, both clock Scenarios included,
+ *      and the reporter listed them in the NEW order. Two things follow, and they are different
+ *      things. The isolation holds regardless of who runs first, because each Scenario is provided
+ *      its own `TestEnv` at the emission boundary (ADR-EC-018) rather than inheriting the previous
+ *      Scenario's — so ASSUMPTION-11-C is about this file's readability and never about the
+ *      mechanism. And the reporter following the swap is the incidental confirmation that the runner
+ *      does emit in declaration order today, observed rather than relied upon.
+ * - **D. An acceptance `.feature` file CANNOT declare an undeclared tag, and that is the derived tag
+ *      universe working exactly as designed.** `@slow` on the `@REQ-EC-021` Scenario was replaced
+ *      with `@nobody-declared-this`. RED: nothing at all — no warning, no failure, 5 passed and 1
+ *      skipped, unchanged. `vitest.config.ts` derives its tag list from
+ *      `gherkinTags("packages/vitest/test/acceptance/**\/*.feature")`, so a tag written INTO one of
+ *      these files is declared by the very act of writing it. The sharp positive control:
+ *      `--tagsFilter='@nobody-declared-this'` then selected exactly that one Scenario and skipped the
+ *      other five, so the derived declaration really reached the emitted node. This is also why
+ *      `vitest.config.ts` note (d) forbids putting `@undeclared-on-purpose` in any file this glob
+ *      expands — the glob would declare it and silently delete `emission.test.ts`'s D-08 proof.
+ * - **D-b. What the degradation actually looks like for THIS pair, since D could not produce it.**
+ *      The glob was pointed at `**\/*.nothing` instead, leaving every `@REQ-EC-NNN` tag in this file
+ *      undeclared — plan 11-01's mutation A, aimed at this pair. RED: nothing, again. 5 passed, 1
+ *      skipped, exit 0, and FOUR located `UndeclaredTag` warnings, one per tagged Scenario. The
+ *      warning on `Every tag on this Scenario reaches the runner` reads `carries 2 tag(s), at least
+ *      one of which this project's vitest config does not declare: "@REQ-EC-021", "@slow"` — naming
+ *      the whole list and claiming only that at least one is undeclared, which is D-08's contract
+ *      being precise rather than vague: `@slow` IS declared by hand, and the library deliberately
+ *      does not read the framework's message text to work out which of the two was the offender.
+ *      What DID break is the thing the declaration exists for:
+ *      `--tagsFilter='@REQ-EC-021'` failed inside the runner's own `createTagsFilter` with
+ *      `The tag pattern "@REQ-EC-021" is not defined in the configuration`, `Tests no tests`,
+ *      `Errors 1 error`. This is the measurement that makes the collected-count acceptance criterion
+ *      non-negotiable for this directory, and it is why the RUN-05 section above refuses to claim
+ *      that a green tagged Scenario proves its tags reached the runner.
+ *
  * ## Imports
  *
  * `assert` from `@effect/vitest` inside step bodies, never `expect`: oxlint's
