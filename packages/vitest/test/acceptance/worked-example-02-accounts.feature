@@ -33,6 +33,10 @@ Feature: Worked example 02 - accounts
     When the next account check reads the clock
     Then the account check clock reads 0
 
+  Scenario: Clearing the database removes rows written in this same scenario
+    When this scenario writes "Turing" and then clears the database
+    Then the database holds 0 accounts
+
   @REQ-EC-021 @slow
   Scenario: Every tag on this Scenario reaches the runner
     When this scenario adds a second account named "Grace"

@@ -50,11 +50,41 @@
  * `spec/behaviors/02`'s closing paragraph: `Database.clear` in a Background running per-Scenario
  * against a SHARED Layer is exactly why `clear` is on the service at all — without it, one Scenario's
  * users leak into the next Scenario's count. `Creating a user` cannot prove that on its own, because
- * it is the FIRST Scenario and there is nothing before it to leak. The Scenario that proves it is
- * `Every tag on this Scenario reaches the runner`, declared last: it creates a second user and
- * asserts the count is 1, which reads 2 the moment the Background's `clear` stops running. That is
- * threat T-11-02-01's mitigation, and it is deliberately carried by a Scenario OTHER than the one
- * that looks like it should carry it.
+ * it is the FIRST Scenario and there is nothing before it to leak.
+ *
+ * TWO SCENARIOS CARRY THE PROOF, and splitting it is not redundancy — the two halves fail under
+ * different conditions and neither is sufficient:
+ *
+ * - `Clearing the database removes rows written in this same scenario` is the UNCONDITIONAL half. It
+ *   writes a row, asserts the count is 1, calls `clear`, and asserts 0 — all inside one Scenario, so
+ *   it holds under `pnpm test`, under `--tagsFilter`, under `-t`, under a retry and under a
+ *   single-Scenario re-run. It proves `clear` empties the table.
+ * - `Every tag on this Scenario reaches the runner`, declared last, is the CROSS-SCENARIO half and is
+ *   threat T-11-02-01's mitigation: it creates a second user and asserts the count is 1, which reads
+ *   2 the moment the Background's `clear` stops running against the shared tier. It is deliberately
+ *   carried by a Scenario OTHER than the one that looks like it should carry it.
+ *
+ * The second half's reading is CONDITIONAL ON RUN SHAPE and this is stated rather than left to be
+ * discovered. It holds only when `Creating a user` ran first and wrote `Ada`; under any narrowed
+ * selection there is no `Ada`, the count is 1 whether `clear` ran or not, and the Scenario passes
+ * while observing nothing. `scripts/verify-pitfalls-checklist.sh`'s P-22 narrows exactly this file
+ * with `--tagsFilter=@slow`, so the repository performs that selection on purpose. A cross-Scenario
+ * claim cannot be made unconditional — which is precisely why the first half exists beside it.
+ *
+ * MEASURED, not argued. `Database.clear` was neutered to `Effect.void` and this file run three ways:
+ *
+ *   pnpm vitest run <this file>                     2 FAILED  both halves caught it
+ *   pnpm vitest run <this file> --tagsFilter=@slow  1 PASSED, 6 skipped — GREEN against a
+ *                                                   `clear` that does nothing. This is P-22's
+ *                                                   exact run shape, and before the first half
+ *                                                   existed it was the ONLY thing running.
+ *   pnpm vitest run <this file> -t "Clearing the …" 1 FAILED  the unconditional half, alone,
+ *                                                   under the narrowest possible selection.
+ *
+ * The middle line is the finding and the third is the fix. `--tagsFilter=@slow` still cannot catch a
+ * dead `clear`, because it selects neither half — that is a property of selecting one tagged
+ * Scenario and is not something a test can fix. What changed is that a dead `clear` is now catchable
+ * by SOME narrowed run rather than by the whole-file run alone.
  *
  * ## `TestClock` isolation, and what the declaration ORDER does and does not buy
  *
@@ -441,11 +471,50 @@ describeFeature(
       assert.strictEqual(yield* Ref.get(observedMillis), expected)
     })
 
+    // The UNCONDITIONAL half of the `clear` proof, and the reason it exists is stated in full on the
+    // Scenario below it: that one's reading depends on which sibling ran, and this one's does not.
+    //
+    // One Scenario, one Effect: write a row, call `clear`, read the count back. It is true under
+    // `pnpm test`, under `--tagsFilter`, under `-t`, under a retry and under a single-Scenario
+    // re-run, because every step of the claim happens inside the same Scenario. Delete `clear`'s body
+    // and this reads 1.
+    //
+    // What it deliberately does NOT prove is that the BACKGROUND's `clear` runs BETWEEN Scenarios
+    // against the shared tier — that is irreducibly a two-Scenario claim, and it is the Scenario
+    // below. The two halves together are what `spec/behaviors/02`'s closing paragraph asserts in
+    // prose; neither is sufficient alone, and the split is the honest shape rather than a
+    // duplication.
+    Scenario("Clearing the database removes rows written in this same scenario", ({ Then, When }) => {
+      When("this scenario writes {string} and then clears the database", function*(name: string) {
+        const database = yield* Database
+        yield* database.create(name)
+        // The intermediate read is part of the assertion, not a debug aid: without it a `create`
+        // that silently wrote nothing would make the zero below true for the wrong reason.
+        assert.strictEqual(yield* database.count, 1)
+        yield* database.clear
+      })
+
+      Then("the database holds {int} accounts", function*(expected: number) {
+        assert.strictEqual(yield* (yield* Database).count, expected)
+      })
+    })
+
     // RUN-05, and the Scenario that also closes threat T-11-02-01. `Ada` was written into the SHARED
     // database by the first Scenario in this Feature, so a total of 1 here is only reachable if the
     // Background's `clear` really ran against the shared tier between the two. Delete the `clear` and
     // this Scenario reads 2 — which is what makes `clear`'s presence on the service load-bearing
     // rather than decorative, the point `spec/behaviors/02`'s closing paragraph makes in prose.
+    //
+    // THAT READING IS CONDITIONAL ON RUN SHAPE, and the condition has to be written down because the
+    // repository violates it on purpose. The claim above holds only when `Creating a user` ran FIRST
+    // and wrote `Ada`. Under any narrowed selection it does not: with no `Ada` in the shared tier the
+    // count is 1 whether `clear` ran or not, so the Scenario passes while observing nothing.
+    // `scripts/verify-pitfalls-checklist.sh`'s P-22 performs exactly such a selection on exactly this
+    // file — `run_vitest "$ACCOUNTS_STEPS" ... --tagsFilter=@slow` — and `-t` narrowing does the same.
+    // This is not a live failure: P-22 asserts pass/skip and nothing about the count. It is a
+    // coverage claim that is silently weaker under some run shapes, which is the ADR-EC-018 divergence
+    // class `verify-shared-layer-once.sh` exists to police, and it is why the unconditional half above
+    // was added rather than this comment simply being trusted.
     //
     // What this Scenario does NOT prove on its own is that its two tags reached the runner — see the
     // header's RUN-05 note. It proves a multi-tag Scenario is registered and runs; the ABSENCE of an
