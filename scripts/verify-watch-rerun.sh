@@ -160,12 +160,22 @@ NEW_TITLE="A Scenario added while the runner was watching"
 # A BOUND, not a measurement — see the METHOD NOTE. Observed latency ~620 ms.
 RERUN_TIMEOUT_SECONDS=60
 
+# The banner goes to STDERR, and that is not stylistic. Three things follow from
+# a failure written to stdout: it is SWALLOWED when the function is reached from
+# inside a command substitution (the `packed_manifest` bug in
+# scripts/verify-pitfalls-checklist.sh was exactly that — exit 1 with an empty
+# log); `pnpm verify:... > /dev/null` hides the failure while still exiting 1;
+# and any future caller that pipes this gate's stdout inherits both. The context
+# lines printed immediately before each `fail` are redirected too, so a
+# diagnostic never arrives split across two streams.
 fail() {
-  echo ""
-  echo "✗ watch rerun gate: NOT ENFORCED"
-  echo ""
-  echo "  $1"
-  echo ""
+  {
+    echo ""
+    echo "✗ watch rerun gate: NOT ENFORCED"
+    echo ""
+    echo "  $1"
+    echo ""
+  } >&2
   exit 1
 }
 
@@ -320,7 +330,7 @@ awk -v title="$EXISTING_TITLE" '
 EXPECTED_EXTRACTED_STEPS=3
 EXTRACTED_STEPS="$(grep -cE '^[[:space:]]+(Given|When|Then) ' "$WORK_FEATURE" || true)"
 if [[ "$EXTRACTED_STEPS" -ne "$EXPECTED_EXTRACTED_STEPS" ]]; then
-  cat "$WORK_FEATURE"
+  cat "$WORK_FEATURE" >&2
   fail "extracting \"$EXISTING_TITLE\" out of $SOURCE_FEATURE produced $EXTRACTED_STEPS step line(s), expected exactly $EXPECTED_EXTRACTED_STEPS (content above). FEWER means the awk extraction no longer matches that fixture's layout — most likely the Scenario's steps are no longer indented, or a blank line was introduced inside the Scenario body. MORE means the extraction picked up something it should not have, or the source Scenario gained a step; if the latter is intended, change EXPECTED_EXTRACTED_STEPS in this script in the same commit."
 fi
 echo "✓ copied \"Scenario: $EXISTING_TITLE\" ($EXTRACTED_STEPS steps) out of $SOURCE_FEATURE into $WORK_FEATURE"
@@ -388,7 +398,7 @@ for _ in $(seq 1 $((RERUN_TIMEOUT_SECONDS * 2))); do
 done
 
 if [[ ! -f "$REPORT" ]]; then
-  cat "$LOG"
+  cat "$LOG" >&2
   fail "the watching runner wrote no report to $REPORT within ${RERUN_TIMEOUT_SECONDS}s — it never got far enough to report anything (output above)."
 fi
 
@@ -403,8 +413,8 @@ fi
 # ---------------------------------------------------------------------------
 TOTAL_1="$(report_query "$REPORT" total)"
 if [[ "$TOTAL_1" == "UNREADABLE" ]] || [[ "$TOTAL_1" -eq 0 ]]; then
-  cat "$LOG"
-  cat "$WORK_FEATURE"
+  cat "$LOG" >&2
+  cat "$WORK_FEATURE" >&2
   fail "run 1 reported \"$TOTAL_1\" test results — the copy did not collect, so every assertion below would be vacuously true. Runner output and the copied Gherkin are above."
 fi
 echo "✓ run 1 vacuity control: $TOTAL_1 test result(s) — the copy collected"
@@ -417,7 +427,7 @@ echo "✓ run 1 vacuity control: $TOTAL_1 test result(s) — the copy collected"
 # ---------------------------------------------------------------------------
 STATUS_NEW_1="$(report_query "$REPORT" status "$NEW_TITLE")"
 if [[ "$STATUS_NEW_1" != "ABSENT" ]]; then
-  cat "$LOG"
+  cat "$LOG" >&2
   fail "the Scenario \"$NEW_TITLE\" is already \"$STATUS_NEW_1\" in run 1, expected ABSENT. It is supposed to arrive only with the edit below, so assertion 3 would pass without any rerun happening at all."
 fi
 echo "✓ run 1: \"$NEW_TITLE\" is ABSENT — the rerun has something to pick up"
@@ -459,12 +469,12 @@ done
 RERUN_SECONDS=$(($(date +%s) - EDIT_STARTED_AT))
 
 if [[ "$RERAN" -eq 0 ]]; then
-  cat "$LOG"
+  cat "$LOG" >&2
   fail "the runner did not rerun within ${RERUN_TIMEOUT_SECONDS}s of \"$WORK_FEATURE\" being edited — \"$NEW_TITLE\" never appeared in a fresh report. That is Pitfall 3 in full: a \`.feature\` file read outside Vite's module graph is invisible to the watcher, so a consumer editing Gherkin sees stale results. Runner output above; the report is $REPORT."
 fi
 
 if [[ "$STATUS_NEW_2" != "passed" ]]; then
-  cat "$LOG"
+  cat "$LOG" >&2
   fail "the rerun picked \"$NEW_TITLE\" up but reported it \"$STATUS_NEW_2\", expected \"passed\". The rerun happened; the newly added Scenario did not run correctly. Presence alone is NOT what this item claims — see mutation A."
 fi
 # The `✓ P-14 — ` prefix is the ANCHORED FORM the coverage cross-check in
@@ -483,7 +493,7 @@ echo "✓ P-14 — rerun after ~${RERUN_SECONDS}s: \"$NEW_TITLE\" is PRESENT and
 # ---------------------------------------------------------------------------
 TOTAL_2="$(report_query "$REPORT" total)"
 if [[ "$TOTAL_2" == "UNREADABLE" ]] || [[ "$TOTAL_2" -le "$TOTAL_1" ]]; then
-  cat "$LOG"
+  cat "$LOG" >&2
   fail "run 2 reported \"$TOTAL_2\" test results against run 1's $TOTAL_1, expected strictly more. A rerun that reports the same set proves nothing about picking up a NEW Scenario — it is equally consistent with a Scenario having been renamed."
 fi
 echo "✓ run 2 total $TOTAL_2 > run 1 total $TOTAL_1 — a Scenario was ADDED, not renamed"

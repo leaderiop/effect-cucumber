@@ -407,7 +407,7 @@ echo ""
 # ===========================================================================
 P08_OK_OUTPUT="$($TSC -p "$STEP_EXPECT_ERROR_CONFIG" 2>&1)" && P08_OK_EXIT=0 || P08_OK_EXIT=$?
 if [[ "$P08_OK_EXIT" -ne 0 ]]; then
-  echo "$P08_OK_OUTPUT"
+  echo "$P08_OK_OUTPUT" >&2
   fail "P-08: $STEP_EXPECT_ERROR_FIXTURE no longer compiles clean (exit $P08_OK_EXIT, output above). Either the DSL type was loosened so no error occurs on the marked line (TS2578 / TS377000 — DSL-01's guarantee is gone), or the two directive comment lines were reordered. That fixture's own header says which is which."
 fi
 
@@ -431,11 +431,11 @@ P08_CONFIG
 
 P08_DEAD_OUTPUT="$($TSC -p "$P08_PROBE_CONFIG" 2>&1)" && P08_DEAD_EXIT=0 || P08_DEAD_EXIT=$?
 if [[ "$P08_DEAD_EXIT" -eq 0 ]]; then
-  echo "$P08_DEAD_OUTPUT"
+  echo "$P08_DEAD_OUTPUT" >&2
   fail "P-08: with Db provided, the copy of $STEP_EXPECT_ERROR_FIXTURE STILL compiles clean — so the @ts-expect-error directive there is suppressing nothing and its file could lose its defect without anything going red. An expected error that stopped happening must become a build failure; that is the entire mechanism of a directive-based negative type test."
 fi
 if ! grep -qE "TS2578|TS377000" <<<"$P08_DEAD_OUTPUT"; then
-  echo "$P08_DEAD_OUTPUT"
+  echo "$P08_DEAD_OUTPUT" >&2
   fail "P-08: the copy with Db provided was rejected, but NOT by an unused-directive diagnostic (expected TS2578 or TS377000). The exit code above proves only that SOMETHING was wrong with the file — most likely the substitution introduced an unrelated defect rather than removing the intended one."
 fi
 echo "✓ P-08 — the @ts-expect-error negative type-test compiles clean, and FAILS on an unused directive once its defect is removed"
@@ -453,7 +453,7 @@ grep -qF -- "$STEP_OK_FIXTURE" <<<"$P09_LISTED" ||
 
 P09_OUTPUT="$($TSC -p "$STEP_OK_CONFIG" 2>&1)" && P09_EXIT=0 || P09_EXIT=$?
 if [[ "$P09_EXIT" -ne 0 ]]; then
-  echo "$P09_OUTPUT"
+  echo "$P09_OUTPUT" >&2
   fail "P-09: a step using Effect.acquireRelease no longer compiles (exit $P09_EXIT, output above). Most likely Scope.Scope has leaked into the step type in packages/vitest/src/Dsl.ts — a step using acquireRelease must still compile against a PLAIN Layer, because the runner provides the Scope. Do not add \`any\` to the fixture to make this pass."
 fi
 echo "✓ P-09 — a step using Effect.acquireRelease compiles, against a config proven to have compiled that file"
@@ -547,31 +547,31 @@ P13_REPORT="$TMP_DIR/p13.json"
 P13_LOG="$TMP_DIR/p13.log"
 run_vitest "$PROBE_STEPS" "$P13_REPORT" "$P13_LOG" --allowOnly=false
 [[ -f "$P13_REPORT" ]] || {
-  cat "$P13_LOG"
+  cat "$P13_LOG" >&2
   fail "P-13: the run wrote no report — the runner did not get far enough to report anything (output above)."
 }
 
 P13_TOTAL="$(report_query "$P13_REPORT" total)"
 if [[ "$P13_TOTAL" -eq 0 ]]; then
-  cat "$P13_LOG"
+  cat "$P13_LOG" >&2
   fail "P-13: the run reported ZERO test results — the probe file did not collect, so every assertion below would be vacuously true. The usual cause is a tag emitted that vitest.config.ts does not declare, which fails the WHOLE file to 0 tests."
 fi
 
 P13_STATUS_ONLY="$(report_query "$P13_REPORT" status "An only-tagged Scenario in a file that must run whole")"
 if [[ "$P13_STATUS_ONLY" != "passed" ]]; then
-  cat "$P13_LOG"
+  cat "$P13_LOG" >&2
   fail "P-13: the @only-tagged Scenario is \"$P13_STATUS_ONLY\" under --allowOnly=false, expected \"passed\". Had @only been routed to an only-MODIFIER, this run would have been rejected at collection instead. See ADR-EC-026."
 fi
 
 P13_STATUS_SIBLING="$(report_query "$P13_REPORT" status "An untagged sibling that must still run")"
 if [[ "$P13_STATUS_SIBLING" != "passed" ]]; then
-  cat "$P13_LOG"
+  cat "$P13_LOG" >&2
   fail "P-13: the UNTAGGED sibling of the @only-tagged Scenario is \"$P13_STATUS_SIBLING\", expected \"passed\". A \"skipped\" status here means only-marking WAS emitted and narrowed the file to the tagged Scenario — which is exactly what ADR-EC-026 says must never happen, and which the tagged Scenario's own \"passed\" status cannot distinguish."
 fi
 
 P13_FAILED="$(report_query "$P13_REPORT" failed)"
 if [[ "$P13_FAILED" -ne 0 ]]; then
-  cat "$P13_LOG"
+  cat "$P13_LOG" >&2
   fail "P-13: the run reported $P13_FAILED failed test(s) under --allowOnly=false (output above)."
 fi
 echo "✓ P-13 — an @only-tagged Scenario passes under --allowOnly=false and its untagged siblings still run: no only-marking was emitted (ADR-EC-026)"
@@ -589,7 +589,7 @@ P21_REPORT="$TMP_DIR/p21.json"
 P21_LOG="$TMP_DIR/p21.log"
 run_vitest "$PROBE_STEPS" "$P21_REPORT" "$P21_LOG" --sequence.shuffle
 [[ -f "$P21_REPORT" ]] || {
-  cat "$P21_LOG"
+  cat "$P21_LOG" >&2
   fail "P-21: the shuffled run wrote no report (output above)."
 }
 
@@ -604,7 +604,7 @@ while IFS= read -r title; do
 done < <(report_query "$P21_REPORT" titles | grep -F -- "Each Outline row asserts its own value for " || true)
 
 if [[ "${#P21_TITLES[@]}" -ne 3 ]]; then
-  cat "$P21_LOG"
+  cat "$P21_LOG" >&2
   report_query "$P21_REPORT" titles
   fail "P-21: the shuffled run emitted ${#P21_TITLES[@]} Outline row test(s), expected 3 (every reported title is above). A 3-row Examples table must yield exactly 3 scenario entries; anything else means the rows did not all emit."
 fi
@@ -614,7 +614,7 @@ fi
 # duplicated title answers AMBIGUOUS rather than silently taking the first.
 P21_DISTINCT="$(printf '%s\n' "${P21_TITLES[@]}" | sort -u | wc -l | tr -d ' ')"
 if [[ "$P21_DISTINCT" -ne 3 ]]; then
-  printf '%s\n' "${P21_TITLES[@]}"
+  printf '%s\n' "${P21_TITLES[@]}" >&2
   fail "P-21: the three Outline rows produced $P21_DISTINCT DISTINCT title(s), expected 3 (titles above). Rows that share a title are rows a reader cannot tell apart in a report, and Pitfall 9's failure mode — every row handed the same Examples values — looks exactly like this."
 fi
 
@@ -624,7 +624,7 @@ fi
 for start in 11 22 33; do
   MATCHES="$(printf '%s\n' "${P21_TITLES[@]}" | grep -cF -- "$start" || true)"
   if [[ "$MATCHES" -ne 1 ]]; then
-    printf '%s\n' "${P21_TITLES[@]}"
+    printf '%s\n' "${P21_TITLES[@]}" >&2
     fail "P-21: the Examples value \"$start\" appears in $MATCHES emitted title(s), expected exactly 1 (titles above). Pitfall 9: keying an Outline row on the SHARED first astNodeId hands every row the same row's values, which does not throw and does not fail to type-check."
   fi
 done
@@ -632,7 +632,7 @@ done
 for title in "${P21_TITLES[@]}"; do
   P21_STATUS="$(report_query "$P21_REPORT" status "$title")"
   if [[ "$P21_STATUS" != "passed" ]]; then
-    cat "$P21_LOG"
+    cat "$P21_LOG" >&2
     fail "P-21: Outline row \"$title\" is \"$P21_STATUS\" under --sequence.shuffle, expected \"passed\". Under shuffled ordering a row reading a value another row wrote sees the wrong one — that is Pitfall 34, and it is invisible in source order."
   fi
 done
@@ -651,29 +651,29 @@ P22_REPORT="$TMP_DIR/p22.json"
 P22_LOG="$TMP_DIR/p22.log"
 run_vitest "$ACCOUNTS_STEPS" "$P22_REPORT" "$P22_LOG" --tagsFilter="$FILTER_TAG"
 [[ -f "$P22_REPORT" ]] || {
-  cat "$P22_LOG"
+  cat "$P22_LOG" >&2
   fail "P-22: the filtered run wrote no report. If the output above names an unknown tag, $FILTER_TAG is no longer declared in vitest.config.ts."
 }
 
 P22_PASSED="$(report_query "$P22_REPORT" passed)"
 if [[ "$P22_PASSED" -eq 0 ]]; then
-  cat "$P22_LOG"
+  cat "$P22_LOG" >&2
   fail "P-22: the run filtered on $FILTER_TAG reported ZERO passed tests — the filter selected nothing, so the assertions below would be vacuous. This is precisely what a library emitting no tags produces: the filter has nothing to match, everything is narrowed to skip, and the process still exits 0."
 fi
 
 P22_STATUS_SLOW="$(report_query "$P22_REPORT" status "$TITLE_SLOW")"
 if [[ "$P22_STATUS_SLOW" != "passed" ]]; then
-  cat "$P22_LOG"
+  cat "$P22_LOG" >&2
   fail "P-22: the $FILTER_TAG-tagged Scenario is \"$P22_STATUS_SLOW\" under --tagsFilter=$FILTER_TAG, expected \"passed\". Title: \"$TITLE_SLOW\". The filter did not select it, which means the tag string never reached the real task."
 fi
 
 P22_STATUS_OTHER="$(report_query "$P22_REPORT" status "$TITLE_NOT_SLOW")"
 if [[ "$P22_STATUS_OTHER" == "ABSENT" ]]; then
-  cat "$P22_LOG"
+  cat "$P22_LOG" >&2
   fail "P-22: an unselected Scenario is ABSENT from the filtered report, expected PRESENT and \"skipped\". Title: \"$TITLE_NOT_SLOW\". A CLI filter narrows non-matching tests to skip and never removes them (RESEARCH Finding 7); absence is what a REGISTRATION filter produces, and the two must stay distinguishable."
 fi
 if [[ "$P22_STATUS_OTHER" != "skipped" ]]; then
-  cat "$P22_LOG"
+  cat "$P22_LOG" >&2
   fail "P-22: an unselected Scenario is \"$P22_STATUS_OTHER\" under --tagsFilter=$FILTER_TAG, expected \"skipped\". Title: \"$TITLE_NOT_SLOW\". A \"passed\" status means the filter selected it too — so the filter is selecting EVERYTHING, and the tagged Scenario's own pass proves nothing about selection. This is mutation G, which stayed green with only the first half asserted."
 fi
 echo "✓ P-22 — --tagsFilter=$FILTER_TAG selected exactly the tagged Scenario; an untagged one is present and SKIPPED, not passed"
@@ -748,7 +748,7 @@ P24_REPORT="$TMP_DIR/p24.json"
 P24_LOG="$TMP_DIR/p24.log"
 run_vitest "$FAILING_STEPS" "$P24_REPORT" "$P24_LOG"
 [[ -f "$P24_REPORT" ]] || {
-  cat "$P24_LOG"
+  cat "$P24_LOG" >&2
   fail "P-24: the failing run wrote no report (output above)."
 }
 
@@ -756,13 +756,13 @@ run_vitest "$FAILING_STEPS" "$P24_REPORT" "$P24_LOG"
 # fail has none to read — the assertions would then be asserting over nothing.
 P24_FAILED="$(report_query "$P24_REPORT" failed)"
 if [[ "$P24_FAILED" -ne 1 ]]; then
-  cat "$P24_LOG"
+  cat "$P24_LOG" >&2
   fail "P-24: the deliberately failing probe reported $P24_FAILED failed test(s), expected exactly 1. The probe did not fail, so there is no failure output to read and every assertion below would be vacuous."
 fi
 
 P24_STATUS="$(report_query "$P24_REPORT" status "A deliberately failing step")"
 if [[ "$P24_STATUS" != "failed" ]]; then
-  cat "$P24_LOG"
+  cat "$P24_LOG" >&2
   fail "P-24: the failing Scenario reports \"$P24_STATUS\", expected \"failed\". The Scenario TITLE is what vitest's panel leads with, so a Scenario that cannot be found by title in the report is one a reader cannot find in the panel either."
 fi
 
@@ -772,11 +772,11 @@ fi
 P24_HUMAN_LOG="$TMP_DIR/p24-human.log"
 "$VITEST" run "$FAILING_STEPS" >"$P24_HUMAN_LOG" 2>&1 || true
 if ! grep -qF -- "the failing probe counter is {int}" "$P24_HUMAN_LOG"; then
-  cat "$P24_HUMAN_LOG"
+  cat "$P24_HUMAN_LOG" >&2
   fail "P-24: the failure output does not name the failing step AT ALL — the frame \`at the failing probe counter is {int} (…)\` is absent (output above). ADR-EC-005's \`Effect.fn(pattern)\` span is the ONLY thing in this project that puts a step name anywhere near a failure; without it a reader gets a Scenario title, an assertion message and seven frames of effect internals. Check Step.ts's \`Effect.fn(pattern)\` wrap and ScenarioEffect.ts's per-step span."
 fi
 if ! grep -qF -- "A deliberately failing step" "$P24_HUMAN_LOG"; then
-  cat "$P24_HUMAN_LOG"
+  cat "$P24_HUMAN_LOG" >&2
   fail "P-24: the failure output does not name the Scenario \"A deliberately failing step\" (output above)."
 fi
 echo "✓ P-24 — a deliberately failing step names its Gherkin step pattern and its Scenario in the failure output (REDUCED form: see the P-24 row's Note for the half that is still owed)"
@@ -838,7 +838,7 @@ P15_RESULT="$(
   '
 )"
 if [[ "$P15_RESULT" != "OK" ]]; then
-  echo "$P15_RESULT"
+  echo "$P15_RESULT" >&2
   fail "P-15: the packed manifests do not carry the structural precondition for a single-copy resolution (reasons above). Fix pnpm-workspace.yaml's catalogs, never a packages/*/package.json — every version in this repository lives in that one file (ADR-EC-012)."
 fi
 echo "✓ P-15 — neither packed manifest installs effect or vitest for a consumer, both declare effect as a peer, and no catalog:/workspace: protocol survived packing"
@@ -1094,7 +1094,7 @@ CROSS_CHECK_RESULT="$(
 )"
 
 if [[ "${CROSS_CHECK_RESULT%%$'\n'*}" != "OK" ]]; then
-  echo "${CROSS_CHECK_RESULT#FAIL$'\n'}"
+  echo "${CROSS_CHECK_RESULT#FAIL$'\n'}" >&2
   fail "the coverage cross-check FAILED (reasons above). Roadmap success criterion 4 says the 24-item checklist runs IN FULL; it does not, and the reasons name which ids. An item may move executor and may gain a Note — it may never quietly stop being executed."
 fi
 

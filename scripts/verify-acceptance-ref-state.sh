@@ -231,12 +231,22 @@ ALLOW_MARKER_RE='//[[:space:]]*GATE-ALLOW-MUTATION:[[:space:]]*[^[:space:]]'
 # number is a review decision, and making it one is the point.
 ALLOWED_MUTATIONS=2
 
+# The banner goes to STDERR, and that is not stylistic. Three things follow from
+# a failure written to stdout: it is SWALLOWED when the function is reached from
+# inside a command substitution (the `packed_manifest` bug in
+# scripts/verify-pitfalls-checklist.sh was exactly that — exit 1 with an empty
+# log); `pnpm verify:... > /dev/null` hides the failure while still exiting 1;
+# and any future caller that pipes this gate's stdout inherits both. The context
+# lines printed immediately before each `fail` are redirected too, so a
+# diagnostic never arrives split across two streams.
 fail() {
-  echo ""
-  echo "✗ acceptance suite cross-step state via Ref only: NOT ENFORCED"
-  echo ""
-  echo "  $1"
-  echo ""
+  {
+    echo ""
+    echo "✗ acceptance suite cross-step state via Ref only: NOT ENFORCED"
+    echo ""
+    echo "  $1"
+    echo ""
+  } >&2
   exit 1
 }
 
@@ -319,8 +329,8 @@ done <<<"$SCANNED_TS"
 
 if [[ -n "$VIOLATIONS" ]]; then
   echo ""
-  echo "  mutable binding declarations found:"
-  printf '%s' "$VIOLATIONS"
+  echo "  mutable binding declarations found:" >&2
+  printf '%s' "$VIOLATIONS" >&2
   fail "a TypeScript module under $ACCEPTANCE_DIR declares a mutable binding (listed above). Cross-step Scenario state must live in a Ref obtained from a Layer-provided service, never in a closure variable — INV-EC-006, ADR-EC-009, and the 'Every cross-step value lives in a Ref obtained from a Layer-provided service' section of $ACCEPTANCE_DIR/README.md. A closure variable passes on a clean run and leaks across retries, re-runs and -t-narrowed selections."
 fi
 SCANNED_TS_COUNT="$(printf '%s\n' "$SCANNED_TS" | wc -l | tr -d '[:space:]')"
@@ -355,8 +365,8 @@ done <<<"$SCANNED_TS"
 
 if [[ -n "$MUTATORS" ]]; then
   echo ""
-  echo "  in-place mutator calls found:"
-  printf '%s' "$MUTATORS"
+  echo "  in-place mutator calls found:" >&2
+  printf '%s' "$MUTATORS" >&2
   fail "a TypeScript module under $ACCEPTANCE_DIR mutates a value in place (listed above). PROH-11-03: a module-scope array, object or counter a step writes to satisfies the letter of the no-let rule while defeating INV-EC-006's intent, and unlike a Ref it cannot observe per-Scenario Layer freshness — one array is one array however many times the Layer was built. Build a new value with spread and put it in a Ref instead. If the value is genuinely FUNCTION-LOCAL — created fresh inside a factory and never shared across steps — mark that one line \`// GATE-ALLOW-MUTATION: <reason>\` and raise ALLOWED_MUTATIONS in this script in the same commit."
 fi
 
@@ -369,7 +379,7 @@ if [[ "$ALLOWED_COUNT" -ne "$ALLOWED_MUTATIONS" ]]; then
   if [[ -n "$ALLOWED" ]]; then
     echo ""
     echo "  carve-outs found:"
-    printf '%s' "$ALLOWED"
+    printf '%s' "$ALLOWED" >&2
   fi
   fail "found $ALLOWED_COUNT GATE-ALLOW-MUTATION carve-out(s), expected exactly $ALLOWED_MUTATIONS. A marker was added or removed without ALLOWED_MUTATIONS following it in the same commit. If the change is intended, edit that constant; do not widen the marker to cover more lines."
 fi

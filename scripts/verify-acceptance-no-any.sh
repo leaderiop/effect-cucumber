@@ -160,12 +160,22 @@ TOKEN_RE="(^|[^A-Za-z0-9_\$])${TOKEN}([^A-Za-z0-9_\$]|\$)"
 TS_COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'
 FEATURE_COMMENT_RE='^[0-9]+:[[:space:]]*#'
 
+# The banner goes to STDERR, and that is not stylistic. Three things follow from
+# a failure written to stdout: it is SWALLOWED when the function is reached from
+# inside a command substitution (the `packed_manifest` bug in
+# scripts/verify-pitfalls-checklist.sh was exactly that — exit 1 with an empty
+# log); `pnpm verify:... > /dev/null` hides the failure while still exiting 1;
+# and any future caller that pipes this gate's stdout inherits both. The context
+# lines printed immediately before each `fail` are redirected too, so a
+# diagnostic never arrives split across two streams.
 fail() {
-  echo ""
-  echo "✗ acceptance suite free of the escape-hatch type: NOT ENFORCED"
-  echo ""
-  echo "  $1"
-  echo ""
+  {
+    echo ""
+    echo "✗ acceptance suite free of the escape-hatch type: NOT ENFORCED"
+    echo ""
+    echo "  $1"
+    echo ""
+  } >&2
   exit 1
 }
 
@@ -254,8 +264,8 @@ done <<<"$SCANNED_FILES"
 
 if [[ -n "$VIOLATIONS" ]]; then
   echo ""
-  echo "  forbidden occurrences found:"
-  printf '%s' "$VIOLATIONS"
+  echo "  forbidden occurrences found:" >&2
+  printf '%s' "$VIOLATIONS" >&2
   fail "the escape-hatch type occurs in the acceptance suite (listed above). It is assignable to everything, so one occurrence in a step body makes that body compile against every ambient Layer and disables INV-EC-003 for it — inside the suite whose whole job is to prove INV-EC-003. Never introduce one to make something compile: annotate the real type, or fix the Layer. See spec/invariants.md INV-EC-003, D-04b, and the 'Zero' section of $ACCEPTANCE_DIR/README.md. If the hit is in a .feature file or a string literal, reword it — this gate counts a standalone token wherever it appears in that directory, and the README says so."
 fi
 SCANNED_COUNT="$(printf '%s\n' "$SCANNED_FILES" | wc -l | tr -d '[:space:]')"
