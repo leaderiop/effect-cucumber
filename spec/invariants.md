@@ -5,12 +5,12 @@ enforces it, because an invariant nobody enforces is a wish.
 
 Four of these — INV-EC-001, INV-EC-002, INV-EC-003 and INV-EC-004 — are enforced by
 code today, and each entry names the mechanism and the assertions that back it.
-INV-EC-002 holds in full for the per-Scenario scope, which is the whole of what
-this milestone builds; the `shared` clause of its own wording waits on Phase 10,
-and its entry says so in place rather than here. The remaining two are not
-enforced at all: each still names the **planned** enforcement mechanism and says
-so in its `Source` label, per `AGENTS.md` §4 ("say only what is true").
-`spec/roadmap.md` is the single source of truth for what's actually built.
+INV-EC-002 now holds on BOTH Layer scopes: the per-Scenario scope was built first,
+and Phase 10 built the `shared` clause of its own wording, so its entry names two
+mechanisms rather than one. The remaining two are not enforced at all: each still
+names the **planned** enforcement mechanism and says so in its `Source` label, per
+`AGENTS.md` §4 ("say only what is true"). `spec/roadmap.md` is the single source of
+truth for what's actually built.
 
 ---
 
@@ -54,13 +54,37 @@ assert the WHOLE accumulated log, so a Layer built once and shared would leave
 the second Scenario reading the first's entries and fail.
 
 The `shared` half of the invariant's own wording — "unless a Layer is explicitly
-declared `shared`" — is still **planned**. The `{ shared, perScenario }` argument
-form is accepted and type-checked today, but both halves are built per Scenario
-at runtime; ADR-EC-018's build-once path is Phase 10's (RUN-03/RUN-04). Nothing
-is currently wrong as a result, because building a `shared` Layer more often than
-necessary cannot make one Scenario see another's state — the gap is a missed
-optimisation and a missed `TestClock` isolation requirement, not a violated
-invariant.
+declared `shared`" — is built too, as of Phase 10 (RUN-03/RUN-04, ADR-EC-018).
+
+**Mechanism.** On the `shared` path the two tiers are provided in two different
+places and never merged. The shared tier is provided by `@effect/vitest`'s
+`layer(...)` at the BLOCK level, around every test node the Feature emits, and is
+NOT re-provided inside any Scenario Effect — so it is built once and every Scenario
+reaches that one build. The per-Scenario tier is still supplied once around each
+Scenario Effect and is still rebuilt on every execution, exactly as it is on the
+default path. `packages/vitest/src/describeFeature.ts` is the one branch point
+(`collection.sharedLayer === null` selects the default path), and
+`packages/vitest/src/ScenarioEffect.ts` is unchanged by the distinction — it
+provides whatever per-Scenario Layer it is handed and has never heard of the two
+paths.
+
+**Assertions.** `packages/vitest/test/emission.test.ts` runs one Feature with both
+tiers instrumented by build counters and asserts the pair side by side: the shared
+ordinals each Scenario reached are `[1, 1, 1]` and the per-Scenario ordinals in the
+SAME Feature are `[1, 2, 3]`. The second array is the half that catches an over-fix
+— a change memoising both tiers satisfies the first and breaks this invariant for
+every Feature that asked for a shared scope. `scripts/verify-shared-layer-once.sh`
+(`pnpm verify:shared-layer-once`) is the other half: it runs the real `vitest` CLI
+against a committed fixture Feature twice, once whole and once narrowed with `-t` to
+a single Scenario, and asserts the shared build count is identical in both — which
+an in-process test structurally cannot show.
+
+"Fresh every Scenario" therefore remains true of the per-Scenario tier on BOTH
+scopes, and is deliberately FALSE of the shared tier, which is the entire point of
+asking for one. What a `shared` Layer never costs a Scenario is its own simulated
+clock and its own console: those stay per-Scenario on both paths (BEH-EC-012,
+ADR-EC-018), so opting into shared state is a choice about the caller's own
+services and never silently about the test environment.
 
 **Implication**: a `Given`/`When`/`Then` author can rely on a clean World for
 every Scenario without writing manual reset logic, _unless_ that Scenario

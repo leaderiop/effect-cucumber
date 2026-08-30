@@ -541,8 +541,12 @@ const vitestTestApi = (featureUri: string): TestApi => ({
  * ADR-EC-018's per-Scenario `TestClock`/`TestConsole` isolation, and the placement is deliberate:
  * doing it inside `ScenarioEffect.ts` would make that module know there are two paths, which is
  * exactly what its own note (b) says it must not. `excludeTestServices: true` at the `layer(...)` call
- * site is the other half — without it the framework memoises ONE clock alongside the shared Layer and
- * every Scenario in the Feature inherits whatever the previous one did to it.
+ * site is the other half — and the two halves guard DIFFERENT services rather than being one change
+ * spelled twice. This provide is what delivers the per-Scenario CLOCK; without it the clock leaks and
+ * the console does not. `excludeTestServices: true` is what delivers the per-Scenario CONSOLE;
+ * without it the console leaks and the clock does not. Both directions were measured by mutation in
+ * plan 10-04, and the ADR's own implementation note carries the memo-map identity argument for why.
+ * Neither half is redundant; deleting either one leaves a real leak with the other still in place.
  *
  * Pitfall 29, recorded where the two paths differ: `MethodsNonLive` has no `live` member, so a
  * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. The two paths do
@@ -1249,12 +1253,16 @@ export function describeFeature(
     // deep, one build.
     //
     // `excludeTestServices: true` is the half of ADR-EC-018 that lives here. Without it the framework
-    // composes its own test services INTO the memoised shared Layer, so ONE clock and ONE console are
-    // built alongside it and every Scenario in the Feature inherits whatever the previous Scenario
-    // did to them. With it, the shared Layer carries no test services at all and
-    // `sharedLayerTestApi` provides a fresh pair per emitted node instead. Measured: a Scenario
-    // running after another Scenario adjusted the clock by an hour still reads
-    // `Clock.currentTimeMillis` as 0.
+    // composes its own test services INTO the memoised shared Layer, and what actually leaks is the
+    // CONSOLE ALONE — not the clock. That asymmetry is measured (plan 10-04, mutation iv) and it is
+    // the opposite of what this comment used to claim: `TestConsole.layer` is a module-level constant,
+    // so `sharedLayerTestApi`'s provide finds the framework's already-built console in the forked
+    // memo map and hits it, while `TestClock.layer` is a FUNCTION, so each call is a distinct object
+    // and misses. The clock therefore stays isolated even with this option removed — by accident of
+    // how the two are declared upstream, not by design. Should `effect` ever make `TestClock.layer` a
+    // constant to match, removing this option would silently reintroduce the exact clock leak
+    // ADR-EC-018 exists to prevent, and `emission.test.ts`'s `TestConsole` Scenario is the only
+    // assertion in the repo that notices this option going missing today.
     layer(sharedTier, { excludeTestServices: true })((sharedIt) => {
       // Every other field is the SAME value the default arm passes, `layer` included — which is now
       // the per-Scenario tier, and is exactly what Pattern 4 asks the Scenario's own Effect to

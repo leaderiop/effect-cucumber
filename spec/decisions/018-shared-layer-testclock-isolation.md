@@ -69,3 +69,82 @@ the alternative (documenting the leak as a known limitation in
 was considered and rejected, since the fix is fully verified and costs
 nothing but a small amount of internal implementation complexity that's
 already isolated to the `shared`-Layer runner path.
+
+**[The phrase "a mechanical fix" in the paragraph above is superseded in place by
+the implementation note below: the fix turned out to be TWO independent guards over
+TWO different services, and mutation-testing separates them. Everything else in this
+decision shipped as written.]**
+
+---
+
+> **Implementation note (2026-08-30, Phase 10, verified against the installed
+> `effect@4.0.0-rc.112` and `@effect/vitest@4.0.0-rc.112` and pinned by
+> `packages/vitest/test/emission.test.ts`,
+> `packages/vitest/test/SharedLayerConstraint.types.ts` and
+> `scripts/verify-shared-layer-once.sh`):** the decision above shipped. Five things it
+> could not know when it was written are recorded here, four of them about the sketch's
+> own shape.
+>
+> **1. `TestEnv` is not exported, and had to be reconstructed.** The sketch's
+> `Effect.provide(TestEnv)` names a value `@effect/vitest` does not export —
+> `import { TestEnv } from "@effect/vitest"` does not compile. `describeFeature.ts`
+> rebuilds it from the two PUBLIC `effect` modules instead, as
+> `Layer.mergeAll(TestConsole.layer, TestClock.layer())`, which is byte-equivalent to the
+> framework's own definition (read out of `dist/internal/internal.js` line 34 rather than
+> guessed). The clock half is CALLED, with parens: `TestClock.layer` without them is the
+> constructor function and not a Layer, and dropping the parens is the single most
+> plausible tidy-up on that line.
+>
+> **2. The ONE-ARGUMENT call form is mandatory, and the sketch does not say why.** The
+> sketch happens to show `layer(shared, options)(callback)` — one argument to the returned
+> function — and the implementation must use exactly that. The TWO-argument form,
+> `layer(shared, options)(name, callback)`, opens a `describe` of its own named by its
+> first argument, which would wrap a second Feature-named block around `Runner.ts`'s own
+> `describe(feature.name, …)` and render as `Feature > Feature > Scenario`. Measured
+> against the installed build, both forms.
+>
+> **3. The per-Scenario provide is applied at the EMISSION boundary, not inside the
+> Scenario builder.** The sketch shows it wrapping `scenarioStepsEffect`, which reads as
+> `ScenarioEffect.ts`'s job. It is done in `describeFeature.ts`'s `sharedLayerTestApi`
+> instead, around the thunk each emitted node receives. That keeps `ScenarioEffect.ts`
+> free of any knowledge that two paths exist — it provides whatever per-Scenario Layer it
+> is handed and has never heard of the shared path — which is the property its own note
+> (b) asks for.
+>
+> **4. `excludeTestServices: true` and the per-emission provide guard DIFFERENT services.
+> This is the correction to "a mechanical fix" above.** The decision reads as one change
+> with two spellings. Mutation-testing in Phase 10 separated them: removing
+> `excludeTestServices: true` leaks the CONSOLE and leaves the clock isolated, while
+> hoisting the per-emission `Effect.provide` into the shared tier leaks the CLOCK and
+> leaves the console isolated. Neither half is redundant, and neither substitutes for the
+> other. The mechanism is Layer memoisation by object IDENTITY: `Effect.provide` forks the
+> `CurrentMemoMap` that `layer(...)` leaves ambient, `TestConsole.layer` is a module-level
+> CONSTANT and therefore the same object the framework's own `TestEnv` already built (a
+> memo hit), while `TestClock.layer` is a FUNCTION, so `TestClock.layer()` here and
+> `TestClock.layer()` there are two distinct objects (a memo miss, and a genuinely fresh
+> clock). The clock half consequently survives the loss of `excludeTestServices: true`
+> only by that accident. Should a future `effect` release make `TestClock.layer` a
+> constant — the obvious tidy-up, since `TestConsole.layer` already is one — removing the
+> option would silently reintroduce the exact leak this decision exists to prevent. The
+> `TestConsole` assertion in `emission.test.ts` is what stands between that change and a
+> green suite, and it must not be deleted as redundant beside the clock assertions.
+>
+> **5. Pitfall 29's consequence is ACCEPTED, not fixed.** The object `layer(...)` hands its
+> callback is a `MethodsNonLive`, which has no live-clock member, so a Feature using a
+> `shared` Layer cannot opt a single Scenario out of the simulated clock. The two paths do
+> not have identical capability surfaces. This is a documented limitation of the decision
+> rather than a defect in its implementation.
+>
+> **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
+> claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
+> hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted
+> through `effect/testing/TestConsole`'s `logLines` with its own non-vacuity control; and
+> the `[1, 1, 1]` shared-ordinals against `[1, 2, 3]` per-Scenario-ordinals pair that says
+> the memoisation applies to one tier and not the other.
+> `scripts/verify-shared-layer-once.sh` (`pnpm verify:shared-layer-once`) re-asserts the
+> build-once claim from a real `vitest` CLI run, whole and `-t`-filtered, which is the
+> failure mode the Context section above names and which no in-process test can reach.
+> `packages/vitest/test/SharedLayerConstraint.types.ts` carries the type-level constraint
+> the implementation added on top of this decision: a `shared` Layer's error channel must
+> be `never`, because the framework builds it through `Effect.orDie` and would raise a
+> typed failure as a defect out of a setup hook, attributed to no Scenario.

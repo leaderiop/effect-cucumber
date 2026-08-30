@@ -92,8 +92,25 @@ REQUIREMENT: A step reading Clock.currentTimeMillis (or any Clock-derived
 
 ### Worked example
 
+The REQUIREMENT above is built and asserted on BOTH Layer scopes —
+`packages/vitest/test/emission.test.ts` advances the clock by an hour in one Scenario of a
+`shared`-Layer Feature and asserts the next three still start at 0, and
+[`spec/traceability.md`](../traceability.md) §3's ADR-EC-018 row names every test that carries it.
+The caveat below is about THIS EXAMPLE's imports and nothing else, and is narrowed to name exactly
+what still does not resolve, so the `TestClock` guarantee it sits above is no longer hedged by
+association.
+
 ```typescript
-// Pre-implementation reference — not yet compiled against a real API.
+// Three lines below are still pre-implementation; everything else in this example corresponds to a
+// real export and to behaviour that ships.
+//   1. `loadFeature` is NOT exported by @effect-cucumber/vitest — ADR-EC-024's wrapped,
+//      ManagedRuntime-backed version is the one export this package is still missing. Today a caller
+//      reaches @effect-cucumber/gherkin's own Effect-returning `loadFeature` and provides its
+//      FileSystem and ParameterTypeStore requirements as Layers (BEH-EC-001).
+//   2. `expect` is used in two step bodies and imported nowhere.
+//   3. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
+//      imports, and `effect/testing` has no barrel at all — `TestClock` lives at
+//      `effect/testing/TestClock`.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Clock, Context, Duration, Effect, Layer, Option, Ref, Schema } from "effect"
 import { TestClock } from "effect/testing"
