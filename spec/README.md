@@ -28,11 +28,15 @@ exists now, so the thing it was waiting on is no longer what blocks it. See
 
 ### Behaviors
 
-| Document                                                                                       | IDs            | Domain                                                                 |
-| ---------------------------------------------------------------------------------------------- | -------------- | ---------------------------------------------------------------------- |
-| [01 — Steps and World](./behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004 | Step shape, World, `describeFeature`                                   |
-| [02 — Background, hooks, shared Layers, and tags](./behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008 | Background semantics, hooks, the `shared` Layer scope, `@skip`/`@only` |
-| [03 — Rules, Scenario Outlines, and TestClock](./behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012 | Rule-scoped Layers, Outline typing, `TestClock`                        |
+| Document                                                                                                  | IDs                | Domain                                                                 |
+| ---------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
+| [01 — Steps and World](./behaviors/01-steps-and-world.md)                                                 | BEH-EC-001–004, 013 | Step shape, World, `describeFeature`                                   |
+| [02 — Background, hooks, shared Layers, and tags](./behaviors/02-shared-layers-and-tags.md)               | BEH-EC-005–008     | Background semantics, hooks, the `shared` Layer scope, `@skip`/`@only` |
+| [03 — Rules, Scenario Outlines, and TestClock](./behaviors/03-rules-outlines-and-testclock.md)            | BEH-EC-009–012, 018 | Rule-scoped Layers, Outline typing, `TestClock`                        |
+| [04 — loadFeature parse and validation](./behaviors/04-loadfeature-parse-and-validation.md)               | BEH-EC-014         | `loadFeature` parsing and validation semantics                         |
+| [05 — Step matching and parameter types](./behaviors/05-step-matching-and-parameter-types.md)             | BEH-EC-015         | cucumber-expression matching, parameter types                          |
+| [06 — DataTable and DocString arguments](./behaviors/06-datatable-and-docstring-arguments.md)             | BEH-EC-016         | `DataTable`/`DocString` step arguments                                 |
+| [07 — Hook ordering and guarantees](./behaviors/07-hook-ordering-and-guarantees.md)                       | BEH-EC-017         | Hook execution order and guarantees                                    |
 
 ### Decisions
 
@@ -51,7 +55,7 @@ each one's affected invariants.
 
 ## Reading order
 
-**New to this project?** Overview → Glossary → the three behavior files in
+**New to this project?** Overview → Glossary → the seven behavior files in
 order → Roadmap.
 
 **Reviewing a change?** The change's own PR/commit message should name which
