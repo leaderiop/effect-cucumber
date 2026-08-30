@@ -36,8 +36,8 @@ Each requirement traces to a specific behavior/decision in `spec/` — see the c
 
 - [x] **RUN-01**: Each Scenario compiles to exactly one `it.effect` call; Background and Scenario steps run as sequential `yield*`s inside one `Effect.gen`, short-circuiting on the first failure (ADR-EC-004, INV-EC-001)
 - [x] **RUN-02**: A Scenario's `After` hook runs whether every step succeeded or one failed, via `Effect.ensuring` (ADR-EC-005, INV-EC-004)
-- [ ] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
-- [ ] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
+- [x] **RUN-03**: A per-Scenario Layer is fresh every Scenario by default; an opt-in `shared` Layer is built once via `@effect/vitest`'s `layer(...)` (ADR-EC-006)
+- [x] **RUN-04**: A `shared` Layer still gives every Scenario its own fresh `TestClock`/`TestConsole`, via `excludeTestServices: true` plus a per-Scenario `TestEnv` — one Scenario's `TestClock.adjust` is never observable by another (ADR-EC-018, BEH-EC-012)
 - [x] **RUN-05**: Every tag on a Scenario is emitted as a native vitest tag; `@skip` additionally routes to `it.effect.skip`; `@only` is never routed to `it.effect.only` (which fails CI). Running just one Scenario locally is a `--tagsFilter` choice, but not a bare one: a tag must be DECLARED in the runner's `test.tags` before any filter can select it — an undeclared tag does not fail the Feature, it is re-emitted untagged with a located warning, and `gherkinTags("<glob>")` generates the declarations from the consumer's own `.feature` files. `includeTags`/`excludeTags` on `describeFeature`'s optional fourth argument additionally filter at REGISTRATION time, so an excluded Scenario is absent from the report rather than skipped in it, and compose with `--tagsFilter` rather than replacing it (ADR-EC-026 — which supersedes ADR-EC-020 — BEH-EC-008)
 - [ ] **RUN-06**: Cross-step scenario state (a running total, a caught error) lives in a `Ref` obtained from `World`, demonstrated consistently in every worked example — not yet automatable, but the convention is load-bearing given retries reuse the same registered step closures (ADR-EC-009, INV-EC-006)
 
@@ -99,8 +99,8 @@ same phases 0-10; the roadmap numbers them 1-11 (a straight +1 shift).
 | DSL-07 | Phase 7 | Complete |
 | RUN-01 | Phase 6 | Complete |
 | RUN-02 | Phase 7 | Complete |
-| RUN-03 | Phase 10 | Gaps Found |
-| RUN-04 | Phase 10 | Gaps Found |
+| RUN-03 | Phase 10 | Complete |
+| RUN-04 | Phase 10 | Complete |
 | RUN-05 | Phase 9 | Complete |
 | RUN-06 | Phase 11 | Pending |
 

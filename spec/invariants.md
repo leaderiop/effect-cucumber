@@ -58,11 +58,24 @@ declared `shared`" — is built too, as of Phase 10 (RUN-03/RUN-04, ADR-EC-018).
 
 **Mechanism.** On the `shared` path the two tiers are provided in two different
 places and never merged. The shared tier is provided by `@effect/vitest`'s
-`layer(...)` at the BLOCK level, around every test node the Feature emits, and is
-NOT re-provided inside any Scenario Effect — so it is built once and every Scenario
-reaches that one build. The per-Scenario tier is still supplied once around each
-Scenario Effect and is still rebuilt on every execution, exactly as it is on the
-default path. `packages/vitest/src/describeFeature.ts` is the one branch point
+`layer(...)` at the BLOCK level, around every node whose BODY needs it — not
+around every test node the Feature emits. The library's own always-passing
+unused-step-definition nodes are deliberately routed off that path: the framework's
+shared-block test constructor builds the memoised Layer before running ANY body,
+including one that does nothing at all, so a node whose body needs neither tier is
+instead routed through the module-level, Layer-free constructor the default path
+already uses — the choice is made per node by a routing field on the library's own
+emission options, read only at the composition root. The consequence a caller can
+rely on: a Feature whose Scenarios are all removed by a registration-time tag
+filter never builds its shared tier, so the tier stays as deferred as asking for it
+implies.
+
+Wherever a node's body DOES need the shared tier — every Scenario, and the
+Feature's own teardown node — the tier is NOT re-provided inside any Scenario
+Effect, so it is built once and every such node reaches that one build. The
+per-Scenario tier is still supplied once around each Scenario Effect and is still
+rebuilt on every execution, exactly as it is on the default path.
+`packages/vitest/src/describeFeature.ts` is the one branch point
 (`collection.sharedLayer === null` selects the default path), and
 `packages/vitest/src/ScenarioEffect.ts` is unchanged by the distinction — it
 provides whatever per-Scenario Layer it is handed and has never heard of the two
@@ -73,11 +86,29 @@ tiers instrumented by build counters and asserts the pair side by side: the shar
 ordinals each Scenario reached are `[1, 1, 1]` and the per-Scenario ordinals in the
 SAME Feature are `[1, 2, 3]`. The second array is the half that catches an over-fix
 — a change memoising both tiers satisfies the first and breaks this invariant for
-every Feature that asked for a shared scope. `scripts/verify-shared-layer-once.sh`
-(`pnpm verify:shared-layer-once`) is the other half: it runs the real `vitest` CLI
-against a committed fixture Feature twice, once whole and once narrowed with `-t` to
-a single Scenario, and asserts the shared build count is identical in both — which
-an in-process test structurally cannot show.
+every Feature that asked for a shared scope.
+
+The same file's "a shared Layer with every Scenario excluded stays unbuilt, even
+with an unused step definition (10-07)" block covers the zero-runnable-Scenario
+case the pair above does not: a Feature with both tiers declared, an `excludeTags`
+filter removing its one Scenario, and one unused step definition, asserts the
+shared build counter stays at `0`. Named explicitly because a reader who does not
+know it exists could otherwise read that assertion as a claim satisfiable by
+suppressing warnings: the SAME block also asserts the unused step definition is
+STILL REPORTED — the load-bearing non-vacuity control, without which the counter
+assertion would pass just as easily because nothing was ever emitted at all, rather
+than because something was emitted and did not force a build.
+
+`scripts/verify-shared-layer-once.sh` (`pnpm verify:shared-layer-once`) is the
+other half, run from outside the process entirely: three real `vitest` CLI runs
+against a committed fixture Feature — the whole file, the file narrowed with `-t`
+to the clock-isolation Scenario alone, and the file narrowed with `-t` to the
+shared-build Scenario alone. The build-once claim is carried as two INDEPENDENT
+"passed" assertions — one on the shared-build Scenario's status in the whole run,
+one on its status in the run narrowed to it alone — never as a compared count. The
+whole-vs-filtered EQUALITY claim compares the clock-isolation Scenario's REPORTED
+STATUS between the whole run and the run narrowed to it, which an in-process test
+structurally cannot show.
 
 "Fresh every Scenario" therefore remains true of the per-Scenario tier on BOTH
 scopes, and is deliberately FALSE of the shared tier, which is the entire point of
