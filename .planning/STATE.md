@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-current_phase: 10
-current_phase_name: Layer Scopes (per-Scenario default + `shared`)
-status: planning
-stopped_at: Phase 11 complete, ready to plan Phase 10
-last_updated: "2026-08-30T20:16:26.476Z"
+current_phase: 11
+current_phase_name: Composition Root and Dogfooded Acceptance Suite
+status: milestone_complete
+stopped_at: All 11 phases complete — v1.0 ready to close
+last_updated: "2026-08-30T22:40:00.000Z"
 last_activity: 2026-08-30
-last_activity_desc: Phase 11 complete, transitioned to Phase 10
-state_head: e3d1f9c6eace558ebaf6dab7b545056d37cd50d7
+last_activity_desc: Phase 10 UAT + security review complete; all 11 phases of v1.0 now complete
+state_head: c0965212dd5f47f422884bbed3d8bdbf6fe1dd7d
 progress:
   total_phases: 11
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 85
   completed_plans: 85
 milestone_name: milestone
@@ -21,30 +21,25 @@ milestone_name: milestone
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-28)
+See: .planning/PROJECT.md (updated 2026-08-30)
 
 **Core value:** A Scenario's dependencies are checked at compile time via a `Layer` — a step needing a service the ambient Layer doesn't provide is a type error at authoring time, never a runtime failure.
-**Current focus:** Phase 11 — Composition Root and Dogfooded Acceptance Suite
+**Current focus:** Milestone v1.0 complete — all 11 phases shipped, ready to close via `/gsd-complete-milestone`
 
 ## Current Position
 
-Phase: 10 — Layer Scopes (per-Scenario default + `shared`)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-30 — Phase 11 complete, transitioned to Phase 10
+Phase: 11/11 — all phases complete
+Plan: N/A — milestone complete
+Status: Ready to close milestone v1.0
+Last activity: 2026-08-30 — Phase 10's deferred UAT (7 code-review findings) resolved and fixed, security review passed (53/53 threats closed), phase 10 marked complete. Phase 11 (Composition Root and Dogfooded Acceptance Suite) was already complete. All 11 roadmap phases now show `[x]` in ROADMAP.md.
 
-**Current focus:** Phase 3 — parameter types and step matching (complete; awaiting verification)
-
-Phase 1 progress: [██████████] 100% (6/6 plans)
-Phase 2 progress: [██████████] 100% (11/11 plans)
-Phase 3 progress: [██████████] 100% (6/6 plans)
-Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans across phases 1-3; phases 4-11 not yet planned in detail)
+Overall progress: [██████████] 100% (11/11 phases, 85/85 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 60
+- Total plans completed: 68
 - Average duration: ~10m
 - Total execution time: ~117m
 
@@ -62,6 +57,7 @@ Overall progress:  [████░░░░░░] ~43% (23 of 23 planned plans
 | 08 | 9 | - | - |
 | 09 | 9 | - | - |
 | 11 | 9 | - | - |
+| 10 | 8 | - | - |
 
 **Per-plan detail:**
 
@@ -295,10 +291,23 @@ New since 03-06 (not blockers, constraints to respect):
 - **The `LoadFeatureError` reason set is still closed at exactly ten members** and BEH-EC-014 still says "drawn from exactly this set". `StepPatternError` remains the separate channel for parameter-type and step-pattern failures, and 03-06's third ADR correction now records why in `spec/` as well as in `Errors.ts` note (d).
 - **`ls packages/gherkin/test/*.test.ts` returns 11, but `pnpm test` reports 14 files.** The extra three are the vendored oxlint rule tests under `tools/oxlint/effect/test/`, outside `packages/*` and outside §4's stated scope. The two numbers are not a contradiction — do not "fix" §4 by adding `tools/` rows.
 - Repo test count is unchanged at **337 across 14 files** — 03-06 is documentation only.
-- Phase 10 SC#2 (shared Layer built once) and SC#3 (per-Scenario TestClock) are MEASURED but not guarded: plan 10-02's proving probe was a throwaway and no committed test exercises the shared emission path. Plans 10-03 (in-process) and 10-04 (real CLI) must close this before RUN-03/RUN-04 can be marked complete.
+- ~~Phase 10 SC#2 (shared Layer built once) and SC#3 (per-Scenario TestClock) are MEASURED but not guarded~~ — closed by plans 10-03/10-04 (in-process `emission.test.ts` ordinal assertions) and 10-05 (`scripts/verify-shared-layer-once.sh`, a real external `vitest` CLI run). RUN-03/RUN-04 marked Complete in 10-08.
+
+New since Phase 10/11 (milestone v1.0 closing, not blockers, historical record):
+
+- **All 11 roadmap phases are complete as of 2026-08-30.** Milestone v1.0 is done — see PROJECT.md's Validated section (all requirements) and Key Decisions table (all outcomes resolved).
+- **Phase 10's code-review findings (WR-01 through WR-07 in `10-REVIEW.md`) were resolved as a UAT session, not a gap-closure plan** — each was a documentation-accuracy decision rather than a functional defect, so they were decided and fixed directly (commits `3152546`, `88233fe`, `f64b8cc`, `bdeb889`, `c902bb3`) rather than routed through `/gsd-plan-phase --gaps`. WR-03's fix (a new `Runner.test.ts` assertion pinning the Rule-nested Scenario loop) was mutation-verified live during the session.
+- **BEH-EC-007's normative REQUIREMENT block was amended in place** (`spec/behaviors/02-shared-layers-and-tags.md`) to state "AT MOST ONCE ... ZERO times when it emits none" rather than an unqualified "exactly once" — this is a deliberate, documented exception to the append-only spec-correction convention (see `10-SECURITY.md` residual R-02), made because the prior wording left a MUST clause the implementation knowingly violated while RUN-03/RUN-04 were marked Complete against it.
+- **`10-SECURITY.md` was created retroactively** (53 threats across 8 plans, all closed, ASVS level 1) — the first phase in this project to go through security review after its UAT rather than immediately after execution. Four non-blocking residual observations recorded there for future reference.
+- Repo test count at milestone close: **39 files / 822 passed / 4 skipped** (`pnpm test`), 22/22 v1 requirements traced (`pnpm verify:spec`), 24/24 "Looks Done But Isn't" checklist items covered (`pnpm verify:pitfalls`).
 
 ## Session Continuity
 
-Last session: 2026-08-30T14:15:49.924Z
-Stopped at: Phase 11 complete, ready to plan Phase 10
-Resume file: .planning/phases/11-composition-root-and-dogfooded-acceptance-suite/11-CONTEXT.md
+Last session: 2026-08-30T22:40:00.000Z
+Stopped at: All 11 phases of milestone v1.0 complete. Phase 10's outstanding UAT (7 code-review
+findings from 10-REVIEW.md) was resolved directly during this session: each finding was decided
+and fixed (5 commits: 3152546, 88233fe, f64b8cc, bdeb889, c902bb3), the security review ran
+retroactively (53/53 threats closed, `10-SECURITY.md` created), and phase 10 was transitioned to
+complete. Phase 11 was already complete from earlier in this session (9 plans executed, code
+review + auto-fix cycle, goal verification passed 4/4).
+Resume file: None — no phase work remains. Next action is `/gsd-complete-milestone v1.0`.
