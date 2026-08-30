@@ -40,3 +40,13 @@ Feature: Parsing and matching
       | number | doubled |
       | 7      | 14      |
       | 11     | 22      |
+
+  Scenario: A table and a doc string arrive AFTER the pattern's own arguments
+    When 1 row of cart data reaches a step:
+      | item   |
+      | Widget |
+    And the note "shipping" reaches a step:
+      """text/plain
+      leaves on Tuesday
+      """
+    Then the recorder holds "the recorder is empty,table:1:Widget,doc:shipping:leaves on Tuesday:text/plain"

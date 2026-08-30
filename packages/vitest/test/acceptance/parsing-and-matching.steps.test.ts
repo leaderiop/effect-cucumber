@@ -172,7 +172,14 @@
  *      exists to forbid. One line is the whole difference between traceability theater and coverage,
  *      and E2 is the measurement that says so instead of the record asserting it.
  */
-import { createParameterTypeStore, createStepMatcher, loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
+import {
+  createParameterTypeStore,
+  createStepMatcher,
+  type DataTable,
+  type DocString,
+  loadFeature,
+  ParameterTypeStore
+} from "@effect-cucumber/gherkin"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
@@ -479,5 +486,55 @@ describeFeature(feature, World.layer, (dsl) => {
   dsl.Then("the substituted number {int} doubles to {int}", function*(number: number, doubled: number) {
     assert.strictEqual(number * 2, doubled)
     yield* record("outline")
+  })
+
+  // ── The untagged append-order Scenario (BEH-EC-016) ───────────────────────────────────────────
+  // Evidence for BEH-EC-016's step-body-signature REQUIREMENT rather than a requirement of its own,
+  // so it carries no tag — the same reason the Outline above carries none.
+  //
+  // WHY IT IS HERE AND NOT IN `worked-example-03`. That pair is the only other place a `.feature`
+  // table reaches a body, and its Background pattern is `"the cart contains:"` — ZERO
+  // cucumber-expression parameters. With no pattern arguments an APPEND and a PREPEND produce the
+  // identical one-element array, so that pair observes clause (1) of the REQUIREMENT (the argument
+  // is delivered at all) and is structurally incapable of observing clause (2) (it is appended). Its
+  // own comment concedes as much: "this pattern simply has none". Nor could it be widened here —
+  // that Background is `spec/behaviors/03`'s worked example executed verbatim, and editing its
+  // Gherkin to suit a gate would break the dogfooding claim the pair exists to make.
+  //
+  // Clause (3), the DocString arm, had NO runtime exercise anywhere in the repository before this
+  // Scenario. `pitfalls-checklist.test.ts`'s P-20 asserts a DocString on the PARSED model, upstream
+  // of `planStep`, so the arm could have been deleted outright with nothing red.
+  //
+  // Both patterns therefore carry a parameter and both bodies assert their FIRST parameter is the
+  // pattern's coerced value, which is the only arrangement in which the two orders differ. The
+  // recorder line in the `.feature` file is the third observation: it is written in the Gherkin, so
+  // a body that recorded `[object Object]` for a mis-ordered first parameter fails on a string
+  // comparison a reader can diff, not on a thrown TypeError.
+
+  dsl.When("{int} row of cart data reaches a step:", function*(rows: number, table: DataTable) {
+    // Asserted, not inferred from the annotation: `StepRegistrar` infers `Params` from the BODY, so
+    // these two annotations are unchecked in both directions (BEH-EC-016's note on the unverified
+    // annotation, and `Dsl.ts` note (d) for why `Params` cannot be constrained to `StepArgs<P>`).
+    // Without these two lines a prepending `planStep` would hand `rows` the table and TypeScript
+    // would be perfectly happy about it.
+    assert.strictEqual(typeof rows, "number")
+    const { _tag } = table
+    assert.strictEqual(_tag, "DataTable")
+
+    const raw = table.raw()
+    // `raw()` includes the header row, so the single body row is index 1 — the accessor's documented
+    // shape, read here rather than restated.
+    assert.strictEqual(raw.length, rows + 1)
+    yield* record(`table:${rows}:${raw[1]?.[0] ?? "MISSING"}`)
+  })
+
+  dsl.When("the note {string} reaches a step:", function*(label: string, doc: DocString) {
+    assert.strictEqual(typeof label, "string")
+    const { _tag } = doc
+    assert.strictEqual(_tag, "DocString")
+
+    // `mediaType` is an `Option` (ADR-EC-022), and the `.feature` file writes one — so an
+    // implementation that dropped the annotation while keeping the content is caught here.
+    yield* record(`doc:${label}:${doc.content}:${Option.getOrElse(doc.mediaType, () => "ABSENT")}`)
   })
 })

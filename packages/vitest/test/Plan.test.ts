@@ -76,6 +76,15 @@
  *      the 9-before-10 test fails.
  * - C. `undefinedStep` sets `suggestion: Option.none()` → the snippet-content assertions fail.
  *
+ * ## Mutation-tested — the step-argument join (BEH-EC-016)
+ *
+ * Both performed against `Plan.ts`'s `planStep`, observed failing, then reverted. Both are recorded
+ * BECAUSE THEY WERE GREEN BEFORE THESE TESTS EXISTED — the repository had no arrangement in which an
+ * append and a prepend differ, and no arrangement in which a `DocString` reached a step body at all:
+ * - A. the spread is flipped to `[...step.stepArguments, ...only.args]` → both APPENDS tests fail on
+ *      index 0, and nothing else in the repository notices.
+ * - B. the `...step.stepArguments` half is dropped → all three tests fail on the length assertion.
+ *
  * ## Mutation-tested — the unused-pattern warnings (MATCH-05)
  *
  * All three performed, observed failing, then reverted:
@@ -96,7 +105,14 @@
  * returns a plain value and runs no Effect. oxlint's `vitest/no-standalone-expect` is satisfied
  * because none of these is nested in an `it.effect`.
  */
-import { generateStepSnippet, ParameterTypeStore, type ParsedFeature, parseFeature } from "@effect-cucumber/gherkin"
+import {
+  type DataTable,
+  type DocString,
+  generateStepSnippet,
+  ParameterTypeStore,
+  type ParsedFeature,
+  parseFeature
+} from "@effect-cucumber/gherkin"
 import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
@@ -213,6 +229,55 @@ const outline = parse(
       | 2     |
 `,
   "test/plan-outline.feature"
+)
+
+const stepArgumentsUri = "test/plan-step-arguments.feature"
+
+/**
+ * THREE steps that each carry a `.feature`-level argument, and the first two also carry a
+ * cucumber-expression parameter.
+ *
+ * THE PATTERN PARAMETER IS THE ENTIRE POINT OF THE FIRST TWO SCENARIOS, and its absence is what let
+ * `planStep`'s join go unguarded. BEH-EC-016's step-body-signature REQUIREMENT states three separate
+ * things — that `stepArguments` is delivered at all, that it is APPENDED rather than prepended, and
+ * that it covers a DocString as well as a DataTable — and before this fixture existed only the first
+ * was asserted anywhere. Every `args` assertion in this file ran against a step with no table and no
+ * doc string, and the suite's one runtime exercise of a table
+ * (`test/acceptance/worked-example-03-discounts.steps.test.ts`) used the pattern
+ * `"the cart contains:"`, which has ZERO parameters. With zero pattern arguments an append and a
+ * prepend produce the identical one-element array, so flipping `Plan.ts`'s spread to
+ * `[...step.stepArguments, ...only.args]` left the whole repository green.
+ *
+ * A step carrying `{int}` AND a table is the smallest arrangement in which the two orders differ,
+ * and the doc-string Scenario is the only place in the repository where a `DocString` reaches
+ * `ResolvedStep.args` at all — `test/acceptance/pitfalls-checklist.test.ts`'s P-20 asserts one on the
+ * PARSED model, upstream of `planStep`, so the delivery arm could have been deleted outright with
+ * nothing red.
+ *
+ * The third Scenario has no pattern parameter on purpose: it pins the single-argument case that the
+ * other two would otherwise leave to inference.
+ */
+const stepArguments = parse(
+  `Feature: Step arguments
+
+  Scenario: a table beside a pattern argument
+    Given I add 3 apples from:
+      | fruit |
+      | pear  |
+
+  Scenario: a doc string beside a pattern argument
+    Given I add 7 apples described as:
+      """text/plain
+      windfalls, bruised
+      """
+
+  Scenario: a doc string alone
+    Given I read the note:
+      """
+      plain
+      """
+`,
+  stepArgumentsUri
 )
 
 const rulesUri = "test/plan-rules.feature"
@@ -411,6 +476,24 @@ const errorOf = (planned: PlannedStep | undefined): UnresolvedPlannedStep["error
 /** Every step's discriminant, in document order. */
 const tagsOf = (steps: ReadonlyArray<PlannedStep>): ReadonlyArray<string> => steps.map(({ _tag }) => _tag)
 
+/**
+ * The `_tag` of an arbitrary `args` element, or `null` when it has none.
+ *
+ * `args` is `ReadonlyArray<unknown>` by design — `planStep` joins the matcher's coerced values with
+ * the step's own arguments and neither side is statically known — so the step-argument tests below
+ * need a total narrowing rather than a cast. Reads `_tag` by DESTRUCTURING, never by member access:
+ * oxlint's `no-underscore-dangle` rejects the latter and permits the former, the same workaround
+ * `isResolved` above carries. Declared at module scope because
+ * `unicorn(consistent-function-scoping)` rejects a nested function that captures nothing.
+ */
+const argTagOf = (value: unknown): string | null => {
+  if (typeof value !== "object" || value === null) {
+    return null
+  }
+  const { _tag } = value as { readonly _tag?: unknown }
+  return typeof _tag === "string" ? _tag : null
+}
+
 /** Every warning's pattern, in the order the plan returned them. */
 const patternsOfWarnings = (
   warnings: ReadonlyArray<UnusedStepDefinitionWarning>
@@ -517,6 +600,85 @@ describe("planFeature — resolution and the scope chain", () => {
 
     expect(resolvedOf(plan.scenarios[0]?.steps[0])?.args).toEqual([1])
     expect(resolvedOf(plan.scenarios[1]?.steps[0])?.args).toEqual([2])
+  })
+})
+
+/**
+ * BEH-EC-016's step-body-signature REQUIREMENT, all three clauses.
+ *
+ * `Plan.ts` note (h) and `packages/gherkin/src/StepArguments.ts` note (b) both record that for five
+ * phases `planStep` forwarded the matcher's arguments ALONE, so every body declaring a table
+ * parameter received `undefined` — silently, because no document stated the delivery and no gate can
+ * check a contract no document states. The document states it now; these are the gate.
+ *
+ * Each assertion is written to fail against a DIFFERENT single-character regression:
+ * - flipping the spread to `[...step.stepArguments, ...only.args]` moves the table off index 1
+ * - dropping `...step.stepArguments` entirely empties the tail
+ * - a delivery that handled only the `DataTable` arm leaves the doc-string Scenario with `[7]`
+ */
+describe("planFeature — the step-argument join (BEH-EC-016)", () => {
+  it("APPENDS a DataTable after the pattern's own coerced arguments", () => {
+    const plan = planFeature({
+      feature: stepArguments,
+      definitions: [
+        define({
+          pattern: "I add {int} apples from:",
+          scope: scenarioScope("a table beside a pattern argument")
+        })
+      ]
+    })
+
+    const args = resolvedOf(plan.scenarios[0]?.steps[0])?.args
+    // Length FIRST and by itself, so a regression that drops the tail is attributed to the drop
+    // rather than reported as an index mismatch.
+    expect(args).toHaveLength(2)
+    // `toBe`, not `toEqual`: this is the coerced `{int}`, and it must be at index 0.
+    expect(args?.[0]).toBe(3)
+    expect(argTagOf(args?.[1])).toBe("DataTable")
+
+    // The table is the STEP's, not some other step's — asserted through the accessor a body would
+    // actually call, so a delivery that forwarded a correctly-tagged but wrong table is caught.
+    const table = args?.[1] as DataTable
+    expect(table.raw()).toEqual([["fruit"], ["pear"]])
+    expect(table.uri).toBe(stepArgumentsUri)
+  })
+
+  it("APPENDS a DocString after the pattern's own coerced arguments, mediaType included", () => {
+    const plan = planFeature({
+      feature: stepArguments,
+      definitions: [
+        define({
+          pattern: "I add {int} apples described as:",
+          scope: scenarioScope("a doc string beside a pattern argument")
+        })
+      ]
+    })
+
+    const args = resolvedOf(plan.scenarios[1]?.steps[0])?.args
+    expect(args).toHaveLength(2)
+    expect(args?.[0]).toBe(7)
+    expect(argTagOf(args?.[1])).toBe("DocString")
+
+    const docString = args?.[1] as DocString
+    expect(docString.content).toBe("windfalls, bruised")
+    // An `Option`, not a bare string — ADR-EC-022 put this whole surface on `Option<T>`, and an
+    // assertion that read `"text/plain"` here would pass against a regression that unwrapped it.
+    expect(Option.getOrNull(docString.mediaType)).toBe("text/plain")
+  })
+
+  it("delivers a lone DocString as the only argument, with mediaType absent", () => {
+    const plan = planFeature({
+      feature: stepArguments,
+      definitions: [define({ pattern: "I read the note:", scope: scenarioScope("a doc string alone") })]
+    })
+
+    const args = resolvedOf(plan.scenarios[2]?.steps[0])?.args
+    expect(args).toHaveLength(1)
+    expect(argTagOf(args?.[0])).toBe("DocString")
+
+    const docString = args?.[0] as DocString
+    expect(docString.content).toBe("plain")
+    expect(Option.isNone(docString.mediaType)).toBe(true)
   })
 })
 

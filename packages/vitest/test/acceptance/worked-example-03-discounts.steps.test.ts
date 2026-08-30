@@ -318,7 +318,15 @@ describeFeature(feature, World.layer, (dsl) => {
       // Annotated with the `DataTable` type the gherkin package exports rather than widened to make
       // the parameter compile (PROH-11-02) — and REQUIRED to be annotated, per header translation 6
       // and BEH-EC-016. It is the last parameter because table arguments are appended after the
-      // pattern's own; this pattern simply has none. `decodeHashes` reads the body rows keyed by the
+      // pattern's own; this pattern simply has none, WHICH MEANS THIS STEP CANNOT OBSERVE THE APPEND
+      // ORDER — with zero pattern arguments an append and a prepend produce the identical
+      // one-element array. That clause is observed by
+      // `parsing-and-matching.feature`'s untagged `A table and a doc string arrive AFTER the
+      // pattern's own arguments` and by `test/Plan.test.ts`'s step-argument-join suite, both of
+      // which put an `{int}` beside the argument. This Background stays parameterless on purpose: it
+      // is `spec/behaviors/03`'s worked example executed verbatim, and editing its Gherkin to suit a
+      // gate would break the dogfooding claim this pair exists to make.
+      // `decodeHashes` reads the body rows keyed by the
       // header row's cells and turns each `price` cell's string into a number in one step, keeping
       // one error channel and producing ADR-EC-008's located error.
       const rows = yield* decodeHashes(CartRow)(table)

@@ -185,6 +185,25 @@ REQUIREMENT: A step body MUST receive its stepArguments POSITIONALLY, APPENDED
              inferred parameter at the index StepArgs<P> assigns it.
 ```
 
+**Where the three clauses above are enforced**, named here because the first version of this
+REQUIREMENT was written while only one of them was guarded — the same shape as the five-phase gap the
+preamble describes, one layer down. The clauses are (1) the arguments are delivered at all, (2) they
+are APPENDED rather than prepended, and (3) a `DocString` is covered as well as a `DataTable`.
+
+| Clause                     | Enforced by                                                                                                                                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (1), (2), (3) — unit       | `packages/vitest/test/Plan.test.ts`, `planFeature — the step-argument join (BEH-EC-016)`. Three cases over one fixture whose steps carry an `{int}` BESIDE the table and the doc string.                       |
+| (1), (2), (3) — end to end | `packages/vitest/test/acceptance/parsing-and-matching.feature`'s untagged `A table and a doc string arrive AFTER the pattern's own arguments`, run by that pair's step module.                                 |
+| Type-level shape           | `packages/gherkin/test/StepArgs.types.ts`. Unaffected by the runtime order — `StepArgs` returns the same tuple whether `planStep` appends or prepends — so it pins the inference and nothing about clause (2). |
+
+The PATTERN PARAMETER in each of those fixtures is the load-bearing part and is easy to drop by
+accident. With ZERO pattern arguments an append and a prepend produce the identical one-element
+array, so a table test written against a parameterless pattern — as
+`worked-example-03-discounts`'s `"the cart contains:"` necessarily is, being
+[`03`](03-rules-outlines-and-testclock.md)'s worked example executed verbatim — observes clause (1)
+and is structurally incapable of observing clause (2). Any replacement for the fixtures above MUST
+keep a pattern parameter beside the argument.
+
 ### Two decisions a reader will otherwise ask about
 
 **Why `hashes()` and `rowsHash()` return an `Effect` while `raw()` does not.** The asymmetry is the
