@@ -142,6 +142,44 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > `@effect/vitest`; neither was in Phase 10's scope, and the requirement is left standing so
 > the gap stays visible.
 
+> **Correction (2026-08-30, Phase 10 gap closure, plan 10-07, measured against the installed
+> `@effect/vitest@4.0.0-rc.112` rather than reasoned about):** the correction above covers the
+> RELEASE half. This one covers the BUILD half, which the requirement's wording does not
+> mention a boundary for — and the boundary is a STRENGTHENING of the requirement, not a
+> divergence from it, unlike the correction above.
+>
+> **What the requirement says.** Built exactly once for the whole Feature.
+>
+> **What that leaves unstated.** How many times a Feature with NO runnable Scenario builds
+> it. Read literally, "exactly once" would say once. The answer that matches the rest of the
+> system is zero, because
+> [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)'s
+> registration-time exclusion contract is that "a Scenario the filter excludes never becomes a
+> test and is ABSENT from the report" — never present as skipped — and a tier built for a
+> Feature nobody asked to run is a cost with no observer.
+>
+> **What shipped, and when.** It built once even for a Feature with every Scenario excluded,
+> until plan 10-07, because the library's own always-passing unused-step-definition nodes
+> travelled the same emission route as the Scenarios, and that route builds the memoised
+> shared tier before running ANY body — including a body that is just `Effect.void`. The
+> `AfterAllScenarios` teardown node was already suppressed in this situation (this behavior's
+> own carve-out, [BEH-EC-017](./07-hook-ordering-and-guarantees.md)); the warning node that
+> forced the very build teardown would have needed was not.
+>
+> **What holds now, and where it is asserted.**
+> `packages/vitest/test/emission.test.ts`'s "a shared Layer with every Scenario excluded
+> stays unbuilt, even with an unused step definition (10-07)" block: a Feature with both
+> tiers declared, an `excludeTags` filter removing its one Scenario, and one unused step
+> definition, asserts the shared build counter stays at `0` while the unused definition is
+> still reported. Proven non-vacuous by mutation (plan 10-07 Task 3): restoring the pre-fix
+> routing turns the counter assertion RED, reading `1`; deleting the unused step definition
+> instead turns the non-vacuity control RED while the counter assertion stays GREEN at `0` —
+> the two mutations separate "the fix works" from "nothing was ever emitted at all".
+>
+> **Consequence for a caller**, stated the way the correction above states its own: a `shared`
+> tier holding a testcontainer or a database connection is no longer started for a Feature the
+> caller explicitly filtered out on the strength of one stray unused pattern.
+
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
 > **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
