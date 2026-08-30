@@ -19,9 +19,17 @@ Exactly two Layer scopes exist:
 ```ts
 describeFeature(feature, {
   shared: Database.layer, // built once, via @effect/vitest's `layer(...)`
-  perScenario: World.layer // fresh per Scenario, merged with `shared`
+  perScenario: World.layer // fresh per Scenario, provided inside each Scenario's own Effect
 }, define)
 ```
+
+The two tiers are provided SEPARATELY and are never combined into one Layer:
+`shared` is built once and made ambient on the emitted test nodes by
+`layer(...)`, and `perScenario` is provided inside each Scenario's own Effect,
+so it is rebuilt on every execution (INV-EC-002). Both sets of services are
+reachable from every step either way, and where both tiers name the same
+service the per-Scenario one wins — a consequence of the inner provision
+being the nearer one, not of any argument order.
 
 The `shared` case delegates directly to `@effect/vitest`'s own `layer(...)`
 helper — `layer(SomeLayer)((it) => { it.effect(...) })` — rather than a

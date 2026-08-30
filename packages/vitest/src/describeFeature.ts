@@ -47,12 +47,24 @@
  *     Pitfall 6). Nothing in this module returns a thenable either: the define callback is invoked
  *     synchronously, and `collectFeature` returns its result by value.
  *
- * (d) **D-04 falls out of the merge combinator's argument order, and is not special-case code.**
- *     `shared` and `perScenario` MAY name the same service, and `perScenario` wins for a step that
- *     depends on it. `Layer.merge(shared, perScenario)` gives exactly that — verified by running it,
- *     not assumed: the SECOND argument's implementation is the one a step resolves to. Swapping the
- *     two arguments compiles, type-checks, lints, and silently inverts the rule;
- *     `test/describeFeature.test.ts`'s D-04 case is the only thing that catches it.
+ * (d) **D-04's collision rule is unchanged; the MECHANISM that delivers it is now provision order,
+ *     not a merge combinator's argument order.** `shared` and `perScenario` MAY name the same
+ *     service, and `perScenario` still wins for a step that depends on it. Nothing in this module
+ *     combines the two tiers any more. The shared tier is built ONCE per Feature and is AMBIENT on
+ *     the emitted test node; the per-Scenario tier is provided INSIDE the Scenario's own Effect by
+ *     `ScenarioEffect.ts`, and the INNER provision is the one a step resolves against. That is the
+ *     whole of the rule, and it is now a consequence of where each tier is provided rather than of
+ *     an argument position.
+ *
+ *     Until this phase, both halves were collapsed into one merged Layer whose SECOND argument won,
+ *     and `test/describeFeature.test.ts` proved the rule by resolving that single value. It cannot
+ *     any more, and this is the part worth writing down: NO collection-level assertion can see
+ *     provision order. What that file proves now is that the two tiers are two separate values, each
+ *     resolving to its own implementation — `collection.layer` to `perScenario`'s and
+ *     `collection.sharedLayer` to `shared`'s. The RUNTIME verdict, which implementation a step
+ *     actually reaches, is proven by a real run in `test/emission.test.ts` (plan 10-03). The
+ *     collection-level assertions were RE-HOMED rather than deleted precisely so that a revert to a
+ *     single collapsed tier still has something to turn red here.
  *
  * (e) **The concrete `TestApi` is constructed HERE, and this is the ONLY module under
  *     `packages/vitest/src` permitted to import a test framework at all.** `Runner.ts` reaches
@@ -221,8 +233,32 @@ export interface DescribeFeatureOptions {
  */
 export type FeatureCollection = {
   readonly feature: ParsedFeature
-  /** The single Layer both forms normalise to — see note (d) for the collision rule. */
+  /**
+   * The PER-SCENARIO tier, and only that tier — never "the whole ambient Layer".
+   *
+   * For the plain-Layer form it is the Layer the caller passed, and `sharedLayer` is `null`: a plain
+   * Layer IS the per-Scenario scope (ADR-EC-006), so the two readings coincide there and only there.
+   * For the object form it is `perScenario` ALONE. The two tiers are kept as two separate values and
+   * are never combined, so whenever `sharedLayer` is non-null this field is exactly what a Scenario
+   * provides inside its own Effect and nothing more — reading it as the Feature's whole ambient
+   * Layer would be wrong, and would be wrong silently, because every service it does carry resolves.
+   *
+   * See note (d) for the collision rule and for the provision order that now delivers it.
+   */
   readonly layer: Layer.Layer<any, any, never>
+  /**
+   * The SHARED tier, or `null` — see note (d).
+   *
+   * `null` for the plain-Layer form and for the plain-Layer form ONLY. `null` rather than
+   * `Layer.empty`, because the branch downstream turns on "did this Feature ask for a shared scope
+   * at all" and `Layer.empty` cannot express that: an empty Layer is a Layer a caller asked for, so
+   * it answers "yes, an empty one" where the plain form means "no".
+   *
+   * It is NEVER merged into `layer`, which is what makes the two tiers separately providable: this
+   * one is built exactly once per Feature and made ambient on the emitted test nodes, that one is
+   * provided inside each Scenario's own Effect and rebuilt on every execution (INV-EC-002).
+   */
+  readonly sharedLayer: Layer.Layer<any, any, never> | null
   readonly definitions: ReadonlyArray<StepDefinition<StepBody>>
   /**
    * The definitions joined against the Feature: every step resolved, plus the unused-pattern
@@ -413,18 +449,32 @@ const vitestTestApi = (featureUri: string): TestApi => ({
 })
 
 /**
- * Collapse the two accepted layer arguments into the one Layer the runner will provide.
+ * Separate the two accepted layer arguments into the two tiers the emission stage provides
+ * independently — the per-Scenario one inside each Scenario's Effect, the shared one around all of
+ * them.
  *
  * The object form is discriminated by the presence of `perScenario`, which D-03 makes a REQUIRED key
  * — so its absence means "this is a plain Layer" and never "the caller omitted the key". A Feature
  * with no per-Scenario-fresh state writes `perScenario: Layer.empty`, which is `Layer<never>` and
  * unions away, leaving `FeatureDsl<RShared>` with the shared services still reachable.
  *
- * `shared` FIRST and `perScenario` SECOND. Note (d): the second argument wins a collision, which is
- * what D-04 asks for.
+ * NOTHING is combined here, and that absence is the point of the function rather than a shortcut it
+ * takes: the two tiers travel as two values all the way to the composition root, which is what lets
+ * the shared one be built exactly once per Feature while the per-Scenario one is rebuilt for every
+ * execution. Note (d) has the collision rule this replaces a merge with.
+ *
+ * `shared` is `null` for the plain-Layer form and never `Layer.empty` — the `FeatureCollection`
+ * field's own comment has the argument.
  */
-const normalizeLayer = (layer: LayerArgument): Layer.Layer<any, any, never> =>
-  "perScenario" in layer ? Layer.merge(layer.shared, layer.perScenario) : layer
+const splitLayerArgument = (
+  layer: LayerArgument
+): {
+  readonly shared: Layer.Layer<any, any, never> | null
+  readonly perScenario: Layer.Layer<any, any, never>
+} =>
+  "perScenario" in layer
+    ? { shared: layer.shared, perScenario: layer.perScenario }
+    : { shared: null, perScenario: layer }
 
 /**
  * Turn the Rule NAME a test author wrote into the `ruleId` every scope and hook registered inside
@@ -480,13 +530,19 @@ const collect = (
   // first Feature's `Before` hooks.
   const hookRegistry = createHookRegistry<HookBody>()
 
-  // Normalised ONCE per `collect` call, here rather than at the return site, because the `Rule`
+  // Separated ONCE per `collect` call, here rather than at the return site, because the `Rule`
   // container below needs the same value to merge each Rule's `extraLayer` onto — and a second
-  // `normalizeLayer(layer)` call at the bottom would build a second, structurally identical Layer
-  // that no Rule's merged Layer was derived from. Nothing would go red: both Layers provide the same
-  // services, so every assertion in this repo would still pass while a Feature-level `Layer.effect`
-  // resource got built twice per Scenario.
-  const featureLayer = normalizeLayer(layer)
+  // separation at the bottom would build a second, structurally identical Layer that no Rule's
+  // merged Layer was derived from. Nothing would go red: both Layers provide the same services, so
+  // every assertion in this repo would still pass while a Feature-level `Layer.effect` resource got
+  // built twice per Scenario. That argument is unchanged by the two tiers becoming two values; it is
+  // the reason there is exactly ONE call to the helper in this function.
+  //
+  // `featureLayer` stays bound to the PER-SCENARIO half, so every use site below it — the `Rule`
+  // container's merge, `Scenario`'s ambient argument, and the returned `layer` field — keeps both
+  // its existing spelling and its existing single-source property. What changed is what the name
+  // MEANS on the object form: the per-Scenario tier alone, with the shared tier never folded in.
+  const { perScenario: featureLayer, shared: sharedLayer } = splitLayerArgument(layer)
 
   // Every Rule this Feature's define callback actually called `Rule(...)` for, keyed by the id
   // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
@@ -567,13 +623,22 @@ const collect = (
    * probing the second argument's shape: `Layer.isLayer`-style duck-typing would make a callable
    * Layer-like value and a function indistinguishable in a way the arity never can be.
    *
-   * `Layer.provideMerge(ambientLayer)(extraLayer)` and NOT `Layer.merge(ambientLayer, extraLayer)`,
-   * for the reason the `Rule` member below repeats: ADR-EC-010 requires `extraLayer` to be able to
-   * DEPEND on ambient services, and only `provideMerge` feeds the ambient Layer's output into
-   * `extraLayer`'s own requirements while keeping BOTH sets reachable. Its argument order is also
-   * what makes the Scenario's own implementation win a service both name — the collision rule
-   * `test/describeFeature.test.ts` proves by RESOLVING the merged Layer, because the two orders have
-   * the identical type and the identical shape (note (d) makes the same argument for `Layer.merge`).
+   * `Layer.provideMerge(ambientLayer)(extraLayer)` and NOT a side-by-side merge of the two, for the
+   * reason the `Rule` member below repeats: ADR-EC-010 requires `extraLayer` to be able to DEPEND on
+   * ambient services, and only `provideMerge` feeds the ambient Layer's output into `extraLayer`'s
+   * own requirements while keeping BOTH sets reachable. Its argument order is also what makes the
+   * Scenario's own implementation win a service both name — the collision rule
+   * `test/describeFeature.test.ts` proves by RESOLVING the composed Layer, because the two orders
+   * have the identical type and the identical shape.
+   *
+   * ON THE SHARED PATH `ambientLayer` CARRIES THE PER-SCENARIO TIER ONLY, at both nesting levels,
+   * and the consequence is invisible from the code the same way the `Rule` member's is: a Scenario
+   * `extraLayer` that depends on a SHARED service leaves that service unsatisfied on the composed
+   * Layer's `RIn`, where the ambient context `@effect/vitest`'s `layer(...)` establishes around the
+   * emitted test node satisfies it at run time. This is measured behaviour (see the `Rule` member
+   * below for what was measured), and plan 10-04's regression block is what keeps it true. Nothing
+   * about the nesting rule above changes: a Scenario inside a Rule still composes on top of that
+   * Rule's already-merged Layer, which is still the per-Scenario tier plus the Rule's own.
    *
    * The merge and the `scenarioLayers.set` happen BEFORE `pushScope`/`try`, mirroring `Rule`'s own
    * ordering: the map entry is then recorded even if the define callback throws, so a Scenario whose
@@ -631,7 +696,7 @@ const collect = (
     },
     // `null` because a Scenario declared through the Feature's own dsl is genuinely not nested in
     // any Rule, and `featureLayer` because that is what is ambient here — the same binding every
-    // Rule's merged Layer is derived from, never a second `normalizeLayer(layer)` call.
+    // Rule's merged Layer is derived from, never a second separation of the layer argument.
     Scenario: makeScenarioRegistrar(null, featureLayer),
     // A sibling of `Background`/`Scenario`, and never spread into `scenarioDsl` — the identical
     // "would leak into every `Scenario(...)` callback and into `backgroundDsl`" argument `Dsl.ts`
@@ -648,15 +713,25 @@ const collect = (
 
       // Merged HERE, where `extraLayer` is captured, and exactly once per `Rule(...)` call — the
       // same "compute the single Layer to hand downstream once, at the point the extra argument is
-      // captured" placement `normalizeLayer` has for the Feature's own.
+      // captured" placement the Feature's own per-Scenario tier gets a few dozen lines above.
       //
-      // `Layer.provideMerge(featureLayer)(extraLayer)` and NOT `Layer.merge(featureLayer,
-      // extraLayer)`, which is the plausible tidy-up given the line `normalizeLayer` runs a few
-      // dozen lines above. ADR-EC-010 requires `extraLayer` to be able to DEPEND on ambient
-      // services, and `provideMerge` is what feeds the ambient Layer's output into `extraLayer`'s
-      // own requirements while keeping BOTH sets reachable. `merge` composes them side by side and
-      // satisfies nothing, so a Rule Layer built on top of a Feature service — the ADR's own worked
-      // example — would not type-check at all.
+      // `Layer.provideMerge(featureLayer)(extraLayer)` and NOT a side-by-side merge of the two,
+      // which is the plausible tidy-up. ADR-EC-010 requires `extraLayer` to be able to DEPEND on
+      // ambient services, and `provideMerge` is what feeds the ambient Layer's output into
+      // `extraLayer`'s own requirements while keeping BOTH sets reachable. A side-by-side merge
+      // composes them and satisfies nothing, so a Rule Layer built on top of a Feature service — the
+      // ADR's own worked example — would not type-check at all.
+      //
+      // ON THE SHARED PATH THIS FEEDS ONLY THE PER-SCENARIO TIER INTO `extraLayer`, and that
+      // consequence is invisible from this line. `featureLayer` is the per-Scenario half alone
+      // whenever the Feature declared `{ shared, perScenario }`, so the shared tier is deliberately
+      // ABSENT from the ambient argument here. A Rule Layer that depends on a SHARED service
+      // therefore leaves that service on the composed Layer's `RIn` — unsatisfied at this point —
+      // and the ambient context that `@effect/vitest`'s `layer(...)` establishes around the emitted
+      // test node satisfies it at run time instead. That was MEASURED during this phase's planning
+      // (a Rule Layer computing a discounted price from a shared list price, with the shared Layer
+      // built once and the Rule's rebuilt per Scenario), not hoped for. Plan 10-04's
+      // Rule-under-`shared` regression block is what keeps it true.
       const ruleAmbientLayer = Layer.provideMerge(featureLayer)(extraLayer)
       ruleLayers.set(ruleId, ruleAmbientLayer)
 
@@ -739,8 +814,13 @@ const collect = (
   // differ on, and it is the only thing they differ on.
   return {
     feature,
-    // The SAME binding every Rule's merged Layer was derived from — normalised once, near the top.
+    // The SAME binding every Rule's merged Layer was derived from — separated once, near the top.
+    // The PER-SCENARIO tier, on both call forms; the field's own comment says why that is not a
+    // synonym for "the Feature's ambient Layer" any more.
     layer: featureLayer,
+    // The other half, or `null`, and never folded into the field above. The composition root
+    // branches on exactly this: `null` is the plain path, non-null is the shared path.
+    sharedLayer,
     definitions,
     plan: planFeature({ feature, definitions }),
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
@@ -931,8 +1011,9 @@ export function describeFeature(
   // defaulted to "no filter" and an omitted filter that defaulted to "match nothing" are one
   // keystroke apart and the second deletes a whole suite behind a green run. So `emitFeature`
   // requires an explicit, fully normalised filter, and the collapse from the OPTIONAL public
-  // argument to that one required internal value happens exactly once, right here — `normalizeLayer`'s
-  // idiom applied to the other over-permissive public argument this function takes. `makeTagFilter`
+  // argument to that one required internal value happens exactly once, right here — the same
+  // collapse-once idiom `collect` applies to the other over-permissive public argument this function
+  // takes, the layer argument, at the top of its own body. `makeTagFilter`
   // is what turns `undefined` and `[]` into the same thing (`Tags.ts` note (b)), so `options ?? {}`
   // is the whole of the "no options at all" case and there is no second default anywhere.
   const tagFilter = makeTagFilter(options ?? {})

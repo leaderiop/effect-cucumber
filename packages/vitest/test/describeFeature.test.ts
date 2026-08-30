@@ -21,10 +21,14 @@
  *   the exact defect it looks like it is guarding. The second test — register into the first call,
  *   observe the second call is empty — is the one that actually discriminates, and is the one the
  *   hoist mutation fails.
- * - **The merge direction (D-04)** is asserted by RESOLVING the colliding service, not by inspecting
- *   the merged Layer's shape. `Layer.merge(shared, perScenario)` and `Layer.merge(perScenario,
- *   shared)` have the identical type and the identical structure; only running them tells the two
- *   apart, and swapping the arguments silently inverts the rule ADR-EC-006 asks for.
+ * - **The two-tier separation (D-04)** is asserted by RESOLVING the colliding service out of EACH
+ *   tier, not by inspecting either Layer's shape — a Layer that provides `Marker` and a Layer that
+ *   provides `Marker` are indistinguishable statically, so only running them tells them apart. The
+ *   pair is what discriminates: the shared tier must resolve to `shared` AND the per-Scenario tier
+ *   to `perScenario`, and a collapse of the two into one merged Layer fails the second. What this
+ *   file CANNOT see is which implementation a step actually reaches at run time — since nothing
+ *   merges the tiers any more, that is a provision-order property of emission, proven by a real run
+ *   in `test/emission.test.ts` rather than here (`src/describeFeature.ts` note (d)).
  * - **The `finally` pop** is asserted by registering a step AFTER a `Scenario` callback throws, with
  *   the throw caught inside the define callback so collection continues. Without the `finally`, the
  *   scenario frame stays on the stack and that later step is attributed to the scenario — a
@@ -41,7 +45,12 @@
  * Mutation-tested (all six performed, then reverted, all six confirmed failing) — see the plan
  * summary for the recorded output:
  * - A. `createRegistry` hoisted to module scope → the cross-contamination test fails.
- * - B. `Layer.merge`'s two arguments swapped → the D-04 test fails.
+ * - B. the layer-argument split reverted to the old collapsing behaviour — `{ shared: null,
+ *      perScenario: Layer.merge(layer.shared, layer.perScenario) }` — → both two-tier tests fail.
+ *      This REPLACES the pre-Phase-10 mutation ("`Layer.merge`'s two arguments swapped"), which no
+ *      longer exists as a possible mutation because no code line merges the tiers at all. It carries
+ *      the same claim from the other side: the old mutation asked "does the merge run in the right
+ *      order", this one asks "is there a merge at all", and the answer must be no.
  * - C. `registrar` passes `null` instead of `captureCallSite()` → the end-to-end `definedAt` test
  *      fails.
  * - D. `describeFeature` calls `collect` but never hands the result to the emission stage → nothing
@@ -121,7 +130,10 @@ const noop = function*() {
 }
 
 /**
- * Read the ambient `Marker` back out of a collected Layer — the only way to observe D-03/D-04.
+ * Read the ambient `Marker` back out of a collection's PER-SCENARIO tier — `FeatureCollection.layer`.
+ *
+ * That field is the per-Scenario tier alone on both call forms, so this observes exactly one of the
+ * two halves D-03/D-04 are about; `whoProvidesShared`, below the tests that need it, is the other.
  *
  * The error channel is `unknown` rather than `never` because `FeatureCollection.layer` erases the
  * two overloads' error channels (describeFeature.ts's `LayerArgument` note). A Layer that fails to build
@@ -274,7 +286,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 279
+    const givenLine = 291
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -304,8 +316,29 @@ describe("the define callback runs synchronously", () => {
   })
 })
 
-describe("the layer argument normalises to a single Layer", () => {
-  it.effect("resolves a service named by both shared and perScenario to perScenario's implementation", () =>
+/**
+ * Read the ambient `Marker` back out of a collection's SHARED tier — `whoProvides`'s sibling.
+ *
+ * It THROWS when there is no shared tier, in the shape `ruleLayerOf` below already uses for the
+ * same situation, and the fallback it refuses is the tempting one: `collected.sharedLayer ??
+ * collected.layer` would make this function total and would make every assertion using it pass
+ * against the PER-SCENARIO tier while claiming something about the shared one.
+ */
+const whoProvidesShared = (collected: FeatureCollection): Effect.Effect<string, unknown> => {
+  const shared = collected.sharedLayer
+  if (shared === null) {
+    throw new Error("the collection has no sharedLayer: the plain-Layer form was used")
+  }
+  return Effect.provide(
+    Effect.gen(function*() {
+      return (yield* Marker).who
+    }),
+    shared
+  )
+}
+
+describe("the layer argument separates into two independently provided tiers", () => {
+  it.effect("keeps each tier resolving to its own implementation when both name the same service", () =>
     Effect.gen(function*() {
       const collected = collectFeature(
         feature,
@@ -313,27 +346,58 @@ describe("the layer argument normalises to a single Layer", () => {
         () => {}
       )
 
-      // D-04, and the assertion mutation B fails. Resolved by RUNNING the Layer: the two merge
-      // argument orders produce the same type and the same shape, so nothing short of building the
-      // context can tell them apart.
+      // D-04's collision rule, re-homed rather than deleted. Nothing merges the two tiers any more,
+      // so there is no single Layer left to resolve and no argument order left to swap — what the
+      // collection can still show is that the two tiers are two SEPARATE values, each carrying its
+      // own implementation of the colliding service. Mutation B (below, in the header) collapses
+      // them back into one and fails the second of these two assertions.
+      //
+      // The RUNTIME verdict — which implementation a step actually reaches — is now a PROVISION
+      // ORDER property (`src/describeFeature.ts` note (d)): the shared tier is ambient on the
+      // emitted test node and the per-Scenario tier is provided inside the Scenario's own Effect, so
+      // the inner provision wins. No collection-level assertion can see that, because provision
+      // happens at emission and this file emits nothing. `test/emission.test.ts` proves it with a
+      // real run (plan 10-03), and that is the only place it can be proven.
       assert.strictEqual(yield* whoProvides(collected), "perScenario")
+      assert.strictEqual(yield* whoProvidesShared(collected), "shared")
     }))
 
-  it.effect("keeps shared's services reachable when perScenario is Layer.empty", () =>
+  it.effect("keeps shared's services on the shared tier alone when perScenario is Layer.empty", () =>
     Effect.gen(function*() {
       // D-03: `perScenario` is REQUIRED even for a Feature with no per-Scenario-fresh state.
-      // `Layer.empty` is `Layer<never>`, so the union collapses and `shared` stays reachable.
+      // `Layer.empty` is `Layer<never>`, and it stays exactly that — the shared half is not folded
+      // into it.
       const collected = collectFeature(feature, { shared: sharedMarker, perScenario: Layer.empty }, () => {})
 
-      assert.strictEqual(yield* whoProvides(collected), "shared")
+      assert.strictEqual(yield* whoProvidesShared(collected), "shared")
+
+      // The other half of the same claim, and the half that makes it discriminating: the
+      // per-Scenario tier provides NO `Marker` at all. A collection that merged the two would
+      // satisfy the assertion above and this one would go red — which is precisely the pair that
+      // proves the two tiers are genuinely separate values rather than one merged one handed back
+      // twice.
+      const fromPerScenario = yield* Effect.exit(whoProvides(collected))
+      assert.isTrue(Exit.isFailure(fromPerScenario))
     }))
 
-  it.effect("passes a plain Layer through unchanged", () =>
+  it.effect("passes a plain Layer through as the per-Scenario tier, unchanged", () =>
     Effect.gen(function*() {
       const collected = collectFeature(feature, sharedMarker, () => {})
 
       assert.strictEqual(yield* whoProvides(collected), "shared")
     }))
+
+  it("carries a sharedLayer for the object form and null for the plain-Layer form", () => {
+    // The field's OWN discriminating claim, and nothing else in this file asserts it. `null` is what
+    // the composition root branches on, so a `Layer.empty` in this position — the plausible tidy-up,
+    // since it would make the field non-nullable and delete a branch — would silently send every
+    // plain-Layer Feature down the shared path.
+    const plain = collectFeature(feature, sharedMarker, () => {})
+    const object = collectFeature(feature, { shared: sharedMarker, perScenario: perScenarioMarker }, () => {})
+
+    expect(plain.sharedLayer).toBeNull()
+    expect(object.sharedLayer).not.toBeNull()
+  })
 })
 
 /**
