@@ -201,6 +201,31 @@ describe("an Outline row's title carries every column and that row's value", () 
     ])
   })
 
+  it("suffixes ` #2`, ` #3` onto rows whose cells are byte-identical, and only those", () => {
+    // mutation: dropping the `occurrences` counter in buildScenarioTitles turns this red — two of
+    // the three rows would then carry one title, which vitest's reporter conflates and `-t` cannot
+    // tell apart.
+    const duplicateRows = parse(
+      `Feature: duplicate rows
+  Scenario Outline: retrying
+    Given I retry <times> times
+    Examples:
+      | times |
+      | 3     |
+      | 3     |
+      | 5     |
+      | 3     |
+`,
+      "test/outline-title-duplicate-rows.feature"
+    )
+    assert.deepStrictEqual(titlesOf(duplicateRows), [
+      "retrying (times=3)",
+      "retrying (times=3) #2",
+      "retrying (times=5)",
+      "retrying (times=3) #3"
+    ])
+  })
+
   it("is keyed by Pickle id and is total over allScenarios", () => {
     // Every fixture at once: no `undefined` anywhere above could hide behind a shorter array,
     // because `titlesOf` maps over `allScenarios` rather than over the map's own keys.

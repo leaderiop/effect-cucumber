@@ -98,6 +98,11 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              own always-passing warning nodes are routed off the shared emission
              path (ADR-EC-026, plan 10-07). Its resources MUST be released once,
              after every Scenario in the Feature has run — not once per Scenario.
+             The shared tier is built on the LIVE clock and console: it is
+             constructed once, before any Scenario's own TestClock exists, so a
+             fiber it forks that sleeps runs on wall-clock time. Only the
+             per-Scenario tier and the step bodies see a simulated clock
+             (ADR-EC-018 note 6).
 ```
 
 > **Correction (2026-08-30, Phase 10 implementation, measured against the installed

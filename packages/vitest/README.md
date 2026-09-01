@@ -58,7 +58,9 @@ start, the realistic case — becomes an unrecoverable defect raised out of a se
 step and no `.feature` file. Handle it where the types can see the choice instead: `Layer.catchAll` to substitute a
 fallback, or `Layer.orDie` to make the collapse explicit in your own source. One capability does not carry across
 either — the `it` the framework hands a shared block has no live-clock member, so a Feature using `shared` cannot opt a
-single Scenario out of the simulated clock.
+single Scenario out of the simulated clock. The reverse holds for the shared tier itself: it is built once, before any
+Scenario's simulated clock exists, so a shared Layer that forks a sleeping fiber or reads the clock at build time runs on
+wall-clock time. Only step bodies and the per-Scenario tier see the `TestClock`.
 
 A fake counter-based "expensive resource" is the smallest thing that shows what the build-once guarantee buys. Both
 Scenarios in the Feature below read the same build:

@@ -165,23 +165,29 @@ const rowsOf = (document: GherkinDocument): ReadonlyMap<string, RowInfo> => {
  * render what the author wrote, and the `.feature` file is trusted source, not user input
  * (threat T-08-04-01).
  *
+ * Two Examples rows with byte-identical cells render byte-identical suffixes, and the suffix exists
+ * to keep every emitted title distinct, so the second and later occurrences of a title within one
+ * Feature get ` #2`, ` #3`, ... appended in document order (BEH-EC-010). The first occurrence is
+ * left as written so a table without duplicates is titled exactly as before.
+ *
  * The explicit return annotation is required, not stylistic: `composite: true` demands it for
  * declaration emit on anything exported.
  */
 export const buildScenarioTitles = (feature: ParsedFeature): ReadonlyMap<string, string> => {
   const rows = rowsOf(feature.document)
   const titles = new Map<string, string>()
+  const occurrences = new Map<string, number>()
   for (const scenario of feature.allScenarios) {
     // `.at(-1)`, never `[0]` and never `scenario.astId` — note (b). `undefined` here is a plain
     // Scenario, whose only `astNodeId` is its own and is legitimately absent from a map of row ids.
     const rowId = scenario.pickle.astNodeIds.at(-1)
     const rowInfo = rowId === undefined ? undefined : rows.get(rowId)
-    if (rowInfo === undefined) {
-      titles.set(scenario.id, scenario.name)
-      continue
-    }
-    const pairs = rowInfo.header.map((name, index) => `${name}=${rowInfo.values[index] ?? ""}`)
-    titles.set(scenario.id, `${scenario.name} (${pairs.join(", ")})`)
+    const base = rowInfo === undefined
+      ? scenario.name
+      : `${scenario.name} (${rowInfo.header.map((name, index) => `${name}=${rowInfo.values[index] ?? ""}`).join(", ")})`
+    const seen = (occurrences.get(base) ?? 0) + 1
+    occurrences.set(base, seen)
+    titles.set(scenario.id, seen === 1 ? base : `${base} #${seen}`)
   }
   return titles
 }

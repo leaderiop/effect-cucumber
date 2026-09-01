@@ -135,6 +135,14 @@ decision shipped as written.]**
 > not have identical capability surfaces. This is a documented limitation of the decision
 > rather than a defect in its implementation.
 >
+> **6. The shared tier itself is built on the LIVE clock.** `excludeTestServices: true` makes
+> the framework build the `shared` Layer bare, and the per-Scenario `TestEnv` is provided
+> only around each Scenario's body (note 3), so a shared Layer that forks a fiber using
+> `Effect.sleep` or reads `Clock` at build time runs on wall-clock time. That is a
+> consequence of building it once, before any Scenario's own simulated clock exists, and
+> it is accepted: a per-Scenario `TestClock` cannot drive a resource shared by every
+> Scenario. BEH-EC-007 states it as part of the requirement.
+>
 > **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
 > claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
 > hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted

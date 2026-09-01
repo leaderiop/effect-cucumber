@@ -385,6 +385,13 @@ REQUIREMENT: A Scenario Outline row's emitted test title is that row's own
              is expressly rejected: a filterable title is one whose FORM is
              predictable, and one an author can `-t` against by grepping any
              column value directly.
+
+             Two rows whose cells are byte-identical render the same suffix.
+             The second and every later occurrence of a title within one
+             Feature therefore gets ` #2`, ` #3`, ... appended, in document
+             order; the first occurrence is left as written. Two emitted tests
+             never share a title. Asserted by
+             `packages/vitest/test/OutlineTitle.test.ts`.
 ```
 
 ```
