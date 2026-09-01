@@ -186,7 +186,7 @@ export type { DescribeFeatureOptions } from "./describeFeature.ts"
  * package supports Node 20. `GherkinTags.ts`'s notes (c) and (d) carry the full argument.
  */
 export { gherkinTags } from "./GherkinTags.ts"
-export type { GherkinTagDefinition } from "./GherkinTags.ts"
+export type { GherkinTagDefinition, GherkinTagsOptions } from "./GherkinTags.ts"
 
 /**
  * The compile-time surface `define` receives, exported for annotation.

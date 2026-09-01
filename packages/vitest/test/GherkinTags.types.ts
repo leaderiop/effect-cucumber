@@ -37,3 +37,12 @@ export const declaredTags: Array<TestTagDefinition> = [
   { name: "@skip" },
   { name: "@only" }
 ]
+
+/** The options form a config file uses: `cwd` pins the base directory the patterns resolve against. */
+export const declaredFromConfigDirectory: Array<TestTagDefinition> = [
+  ...gherkinTags("features/**/*.feature", { cwd: "/absolute/path/to/the/config/directory" })
+]
+
+/** `cwd` is a directory path and nothing else. */
+// @ts-expect-error — a number is not a directory
+export const rejectedCwd: ReadonlyArray<TestTagDefinition> = gherkinTags("features/**/*.feature", { cwd: 1 })

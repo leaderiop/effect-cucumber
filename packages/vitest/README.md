@@ -166,8 +166,10 @@ export default defineConfig({
 })
 ```
 
-It takes a glob pattern (or an array of them), resolved against `process.cwd()`, and has no default — it never scans a
-tree you did not name. It is why this package carries one non-workspace runtime dependency, `tinyglobby`: expanding a
+It takes a glob pattern (or an array of them) and has no default — it never scans a tree you did not name. Relative
+patterns resolve against `process.cwd()` unless you pass `{ cwd }`; a config file should pass its own directory,
+`gherkinTags("features/**/*.feature", { cwd: fileURLToPath(new URL(".", import.meta.url)) })`, so the declared list does
+not change with the directory the runner was invoked from. It is why this package carries one non-workspace runtime dependency, `tinyglobby`: expanding a
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
 

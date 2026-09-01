@@ -62,13 +62,14 @@
  *     symlinked directory inside a matched tree. That is accepted: the caller names the tree, and
  *     the only data leaving this function is `@`-prefixed tag names.
  *
- * (e) **Patterns resolve against `process.cwd()`, and this module deliberately does not set a
- *     working directory.** That is the contract a caller can get wrong, so it is stated rather than
- *     inferred: a relative pattern means "relative to wherever the runner was invoked", exactly
- *     like every other glob-taking tool. The consequence inside this file is that matches come back
- *     RELATIVE (absolute paths are off by default) and `readFileSync` resolves a relative path
- *     against that same directory — so the two agree with no path juggling, and adding a
- *     `path.resolve` here would be a fix for a bug that does not exist.
+ * (e) **Patterns resolve against `process.cwd()` BY DEFAULT; a config file passes its own
+ *     directory as `cwd`.** A relative pattern with no option means "relative to wherever the
+ *     runner was invoked", exactly like every other glob-taking tool — and that is the contract a
+ *     caller gets wrong when the suite is run from a package directory rather than the repo root.
+ *     `options.cwd` fixes the base explicitly: a config passes `fileURLToPath(new URL(".",
+ *     import.meta.url))` and the scan no longer depends on the invocation directory. Matches come
+ *     back RELATIVE to that base (absolute paths are off), so every match is resolved against the
+ *     same base before it is read; the two cannot disagree.
  *
  * (f) **This is a TEXT SCAN, not a parse, and the error direction is what makes that acceptable.**
  *     It does not run the Gherkin compiler and cannot say which Scenario a tag lands on. It does
@@ -85,6 +86,7 @@
  * rest of the package.
  */
 import * as fs from "node:fs"
+import * as path from "node:path"
 import { globSync } from "tinyglobby"
 
 /**
@@ -100,6 +102,17 @@ import { globSync } from "tinyglobby"
 export interface GherkinTagDefinition {
   /** The tag exactly as written in the `.feature` file, `@` prefix included. */
   readonly name: string
+}
+
+/**
+ * Options for `gherkinTags`. Every field is optional and the empty object is the default behaviour.
+ */
+export interface GherkinTagsOptions {
+  /**
+   * The directory relative patterns resolve against. Defaults to `process.cwd()` — note (e). A
+   * config file passes its own directory so the scan does not depend on where the runner was invoked.
+   */
+  readonly cwd?: string
 }
 
 /**
@@ -119,12 +132,18 @@ const openingFence = (trimmed: string): Exclude<DocStringFence, null> | null =>
  * Expand `pattern`, scan every matched file for Gherkin tags, and return them de-duplicated and
  * sorted ascending so a config's declared list is stable across runs and across filesystem ordering.
  *
- * @param pattern - a glob pattern, or an array of them, resolved against `process.cwd()` — note (e).
- *                  Required, with no default; `""` and `[]` throw — note (a).
+ * @param pattern - a glob pattern, or an array of them, resolved against `options.cwd`, which
+ *                  defaults to `process.cwd()` — note (e). Required, with no default; `""` and `[]`
+ *                  throw — note (a).
+ * @param options - `{ cwd }` to pin the directory the patterns resolve against.
  * @throws Error when the pattern is empty. A pattern that matches no file is NOT an error — note (b).
  */
-export const gherkinTags = (pattern: string | ReadonlyArray<string>): ReadonlyArray<GherkinTagDefinition> => {
+export const gherkinTags = (
+  pattern: string | ReadonlyArray<string>,
+  options: GherkinTagsOptions = {}
+): ReadonlyArray<GherkinTagDefinition> => {
   const patterns = typeof pattern === "string" ? [pattern] : pattern
+  const cwd = options.cwd ?? process.cwd()
 
   if (patterns.length === 0 || patterns.some((entry) => entry.trim() === "")) {
     throw new Error(
@@ -136,10 +155,10 @@ export const gherkinTags = (pattern: string | ReadonlyArray<string>): ReadonlyAr
 
   const names = new Set<string>()
 
-  for (const file of globSync(patterns, { dot: false, onlyFiles: true })) {
+  for (const file of globSync(patterns, { cwd, dot: false, onlyFiles: true })) {
     let fence: DocStringFence = null
 
-    for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    for (const line of fs.readFileSync(path.resolve(cwd, file), "utf8").split(/\r?\n/)) {
       const trimmed = line.trim()
 
       if (fence === null) {

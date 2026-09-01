@@ -119,6 +119,24 @@ describe("gherkinTags", () => {
     expect(() => gherkinTags([])).toThrow(/gherkinTags/)
   })
 
+  it("resolves a relative pattern against options.cwd instead of process.cwd() when one is given", () => {
+    const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url))
+
+    // `process.cwd()` is the repo root (or the package directory under `pnpm -r test`); neither
+    // contains a top-level `tag-scan-a.feature`, so without `cwd` this pattern matches nothing.
+    expect(gherkinTags("tag-scan-a.feature")).toEqual([])
+    expect(names(gherkinTags("tag-scan-a.feature", { cwd: fixturesDir }))).toEqual([
+      "@fixture-alpha",
+      "@fixture-beta",
+      "@fixture-delta",
+      "@fixture-epsilon",
+      "@fixture-gamma"
+    ])
+    // The recursive form agrees with the cwd-less scan of the same tree, so `cwd` changes the base
+    // and nothing else.
+    expect(names(gherkinTags("**/*.feature", { cwd: fixturesDir }))).toEqual(allFixtureTags)
+  })
+
   it("is stable across calls — no cached state and no dependence on filesystem ordering", () => {
     const first = gherkinTags(`${fixtures}/**/*.feature`)
     const second = gherkinTags(`${fixtures}/**/*.feature`)

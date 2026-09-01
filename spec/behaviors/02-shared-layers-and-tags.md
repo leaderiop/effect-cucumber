@@ -240,7 +240,8 @@ REQUIREMENT: Every emitted tag MUST be DECLARED in the runner's config — a
              the offenders only in its own message text, which the library
              deliberately does not read. gherkinTags, a config-time helper
              taking a GLOB PATTERN (or an array of patterns) over the
-             consumer's own .feature files, is the supported way to generate
+             consumer's own .feature files and an optional { cwd } the
+             patterns resolve against, is the supported way to generate
              those declarations.
 ```
 
@@ -261,8 +262,10 @@ import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
-    // The glob is resolved against process.cwd(). There is deliberately no default —
-    // the helper never scans a tree its caller did not name.
+    // The glob resolves against process.cwd() unless `{ cwd }` names the base — a config
+    // passes its own directory so the list does not depend on where the runner was invoked.
+    // There is deliberately no default pattern: the helper never scans a tree its caller
+    // did not name.
     tags: [...gherkinTags("features/**/*.feature"), { name: "@skip" }, { name: "@only" }]
   }
 })

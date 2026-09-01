@@ -58,47 +58,19 @@
 //     `pnpm test` still exits 0. That second observation is why the acceptance suite asserts its
 //     own collected test COUNT and does not rely on the exit code.
 //
-// The helper is imported from `./packages/vitest/src/GherkinTags.ts`, the concrete module, and
-// deliberately NOT from the `@effect-cucumber/vitest` barrel: that barrel re-exports
-// `describeFeature.ts`, which imports `@effect/vitest`, and this config file is loaded outside any
-// test context. `GherkinTags.ts` is a leaf whose only imports are `node:fs` and `tinyglobby`, which
-// is what makes it safe to reach from here.
+// The tag list itself lives in `./vitest.tags.ts` so that this root config and the per-package
+// `packages/vitest/vitest.config.ts` declare ONE universe from ONE derivation.
+import { fileURLToPath } from "node:url"
 import { configDefaults, defineConfig } from "vitest/config"
-import { gherkinTags } from "./packages/vitest/src/GherkinTags.ts"
-
-/**
- * The hand-written half of the tag universe — see notes (d) and (e). These WIN a name collision
- * against the derived half below, so a tag that appears in both places keeps whatever this entry
- * says about it rather than being flattened to a bare `{ name }`.
- */
-const declaredByHand = [
-  { name: "@skip" },
-  { name: "@only" },
-  { name: "@slow" },
-  { name: "@wip" },
-  { name: "@featuretag" },
-  { name: "@ruletag" },
-  { name: "@scenariotag" },
-  { name: "@exampletag" }
-]
-
-/**
- * The derived half: every tag any acceptance `.feature` file carries, read from the files
- * themselves. `packages/vitest/test/acceptance/` is the only directory in the repository whose
- * `.feature` files may carry an acceptance tag — that rule, and its enforcement by
- * `spec/scripts/verify-traceability.sh` check 4, is stated in that directory's own README and in
- * `packages/gherkin/test/fixtures/README.md`, which states the inverse for the parser corpus.
- *
- * De-duplicated by `name` against the hand-written half so no `name` can appear twice in the array
- * vitest receives.
- */
-const declaredByAcceptanceFeatures = gherkinTags("packages/vitest/test/acceptance/**/*.feature")
-  .filter((derived) => !declaredByHand.some((entry) => entry.name === derived.name))
+import { declaredTags } from "./vitest.tags.ts"
 
 export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "**/.claude/**"],
-    tags: [...declaredByHand, ...declaredByAcceptanceFeatures],
+    // The universe is computed from THIS file's directory, so `pnpm test` from the root and
+    // `pnpm -r test` from a package directory declare the same list. `./vitest.tags.ts` holds the
+    // one hand-written half and the one derivation; `packages/vitest/vitest.config.ts` reuses both.
+    tags: declaredTags(fileURLToPath(new URL(".", import.meta.url))),
     allowOnly: false
   }
 })
