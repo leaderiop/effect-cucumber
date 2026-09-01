@@ -39,7 +39,7 @@
  * parse and compile produce `scenario.id === "1"` and `pickle.id === "1"` in one document, so
  * `"1"` acquires two meanings.
  */
-import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
+import { AstBuilder, dialects, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import type { GherkinDocument, IdGenerator } from "@cucumber/messages"
 import * as Option from "effect/Option"
 import { LoadFeatureError, type LoadFeatureErrorReason } from "./Errors.ts"
@@ -119,6 +119,32 @@ const describeParseFailure = (uri: string, errors: ReadonlyArray<Error>): string
   }). They are usually consequences of the first — fix that one and re-run.`
 }
 
+/** Upstream's own header pattern (`GherkinClassicTokenMatcher.LANGUAGE_PATTERN`), reproduced verbatim. */
+const languageHeader = /^\s*#\s*language\s*:\s*([a-zA-Z\-_]+)\s*$/
+
+/**
+ * A `# language:` header naming a key that `dialects` only has through its prototype chain —
+ * `constructor`, `toString`, `__proto__` — with its line, or `undefined` when there is no such
+ * header. Upstream indexes its dialect table bare, so such a header reaches `new Parser` as a
+ * function where a dialect is expected and dies with `TypeError: keywords is not iterable`,
+ * which the catch below could only report as a generic `ParseFailed` (audit finding F-31).
+ * A header naming an ordinary unknown language is deliberately NOT caught here: upstream rejects
+ * it itself with a `NoSuchLanguageException`, and that path stays pinned by `upstream-pin.test.ts`.
+ */
+const findPrototypeKeyLanguageHeader = (
+  source: string
+): { readonly language: string; readonly line: number } | undefined => {
+  const lines = source.split(/\r?\n/)
+  for (const [index, text] of lines.entries()) {
+    if (text.trim() === "") continue
+    const match = languageHeader.exec(text)
+    if (match === null) return undefined
+    const language = match[1] ?? ""
+    return !Object.hasOwn(dialects, language) && language in dialects ? { language, line: index + 1 } : undefined
+  }
+  return undefined
+}
+
 /**
  * Parse feature-file text into a `GherkinDocument`.
  *
@@ -127,6 +153,17 @@ const describeParseFailure = (uri: string, errors: ReadonlyArray<Error>): string
  * cleanly but declares no `Feature:` at all.
  */
 export const parseDocument = (source: string, uri: string, newId: IdGenerator.NewId): GherkinDocument => {
+  const prototypeKeyHeader = findPrototypeKeyLanguageHeader(source)
+  if (prototypeKeyHeader !== undefined) {
+    throw new LoadFeatureError({
+      reason: "UnknownDialect",
+      uri,
+      line: Option.some(prototypeKeyHeader.line),
+      message: `Unknown dialect in ${uri}:\n(${prototypeKeyHeader.line}:1): Language not supported: `
+        + `${prototypeKeyHeader.language}`,
+      cause: Option.none()
+    })
+  }
   let document: GherkinDocument
   try {
     const parser = new GherkinParser(new AstBuilder(newId), new GherkinClassicTokenMatcher())

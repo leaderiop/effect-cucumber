@@ -127,6 +127,14 @@ describe("parseDocument", () => {
     expect(Option.isSome(error.cause) && error.cause.value instanceof Errors.CompositeParserException).toBe(true)
   })
 
+  it("F18 rejects a prototype-key dialect header as UnknownDialect rather than a TypeError-backed ParseFailed", async () => {
+    const error = await failureOf("unknown-dialect-proto.feature")
+
+    expect(error.reason).toBe("UnknownDialect")
+    expect(error.line).toEqual(Option.some(1))
+    expect(error.message).toContain("constructor")
+  })
+
   it("F10 wraps an inconsistent DataTable cell count as ParseFailed", async () => {
     const error = await failureOf("parse-failed-inconsistent-cells.feature")
 

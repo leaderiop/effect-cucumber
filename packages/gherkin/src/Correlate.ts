@@ -158,13 +158,16 @@ const tagNames = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray
  * Look up a dialect, narrowing the `Dialect | undefined` that `noUncheckedIndexedAccess` gives
  * for a string index into a package-provided record.
  *
- * An unknown language returns `undefined` and every caller answers `false` rather than throwing
- * or reading through to a prototype property (threat T-02-12). In practice an unrecognised
+ * An unknown language returns `undefined` and every caller answers `false` rather than throwing.
+ * The lookup is `Object.hasOwn`, not a bare index: `dialects` is a plain object, so a bare index
+ * on `"constructor"` or `"toString"` reads through to `Object.prototype` and returns a function
+ * where a `Dialect` is expected (audit finding F-31). In practice an unrecognised
  * `# language:` header has already been rejected as `UnknownDialect` by `Parser.ts` long before
  * this point, so this branch is unreachable through `loadFeature` — it exists because the
  * helpers are exported and callable on their own.
  */
-const dialectOf = (language: string): Dialect | undefined => dialects[language]
+const dialectOf = (language: string): Dialect | undefined =>
+  Object.hasOwn(dialects, language) ? dialects[language] : undefined
 
 /**
  * Whether `keyword` is a Scenario Outline keyword in `language`.

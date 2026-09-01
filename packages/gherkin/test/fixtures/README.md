@@ -48,13 +48,14 @@ Fixture tags use names like `@featuretag`, `@ruletag`, `@scenariotag`, `@example
 Every one of these arrives as a `CompositeParserException`; the concrete class lives on `.errors[0]`, and `.location` on
 the composite itself is `undefined`.
 
-| Fixture                                        | Row | Reason tag       | Verified upstream behavior                                                                  |
-| ---------------------------------------------- | --- | ---------------- | ------------------------------------------------------------------------------------------- |
-| `parse-failed-misplaced-tag.feature`           | F17 | `ParseFailed`    | A `@tag` before `Background:` collects 3 cascading errors for one bad line; first at (4:3)  |
-| `unknown-dialect.feature`                      | F18 | `UnknownDialect` | Wraps exactly one `NoSuchLanguageException` at (1:1): `Language not supported: xx`          |
-| `parse-failed-inconsistent-cells.feature`      | F10 | `ParseFailed`    | Wraps an `AstBuilderException`: `inconsistent cell count within the table` at (8:7)         |
-| `parse-failed-typo-keyword-after-step.feature` | F15 | `ParseFailed`    | `Ginve x` written after a valid `Given y` is a loud error at (5:5) — position-dependent     |
-| `parse-failed-background-after-rule.feature`   | F20 | `ParseFailed`    | Wraps `UnexpectedTokenException` at (8:3); the grammar forbids a Background after a `Rule:` |
+| Fixture                                        | Row | Reason tag       | Verified upstream behavior                                                                                                                |
+| ---------------------------------------------- | --- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `parse-failed-misplaced-tag.feature`           | F17 | `ParseFailed`    | A `@tag` before `Background:` collects 3 cascading errors for one bad line; first at (4:3)                                                |
+| `unknown-dialect.feature`                      | F18 | `UnknownDialect` | Wraps exactly one `NoSuchLanguageException` at (1:1): `Language not supported: xx`                                                        |
+| `unknown-dialect-proto.feature`                | F18 | `UnknownDialect` | `# language: constructor` reads through to `Object.prototype` upstream and dies with a `TypeError`; rejected here before upstream sees it |
+| `parse-failed-inconsistent-cells.feature`      | F10 | `ParseFailed`    | Wraps an `AstBuilderException`: `inconsistent cell count within the table` at (8:7)                                                       |
+| `parse-failed-typo-keyword-after-step.feature` | F15 | `ParseFailed`    | `Ginve x` written after a valid `Given y` is a loud error at (5:5) — position-dependent                                                   |
+| `parse-failed-background-after-rule.feature`   | F20 | `ParseFailed`    | Wraps `UnexpectedTokenException` at (8:3); the grammar forbids a Background after a `Rule:`                                               |
 
 `UnexpectedTokenException` is **not** a member of the `Errors` namespace that `@cucumber/gherkin@42.0.1` exports —
 `Errors` holds only `AstBuilderException`, `CompositeParserException`, `GherkinException`, `NoSuchLanguageException`

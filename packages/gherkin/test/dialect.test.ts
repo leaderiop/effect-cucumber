@@ -23,7 +23,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { isOutlineKeyword } from "../src/Correlate.ts"
+import { isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
 import { ParameterTypeStore } from "../src/ParameterTypes.ts"
@@ -126,6 +126,14 @@ Fonctionnalité: un plan de scénario en français
       | marteau  |
       | tournevis |
 `
+
+describe("a prototype-key language never reads through to Object.prototype", () => {
+  it("answers false for every keyword lookup instead of throwing or returning a function", () => {
+    expect(isOutlineKeyword("constructor", "Scenario Outline")).toBe(false)
+    expect(isScenarioKeyword("toString", "Scenario")).toBe(false)
+    expect(isOutlineKeyword("__proto__", "Scenario Outline")).toBe(false)
+  })
+})
 
 describe("Outline detection is dialect-independent", () => {
   it("recognises the French Scenario Outline keyword through the dialect table", () => {
