@@ -26,7 +26,8 @@
     "verify:acceptance-ref-state": "bash scripts/verify-acceptance-ref-state.sh",
     "verify:acceptance-no-any": "bash scripts/verify-acceptance-no-any.sh",
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
-    "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh"
+    "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
+    "verify:api-surface": "bash scripts/verify-api-surface.sh"
   },
   "devDependencies": {
     "@effect/tsgo": "^0.38.0",

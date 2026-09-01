@@ -31,10 +31,11 @@ row says what is true of it today and nothing more.
 | 6    | `pnpm verify:spec`                               | Wired         | Spec self-consistency, including check 4's two directions and check 5 — 22 of 22 requirements carried exactly once, each with a §5 row. Runs WITH `--strict`, so a SKIP is a FAIL: a check that did not run must not read as a check that passed. This row previously recorded the opposite as a known contradiction; it is resolved, not documented                                                                                                   |
 | 7    | coverage thresholds                              | **Not wired** | See `spec/traceability.md` §6                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-Beyond the rows above, `check.yml` runs nine further `verify:*` gates —
+Beyond the rows above, `check.yml` runs ten further `verify:*` gates —
 `pack`, `tsgo-gate`, `oxlint-plugin`, `no-runner-dep`, `testapi-seam`,
-`tags-filter`, `shared-layer-once`, `watch-rerun` and `pitfalls` — plus
-`pnpm circular`, for seventeen commands in total. Each exists because something
+`tags-filter`, `shared-layer-once`, `watch-rerun`, `pitfalls` and
+`api-surface` (the `check-api-surface` script `spec/overview.md` used to call
+planned) — plus `pnpm circular`, for eighteen commands in total. Each exists because something
 it now catches was once green while being wrong.
 
 ## Test pyramid

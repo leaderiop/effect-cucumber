@@ -207,3 +207,8 @@ jobs:
       # scripts/verify-acceptance-no-any.sh.
       - run: pnpm verify:acceptance-no-any
       - run: pnpm verify:spec
+      # `pnpm verify:spec` checks the spec against ITSELF. An export added to
+      # packages/vitest/src/index.ts and never written into spec/overview.md's
+      # API table leaves it, build and test all green. See
+      # scripts/verify-api-surface.sh.
+      - run: pnpm verify:api-surface
