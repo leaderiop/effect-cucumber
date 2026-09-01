@@ -147,6 +147,23 @@ describe("generateStepSnippet", () => {
     expect(snippet).toContain(`Given("I eat an {ripe-fruit} now", function*(arg1: unknown) {`)
   })
 
+  for (const name of ["eval", "arguments", "yield", "class"]) {
+    it(`substitutes a positional name for {${name}}, which cannot be a strict-mode generator parameter`, () => {
+      const snippet = generateStepSnippet({
+        keyword: "Given",
+        text: "I eat an apple now",
+        registry: registryWithCustomType(name, /apple|pear/)
+      })
+
+      expect(snippet).toContain(`Given("I eat an {${name}} now", function*(arg1: unknown) {`)
+      // The proof that the substitution was needed: with its type annotations stripped, the emitted
+      // body must parse as strict-mode JavaScript — `function*(eval) {}` does not.
+      const body = snippet.slice(snippet.indexOf("function*"), snippet.lastIndexOf(")")).replace(/: \w+/g, "")
+      expect(() => new Function(`"use strict"; return (${body})`)).not.toThrow()
+      expect(() => new Function(`"use strict"; return (function*(${name}) {})`)).toThrow(SyntaxError)
+    })
+  }
+
   it("closes the snippet with a TODO body and a closing paren, and adds no trailing newline", () => {
     const snippet = generateStepSnippet({ keyword: "Given", text: "nothing special", registry: builtInRegistry() })
 

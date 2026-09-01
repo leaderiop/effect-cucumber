@@ -121,9 +121,12 @@ const identifierShape = /^[A-Za-z_$][A-Za-z0-9_$]*$/
  * Not defensive padding: `ParameterType.isValidParameterTypeName` rejects only
  * `[ ] ( ) $ . | ? * +` (pinned in `test/expressions-pin.test.ts`), so `{class}`, `{new}` and
  * `{yield}` are all legal parameter types today. `yield` is the sharpest of them — the emitted body
- * is a GENERATOR, where `yield` is unusable as a parameter name even in sloppy mode.
+ * is a GENERATOR, where `yield` is unusable as a parameter name even in sloppy mode. `eval` and
+ * `arguments` are not reserved words but are forbidden as parameter names in strict mode, which
+ * every ES module is (audit finding F-32).
  */
 const reservedWords: ReadonlySet<string> = new Set([
+  "arguments",
   "await",
   "break",
   "case",
@@ -137,6 +140,7 @@ const reservedWords: ReadonlySet<string> = new Set([
   "do",
   "else",
   "enum",
+  "eval",
   "export",
   "extends",
   "false",
