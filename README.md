@@ -27,8 +27,7 @@ Layer is built exactly once per Feature while every Scenario still keeps its own
 `.steps.test.ts` pairs under [`packages/vitest/test/acceptance/`](./packages/vitest/test/acceptance), and all 22 v1
 requirements carry an acceptance tag that a traceability check counts on every push.
 
-Still ahead, and stated so nobody discovers it the hard way: the doc-examples compile check is not wired; ADR-EC-024's
-wrapped `loadFeature` is not exported, so a `.feature` file is loaded through `@effect-cucumber/gherkin` directly; and
+Still ahead, and stated so nobody discovers it the hard way: the doc-examples compile check is not wired, and
 editing a `.feature` file under a watching runner does not trigger a rerun when the file was loaded by path.
 
 [`spec/roadmap.md`](./spec/roadmap.md) is the single source of truth for what is built versus what is only specified.
@@ -37,16 +36,29 @@ The install instructions below describe the intended shape; they will not work u
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc vitest
+pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc @effect/platform-node@rc vitest
 ```
 
 > **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
 > no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/vitest`, whose `latest` is also on the v3 line.
+> library. The same applies to `@effect/vitest` and `@effect/platform-node`, whose `latest` tags are also on the v3 line.
+
+A Feature file is then three lines before the first step definition:
+
+```ts
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { fileURLToPath } from "node:url"
+
+const feature = await loadFeature(fileURLToPath(new URL("./checkout.feature", import.meta.url)))
+```
+
+`loadFeature` returns a `Promise<ParsedFeature>` and is awaited once at module top level; `describeFeature(feature, layer, define)`
+does the rest. See [`packages/vitest/README.md`](./packages/vitest/README.md) for the full walkthrough.
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=4.1.0 <5.0.0`. Node `>=20`.
+Requires Effect v4 (`4.0.0-rc.112` or newer, with `@effect/vitest` and `@effect/platform-node` on the same rc line) and
+vitest `>=4.1.0 <5.0.0`. Node `>=20`.
 
 ## Packages
 

@@ -28,6 +28,9 @@ catalogs:
   peer:
     effect: ^4.0.0-rc.112
     "@effect/vitest": ^4.0.0-rc.112
+    # The wrapped `loadFeature` (ADR-EC-024) runs on a ManagedRuntime over `NodeFileSystem.layer`,
+    # so the consumer installs the concrete platform package beside `effect`.
+    "@effect/platform-node": ^4.0.0-rc.112
     # Copied verbatim from @effect/vitest@4.0.0-rc.112's own published peer
     # range. vitest 5 exists as a prerelease and is NOT supported — do not
     # widen this.

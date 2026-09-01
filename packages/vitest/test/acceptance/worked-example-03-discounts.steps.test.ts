@@ -28,11 +28,10 @@
  * Both are stated in full in `packages/vitest/test/acceptance/README.md` and restated per file so a
  * reader comparing this to `spec/behaviors/03` does not read the difference as drift.
  *
- * 1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.**
- *    ADR-EC-024's `ManagedRuntime`-backed wrapper is not exported — `spec/behaviors/03`'s own caveat
- *    block calls it the one export that package is still missing — and Phase 11 adds no public API,
- *    so this file reaches the gherkin package's Effect-returning `loadFeature` and provides
- *    `NodeFileSystem.layer` plus `ParameterTypeStore` itself.
+ * 1. **`loadFeature` is `@effect-cucumber/vitest`'s own Promise-returning wrapper (ADR-EC-024),** imported
+ *    by relative path from `../../src/loadFeature.ts` for the lint reason item 2 gives. It runs the
+ *    gherkin package's Effect on a module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, so this
+ *    file provides no FileSystem Layer itself.
  * 2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`.** This
  *    suite lives inside the package it consumes, and oxlint's `effect/no-import-from-barrel-package`
  *    runs with `checkRelativeIndexImports: true`. The module object reached is the one the barrel
@@ -182,8 +181,7 @@
  *      `(code=SAVE50, percent=50, expected=31.50)`, which is a free second proof that BEH-EC-018's
  *      suffix is derived per row rather than from the Outline.
  */
-import { type DataTable, decodeHashes, loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import { type DataTable, decodeHashes } from "@effect-cucumber/gherkin"
 import { assert } from "@effect/vitest"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
@@ -196,6 +194,7 @@ import * as Schema from "effect/Schema"
 import * as TestClock from "effect/testing/TestClock"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
 
 /**
  * The `.feature` file beside this one, resolved relative to this module rather than to
@@ -209,9 +208,7 @@ const featurePath = fileURLToPath(new URL("./worked-example-03-discounts.feature
  * A genuine top-level `await` and never `Effect.runSync`: `NodeFileSystem.readFileString` suspends
  * internally, so `runSync` over a path-based `loadFeature` throws `AsyncFiberError`.
  */
-const feature = await Effect.runPromise(
-  loadFeature(featurePath).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-)
+const feature = await loadFeature(featurePath)
 
 /**
  * One row of the Background's table, exactly as the worked example declares it.

@@ -22,10 +22,10 @@
  * Both are stated in full in `packages/vitest/test/acceptance/README.md` and restated per file so a
  * reader comparing this to `spec/behaviors/02` does not read the difference as drift.
  *
- * 1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.**
- *    ADR-EC-024's `ManagedRuntime`-backed wrapper is not exported, and Phase 11 adds no public API,
- *    so this file reaches the gherkin package's Effect-returning `loadFeature` and provides
- *    `NodeFileSystem.layer` plus `ParameterTypeStore` itself.
+ * 1. **`loadFeature` is `@effect-cucumber/vitest`'s own Promise-returning wrapper (ADR-EC-024),** imported
+ *    by relative path from `../../src/loadFeature.ts` for the lint reason item 2 gives. It runs the
+ *    gherkin package's Effect on a module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, so this
+ *    file provides no FileSystem Layer itself.
  * 2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`.** This
  *    suite lives inside the package it consumes, and oxlint's `effect/no-import-from-barrel-package`
  *    runs with `checkRelativeIndexImports: true`. The module object reached is the one the barrel
@@ -214,8 +214,6 @@
  * forbids a literal forbids spelling it out to explain the rule as well. The repo has now hit that
  * same edge four times (STATE.md 03-04, 10-01, 10-02, and here).
  */
-import { loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
@@ -227,6 +225,7 @@ import * as Schema from "effect/Schema"
 import * as TestClock from "effect/testing/TestClock"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
 
 /**
  * The `.feature` file beside this one, resolved relative to this module rather than to
@@ -240,9 +239,7 @@ const featurePath = fileURLToPath(new URL("./worked-example-02-accounts.feature"
  * A genuine top-level `await` and never `Effect.runSync`: `NodeFileSystem.readFileString` suspends
  * internally, so `runSync` over a path-based `loadFeature` throws `AsyncFiberError`.
  */
-const feature = await Effect.runPromise(
-  loadFeature(featurePath).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-)
+const feature = await loadFeature(featurePath)
 
 /** The worked example's own tagged error, field for field. */
 class DatabaseError extends Schema.TaggedError<DatabaseError>()("DatabaseError", {

@@ -102,14 +102,10 @@ what still does not resolve, so the `TestClock` guarantee it sits above is no lo
 association.
 
 ```typescript
-// Three lines below are still pre-implementation; everything else in this example corresponds to a
+// Two lines below are still pre-implementation; everything else in this example corresponds to a
 // real export and to behaviour that ships.
-//   1. `loadFeature` is NOT exported by @effect-cucumber/vitest — ADR-EC-024's wrapped,
-//      ManagedRuntime-backed version is the one export this package is still missing. Today a caller
-//      reaches @effect-cucumber/gherkin's own Effect-returning `loadFeature` and provides its
-//      FileSystem and ParameterTypeStore requirements as Layers (BEH-EC-001).
-//   2. `expect` is used in two step bodies and imported nowhere.
-//   3. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
+//   1. `expect` is used in two step bodies and imported nowhere.
+//   2. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
 //      imports, and `effect/testing` has no barrel at all — `TestClock` lives at
 //      `effect/testing/TestClock`.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"

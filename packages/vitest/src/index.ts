@@ -73,18 +73,10 @@
  * below, is the supported way to produce those declarations from the same `.feature` files the tags
  * are written in.
  *
- * What is NOT built yet, with `spec/roadmap.md` as the single authority on build status: the wrapped,
- * `ManagedRuntime`-backed `loadFeature` of
- * [ADR-EC-024](../../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md),
- * which this barrel does not export — a test author reaches `@effect-cucumber/gherkin`'s own
- * Effect-returning `loadFeature` directly today and provides its requirements themselves. The
- * build-once `shared` Layer with its per-Scenario `TestClock`/`TestConsole` isolation was on this
- * list until Phase 10 and is built now (RUN-03, RUN-04 — the paragraph on Layer scopes above says
- * what it does). A `Rule` that extends the ambient Layer with its own per-Scenario Layer, and typed
- * `Scenario Outline` Examples, were on it until Phase 8 and are built now (DSL-05, DSL-06): a Rule
- * takes an extra Layer merged onto the Feature's with `Layer.provideMerge`, registers its own
- * `Background` and its own `Before`/`After`/`BeforeStep`/`AfterStep`, and every Outline row emits its
- * own test titled with that row's values.
+ * `loadFeature`, exported below, is the Promise-returning wrapper of
+ * [ADR-EC-024](../../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md):
+ * a Feature file awaits it once at module top level and hands the result to `describeFeature`.
+ * `spec/roadmap.md` remains the single authority on what is built.
  *
  * ## Export policy
  *
@@ -134,6 +126,28 @@
 
 /** The entry point. Everything else in this package is reached through the dsl it hands `define`. */
 export { describeFeature } from "./describeFeature.ts"
+
+/**
+ * Read and parse a `.feature` file at module top level (ADR-EC-024, BEH-EC-001).
+ *
+ * Returns a `Promise<ParsedFeature>` — the one deliberately Promise-returning surface in the
+ * library — because `describeFeature` needs an already-resolved value during vitest's synchronous
+ * collection. It runs `@effect-cucumber/gherkin`'s Effect-returning `loadFeature` on one
+ * module-scoped `ManagedRuntime` over `NodeFileSystem.layer`; `@effect/platform-node` is therefore a
+ * peer dependency of this package. The names re-exported beside it are what a Feature file needs
+ * without a second import: the store a custom parameter type is declared in, the typed failures the
+ * load can reject with, and the argument types a step body annotates.
+ */
+export {
+  createParameterTypeStore,
+  DataTableError,
+  decodeHashes,
+  LoadFeatureError,
+  ParameterTypeStore,
+  StepPatternError
+} from "@effect-cucumber/gherkin"
+export type { DataTable, DocString, ParameterTypeDefinition, ParsedFeature, StepArgs } from "@effect-cucumber/gherkin"
+export { loadFeature } from "./loadFeature.ts"
 
 /**
  * The optional fourth argument's type, exported for annotation.

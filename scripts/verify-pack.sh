@@ -111,7 +111,7 @@ assert_manifest() {
     // Pitfall 20, the reason this script exists.
     if (name === "@effect-cucumber/vitest") {
       const peers = m.peerDependencies === undefined ? {} : m.peerDependencies
-      for (const dep of ["effect", "@effect/vitest"]) {
+      for (const dep of ["effect", "@effect/vitest", "@effect/platform-node"]) {
         const v = peers[dep]
         if (v === undefined) {
           fails.push("peerDependencies." + dep + " is missing from the packed manifest.")

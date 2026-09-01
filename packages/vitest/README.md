@@ -5,8 +5,8 @@ DSL, the six-hook `Before`/`After`/`BeforeStep`/`AfterStep`/`BeforeAllScenarios`
 `it.effect`-based runner that turns a Gherkin `.feature` file into ordinary vitest `describe`/`it` calls — no plugin
 and no custom reporter. `Rule` containers, their own `Background` and hooks, and per-row-titled Scenario Outlines all
 ship; "## Status" below says what is still waiting on a later phase. It depends on
-[`@effect-cucumber/gherkin`](../gherkin). A wrapped, `ManagedRuntime`-backed `loadFeature`
-(ADR-EC-024) is planned but not yet exported — see "## Status" below.
+[`@effect-cucumber/gherkin`](../gherkin) for parsing and exports the Promise-returning `loadFeature` a Feature file
+awaits at module top level (ADR-EC-024).
 
 ## Status
 
@@ -64,14 +64,18 @@ A fake counter-based "expensive resource" is the smallest thing that shows what 
 Scenarios in the Feature below read the same build:
 
 ```ts
-import { describeFeature } from "@effect-cucumber/vitest"
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import { fileURLToPath } from "node:url"
 
-// `feature` is a ParsedFeature, awaited at module top level from @effect-cucumber/gherkin's
-// `loadFeature`. Both of its Scenarios run the same two steps.
+// Real bytes off disk, once, at module top level. `loadFeature` runs on a module-scoped
+// ManagedRuntime over NodeFileSystem.layer and resolves to a ParsedFeature; pass a second argument
+// (`ParameterTypeStore.layerOf(store)`) when the file declares custom parameter types.
+// Both of this Feature's Scenarios run the same two steps.
+const feature = await loadFeature(fileURLToPath(new URL("./catalog.feature", import.meta.url)))
 
 class Catalog extends Context.Service<Catalog, { readonly buildOrdinal: number }>()("Catalog") {}
 
@@ -172,11 +176,7 @@ v1 requirements carry a `@REQ-EC-NNN` acceptance tag.
 
 **What is still ahead of this package:** the doc-examples compile check that would keep the fences on this page
 compiling against the real API. That is a gate the repository has yet to wire, not a gap in this package's behaviour.
-One export is genuinely still missing: the wrapped, `ManagedRuntime`-backed `loadFeature` of
-[ADR-EC-024](../../spec/decisions/024-vitest-owns-a-managedruntime-for-collection-time-loadfeature.md), so a test
-author reaches [`@effect-cucumber/gherkin`](../gherkin)'s own Effect-returning `loadFeature` directly today — and so
-does the acceptance suite, which is one of the two deliberate deviations from the worked examples recorded in
-[`test/acceptance/README.md`](./test/acceptance/README.md). One further limitation is worth knowing before you rely
+One limitation is worth knowing before you rely
 on it: editing a `.feature` file under a watching runner does **not** trigger a rerun when the file was loaded by
 path, because a filesystem read is invisible to Vite's module graph; the `?raw` import form does rerun. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
@@ -265,16 +265,16 @@ in yours. See [`test/acceptance/README.md`](./test/acceptance/README.md) § "Zer
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc vitest
+pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc @effect/platform-node@rc vitest
 ```
 
 > **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
 > no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/vitest`, whose `latest` is also on the v3 line.
+> library. The same applies to `@effect/vitest` and `@effect/platform-node`, whose `latest` tags are also on the v3 line.
 
 ## Requirements
 
 Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=4.1.0 <5.0.0`. Node `>=20`.
 
-`effect`, `@effect/vitest` and `vitest` are peer dependencies — you install them, this package does not bundle its own
-copies.
+`effect`, `@effect/vitest`, `@effect/platform-node` and `vitest` are peer dependencies — you install them, this package
+does not bundle its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file through.

@@ -34,26 +34,21 @@ the include and exclude globs — setting either is the likeliest way to silentl
 file named `<name>.steps.ts` would therefore be collected by nothing: no error, no failing test, just a Feature that
 never runs. The suffix is what makes the file exist as far as the runner is concerned.
 
-## Two deliberate deviations from the worked examples in `spec/behaviors/01`–`03`
+## One deliberate deviation from the worked examples in `spec/behaviors/01`–`03`
 
-Both are conventions for this whole directory, not one-offs, and each acceptance step module restates them in its own
-module doc comment so a reader comparing it to the behavior doc does not read the difference as drift.
+It is a convention for this whole directory, not a one-off, and each acceptance step module restates it in its own
+module doc comment so a reader comparing it to the behavior doc does not read the difference as drift. `loadFeature`
+itself is the real `@effect-cucumber/vitest` wrapper (ADR-EC-024), reached the same way.
 
-1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.** The worked examples open
-   with `import { describeFeature, loadFeature } from "@effect-cucumber/vitest"`. That `loadFeature` is ADR-EC-024's
-   `ManagedRuntime`-backed wrapper and is not exported — `spec/behaviors/03`'s own caveat block calls it the one export
-   the package is still missing. Phase 11 adds no public API, so these files reach the gherkin package's
-   Effect-returning `loadFeature` and provide `NodeFileSystem.layer` plus `ParameterTypeStore` themselves, which is
-   exactly what that caveat block says a caller does today.
-2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`, not from the package barrel.**
+1. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`, not from the package barrel.**
    A real consumer writes `import { describeFeature } from "@effect-cucumber/vitest"`. This suite lives inside the
    package it consumes, and oxlint's `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`,
    so a relative import of `index.ts` fails `pnpm lint`. The module object reached is the same one the barrel
    re-exports.
 
-A related consequence: a path-based `loadFeature` must be awaited with a genuine top-level `await`, never
-`Effect.runSync`. `NodeFileSystem.readFileString` suspends internally and `runSync` over it throws `AsyncFiberError` —
-reproduced against the real package, not assumed.
+A related consequence: `loadFeature` returns a Promise and is awaited with a genuine top-level `await`. The gherkin
+package's Effect underneath it cannot be `Effect.runSync`'d either: `NodeFileSystem.readFileString` suspends internally
+and `runSync` over it throws `AsyncFiberError` — reproduced against the real package, not assumed.
 
 ## These `.feature` files are byte-exact and NOT formatted
 

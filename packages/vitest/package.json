@@ -52,6 +52,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:peer",
+    "@effect/platform-node": "catalog:peer",
     "@effect/vitest": "catalog:peer",
     "vitest": "catalog:peer"
   },

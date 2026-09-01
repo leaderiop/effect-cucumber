@@ -22,13 +22,10 @@
  * otherwise read them as drift. `packages/vitest/test/acceptance/README.md` states both as standing
  * conventions for this whole directory.
  *
- * 1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.** The
- *    worked example opens with `import { describeFeature, loadFeature } from "@effect-cucumber/vitest"`,
- *    and that `loadFeature` is ADR-EC-024's `ManagedRuntime`-backed wrapper, which is not exported and
- *    is the one export `packages/vitest` is still missing (`spec/behaviors/03`'s own caveat block says
- *    so). Phase 11 adds no public API, so this file reaches the gherkin package's Effect-returning
- *    `loadFeature` and provides `NodeFileSystem.layer` plus `ParameterTypeStore` itself — exactly what
- *    that caveat block says a caller does today.
+ * 1. **`loadFeature` is `@effect-cucumber/vitest`'s own Promise-returning wrapper (ADR-EC-024),** imported
+ *    by relative path from `../../src/loadFeature.ts` for the lint reason item 2 gives. It runs the
+ *    gherkin package's Effect on a module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, so this
+ *    file provides no FileSystem Layer itself.
  * 2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`, not from
  *    the package barrel.** A real consumer writes
  *    `import { describeFeature } from "@effect-cucumber/vitest"`. This suite lives INSIDE the package
@@ -116,8 +113,6 @@
  * `vitest/no-standalone-expect` does not recognise an Effect-bodied test as a test block. Same rule,
  * same workaround, as `emission.test.ts`, `Step.test.ts` and `describeFeature.test.ts`.
  */
-import { loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -125,6 +120,7 @@ import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
 
 /**
  * The `.feature` file beside this one, resolved relative to this module rather than to
@@ -133,9 +129,7 @@ import { describeFeature } from "../../src/describeFeature.ts"
 const featurePath = fileURLToPath(new URL("./worked-example-01-apples.feature", import.meta.url))
 
 /** The load-bearing line: real bytes off disk, through the real parser, at module top level. */
-const feature = await Effect.runPromise(
-  loadFeature(featurePath).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-)
+const feature = await loadFeature(featurePath)
 
 /**
  * The test author's own `World`, shape for shape from `spec/behaviors/01-steps-and-world.md`

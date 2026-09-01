@@ -93,11 +93,10 @@
  * Both are stated in full in `packages/vitest/test/acceptance/README.md` and restated per file so a
  * reader comparing this to `spec/behaviors/04` and `05` does not read the difference as drift.
  *
- * 1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.**
- *    ADR-EC-024's `ManagedRuntime`-backed wrapper is not exported, so this file reaches the gherkin
- *    package's `Effect`-returning `loadFeature` and provides `NodeFileSystem.layer` plus a
- *    `ParameterTypeStore` Layer itself — which is exactly the shape BEH-EC-014's own worked example
- *    shows a caller using today.
+ * 1. **`loadFeature` is `@effect-cucumber/vitest`'s own Promise-returning wrapper (ADR-EC-024),** imported
+ *    by relative path from `../../src/loadFeature.ts` for the lint reason item 2 gives. It runs the
+ *    gherkin package's Effect on a module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, so this
+ *    file provides no FileSystem Layer itself.
  * 2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`.** This
  *    suite lives inside the package it consumes, and oxlint's `effect/no-import-from-barrel-package`
  *    runs with `checkRelativeIndexImports: true`. The module object reached is the one the barrel
@@ -177,10 +176,8 @@ import {
   createStepMatcher,
   type DataTable,
   type DocString,
-  loadFeature,
   ParameterTypeStore
 } from "@effect-cucumber/gherkin"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -189,6 +186,7 @@ import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
 
 /** The `.feature` file beside this one, resolved relative to this module rather than `process.cwd()`. */
 const featurePath = fileURLToPath(new URL("./parsing-and-matching.feature", import.meta.url))
@@ -250,16 +248,16 @@ acceptanceStore.define<Fruit>({
  * behind a module-level singleton registry: the second load either throws on the first load's
  * registrations or silently loses them.
  */
-const parseRequirements = Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.layerOf(acceptanceStore))
+const parseRequirements = ParameterTypeStore.layerOf(acceptanceStore)
 
 /** Real bytes off disk, through the real parser, at module top level. This one IS emitted. */
-const feature = await Effect.runPromise(loadFeature(featurePath).pipe(Effect.provide(parseRequirements)))
+const feature = await loadFeature(featurePath, parseRequirements)
 
 /**
  * The second load. Its constant is named for the single reason it exists: to be DATA that a step
  * reads back, proving a `loadFeature` call is a value-producing call and nothing more.
  */
-const secondLoadedFeature = await Effect.runPromise(loadFeature(secondLoadPath).pipe(Effect.provide(parseRequirements)))
+const secondLoadedFeature = await loadFeature(secondLoadPath, parseRequirements)
 
 /**
  * Per-Scenario: one ordered log of what the Scenario's steps observed, in the order they observed

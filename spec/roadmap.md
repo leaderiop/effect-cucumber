@@ -176,12 +176,11 @@ per-phase status. High-level shape:
    `ScenarioEffect.ts` are unchanged in behaviour on both paths. The dogfooded
    acceptance suite (Phase 11) is built as well, and needed no new source module
    either — that is the point of it: it exercises the package through the same
-   public entry points a consumer uses. What remains on this package is the
-   doc-examples compile check, and ADR-EC-024's wrapped `loadFeature`, which is
-   still not exported (the acceptance suite reaches
-   `@effect-cucumber/gherkin`'s own `loadFeature` instead, and
-   [`packages/vitest/test/acceptance/README.md`](../packages/vitest/test/acceptance/README.md)
-   records that deviation).
+   public entry points a consumer uses. ADR-EC-024's wrapped `loadFeature` is
+   exported too (`packages/vitest/src/loadFeature.ts`, proven by
+   `packages/vitest/test/loadFeature.test.ts`), and the acceptance suite loads
+   every Feature through it. What remains on this package is the doc-examples
+   compile check.
 4. Wire the doc-examples compile check and the merge-gate table in
    `spec/process/definitions-of-done.md` for real, once there's an API to
    check examples against.

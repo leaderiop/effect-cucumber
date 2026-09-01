@@ -46,10 +46,10 @@ bespoke parser or another library's internals.
 Monorepo under the `@effect-cucumber` npm scope. One package per module, not
 subpath exports of a single package.
 
-| Package                    | Description                                                                                                                                                                                                                                                                                                                       | Status                                                 |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). Effect-native (`effect` peer dep, v4 only — [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)); no concrete platform runtime dependency.                                                | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
-| `@effect-cucumber/vitest`  | `describeFeature` with both Layer scopes, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, all six hooks, tag routing, and the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin`; ADR-EC-024's wrapped `loadFeature` is the one export still to come. The package most consumers install directly. | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
+| Package                    | Description                                                                                                                                                                                                                                                                                                            | Status                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `@effect-cucumber/gherkin` | `.feature` parsing + step-text matching (wraps `@cucumber/gherkin` / `@cucumber/cucumber-expressions`). Effect-native (`effect` peer dep, v4 only — [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md)); no concrete platform runtime dependency.                                     | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
+| `@effect-cucumber/vitest`  | `describeFeature` with both Layer scopes, the Given/When/Then/Background/Scenario/ScenarioOutline/Rule DSL, all six hooks, tag routing, and the `it.effect`-based runner. Depends on `@effect-cucumber/gherkin` and exports ADR-EC-024's Promise-returning `loadFeature`. The package most consumers install directly. | Built and tested — see [`spec/roadmap.md`](roadmap.md) |
 
 ## Public API surface
 
@@ -63,9 +63,7 @@ What is still planned is the ENFORCEMENT of the table below: a
 `check-api-surface`-style script (see `spec/process/definitions-of-done.md`) that
 keeps this section honest against the barrel rather than beside it. Until that script
 exists, the table names the behavior each export is specified by and nothing checks
-that the two agree — `loadFeature` in particular is the one row that does NOT
-correspond to an export of this package yet (ADR-EC-024), and a consumer reaches
-`@effect-cucumber/gherkin`'s own `loadFeature` instead:
+that the two agree:
 
 | Export                                                                                       | Kind           | Behavior                                                                                                                              |
 | -------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

@@ -85,12 +85,10 @@
  * reader comparing this to `spec/behaviors/07`'s worked example does not read the difference as
  * drift.
  *
- * 1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.**
- *    ADR-EC-024's `ManagedRuntime`-backed wrapper is not exported, so this file reaches the gherkin
- *    package's `Effect`-returning `loadFeature` and provides `NodeFileSystem.layer` plus
- *    `ParameterTypeStore.Default` itself. The load uses a genuine top-level `await` and never
- *    `Effect.runSync`: `NodeFileSystem.readFileString` suspends internally, so `runSync` over a
- *    path-based load throws `AsyncFiberError`.
+ * 1. **`loadFeature` is `@effect-cucumber/vitest`'s own Promise-returning wrapper (ADR-EC-024),** imported
+ *    by relative path from `../../src/loadFeature.ts` for the lint reason item 2 gives. It runs the
+ *    gherkin package's Effect on a module-scoped `ManagedRuntime` over `NodeFileSystem.layer`, so this
+ *    file provides no FileSystem Layer itself.
  * 2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`.** oxlint's
  *    `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`. The module
  *    object reached is the one the barrel re-exports.
@@ -148,8 +146,6 @@
  *      decorative beside the array comparison. Under unmutated G the array assertion reports first
  *      simply because it is written first; G2 is what says the count line would have caught it anyway.
  */
-import { loadFeature, ParameterTypeStore } from "@effect-cucumber/gherkin"
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -157,6 +153,7 @@ import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
 
 /** The `.feature` file beside this one, resolved relative to this module rather than `process.cwd()`. */
 const featurePath = fileURLToPath(new URL("./hooks.feature", import.meta.url))
@@ -167,11 +164,7 @@ const featurePath = fileURLToPath(new URL("./hooks.feature", import.meta.url))
  * `ParameterTypeStore.Default` and not a file-private store: this Feature's patterns use `{string}`
  * and `{int}` only, so it declares no custom parameter type and has nothing to keep private.
  */
-const feature = await Effect.runPromise(
-  loadFeature(featurePath).pipe(
-    Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default))
-  )
-)
+const feature = await loadFeature(featurePath)
 
 /**
  * The one ordered log every hook body and every step body in this Feature appends to.

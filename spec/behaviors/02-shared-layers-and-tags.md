@@ -266,11 +266,9 @@ export default defineConfig({
 Then the Feature itself:
 
 ```typescript
-// describeFeature, its optional fourth argument, and the dsl below are real and
-// compile-gated (this phase). The `loadFeature` import is ADR-EC-024's planned
-// ManagedRuntime wrapper, not yet shipped from @effect-cucumber/vitest — see
-// packages/vitest/README.md "## Status". This fence is still not compiled either way;
-// the doc-examples check is not wired yet (spec/roadmap.md).
+// describeFeature, its optional fourth argument, loadFeature and the dsl below are all
+// real exports. This fence is still not compiled; the doc-examples check is not wired
+// yet (spec/roadmap.md).
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 import { expect } from "vitest"
