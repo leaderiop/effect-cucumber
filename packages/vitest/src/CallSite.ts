@@ -62,24 +62,26 @@
 import type { DefinitionSite } from "./Registry.ts"
 
 /**
- * One V8 stack frame, split into its location and its line and column.
+ * The remainder of one V8 stack line after its `at ` prefix.
  *
- * Anchored at both ends and applied one line at a time, against a stack that `Error.stackTraceLimit`
- * caps at ten frames (threat T-06-01-01). The two location groups are `[^()]`-classes rather than
- * `.`, which is not cosmetic: it makes the split point — the first ` (` — unambiguous, so the engine
- * has no alternative partition to backtrack through. Widening either to `.*`/`.+` reintroduces
- * exactly that ambiguity.
- *
- * The three frame shapes this runtime actually produces are all matched:
+ * Applied one line at a time, against a stack that `Error.stackTraceLimit` caps at ten frames. The
+ * three frame shapes this runtime actually produces are all handled by `parseFrame` below:
  *
  *     at fnName (/abs/path/File.ts:3:17)
  *     at /abs/path/file.test.ts:6:20
  *     at fnName (file:///abs/path/x.js:302:11)
  *
- * and the fourth, `at new Promise (<anonymous>)`, yields no match because it carries no
+ * and the fourth, `at new Promise (<anonymous>)`, yields no site because it carries no
  * `line:column` — which is why the caller SKIPS a non-matching line instead of stopping at it.
+ *
+ * The location is split from the END (`:line:column` last), never at the first `(`: a directory such
+ * as `My (work)` contains parentheses, and a first-paren split reads the path as ending there.
+ * `test/CallSite.test.ts` pins both parenthesised frame forms.
  */
-const frameLocation = /^\s+at (?:[^()]* \()?([^()]+):(\d+):(\d+)\)?$/
+const framePrefix = /^\s+at (.+)$/
+
+/** A location's trailing `:line:column`; the greedy file group backtracks to the last two. */
+const lineAndColumn = /^(.+):(\d+):(\d+)$/
 
 /** The ESM scheme V8 prefixes to a frame under `node_modules`, stripped so one form is compared. */
 const fileProtocol = "file://"
@@ -101,7 +103,15 @@ const directoryOf = (file: string): string => {
 
 /** One stack line as a site, or `null` when it carries no `line:column` to read. */
 const parseFrame = (frame: string): DefinitionSite | null => {
-  const matched = frameLocation.exec(frame)
+  const rest = framePrefix.exec(frame)?.[1]
+  if (rest === undefined) {
+    return null
+  }
+  // `fnName (location)` when the line ends with `)`, a bare location otherwise. A function name
+  // never contains ` (`, so the FIRST ` (` opens the location even when the path has parentheses.
+  const opening = rest.endsWith(")") ? rest.indexOf(" (") : -1
+  const location = opening === -1 ? rest : rest.slice(opening + 2, -1)
+  const matched = lineAndColumn.exec(location)
   if (matched === null) {
     return null
   }

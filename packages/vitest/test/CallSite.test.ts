@@ -118,6 +118,43 @@ describe("captureCallSite returns the caller's frame, not its own", () => {
 
     expect(formatCallSite(captured)).toBe("/repo/packages/vitest/test/example.test.ts:302:11")
   })
+
+  it("reads a path containing parentheses, in both the named and the bare frame form", () => {
+    const named = withStubbedErrorStack(
+      [
+        "Error",
+        "    at captureCallSite (/repo/packages/vitest/src/CallSite.ts:3:17)",
+        "    at Given (/Users/x/My (work)/steps.test.ts:3:4)"
+      ].join("\n"),
+      captureCallSite
+    )
+    const bare = withStubbedErrorStack(
+      [
+        "Error",
+        "    at captureCallSite (/repo/packages/vitest/src/CallSite.ts:3:17)",
+        "    at /Users/x/My (work)/steps.test.ts:3:4"
+      ].join("\n"),
+      captureCallSite
+    )
+
+    // A first-`(` split reads the named form's file as `work)/steps.test.ts` and rejects the bare
+    // form outright, so every step in such a project would carry no site at all.
+    expect(named).toEqual(site("/Users/x/My (work)/steps.test.ts", 3, 4))
+    expect(bare).toEqual(site("/Users/x/My (work)/steps.test.ts", 3, 4))
+  })
+
+  it("reads a Windows drive-letter path", () => {
+    const captured = withStubbedErrorStack(
+      [
+        "Error",
+        "    at captureCallSite (C:\\repo\\packages\\vitest\\src\\CallSite.ts:3:17)",
+        "    at Given (C:\\repo\\steps.test.ts:12:5)"
+      ].join("\n"),
+      captureCallSite
+    )
+
+    expect(captured).toEqual(site("C:\\repo\\steps.test.ts", 12, 5))
+  })
 })
 
 describe("captureCallSite reports absence rather than fabricating a site", () => {
