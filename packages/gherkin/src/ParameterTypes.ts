@@ -44,10 +44,15 @@
  *     `@effect-cucumber/vitest` may wrap a store in a `Layer` — the store being a plain value is
  *     what makes that possible without this package moving.
  *
- * (d) **Every rejection happens at DEFINITION time**, never at replay time. That is Pitfall 14's
- *     fourth "how to avoid" bullet: replay runs inside `loadFeature`, several modules away from
- *     the caller, so an error raised there would point at a stack frame the caller did not write.
- *     Raised from `define`, the error points at the caller's own call.
+ * (d) **Every rejection this library can detect from the definition alone happens at DEFINITION
+ *     time**, so the error points at the caller's own `define` call rather than at a frame inside
+ *     `loadFeature`. One class of rejection is only knowable at REPLAY time, because it depends on
+ *     what else the fresh registry already holds: a definition with `preferForRegexpMatch` set
+ *     whose regexp source coincides with another preferential type's (the built-in `{int}` uses
+ *     `\d+`, for example). Upstream raises that from `defineParameterType`, and `buildRegistry`
+ *     wraps it as a `StepPatternError` (`InvalidParameterTypeDefinition`) naming the parameter
+ *     type — never as a feature-file `ParseFailed`. Asserted by `test/ParameterTypes.test.ts`
+ *     ("a preferential regexp collision is rejected at replay time").
  *
  * The `transform` signature below deliberately omits the `PromiseLike<T>` half of upstream's
  * return type. That is Pitfall 25's fix (a): `Argument.getValue` returns a transform's result
@@ -375,7 +380,26 @@ export const createParameterTypeStore = () => {
           cause
         })
       }
-      registry.defineParameterType(upstream)
+      // Wrapped for the same reason: `defineParameterType` is where upstream detects a
+      // PREFERENTIAL regexp collision (two `preferForRegexpMatch` types sharing one regexp source,
+      // the built-ins included), a check that cannot run at `define` time because it depends on
+      // what the fresh registry already holds — note (d).
+      try {
+        registry.defineParameterType(upstream)
+      } catch (cause) {
+        return fail({
+          reason: "InvalidParameterTypeDefinition",
+          parameterTypeName: record.name,
+          sentences: [
+            `@cucumber/cucumber-expressions rejected ${describeName(record.name)} while registering it`,
+            `into a fresh registry: ${cause instanceof Error ? cause.message : String(cause)}`,
+            "A type with `preferForRegexpMatch` set may not share a regexp source with another",
+            "preferential type, the built-ins included. Drop `preferForRegexpMatch` or change the regexp.",
+            "The original failure is attached as `cause`."
+          ],
+          cause
+        })
+      }
     }
     return registry
   }

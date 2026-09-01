@@ -19,15 +19,20 @@
  * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
  * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
  */
+import * as Cause from "effect/Cause"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
+import { parseFeature } from "../src/loadFeature.ts"
 import {
   buildParameterTypeRegistry,
   builtInParameterTypeNames,
   createParameterTypeStore,
   defaultParameterTypeStore,
-  defineParameterType
+  defineParameterType,
+  ParameterTypeStore
 } from "../src/ParameterTypes.ts"
 
 /** A transform whose result is trivially checkable, reused by most definitions below. */
@@ -553,5 +558,50 @@ describe("stores share no state", () => {
     expect(defaultParameterTypeStore.definitions().some((definition) => definition.name === "moneyDefaultStoreProbe"))
       .toBe(true)
     expect(createParameterTypeStore().buildRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeUndefined()
+  })
+})
+
+describe("a rejection only knowable at replay time is still a named library error", () => {
+  /**
+   * `{int}` is registered preferentially with the source `\d+`, so a custom preferential type
+   * over the same source collides inside upstream's `defineParameterType` — a check that has no
+   * registry to run against at `define` time. Before this test existed the raw upstream
+   * `CucumberExpressionError` escaped `buildRegistry`, and `parseFeature`'s catch-all relabelled
+   * it as a feature-file `ParseFailed` (audit finding F-04).
+   */
+  const preferentialDigits = (store: ReturnType<typeof createParameterTypeStore>): void =>
+    store.define({
+      name: "digits",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.some(true)
+    })
+
+  it("a preferential regexp collision is rejected at replay time as InvalidParameterTypeDefinition", () => {
+    const store = createParameterTypeStore()
+    preferentialDigits(store)
+
+    const error = rejectedBy(() => store.buildRegistry())
+
+    expect(error.reason).toBe("InvalidParameterTypeDefinition")
+    expect(Option.getOrUndefined(error.parameterTypeName)).toBe("digits")
+    expect(error.message).toContain("preferForRegexpMatch")
+    expect(Option.isSome(error.cause)).toBe(true)
+  })
+
+  it("reaches parseFeature as a StepPatternError, never as a feature-file ParseFailed", () => {
+    const store = createParameterTypeStore()
+    preferentialDigits(store)
+    const source = "Feature: F\n  Scenario: S\n    Given 3 apples\n"
+
+    const exit = Effect.runSyncExit(
+      parseFeature(source, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(store)))
+    )
+    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+
+    expect(failure).toBeInstanceOf(StepPatternError)
+    expect(failure instanceof StepPatternError ? failure.reason : undefined).toBe("InvalidParameterTypeDefinition")
   })
 })
