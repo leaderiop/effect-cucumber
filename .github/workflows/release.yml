@@ -1,0 +1,56 @@
+name: Release
+
+# Publishes @effect-cucumber/gherkin and @effect-cucumber/vitest through changesets.
+#
+# How a release happens: every user-visible change lands on main with a
+# .changeset/*.md file. On each push to main, changesets/action either opens or
+# refreshes a "Version Packages" pull request (bumping versions and CHANGELOGs
+# from the pending changesets), or — when that PR has just been merged and no
+# changesets remain — runs `pnpm release`, which builds and publishes.
+#
+# Two things must be true before the first release, and neither is in this
+# file: the NPM_TOKEN repository secret must be added by hand (an npm automation
+# token with publish rights on the @effect-cucumber scope), and the package
+# manifests' `publishConfig.provenance: true` needs the `id-token: write`
+# permission below so npm can attest the build via OIDC.
+# spec/process/release-checklist.md walks through both.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    name: Version or publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Open the version PR, or publish
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          version: pnpm changeset version
+          publish: pnpm release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

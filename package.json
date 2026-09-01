@@ -27,10 +27,13 @@
     "verify:acceptance-no-any": "bash scripts/verify-acceptance-no-any.sh",
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
     "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
-    "verify:api-surface": "bash scripts/verify-api-surface.sh"
+    "verify:api-surface": "bash scripts/verify-api-surface.sh",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
-    "@effect/tsgo": "^0.38.0",
+    "@changesets/cli": "^3.0.1",
+    "@effect/tsgo": "0.38.0",
     "@oxlint/plugins": "1.80.0",
     "dprint": "0.56.1",
     "madge": "8.0.0",

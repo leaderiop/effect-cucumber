@@ -153,7 +153,7 @@ cd "$ROOT_DIR"
 
 # Spelled out in full rather than composed, so these paths stay greppable.
 CHECKLIST_DOC="spec/process/looks-done-but-isnt-checklist.md"
-RC_BUMP_DOC="spec/process/rc-bump-checklist.md"
+RC_BUMP_DOC="spec/process/release-checklist.md"
 INPROCESS_EXECUTOR="packages/vitest/test/acceptance/pitfalls-checklist.test.ts"
 ROOT_README="README.md"
 VITEST_README="packages/vitest/README.md"

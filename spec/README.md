@@ -46,12 +46,12 @@ each one's affected invariants.
 
 ### Process
 
-| Document                                                                       | Purpose                                                                                             |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                               |
-| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist, and a map of the merge gate — five of its seven rows wired, two still not     |
-| ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited |
-| [rc-bump checklist](./process/rc-bump-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward. Checklist item `P-18` is its existence    |
+| Document                                                                       | Purpose                                                                                                                 |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                                                   |
+| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist, and a map of the merge gate — five of its seven rows wired, two still not                         |
+| ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited                     |
+| [release checklist](./process/release-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward, and cutting a release. Checklist item `P-18` is its existence |
 
 ## Reading order
 

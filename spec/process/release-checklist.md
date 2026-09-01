@@ -1,7 +1,8 @@
-# The rc-bump checklist
+# The release checklist
 
-The procedure for moving this repository's pinned `effect` and `@effect/vitest` release candidates
-forward. It exists because PITFALLS Pitfall 18 measured that the obvious heuristic is exactly
+Two procedures: moving this repository's pinned `effect` and `@effect/vitest` release candidates
+forward (the rc bump, first), and cutting a release of the two packages (second). The rc-bump
+procedure exists because PITFALLS Pitfall 18 measured that the obvious heuristic is exactly
 backwards: Effect's changesets run in pre-mode, where major, minor and patch all collapse into one
 `rc.N` increment, so **every** entry in the changelog lands under `### Patch Changes` regardless of
 severity. Breaking removals are routinely filed as "patch" — 68 exports were removed across one
@@ -13,7 +14,7 @@ form of that document's item **P-15**, which is a RELEASE-time step and delibera
 gate. `scripts/verify-pitfalls-checklist.sh` asserts that this file exists and names the acceptance
 suite as the gate; it cannot assert that anyone followed the steps.
 
-## The procedure
+## The rc-bump procedure
 
 ### 1. The acceptance suite is the gate, not `tsc`
 
@@ -106,6 +107,31 @@ each state a minimum Effect version in prose ("Requires Effect v4 (`4.0.0-rc.NNN
 bump moved that floor, both say so in the same commit. Their `@rc` install lines are asserted by
 checklist item **P-17**; the prose version floor beside them is not, and is the thing most likely to
 go stale.
+
+## Cutting a release
+
+Releases are driven by [changesets](https://github.com/changesets/changesets) and
+`.github/workflows/release.yml`; nothing is published from a developer machine.
+
+1. **Every user-visible change lands with a changeset.** Run `pnpm changeset` on the branch, pick
+   the package(s) and the bump (`patch` / `minor` / `major`), and write the entry a consumer will
+   read in the CHANGELOG. Commit the generated `.changeset/*.md` with the change. A change with no
+   consumer-visible effect needs no changeset.
+2. **Merge to `main`.** The release workflow reads the pending changesets and opens — or refreshes —
+   a pull request titled "chore(release): version packages" that bumps `packages/*/package.json`,
+   writes both `CHANGELOG.md`s and deletes the consumed changesets. Review that PR like any other;
+   `pnpm verify:pack` on it is the last look at the tarballs.
+3. **Merging the version PR publishes.** The same workflow, finding no pending changesets, runs
+   `pnpm release` (`pnpm build && changeset publish`) with npm provenance. Both packages publish with
+   `access: public` under the `@effect-cucumber` scope.
+4. **Before the first release, two things are done once by hand.** Add the `NPM_TOKEN` repository
+   secret (an npm automation token with publish rights on the scope) — the workflow cannot publish
+   without it and fails naming it. Then, after the first publish succeeds, drop the "nothing is
+   published to npm yet" sentences from the root [`README.md`](../../README.md),
+   [`packages/vitest/README.md`](../../packages/vitest/README.md) and
+   [`packages/gherkin/README.md`](../../packages/gherkin/README.md), and the "will not work until the
+   first release" sentence beside the root install line — they are true until that moment and false
+   after it. The initial changeset `.changeset/first-pre-release.md` carries the first `0.1.0` bump.
 
 ## What this document deliberately does not do
 
