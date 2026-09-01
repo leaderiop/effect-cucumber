@@ -429,6 +429,44 @@ describe("a malformed definition is rejected at definition time", () => {
     })
   }
 
+  it("rejects a malformed string regexp source at definition time, never at step-compile time", () => {
+    const store = createParameterTypeStore()
+
+    const error = rejectedBy(() =>
+      store.define({
+        name: "bad",
+        regexp: "(",
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
+
+    expect(error.reason).toBe("InvalidParameterTypeRegexp")
+    expect(Option.getOrUndefined(error.parameterTypeName)).toBe("bad")
+    expect(Option.isSome(error.cause)).toBe(true)
+    expect(store.definitions()).toHaveLength(0)
+  })
+
+  it("rejects a malformed source inside a regexp list too", () => {
+    const store = createParameterTypeStore()
+
+    const error = rejectedBy(() =>
+      store.define({
+        name: "badList",
+        regexp: [/\d+/, "[unclosed"],
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
+
+    expect(error.reason).toBe("InvalidParameterTypeRegexp")
+    expect(store.definitions()).toHaveLength(0)
+  })
+
   it("accepts a flagless RegExp and a plain string regexp source", () => {
     const store = createParameterTypeStore()
     store.define({

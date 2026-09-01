@@ -95,6 +95,21 @@ REQUIREMENT: A custom parameter type MUST be declared as a plain
                message naming BOTH definition sites, so the caller does not
                have to search for the other one
 
+             A regexp given as a STRING source MUST be compiled once at
+             declaration time and rejected (InvalidParameterTypeRegexp) if it
+             is malformed; upstream stores string sources unparsed, so without
+             this the failure would surface at step-compile time blaming the
+             step author's pattern. A RegExp carrying a flag upstream rejects
+             (g, i, m, y) is rejected the same way.
+
+             One rejection is only knowable at REPLAY time, because it depends
+             on what the fresh registry already holds: a definition with
+             preferForRegexpMatch set whose regexp source coincides with
+             another preferential type's (the built-in {int} among them). It
+             MUST surface from loadFeature / parseFeature as a StepPatternError
+             (InvalidParameterTypeDefinition) naming the parameter type, and
+             MUST NOT be reported as a feature-file ParseFailed.
+
              A transform MUST be synchronous. The matched value is read back
              unwrapped, so an async transform would hand a step body a Promise
              where its declared parameter type says otherwise.

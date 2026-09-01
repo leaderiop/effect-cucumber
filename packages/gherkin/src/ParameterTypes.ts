@@ -270,6 +270,26 @@ export const createParameterTypeStore = () => {
     }
 
     for (const entry of toRegexpList(definition.regexp)) {
+      // A string source is compiled here, once, purely to reject a malformed one at DEFINITION
+      // time. Upstream's `ParameterType` constructor stores string sources unparsed, so without
+      // this check `"("` would only fail later — inside `new CucumberExpression`, as an
+      // `InvalidStepPattern` blaming the step author's pattern (audit finding F-05).
+      if (typeof entry === "string") {
+        try {
+          RegExp(entry)
+        } catch (cause) {
+          fail({
+            reason: "InvalidParameterTypeRegexp",
+            parameterTypeName: name,
+            sentences: [
+              `the regexp source ${JSON.stringify(entry)} supplied for ${describeName(name)}`,
+              `is not a valid regular expression: ${cause instanceof Error ? cause.message : String(cause)}.`,
+              "Fix the source, or pass a RegExp literal so the mistake is a syntax error at the call site."
+            ],
+            cause
+          })
+        }
+      }
       if (entry instanceof RegExp) {
         for (const flag of rejectedRegexpFlags) {
           if (entry.flags.includes(flag)) {
