@@ -50,7 +50,8 @@ import {
   type AstStepInfo,
   type CorrelationResult,
   isOutlineKeyword,
-  isScenarioKeyword
+  isScenarioKeyword,
+  stepKeywords
 } from "./Correlate.ts"
 import { LoadFeatureError, type LoadFeatureWarning, makeWarning } from "./Errors.ts"
 import type { GherkinDocument, Pickle, PickleStep } from "./Model.ts"
@@ -537,7 +538,54 @@ const emptyRule = (uri: string, rule: AstRuleInfo): LoadFeatureWarning => {
 }
 
 /**
- * F14 — a Scenario or Background carrying a description, which is where a swallowed step lands.
+ * Damerau–Levenshtein distance with adjacent transpositions, for two short strings. Only ever
+ * called on a description line's leading token against a dialect keyword, so the quadratic table
+ * is a few dozen cells.
+ */
+const editDistance = (left: string, right: string): number => {
+  const rows = left.length + 1
+  const cols = right.length + 1
+  const table: Array<Array<number>> = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0))
+  for (let i = 0; i < rows; i++) table[i]![0] = i
+  for (let j = 0; j < cols; j++) table[0]![j] = j
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = left[i - 1] === right[j - 1] ? 0 : 1
+      let best = Math.min(table[i - 1]![j]! + 1, table[i]![j - 1]! + 1, table[i - 1]![j - 1]! + cost)
+      if (i > 1 && j > 1 && left[i - 1] === right[j - 2] && left[i - 2] === right[j - 1]) {
+        best = Math.min(best, table[i - 2]![j - 2]! + 1)
+      }
+      table[i]![j] = best
+    }
+  }
+  return table[rows - 1]![cols - 1]!
+}
+
+/**
+ * The dialect keyword a description line most plausibly meant to be, or `undefined` for prose.
+ *
+ * A line qualifies when its leading text is a step keyword written in the wrong case (`given x`),
+ * or is within a small edit distance of one (`Ginve x`, `Whne x`): one edit for short keywords,
+ * two for keywords of five characters or more. Multi-word keywords (`Étant donné que`) are
+ * compared against the same number of leading words. Anything else is treated as the prose it
+ * almost certainly is.
+ */
+const nearMissKeyword = (line: string, keywords: ReadonlyArray<string>): string | undefined => {
+  const words = line.trim().split(/\s+/)
+  for (const keyword of keywords) {
+    const keywordWords = keyword.split(/\s+/)
+    if (words.length < keywordWords.length) continue
+    const head = words.slice(0, keywordWords.length).join(" ")
+    if (head.length < 3) continue
+    if (head.toLowerCase() === keyword.toLowerCase()) return keyword
+    const budget = keyword.length >= 5 ? 2 : 1
+    if (editDistance(head.toLowerCase(), keyword.toLowerCase()) <= budget) return keyword
+  }
+  return undefined
+}
+
+/**
+ * F14 — a description line that reads like a misspelled step keyword.
  *
  * `[VERIFIED]`: a step keyword misspelled BEFORE any valid step is absorbed into the block's
  * `description`. The AST has one fewer step, the compiled scenario has one fewer step, and no
@@ -545,33 +593,40 @@ const emptyRule = (uri: string, rule: AstRuleInfo): LoadFeatureWarning => {
  * AFTER a valid step is a loud parse error, so the behavior is position-dependent and casual
  * testing will not find it.
  *
- * There is no exact detector, because a description is legal Gherkin; the message says so, and
- * quotes the text so the author can judge in one glance. Nothing fuzzier is attempted — matching
- * the description against dialect keywords by similarity is marked speculative and out of scope
- * by the phase research.
+ * A description is legal Gherkin, so warning on every description drowned the channel for any
+ * team that writes them (audit finding F-15). The detector now looks at each description LINE and
+ * warns only when its leading token is a near miss of one of the dialect's own step keywords —
+ * see `nearMissKeyword`. Only the offending lines are quoted, each with the keyword it resembles.
  *
  * This is additive to, not a replacement for, the `ZeroStepScenario` message quoting the same
  * description. That error covers the case where the swallowed step was the block's ONLY step;
  * this warning covers every other case, where the block still has steps and so never reaches it.
- *
- * The description is quoted in full, per the package's locked full-content policy (threat
- * T-02-02, accepted).
+ * Asserted by `test/Validate.test.ts` (F14 pair: a near-miss warns, plain prose does not).
  */
 const suspectedSwallowedStep = (
   uri: string,
   label: string,
   description: string,
-  line: number
-): LoadFeatureWarning =>
-  makeWarning({
+  line: number,
+  keywords: ReadonlyArray<string>
+): Option.Option<LoadFeatureWarning> => {
+  const suspects = description
+    .split("\n")
+    .map((text) => ({ text, keyword: nearMissKeyword(text, keywords) }))
+    .filter((entry): entry is { text: string; keyword: string } => entry.keyword !== undefined)
+  if (suspects.length === 0) return Option.none()
+  const quoted = suspects.map(({ keyword, text }) => `  ${text.trim()}    (reads like ${keyword})`).join("\n")
+  return Option.some(makeWarning({
     reason: "SuspectedSwallowedStep",
     uri,
     line,
-    message: `${at(uri, line)}SuspectedSwallowedStep: ${label} has a description. A step keyword misspelled `
-      + `before any valid step is absorbed into the description rather than reported, so a step written there `
-      + `does not exist at any layer and nothing fails. A description is legal Gherkin, so this is a heuristic, `
-      + `not a defect: if the text below is prose, ignore this. It reads, in full:\n${description}`
-  })
+    message: `${at(uri, line)}SuspectedSwallowedStep: ${label} has a description in which `
+      + `${suspects.length === 1 ? "a line begins" : `${suspects.length} lines begin`} with what looks like a `
+      + `misspelled step keyword. A step keyword misspelled before any valid step is absorbed into the description `
+      + `rather than reported, so a step written there does not exist at any layer and nothing fails. `
+      + `A description is legal Gherkin, so this is a heuristic: if the text is prose, ignore this.\n${quoted}`
+  }))
+}
 
 /**
  * The values in one header row that appear more than once, each reported once, in source order.
@@ -656,6 +711,7 @@ const astDetailOf = (document: GherkinDocument): AstDetail => {
 export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFeatureWarning> => {
   const { feature, index } = result
   const uri = feature.uri
+  const keywords = stepKeywords(index.language)
   const ruleNames = new Map(index.astRules.map((rule) => [rule.id, rule.name]))
   /** Populated in document order, so the retained entry is always the FIRST occurrence. */
   const seenByScope = new Map<string, AstScenarioInfo>()
@@ -767,9 +823,9 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
           (column) => duplicateExamplesColumn(uri, node, column, blockLines[blockIndex] ?? node.location.line)
         )
     )
-    const swallowedStepWarning = node.description.trim() === ""
-      ? []
-      : [suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line)]
+    const swallowedStepWarning = Arr.getSomes([
+      suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line, keywords)
+    ])
     return [...columnWarnings, ...swallowedStepWarning]
   })
 
@@ -781,16 +837,13 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
     Arr.map(
       detail.backgrounds,
       (background) =>
-        background.description.trim() === ""
-          ? Option.none()
-          : Option.some(
-            suspectedSwallowedStep(
-              uri,
-              describeBlock(background.keyword, background.name),
-              background.description,
-              background.line
-            )
-          )
+        suspectedSwallowedStep(
+          uri,
+          describeBlock(background.keyword, background.name),
+          background.description,
+          background.line,
+          keywords
+        )
     )
   )
 

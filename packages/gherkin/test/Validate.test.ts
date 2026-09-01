@@ -335,14 +335,27 @@ describe("validateFeature returns the Group C findings as warnings instead of th
     expect(warnings[0]?.message).toContain("empty rule")
   })
 
-  it("F14 warns on a non-empty description and quotes the swallowed step verbatim", () => {
+  it("F14 warns on a description line that is a near miss of a step keyword, naming the keyword", () => {
     const name = "warning-swallowed-step.feature"
     const warnings = warningsFromFixture(name)
     expect(warnings.map((warning) => warning.reason)).toEqual(["SuspectedSwallowedStep"])
-    // Verbatim means the AST's own string, leading indentation included.
     const node = correlate(readFixture(name), name).index.astScenarios[0]
     expect(node?.description).toContain("Ginve x")
-    expect(warnings[0]?.message).toContain(node?.description ?? "")
+    expect(warnings[0]?.message).toContain("Ginve x")
+    expect(warnings[0]?.message).toContain("reads like Given")
+  })
+
+  it("F14 stays silent on ordinary prose descriptions, on a Background and a Scenario alike", () => {
+    expect(warningsFromFixture("description-plain.feature")).toEqual([])
+  })
+
+  it("F14 catches a wrong-case keyword and a transposition, in the document's own dialect", () => {
+    const wrongCase = "Feature: f\n  Scenario: s\n    given x\n    Given y\n"
+    expect(validate(wrongCase, "case.feature").map((warning) => warning.reason)).toEqual(["SuspectedSwallowedStep"])
+    const french = "# language: fr\nFonctionnalité: f\n  Scénario: s\n    Qaund x\n    Soit y\n"
+    expect(validate(french, "fr.feature").map((warning) => warning.reason)).toEqual(["SuspectedSwallowedStep"])
+    const prose = "Feature: f\n  Scenario: s\n    Thinking about it, this is prose.\n    Given y\n"
+    expect(validate(prose, "prose.feature")).toEqual([])
   })
 })
 

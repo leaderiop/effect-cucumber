@@ -69,6 +69,7 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `warning-duplicate-examples-column.feature` | F11 | Header `\| a \| a \|`: the first column wins for both occurrences, giving `1 twice 1` (cucumber/gherkin#28)                     |
 | `warning-empty-rule.feature`                | F13 | A `Rule:` with no scenarios contributes 0 pickles, in silence                                                                   |
 | `warning-swallowed-step.feature`            | F14 | `Ginve x` written before a valid step is swallowed into `scenario.description`; 1 AST step, 1 pickle step, no error             |
+| `description-plain.feature`                 | F14 | Ordinary prose descriptions on a Background and a Scenario; the swallowed-step heuristic must stay silent                       |
 
 ## Group D — correctness fixtures, no error expected
 

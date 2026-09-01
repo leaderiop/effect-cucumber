@@ -180,6 +180,20 @@ export const isOutlineKeyword = (language: string, keyword: string): boolean => 
 }
 
 /**
+ * Every step keyword of `language`, trimmed, with the wildcard `*` left out.
+ *
+ * Upstream stores each keyword with its trailing space (`"Given "`) and lists `"* "` under all
+ * five kinds. `Validate.ts`'s swallowed-step heuristic compares description lines against these
+ * by name, so `*` — which is also a bullet in ordinary prose — would only add false positives.
+ */
+export const stepKeywords = (language: string): ReadonlyArray<string> => {
+  const dialect = dialectOf(language)
+  if (dialect === undefined) return []
+  const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
+  return [...new Set(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))]
+}
+
+/**
  * Whether `keyword` is a plain Scenario keyword in `language`.
  *
  * Verified: `dialects.en.scenario` is `["Example", "Scenario"]`.

@@ -85,9 +85,14 @@ REQUIREMENT: A heuristically-detected finding MUST be carried as a non-throwing
                                          wins for both
                EmptyRule               — a Rule: containing no scenarios, which
                                          compiles to nothing in silence
-               SuspectedSwallowedStep  — a block carrying a description, which
-                                         is where a step keyword misspelled
-                                         before any valid step is absorbed
+               SuspectedSwallowedStep  — a description LINE whose leading text
+                                         is a near miss of one of the dialect's
+                                         step keywords (wrong case, or within a
+                                         small edit distance), which is what a
+                                         step keyword misspelled before any
+                                         valid step becomes; ordinary prose
+                                         descriptions MUST NOT warn, and only
+                                         the suspect lines are quoted
 
              ParsedFeature.warnings is always an array and is usually empty.
              Warnings are data: loadFeature does not print, log, or throw them.
