@@ -41,11 +41,12 @@
  *     const cannot carry overload signatures. That is the whole reason, and it is written here so the
  *     next reader "restoring consistency" finds out before deleting the overloads to do it.
  *
- * (c) **`define` returns `void`, never `void` or a promise.** An async define callback returns before
- *     registering anything, so the Feature collects zero steps and then PASSES with zero tests
- *     rather than failing. The type is the only thing that forbids it (PITFALLS #2, this phase's
- *     Pitfall 6). Nothing in this module returns a thenable either: the define callback is invoked
- *     synchronously, and `collectFeature` returns its result by value.
+ * (c) **A define callback must be synchronous, and `invokeDefine` enforces it.** An async callback
+ *     returns before registering anything after its first `await`, so the Feature would collect
+ *     fewer steps than were written and PASS. The `void` return type does not forbid a Promise, so
+ *     every container's callback is run through `invokeDefine`, which throws at collection time on
+ *     a Promise result. Nothing in this module returns a thenable either: `collectFeature` returns
+ *     its result by value.
  *
  * (d) **D-04's collision rule is unchanged; the MECHANISM that delivers it is now provision order,
  *     not a merge combinator's argument order.** `shared` and `perScenario` MAY name the same
@@ -147,7 +148,7 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
-import { captureCallSite } from "./CallSite.ts"
+import { captureCallSite, formatCallSite } from "./CallSite.ts"
 import type {
   BackgroundDsl,
   FeatureDsl,
@@ -630,6 +631,39 @@ const splitLayerArgument = (
     : { shared: null, perScenario: argument }
 
 /**
+ * Run one container's define callback and refuse a Promise-returning one.
+ *
+ * Every container — `describeFeature`, `Rule`, `Scenario`, `Background` — snapshots its registry
+ * the moment its callback returns. An `async` callback returns a Promise before its first `await`
+ * resolves, so every registration after that `await` lands too late and is never seen: the
+ * Feature emits fewer tests than the author wrote, and PASSES. The callback types say `void`, and
+ * `void` accepts a Promise-returning function, so the type does not catch this (a `=> undefined`
+ * type would, but it also rejects a named callback annotated `: void`, which `index.ts` exports the
+ * dsl types for). This runtime check is the guard; `test/describeFeature.test.ts` pins it for all
+ * four containers.
+ *
+ * The rejected Promise is observed so the throw below is the only failure the runner reports,
+ * rather than also an unhandled rejection from a callback that later fails.
+ */
+const invokeDefine = <Dsl>(
+  container: string,
+  name: string | null,
+  define: (dsl: Dsl) => void,
+  dsl: Dsl
+): void => {
+  const returned: unknown = define(dsl)
+  if (returned instanceof Promise) {
+    returned.catch(() => undefined)
+    const label = name === null ? container : `${container} "${name}"`
+    throw new Error(
+      `${label}'s define callback returned a Promise (at ${formatCallSite(captureCallSite())}). `
+        + "A define callback must be synchronous: every step, hook and container it registers after "
+        + "an `await` is never seen, so the Feature would emit fewer tests than were written and pass."
+    )
+  }
+}
+
+/**
  * Turn the Rule NAME a test author wrote into the `ruleId` every scope and hook registered inside
  * that `Rule(...)` call will carry.
  *
@@ -819,7 +853,7 @@ const collect = (
     const defineScenario = maybeDefine ?? (extraLayerOrDefine as (dsl: ScenarioDsl<any>) => void)
     registry.pushScope({ kind: "scenario", name, ruleId })
     try {
-      defineScenario(scenarioDsl)
+      invokeDefine("Scenario", name, defineScenario, scenarioDsl)
     } finally {
       // `finally`, so a define callback that throws cannot leave the stack unbalanced and re-parent
       // every step registered after it onto a scope the document does not have.
@@ -840,7 +874,7 @@ const collect = (
       // that Rule's id instead — which is the only thing telling the two apart downstream (D-04).
       registry.pushScope({ kind: "background", name: null, ruleId: null })
       try {
-        defineBackground(backgroundDsl)
+        invokeDefine("Background", null, defineBackground, backgroundDsl)
       } finally {
         // `finally`, so a define callback that throws cannot leave the stack unbalanced and
         // re-parent every step registered after it onto a scope the document does not have.
@@ -917,7 +951,7 @@ const collect = (
           // these registrations only to a `rule-background` step of THIS Rule.
           registry.pushScope({ kind: "background", name: null, ruleId })
           try {
-            defineBackground(backgroundDsl)
+            invokeDefine("Background", ruleName, defineBackground, backgroundDsl)
           } finally {
             registry.popScope()
           }
@@ -942,7 +976,7 @@ const collect = (
       // in.
       registry.pushScope({ kind: "rule", name: ruleName, ruleId })
       try {
-        defineRule(ruleDsl)
+        invokeDefine("Rule", ruleName, defineRule, ruleDsl)
       } finally {
         registry.popScope()
       }
@@ -958,7 +992,7 @@ const collect = (
     AfterAllScenarios: hookRegistrar("AfterAllScenarios")
   }
 
-  define(dsl)
+  invokeDefine("describeFeature", feature.name, define, dsl)
 
   const definitions = registry.definitions()
 

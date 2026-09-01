@@ -159,6 +159,17 @@ REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
              defect out of a beforeAll hook, naming no Scenario. `perScenario`
              MUST NOT carry the same constraint — a per-Scenario Layer that
              fails fails its own Scenario, by name and in place.
+
+             `define`, and every container callback it hands out (`Rule`,
+             `Scenario`, `Background`), MUST be synchronous. A callback that
+             returns a Promise MUST make `describeFeature` throw at
+             collection time, naming the container and the call site: the
+             registry is snapshotted when the callback returns, so every
+             registration after an `await` would be silently dropped and the
+             Feature would pass with fewer tests than were written. The
+             `void` return type does not reject a Promise; the runtime check
+             in `packages/vitest/src/describeFeature.ts` (`invokeDefine`) is
+             the mechanism, pinned by `test/describeFeature.test.ts`.
 ```
 
 ## BEH-EC-003: A step is an Effect-returning function

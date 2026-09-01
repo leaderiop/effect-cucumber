@@ -314,6 +314,41 @@ describe("the define callback runs synchronously", () => {
     expect(ran).toBe(true)
     expect(collected.definitions).toHaveLength(1)
   })
+
+  // The `void` return type accepts an `async` callback, so the runtime is what refuses it. Each
+  // container is exercised: a guard on `describeFeature` alone would leave a `Scenario` callback
+  // that awaits before its `Given` free to drop that step in silence.
+  it("throws at collection time when the describeFeature callback returns a Promise", () => {
+    // No cast: `void` accepts an async function, which is exactly why the runtime has to refuse it.
+    expect(() =>
+      collectFeature(feature, Layer.empty, async ({ Given }) => {
+        Given("registered too late", noop)
+      })
+    ).toThrow(
+      /describeFeature "[^"]+"'s define callback returned a Promise \(at .*describeFeature\.test\.ts:\d+:\d+\)/
+    )
+  })
+
+  it("throws at collection time when a Scenario callback returns a Promise", () => {
+    expect(() =>
+      collectFeature(feature, Layer.empty, ({ Scenario }) => {
+        Scenario("a scenario", async () => {})
+      })
+    ).toThrow(/Scenario "a scenario"'s define callback returned a Promise/)
+  })
+
+  it("throws at collection time when a Rule or a Background callback returns a Promise", () => {
+    expect(() =>
+      collectFeature(ruleFeature, Layer.empty, ({ Rule }) => {
+        Rule("members get a discount", async () => {})
+      })
+    ).toThrow(/Rule "members get a discount"'s define callback returned a Promise/)
+    expect(() =>
+      collectFeature(feature, Layer.empty, ({ Background }) => {
+        Background(async () => {})
+      })
+    ).toThrow(/Background's define callback returned a Promise/)
+  })
 })
 
 /**

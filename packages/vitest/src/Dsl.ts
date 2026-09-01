@@ -341,9 +341,11 @@ export interface RuleDsl<ROut> extends ScenarioDsl<ROut> {
  * The dsl `describeFeature` hands its define callback: `ScenarioDsl`'s five registrars for steps
  * declared at Feature level, plus the containers.
  *
- * Both container callbacks return `void`, never `void | Promise<void>`. An async define callback
- * would return before registering anything, and the Feature would emit zero tests while passing —
- * the type is the only thing that forbids it (PITFALLS #2).
+ * Every container callback must be synchronous: an async one returns before registering anything
+ * after its first `await`, and the Feature would emit fewer tests than were written while passing.
+ * The `void` return type does NOT forbid a Promise-returning function (and `undefined` would also
+ * reject a named callback annotated `: void`), so `describeFeature.ts`'s `invokeDefine` rejects a
+ * Promise result at collection time instead.
  */
 export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
   /**
