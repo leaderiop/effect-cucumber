@@ -18,7 +18,9 @@ import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser
 import { IdGenerator } from "@cucumber/messages"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"
+import * as FileSystem from "effect/FileSystem"
 import * as Option from "effect/Option"
+import * as PlatformError from "effect/PlatformError"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it, vi } from "vitest"
 import { LoadFeatureError } from "../src/Errors.ts"
@@ -72,6 +74,35 @@ describe("readFeatureSource", () => {
     // against the real `NodeFileSystem`, not assumed.
     const platformError = Option.getOrThrow(error.cause) as { readonly cause?: { readonly code?: unknown } }
     expect(platformError.cause?.code).toBe("ENOENT")
+  })
+
+  it("reports a path that exists but is not a readable file as ReadFailed, not MissingFile", async () => {
+    const directory = fixturePath("")
+    const error = await captureError(() => readSource(directory))
+
+    expect(error.reason).toBe("ReadFailed")
+    expect(error.uri).toBe(directory)
+    expect(Option.isSome(error.cause)).toBe(true)
+  })
+
+  it("reports a permission failure as PermissionDenied, discriminating on the PlatformError's own tag", async () => {
+    const denied = FileSystem.layerNoop({
+      readFileString: () =>
+        Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method: "readFileString",
+            description: "EACCES: permission denied"
+          })
+        )
+    })
+    const error = await captureError(() =>
+      Effect.runPromise(readFeatureSource("/locked/feature.feature").pipe(Effect.provide(denied)))
+    )
+
+    expect(error.reason).toBe("PermissionDenied")
+    expect(error.message).toContain("permission denied")
   })
 })
 

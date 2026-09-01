@@ -26,7 +26,13 @@ REQUIREMENT: loadFeature MUST reject, with a distinct named error identifying
              case MUST carry its own reason tag on the thrown LoadFeatureError,
              drawn from exactly this set:
 
-               MissingFile                 — the path could not be read
+               MissingFile                 — no file exists at the path
+               PermissionDenied            — the file exists but may not be
+                                             read by this process
+               ReadFailed                  — any other filesystem failure (a
+                                             directory, a busy handle, a bad
+                                             path); the PlatformError is the
+                                             cause
                ParseFailed                 — the source is not valid Gherkin
                UnknownDialect              — the `# language:` header names a
                                              dialect that does not exist
@@ -167,6 +173,9 @@ const explain = (err: LoadFeatureError): string => {
   const line = Option.getOrElse(err.line, () => 0)
   switch (err.reason) {
     case "MissingFile":
+      return `${err.uri} does not exist.`
+    case "PermissionDenied":
+    case "ReadFailed":
       return `${err.uri} could not be read.`
     case "OutlineWithoutExamples":
     case "EmptyExamples":

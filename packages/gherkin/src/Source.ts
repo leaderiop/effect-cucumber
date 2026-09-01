@@ -44,7 +44,8 @@
 import * as Effect from "effect/Effect"
 import * as FileSystem from "effect/FileSystem"
 import * as Option from "effect/Option"
-import { LoadFeatureError } from "./Errors.ts"
+import type * as PlatformError from "effect/PlatformError"
+import { LoadFeatureError, type LoadFeatureErrorReason } from "./Errors.ts"
 
 /**
  * Read a `.feature` file as UTF-8 text.
@@ -55,12 +56,26 @@ import { LoadFeatureError } from "./Errors.ts"
  * FileSystem.readFile (/path)"`, confirmed by reproduction) is folded into this package's own
  * message shape instead of re-derived from the underlying Node error code.
  */
+/**
+ * The `PlatformError`'s own discriminant decides the reason; nothing is inferred from message
+ * text. `NotFound` is the only case that means the file is absent; a permission failure says so
+ * by name; every other system or argument failure (a directory, a busy handle, a bad path) is
+ * `ReadFailed`, with the platform error attached as `cause` for the detail. Before this mapping
+ * existed every failure was reported as `MissingFile` (audit finding F-14).
+ */
+const reasonOf = (platformError: PlatformError.PlatformError): LoadFeatureErrorReason => {
+  const { _tag } = platformError.reason
+  if (_tag === "NotFound") return "MissingFile"
+  if (_tag === "PermissionDenied") return "PermissionDenied"
+  return "ReadFailed"
+}
+
 export const readFeatureSource = Effect.fn("readFeatureSource")(function*(path: string) {
   const fs = yield* FileSystem.FileSystem
   return yield* fs.readFileString(path, "utf8").pipe(
     Effect.mapError((platformError) =>
       new LoadFeatureError({
-        reason: "MissingFile",
+        reason: reasonOf(platformError),
         uri: path,
         line: Option.none(),
         message: `Cannot read feature file ${path}: ${platformError.message}`,

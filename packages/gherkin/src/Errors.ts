@@ -103,6 +103,8 @@ import * as Schema from "effect/Schema"
  */
 export type LoadFeatureErrorReason =
   | "MissingFile"
+  | "PermissionDenied"
+  | "ReadFailed"
   | "ParseFailed"
   | "UnknownDialect"
   | "NoFeature"
@@ -128,6 +130,8 @@ export type LoadFeatureErrorReason =
 export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("LoadFeatureError", {
   reason: Schema.Literals([
     "MissingFile",
+    "PermissionDenied",
+    "ReadFailed",
     "ParseFailed",
     "UnknownDialect",
     "NoFeature",
