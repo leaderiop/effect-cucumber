@@ -38,14 +38,16 @@
  * `pnpm lint` on a relative value-import whose basename is `index.*`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedFeature } from "../src/Model.ts"
-import { ParameterTypeStore } from "../src/ParameterTypes.ts"
+import { createParameterTypeStore, ParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import rawFixture from "./fixtures/correlation-full.feature?raw"
 
 const fixtureUrl = new URL("./fixtures/correlation-full.feature", import.meta.url)
@@ -141,6 +143,24 @@ describe("loadFeature returns an Effect requiring FileSystem", () => {
     expect(typeof result).toBe("object")
     expect(result).not.toHaveProperty("then")
     expect(result).not.toBeInstanceOf(Promise)
+  })
+})
+
+describe("an unanticipated throw is a defect, not a typed failure", () => {
+  it("a store whose buildRegistry throws a plain Error makes parseFeature die rather than fail with ParseFailed", () => {
+    const broken: ParameterTypeStoreShape = {
+      ...createParameterTypeStore(),
+      buildRegistry: () => {
+        throw new Error("dependency changed under us")
+      }
+    }
+    const exit = Effect.runSyncExit(
+      parseFeature(rawFixture, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(broken)))
+    )
+    const cause = Exit.isFailure(exit) ? exit.cause : undefined
+
+    expect(cause !== undefined && Cause.hasDies(cause)).toBe(true)
+    expect(cause !== undefined && Cause.hasFails(cause)).toBe(false)
   })
 })
 

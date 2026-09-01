@@ -52,6 +52,11 @@ REQUIREMENT: loadFeature MUST reject, with a distinct named error identifying
              A consumer MUST discriminate on the reason tag. Message text is
              written for a human reading a failed test run and is NOT a stable
              interface — it MUST NOT be pattern-matched.
+
+             An exception this library did not anticipate — anything that is
+             neither a LoadFeatureError nor a StepPatternError — is a DEFECT
+             (Effect.die), never a typed failure: relabelling it ParseFailed
+             would blame the feature file for a bug that is not in it.
 ```
 
 Four further findings are real defects with verified silent-failure paths, but each

@@ -113,7 +113,6 @@
  */
 import { IdGenerator } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
-import * as Option from "effect/Option"
 import { correlateFeature } from "./Correlate.ts"
 import { LoadFeatureError, StepPatternError } from "./Errors.ts"
 import type { ParsedFeature } from "./Model.ts"
@@ -135,13 +134,13 @@ import { validateFeature } from "./Validate.ts"
  * silent-miscompile shapes `Validate.ts` rejects — or a `StepPatternError` if
  * `store.buildRegistry()` rejects a recorded custom parameter type at replay time (see
  * `ParameterTypes.ts`). `parseDocument`/`compilePickles`/`correlateFeature`/`validateFeature`
- * are unchanged, still-synchronous, still-throwing functions; `Effect.try` is the only thing
- * here that turns that throw into a typed failure, and its `catch` is total over exactly the
- * two classes this pipeline can throw — confirmed by grepping every `throw new` in this
- * package's pipeline modules, not assumed. Anything else reaching `catch` would mean a
- * dependency changed behaviour under this package; it is still reported as a well-typed
- * `LoadFeatureError` rather than crashing unrecognisably, matching this codebase's existing
- * "no bare upstream error" policy (see `ParameterTypes.ts`'s own catch-alls).
+ * are unchanged, still-synchronous, still-throwing functions. The `Effect.suspend` below is the
+ * one place a throw becomes an Effect outcome, and it distinguishes two kinds: a
+ * `LoadFeatureError` or `StepPatternError` — the only two classes this pipeline throws on
+ * purpose — becomes a typed FAILURE; anything else becomes a DEFECT (`Effect.die`). A defect is
+ * the honest report of "a dependency changed behaviour under this package": relabelling it as
+ * a typed `ParseFailed` would blame the feature file for a bug that is not in it (audit finding
+ * F-16). Asserted by `test/loadFeature.test.ts` ("an unanticipated throw is a defect").
  *
  * `ParameterTypeStore` is resolved via `yield*`, not a function argument — a caller MUST
  * `Effect.provide` a `ParameterTypeStore` Layer (`ParameterTypeStore.Default` for the standard
@@ -152,29 +151,22 @@ import { validateFeature } from "./Validate.ts"
  */
 export const parseFeature = Effect.fn("parseFeature")(function*(source: string, uri: string) {
   const store = yield* ParameterTypeStore
-  return yield* Effect.try({
-    try: (): ParsedFeature => {
+  return yield* Effect.suspend((): Effect.Effect<ParsedFeature, LoadFeatureError | StepPatternError> => {
+    try {
       const newId = IdGenerator.uuid()
       const document = parseDocument(source, uri, newId)
       const pickles = compilePickles(document, uri, newId)
       const correlated = correlateFeature(document, pickles, uri)
-      return {
+      return Effect.succeed({
         ...correlated.feature,
         warnings: validateFeature(correlated),
         parameterTypes: store.buildRegistry()
-      }
-    },
-    catch: (thrown): LoadFeatureError | StepPatternError =>
-      thrown instanceof LoadFeatureError || thrown instanceof StepPatternError
-        ? thrown
-        : new LoadFeatureError({
-          reason: "ParseFailed",
-          uri,
-          line: Option.none(),
-          message: `parseFeature failed for ${uri} with an error this library did not anticipate: `
-            + `${thrown instanceof Error ? thrown.message : String(thrown)}`,
-          cause: Option.some(thrown)
-        })
+      })
+    } catch (thrown) {
+      return thrown instanceof LoadFeatureError || thrown instanceof StepPatternError
+        ? Effect.fail(thrown)
+        : Effect.die(thrown)
+    }
   })
 })
 
