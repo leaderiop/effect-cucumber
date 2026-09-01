@@ -778,6 +778,21 @@ describe("the Rule container registers against the Rule it names", () => {
 })
 
 describe("a Rule's extra Layer merges onto the Feature's without joining it", () => {
+  it.effect("the two-argument form keeps the Feature's ambient Layer as the Rule's own", () =>
+    Effect.gen(function*() {
+      const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {
+        Rule("members get a discount", ({ Before }) => {
+          Before(noop)
+        })
+      })
+
+      // Registered like any Rule — keyed, hooks attached — and its Layer is the ambient one itself,
+      // not a merge of nothing onto it: same reference, same service.
+      assert.strictEqual(collected.ruleLayers.get(ruleAId), collected.layer)
+      assert.strictEqual(collected.ruleHooks.get(ruleAId)?.Before.length, 1)
+      assert.strictEqual(yield* markerFrom(ruleLayerOf(collected, ruleAId)), "shared")
+    }))
+
   it.effect("provides both the Feature's ambient service and the Rule's own from the Rule's Layer", () =>
     Effect.gen(function*() {
       const collected = collectFeature(ruleFeature, sharedMarker, ({ Rule }) => {

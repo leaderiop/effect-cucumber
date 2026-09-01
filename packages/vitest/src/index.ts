@@ -197,8 +197,20 @@ export type { GherkinTagDefinition } from "./GherkinTags.ts"
  * ([ADR-EC-017](../../../spec/decisions/017-background-and-scenario-are-step-definition-containers.md)).
  * `HookRegistrar` is what a consumer annotates a hook body with when it is written as a named
  * function rather than inline — the same reason `StepRegistrar` is exported for a step.
+ * `RuleDsl` is what a named `Rule` callback's parameter is annotated with; `RuleRegistrar` and
+ * `ScenarioRegistrar` are the two-form container members themselves, for a consumer who passes one
+ * to a helper.
  */
-export type { BackgroundDsl, FeatureDsl, HookRegistrar, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+export type {
+  BackgroundDsl,
+  FeatureDsl,
+  HookRegistrar,
+  RuleDsl,
+  RuleRegistrar,
+  ScenarioDsl,
+  ScenarioRegistrar,
+  StepRegistrar
+} from "./Dsl.ts"
 
 /**
  * The two channels step drift reaches a consumer through (BEH-EC-013, ADR-EC-019).

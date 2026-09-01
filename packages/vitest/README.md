@@ -119,8 +119,9 @@ services rather than merely sit beside them — and a step inside that Rule can 
 step written outside it does not compile, by name (`effect(missingEffectContext)`, asserted by
 `pnpm verify:tsgo-gate`). `Scenario(name, extraLayer, define)` does the same thing for one Scenario, onto whatever was
 ambient where it was written, so a Scenario inside a Rule reaches all three tiers. Both are always per-Scenario scope,
-built fresh for every Scenario — there is no "shared within a Rule" tier, and the two-argument
-`Scenario(name, define)` form is unchanged.
+built fresh for every Scenario — there is no "shared within a Rule" tier. Both containers also have a two-argument form,
+`Rule(name, define)` and `Scenario(name, define)`, for the ordinary case that needs no extra services; a Rule declared
+that way contributes nothing to its Scenarios' ambient Layer.
 
 A Rule scopes more than its Layer. `Before`, `After`, `BeforeStep` and `AfterStep` declared inside a Rule apply to that
 Rule's Scenarios only, and compose with the Feature's own: the Feature's Before-shaped hooks run first and then the

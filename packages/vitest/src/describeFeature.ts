@@ -856,9 +856,17 @@ const collect = (
     // note (f) makes for the hooks applies unchanged to a nested container.
     Rule: (
       ruleName: string,
-      extraLayer: Layer.Layer<any, any, any>,
-      defineRule: (dsl: RuleDsl<any>) => void
+      extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: RuleDsl<any>) => void),
+      maybeDefine?: (dsl: RuleDsl<any>) => void
     ): void => {
+      // Arity narrowing, the same shape `makeScenarioRegistrar` uses. The two-argument form is a
+      // Rule whose Scenarios see the ambient Layer unchanged, so it merges nothing: `null` here
+      // makes `ruleAmbientLayer` below the ambient Layer itself rather than a merge onto it.
+      const extraLayer: Layer.Layer<any, any, any> | null = maybeDefine === undefined
+        ? null
+        : (extraLayerOrDefine as Layer.Layer<any, any, any>)
+      const defineRule = maybeDefine ?? (extraLayerOrDefine as (dsl: RuleDsl<any>) => void)
+
       // The one place a Rule NAME becomes an id — `resolveRuleId`'s own comment has the sentinel
       // argument, and `Registry.ts` note (e) / `Plan.ts` note (e) are the two consumers that depend
       // on it never being `null`.
@@ -885,7 +893,7 @@ const collect = (
       // (a Rule Layer computing a discounted price from a shared list price, with the shared Layer
       // built once and the Rule's rebuilt per Scenario), not hoped for. Plan 10-04's
       // Rule-under-`shared` regression block is what keeps it true.
-      const ruleAmbientLayer = Layer.provideMerge(featureLayer)(extraLayer)
+      const ruleAmbientLayer = extraLayer === null ? featureLayer : Layer.provideMerge(featureLayer)(extraLayer)
       ruleLayers.set(ruleId, ruleAmbientLayer)
 
       // The Rule-scoped counterpart of the Feature-level `hookRegistrar` closure above, differing in

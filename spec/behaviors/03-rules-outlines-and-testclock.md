@@ -26,11 +26,10 @@ material, not a compiled example._
 > **See:** [ADR-EC-010](../decisions/010-rule-and-scenario-scoped-extra-layers.md)
 
 ```ts
-export const Rule: <R2, E2>(
-  name: string,
-  extraLayer: Layer.Layer<R2, E2, any>,
-  define: (dsl: RuleDsl<R | R2>) => void
-) => void
+export interface RuleRegistrar<R> {
+  (name: string, define: (dsl: RuleDsl<R>) => void): void
+  <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: RuleDsl<R | R2>) => void): void
+}
 ```
 
 ```
@@ -39,6 +38,11 @@ REQUIREMENT: A service contributed by extraLayer MUST be usable by a step
              outside this Rule (at the Feature's top level, or inside a
              different Rule) that attempts to use that service MUST fail to
              compile.
+
+             The extra Layer is OPTIONAL: Rule(name, define) declares a Rule
+             whose Scenarios see the ambient Layer unchanged, exactly as the
+             two-argument Scenario(name, define) form does. A Rule declared
+             that way contributes no services of its own.
 ```
 
 ## BEH-EC-010: Scenario Outline Examples are typed for free
@@ -273,7 +277,9 @@ reads. This section is the normative source for all four, and stands to BEH-EC-0
 BEH-EC-017 stands to BEH-EC-006.
 
 ```
-REQUIREMENT: BOTH extra-Layer forms exist and share one mechanism.
+REQUIREMENT: BOTH extra-Layer forms exist and share one mechanism, and
+             BOTH containers also accept the two-argument (name, define)
+             form, which merges nothing onto the ambient Layer.
              Rule(name, extraLayer, define) and
              Scenario(name, extraLayer, define) each MUST combine extraLayer
              with whatever Layer was ambient AT THAT CALL SITE via

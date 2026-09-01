@@ -275,6 +275,32 @@ export interface ScenarioRegistrar<ROut> {
 }
 
 /**
+ * One `Rule(...)` container declaration, in either of the two forms: `Rule(name, define)` and
+ * `Rule(name, extraLayer, define)` — BEH-EC-009.
+ *
+ * The same two-call-signature shape as `ScenarioRegistrar`, for the same reason: overload resolution
+ * by arity. A Rule that needs no extra services is the ordinary case, and forcing `Layer.empty` into
+ * its second slot would document nothing — there is no second Layer for it to collide with.
+ *
+ * The callback receives a `RuleDsl<ROut | R2>`, and that union is the point: a step written in
+ * here may use both the Feature's ambient services (`ROut`) and the ones `extraLayer` contributes
+ * (`R2`), while the identical step written at Feature level or inside a different Rule still only
+ * sees `ROut` and fails to compile. That is INV-EC-005 as a type, not a convention.
+ *
+ * `R2` and `E2` are per-call-site because they genuinely vary per Rule, exactly as `Params`/`A`/`E`
+ * do for `StepRegistrar`; `ROut` stays bound to the enclosing `describeFeature` and is unioned
+ * with, never replaced by, `R2` — note (e). `extraLayer`'s own `RIn` is `any` so a Rule Layer may
+ * build on top of ambient services rather than only alongside them, which ADR-EC-010 requires —
+ * note (d) on why that `any` is a different position from a step body's.
+ */
+export interface RuleRegistrar<ROut> {
+  /** The two-argument form: the Rule's Scenarios see the ambient Layer unchanged. */
+  (name: string, define: (dsl: RuleDsl<ROut>) => void): void
+  /** The three-argument form: `extraLayer` extends the ambient Layer for the Scenarios inside this Rule. */
+  <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: RuleDsl<ROut | R2>) => void): void
+}
+
+/**
  * The dsl a `Rule(name, extraLayer, define)` callback receives — `ScenarioDsl`'s five registrars for
  * steps declared at Rule level, plus this Rule's own `Background` and `Scenario` containers and the
  * four hooks ADR-EC-010 scopes to a Rule.
@@ -338,28 +364,13 @@ export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
    */
   readonly Scenario: ScenarioRegistrar<ROut>
   /**
-   * Declare the step definitions for the Rule named `name`, extending the ambient Layer with
-   * `extraLayer` for the Scenarios inside it — BEH-EC-009.
-   *
-   * The callback receives a `RuleDsl<ROut | R2>`, and that union is the point: a step written in
-   * here may use both the Feature's ambient services (`ROut`) and the ones `extraLayer` contributes
-   * (`R2`), while the identical step written at Feature level or inside a different Rule still only
-   * sees `ROut` and fails to compile. That is INV-EC-005 as a type, not a convention.
-   *
-   * `R2` and `E2` are per-call-site because they genuinely vary per Rule, exactly as `Params`/`A`/`E`
-   * do for `StepRegistrar`; `ROut` stays bound to the enclosing `describeFeature` and is unioned
-   * with, never replaced by, `R2` — note (e). `extraLayer`'s own `RIn` is `any` so a Rule Layer may
-   * build on top of ambient services rather than only alongside them, which ADR-EC-010 requires —
-   * note (d) on why that `any` is a different position from a step body's.
+   * Declare the step definitions for the Rule named `name`, optionally extending the ambient Layer
+   * with an extra Layer for the Scenarios inside it — BEH-EC-009, `RuleRegistrar`.
    *
    * A sibling of `Background`/`Scenario`, never spread into `ScenarioDsl`, for the identical leak
    * reason note (f) gives for the hooks.
    */
-  readonly Rule: <R2, E2>(
-    name: string,
-    extraLayer: Layer.Layer<R2, E2, any>,
-    define: (dsl: RuleDsl<ROut | R2>) => void
-  ) => void
+  readonly Rule: RuleRegistrar<ROut>
   /** Register a hook that runs before each Scenario, after any `BeforeAllScenarios` hooks. */
   readonly Before: HookRegistrar<ROut>
   /** Register a hook that runs after each Scenario, whether it succeeded or failed. */

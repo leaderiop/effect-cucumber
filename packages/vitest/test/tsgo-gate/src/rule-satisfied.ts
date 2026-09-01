@@ -149,6 +149,21 @@ describeFeature(feature, World.layer, ({ Rule, Scenario }) => {
     void ruleDsl.BeforeAllScenarios
   })
 
+  // The two-argument form: a Rule that needs no extra services. Its steps see the Feature's ambient
+  // `World` and nothing else; `RuleService` must be as unreachable here as it is outside any Rule.
+  Rule("a rule without an extra Layer", (ruleDsl) => {
+    ruleDsl.Scenario("inside the plain rule", ({ Given }) => {
+      Given("uses only the ambient service", function*() {
+        yield* World
+      })
+      // @ts-expect-error a Rule declared without an extra Layer contributes no services of its own
+      // @effect-diagnostics-next-line missingEffectContext:off
+      Given("reaches for the other rule's service", function*() {
+        yield* (yield* RuleService).audit
+      })
+    })
+  })
+
   // THE DSL-05 CLAIM, invisibility half — INV-EC-005 as an assertion inside the must-compile-clean
   // file. This Scenario is a sibling of the `Rule` above, so its `ROut` is `World` alone. If this
   // directive ever goes unused, a Rule's extra Layer has leaked into the ambient `ROut` OUTSIDE the
