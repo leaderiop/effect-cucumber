@@ -277,6 +277,10 @@ check_package() {
   # happened rather than trusting that behaviour.
   grep -qx "package/README.md" <<<"$contents" || fail "$name: README.md is absent from the tarball -- the npm page would be blank."
   echo "  ✓ README.md is in the tarball"
+  # package.json declares "license": "MIT"; a tarball that carries the claim without the
+  # text is what this catches. npm auto-includes a LICENSE only from the package directory.
+  grep -qx "package/LICENSE" <<<"$contents" || fail "$name: LICENSE is absent from the tarball -- package.json claims MIT but ships no license text."
+  echo "  ✓ LICENSE is in the tarball"
 
   # publint reads the extracted directory, catching publish-time footguns this
   # script does not encode by hand.
