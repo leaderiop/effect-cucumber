@@ -22,9 +22,10 @@
 //     `--allowOnly`. (The literal setting is written exactly once, below, so that an acceptance
 //     grep counting it cannot be satisfied by this paragraph instead — STATE.md's 03-04 lesson.)
 //
-// (c) The two glob keys vitest uses to choose test files are deliberately ABSENT. Setting either is
-//     the likeliest way to silently stop running some package's tests; omitting them preserves the
-//     defaults every existing test file in this repo relies on. `pnpm test` reported 30 test files
+// (c) `include` is deliberately ABSENT and `exclude` only EXTENDS vitest's defaults. Replacing either
+//     is the likeliest way to silently stop running some package's tests; keeping the defaults is
+//     what every existing test file in this repo relies on. The one addition, `**/.claude/**`, keeps
+//     the agent worktrees git parks under `.claude/worktrees/` (gitignored) out of a root run. `pnpm test` reported 30 test files
 //     and 645 tests both immediately before and immediately after this file first landed, which is
 //     the empirical check RESEARCH assumption A5 asked for. That default is also why every
 //     acceptance step module under `packages/vitest/test/acceptance/` is named `*.steps.test.ts`
@@ -62,7 +63,7 @@
 // `describeFeature.ts`, which imports `@effect/vitest`, and this config file is loaded outside any
 // test context. `GherkinTags.ts` is a leaf whose only imports are `node:fs` and `tinyglobby`, which
 // is what makes it safe to reach from here.
-import { defineConfig } from "vitest/config"
+import { configDefaults, defineConfig } from "vitest/config"
 import { gherkinTags } from "./packages/vitest/src/GherkinTags.ts"
 
 /**
@@ -96,6 +97,7 @@ const declaredByAcceptanceFeatures = gherkinTags("packages/vitest/test/acceptanc
 
 export default defineConfig({
   test: {
+    exclude: [...configDefaults.exclude, "**/.claude/**"],
     tags: [...declaredByHand, ...declaredByAcceptanceFeatures],
     allowOnly: false
   }
