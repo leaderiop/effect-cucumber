@@ -247,7 +247,7 @@
  * for an impossible state, and the reason there is no `!` anywhere in this file under
  * `noUncheckedIndexedAccess`.
  *
- * The three `any`s in `Layer.Layer<any, any, never>` are erased detail and not a widening of any
+ * The three `any`s in `ErasedLayer` are erased detail and not a widening of any
  * contract; the value is passed straight through to `buildScenarioEffect`, whose own closing
  * paragraph has the argument verbatim. If one of the declarations is ever narrowed, narrow all of
  * them: they describe the same value.
@@ -267,13 +267,12 @@
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
 import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
-import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
 import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.ts"
 import { buildScenarioTitles } from "./OutlineTitle.ts"
-import type { FeaturePlan, ScenarioPlan } from "./Plan.ts"
+import type { ErasedLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
 import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
@@ -485,11 +484,11 @@ export const emitFeature = (
   args: {
     readonly api: TestApi
     readonly plan: FeaturePlan
-    readonly layer: Layer.Layer<any, any, never>
+    readonly layer: ErasedLayer
     readonly hooks: HookSet
     readonly ruleHooks: ReadonlyMap<string, HookSet>
-    readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
-    readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+    readonly ruleLayers: ReadonlyMap<string, ErasedLayer>
+    readonly scenarioLayers: ReadonlyMap<string, ErasedLayer>
     readonly tagFilter: TagFilter
     readonly onEmitted?: ((outcome: EmitOutcome) => void) | undefined
   }

@@ -164,7 +164,7 @@ import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
 // is imported FROM there INTO this module, so an edge pointing back the other way would be an
 // `import/no-cycle` violation and a `pnpm circular` failure. See that module's closing paragraph.
-import { type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
+import { type ErasedExtraLayer, type ErasedLayer, type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
 import { emitFeature, type EmitOutcome } from "./Runner.ts"
 // The composite `scenarioLayers` key, in a LEAF module both this file and `Runner.ts` import rather
@@ -190,8 +190,8 @@ import type { TestApi } from "./TestApi.ts"
  * caller can observe.
  */
 type LayerArgument =
-  | Layer.Layer<any, any, never>
-  | { readonly shared: Layer.Layer<any, any, never>; readonly perScenario: Layer.Layer<any, any, never> }
+  | ErasedLayer
+  | { readonly shared: ErasedLayer; readonly perScenario: ErasedLayer }
 
 /**
  * `describeFeature`'s optional fourth argument: the registration-time tag filter (D-01, D-03).
@@ -257,7 +257,7 @@ export type FeatureCollection = {
    *
    * See note (d) for the collision rule and for the provision order that now delivers it.
    */
-  readonly layer: Layer.Layer<any, any, never>
+  readonly layer: ErasedLayer
   /**
    * The SHARED tier, or `null` — see note (d).
    *
@@ -270,7 +270,7 @@ export type FeatureCollection = {
    * one is built exactly once per Feature and made ambient on the emitted test nodes, that one is
    * provided inside each Scenario's own Effect and rebuilt on every execution (INV-EC-002).
    */
-  readonly sharedLayer: Layer.Layer<any, any, never> | null
+  readonly sharedLayer: ErasedLayer | null
   readonly definitions: ReadonlyArray<StepDefinition<StepBody>>
   /**
    * The definitions joined against the Feature: every step resolved, plus the unused-pattern
@@ -318,7 +318,7 @@ export type FeatureCollection = {
    *
    * `Runner.ts` is what threads these into emission, and that wiring is plan 08-07's.
    */
-  readonly ruleLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+  readonly ruleLayers: ReadonlyMap<string, ErasedLayer>
   /**
    * One entry per `Rule(...)` call, carrying only the hooks registered through THAT Rule's dsl —
    * `Before`/`After`/`BeforeStep`/`AfterStep` only, since `RuleDsl` exposes no other registrar
@@ -354,7 +354,7 @@ export type FeatureCollection = {
    * F22 makes Scenario names unique per SCOPE only, so a Rule's Scenario and a same-named
    * Feature-level one are both legal and must not collide here.
    */
-  readonly scenarioLayers: ReadonlyMap<string, Layer.Layer<any, any, never>>
+  readonly scenarioLayers: ReadonlyMap<string, ErasedLayer>
 }
 
 /**
@@ -623,8 +623,8 @@ const sharedLayerTestApi = (featureUri: string, sharedIt: Vitest.MethodsNonLive<
 const splitLayerArgument = (
   argument: LayerArgument
 ): {
-  readonly shared: Layer.Layer<any, any, never> | null
-  readonly perScenario: Layer.Layer<any, any, never>
+  readonly shared: ErasedLayer | null
+  readonly perScenario: ErasedLayer
 } =>
   "perScenario" in argument
     ? { shared: argument.shared, perScenario: argument.perScenario }
@@ -734,13 +734,13 @@ const collect = (
   // Every Rule this Feature's define callback actually called `Rule(...)` for, keyed by the id
   // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
   // member's closure mutates it while `define(dsl)` runs, and read only after that call returns.
-  const ruleLayers = new Map<string, Layer.Layer<any, any, never>>()
+  const ruleLayers = new Map<string, ErasedLayer>()
 
   // Every THREE-argument `Scenario(...)` call, from either level, keyed by `scenarioKey`. Beside
   // `ruleLayers` because it has the identical lifecycle — mutated by a container closure while
   // `define(dsl)` runs, read only after it returns — and never keyed by name alone, for the reason
   // `ScenarioKey.ts` note (a) gives.
-  const scenarioLayers = new Map<string, Layer.Layer<any, any, never>>()
+  const scenarioLayers = new Map<string, ErasedLayer>()
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
@@ -834,11 +834,11 @@ const collect = (
    */
   const makeScenarioRegistrar = (
     ruleId: string | null,
-    ambientLayer: Layer.Layer<any, any, never>
+    ambientLayer: ErasedLayer
   ): ScenarioRegistrar<any> =>
   (
     name: string,
-    extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: ScenarioDsl<any>) => void),
+    extraLayerOrDefine: ErasedExtraLayer | ((dsl: ScenarioDsl<any>) => void),
     maybeDefine?: (dsl: ScenarioDsl<any>) => void
   ): void => {
     // The two-argument form records NOTHING, and that absence is the contract `scenarioLayers`'
@@ -846,7 +846,7 @@ const collect = (
     // Layer unchanged". Writing `Layer.empty` here instead would be the plausible tidy-up and would
     // erase the distinction, leaving a consumer no way to tell the two forms apart.
     if (maybeDefine !== undefined) {
-      const extraLayer = extraLayerOrDefine as Layer.Layer<any, any, any>
+      const extraLayer = extraLayerOrDefine as ErasedExtraLayer
       scenarioLayers.set(scenarioKey(ruleId, name), Layer.provideMerge(ambientLayer)(extraLayer))
     }
 
@@ -890,15 +890,15 @@ const collect = (
     // note (f) makes for the hooks applies unchanged to a nested container.
     Rule: (
       ruleName: string,
-      extraLayerOrDefine: Layer.Layer<any, any, any> | ((dsl: RuleDsl<any>) => void),
+      extraLayerOrDefine: ErasedExtraLayer | ((dsl: RuleDsl<any>) => void),
       maybeDefine?: (dsl: RuleDsl<any>) => void
     ): void => {
       // Arity narrowing, the same shape `makeScenarioRegistrar` uses. The two-argument form is a
       // Rule whose Scenarios see the ambient Layer unchanged, so it merges nothing: `null` here
       // makes `ruleAmbientLayer` below the ambient Layer itself rather than a merge onto it.
-      const extraLayer: Layer.Layer<any, any, any> | null = maybeDefine === undefined
+      const extraLayer: ErasedExtraLayer | null = maybeDefine === undefined
         ? null
-        : (extraLayerOrDefine as Layer.Layer<any, any, any>)
+        : (extraLayerOrDefine as ErasedExtraLayer)
       const defineRule = maybeDefine ?? (extraLayerOrDefine as (dsl: RuleDsl<any>) => void)
 
       // The one place a Rule NAME becomes an id — `resolveRuleId`'s own comment has the sentinel

@@ -161,6 +161,7 @@ import {
   type StepOwner
 } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
+import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import { compareCallSites, formatCallSite } from "./CallSite.ts"
 import { makeUnusedStepDefinitionWarning, StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
@@ -176,6 +177,25 @@ import type { RegistryScopeKind, StepDefinition } from "./Registry.ts"
  * thing, and the one that would actually disable INV-EC-003.
  */
 export type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any, any>
+
+/**
+ * The ONE place the runtime core erases a Layer's type parameters (INV-EC-003's boundary
+ * paragraph names it). Every Layer that reaches `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts` or
+ * the composition root has already been checked against the step and hook bodies it serves by
+ * `Dsl.ts`'s `StepRegistrar<ROut>`/`HookRegistrar<ROut>` at authoring time; from here on the value
+ * is only carried and provided, never written against. Spelling the erasure once keeps it from being
+ * mistaken for fourteen independent widenings, and keeps a future narrowing a one-line change.
+ */
+export type ErasedLayer = Layer.Layer<any, any, never>
+
+/**
+ * An EXTRA Layer a `Rule` or `Scenario` merges onto its ambient tier — see `ErasedLayer`. Its input
+ * is left open because the ambient tier is what satisfies it, through `Layer.provideMerge`.
+ */
+export type ErasedExtraLayer = Layer.Layer<any, any, any>
+
+/** A hook batch after erasure — see `ErasedLayer`. `R` is whatever the ambient tier provides at run time. */
+export type ErasedEffect = Effect.Effect<void, unknown, any>
 
 /**
  * One Pickle step joined to the single step definition that will run it.

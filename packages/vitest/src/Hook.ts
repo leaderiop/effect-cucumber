@@ -83,6 +83,7 @@ import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import type { HookDefinition, HookKind } from "./HookRegistry.ts"
+import type { ErasedEffect } from "./Plan.ts"
 import { register } from "./Step.ts"
 
 /**
@@ -240,7 +241,7 @@ export const mergeHookSets = (feature: HookSet, rule: HookSet): HookSet => ({
  * See note (g) for why the fold uses `Cause.combine` rather than a wrapper error class, and why
  * `Effect.ensuring` is not the combinator anywhere in this module.
  */
-export const runHookBatch = (hooks: ReadonlyArray<HookBody>): Effect.Effect<void, unknown, any> =>
+export const runHookBatch = (hooks: ReadonlyArray<HookBody>): ErasedEffect =>
   Effect.gen(function*() {
     const failures: Array<Cause.Cause<unknown>> = []
 

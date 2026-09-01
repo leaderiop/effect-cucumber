@@ -119,7 +119,7 @@
  *     (c) already gives for the `Unresolved` verdict. The `isUnresolved` branch stays OUTSIDE this
  *     unit: an unresolved step never runs, so there is no step for an `AfterStep` to follow.
  *
- * The three `any`s in `Layer.Layer<any, any, never>` are erased detail rather than a widening of any
+ * The three `any`s in `ErasedLayer` are erased detail rather than a widening of any
  * contract, and the reasoning is `describeFeature.ts`'s verbatim — its `FeatureCollection.layer`
  * carries the identical declaration for the identical reason. `Dsl.ts`'s `StepRegistrar<ROut>` has
  * already checked every step body against the ambient Layer's output at authoring time, which is the
@@ -136,10 +136,9 @@
  * precedent.
  */
 import * as Effect from "effect/Effect"
-import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 import { type HookSet, runHookBatch } from "./Hook.ts"
-import type { PlannedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
+import type { ErasedLayer, PlannedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
 
 /**
  * Whether `planned` is the step-did-not-resolve member of the union.
@@ -188,7 +187,7 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
 export const buildScenarioEffect = (
   args: {
     readonly plan: ScenarioPlan
-    readonly layer: Layer.Layer<any, any, never>
+    readonly layer: ErasedLayer
     readonly hooks: HookSet
   }
 ): Effect.Effect<void, unknown, Scope.Scope> =>
