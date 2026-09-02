@@ -169,9 +169,12 @@ import { gherkinTags } from "@effect-cucumber/vitest"
 import { defineConfig } from "vitest/config"
 
 export default defineConfig({
-  test: { tags: [...gherkinTags("features/**/*.feature"), { name: "@skip" }, { name: "@only" }] }
+  test: { tags: gherkinTags("features/**/*.feature") }
 })
 ```
+
+`@skip` and `@only` are declared like any other tag the moment a `.feature` file carries them; add a hand-written
+`{ name: "@skip" }` beside the spread only if you want to filter on a tag before any file uses it.
 
 It takes a glob pattern (or an array of them) and has no default — it never scans a tree you did not name. Relative
 patterns resolve against `process.cwd()` unless you pass `{ cwd }`; a config file should pass its own directory,

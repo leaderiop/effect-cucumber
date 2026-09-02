@@ -147,20 +147,8 @@ describe("makeWarning", () => {
     expect(warning.message).toBe("<b> is not one of the Examples columns of this Outline: a")
   })
 
-  it("round-trips the warning line as Option.some(9)", () => {
-    expect(warning.line).toEqual(Option.some(9))
-  })
-
-  it("normalises an omitted warning line to Option.none()", () => {
-    // `makeWarning`'s own `line?: number` argument stays plain and omittable (it is not a
-    // Schema-constrained class, see Errors.ts) — it is the one place that converts to the
-    // field's `Option<number>` type.
-    const noLine = makeWarning({
-      reason: "EmptyRule",
-      uri: "features/empty-rule.feature",
-      message: "this Rule contains no Scenarios and produced no pickles"
-    })
-    expect(noLine.line).toEqual(Option.none())
+  it("round-trips the warning line as a plain number", () => {
+    expect(warning.line).toBe(9)
   })
 
   it("is not an Error instance, because Group C findings never throw", () => {

@@ -208,18 +208,14 @@ export const isScenarioKeyword = (language: string, keyword: string): boolean =>
 
 /**
  * Narrow `document.feature`, which is `undefined` — not `null` — for a comment-only or empty
- * file. `Parser.ts` has already rejected that case; this repeats the guard because the type
- * says it can happen and a silent `!` would be a lie.
+ * file. `Parser.ts` is the ONE place that rejects that case with a `NoFeature` error; reaching
+ * this throw would mean a document bypassed the parser, which is a library defect and is
+ * reported as one rather than as a second, competing `LoadFeatureError`.
  */
 const featureOf = (document: GherkinDocument, uri: string): Feature => {
   const feature = document.feature
   if (feature === undefined) {
-    throw new LoadFeatureError({
-      reason: "NoFeature",
-      uri,
-      line: Option.none(),
-      message: `${uri} cannot be correlated: the parsed document declares no Feature:.`
-    })
+    throw new Error(`${uri} reached correlation without a Feature:, which Parser.ts rejects — this is a library defect`)
   }
   return feature
 }

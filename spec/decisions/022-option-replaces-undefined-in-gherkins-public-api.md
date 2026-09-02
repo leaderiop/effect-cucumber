@@ -64,3 +64,8 @@ Every optional field on gherkin's public surface becomes `Option<T>`, never `T |
 > `suggestion`) keeps the `Option<T>` shape this ADR decided. Asserted by
 > `packages/gherkin/test/Contracts.test.ts` and `packages/vitest/test/Errors.test.ts`, which
 > check reference equality AND that `util.inspect(err)` contains the upstream message.
+>
+> **`LoadFeatureWarning.line` is a plain, required `number`** for a different reason: every
+> warning the validator emits is located on a line, so the `Option` was a case no call site
+> produced and every consumer still had to unwrap — dead generality, not a representation
+> choice. `makeWarning` requires `line`.

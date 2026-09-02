@@ -207,7 +207,7 @@ const extractValue = (pattern: string, argument: Argument): unknown => {
       pattern,
       sentences: [
         `the transform for ${describeName(parameterTypeName)} threw while converting the text`,
-        `\`${argument.group.value}\` matched by the step pattern \`${pattern}\`.`,
+        `\`${argument.group.value ?? ""}\` matched by the step pattern \`${pattern}\`.`,
         "Fix the transform, or widen the parameter type's regexp so it stops matching this text;",
         "the original failure is attached as `cause`."
       ],
@@ -225,7 +225,7 @@ const extractValue = (pattern: string, argument: Argument): unknown => {
       pattern,
       sentences: [
         `the transform for ${describeName(parameterTypeName)} returned a thenable while converting`,
-        `the text \`${argument.group.value}\` matched by the step pattern \`${pattern}\`.`,
+        `the text \`${argument.group.value ?? ""}\` matched by the step pattern \`${pattern}\`.`,
         "A parameter transform must be synchronous: its result is handed to the step body unwrapped,",
         "so the body would receive a Promise where its declared parameter type says otherwise.",
         "Move the async work into the step's own Effect body."

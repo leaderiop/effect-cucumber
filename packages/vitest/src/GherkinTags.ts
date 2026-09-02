@@ -11,8 +11,12 @@
  *
  * ```ts
  * // vitest.config.ts
- * test: { tags: [...gherkinTags("features/**\/*.feature"), { name: "@skip" }, { name: "@only" }] }
+ * test: { tags: gherkinTags("features/**\/*.feature") }
  * ```
+ *
+ * `@skip` and `@only` need no hand-written entry: they are declared like any other tag the moment
+ * a `.feature` file carries them. A hand-written entry beside the spread only matters for a tag no
+ * file uses yet.
  *
  * (The backslash in that example is an artifact of writing a glob inside a block comment — `*` then
  * `/` would end the comment. Write `features/**` followed by `/*.feature`, with no backslash.)

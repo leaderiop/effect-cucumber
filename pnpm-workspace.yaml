@@ -19,7 +19,7 @@ catalog:
   "@effect/platform-node": 4.0.0-rc.112
   vitest: ^4.1.0
   typescript: ^7.0.2
-  "@types/node": ^26.4.0
+  "@types/node": ^20.0.0
 
 # Ranges — peerDependencies only. `catalog:` expands verbatim at pack time
 # (PITFALLS Pitfall 20), so an exact pin here would publish an exact peer

@@ -209,7 +209,7 @@ const zeroStepScenario = (uri: string, node: AstScenarioInfo, line: number): Loa
  * answer and the one an author needs; falling back to the node's location keeps the error located
  * either way, and a located error is half of PARSE-03.
  */
-const lineOf = (pickle: Pickle, node: AstScenarioInfo): number => pickle.location?.line ?? node.location.line
+const pickleLineOf = (pickle: Pickle, node: AstScenarioInfo): number => pickle.location?.line ?? node.location.line
 
 /**
  * The uniqueness key for the duplicate-name check: the pair `(scope, un-interpolated name)`.
@@ -629,14 +629,14 @@ const suspectedSwallowedStep = (
  */
 const duplicatedColumns = (header: ReadonlyArray<string>): ReadonlyArray<string> => {
   const seen = new Set<string>()
-  const duplicated: Array<string> = []
+  const duplicated = new Set<string>()
   for (const value of header) {
-    if (seen.has(value) && !duplicated.includes(value)) {
-      duplicated.push(value)
+    if (seen.has(value)) {
+      duplicated.add(value)
     }
     seen.add(value)
   }
-  return duplicated
+  return [...duplicated]
 }
 
 /**
@@ -756,7 +756,7 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
 
     for (const pickle of produced) {
       if (pickle.steps.length === 0) {
-        throw zeroStepScenario(uri, node, lineOf(pickle, node))
+        throw zeroStepScenario(uri, node, pickleLineOf(pickle, node))
       }
     }
 
@@ -842,11 +842,8 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
 
   // Deterministic document order, so a test can assert the array by position rather than by
   // searching it. `Array.prototype.sort` is stable, so two findings on one line keep the order
-  // they were found in — `Array.sortBy`/`Order.combineAll` would be the `effect/Array` way to
-  // express this, but `Order.combineAll` is confirmed to throw in this exact build (reproduced
-  // in isolation), so the native, already-correct `.sort()` is kept rather than swapped for a
-  // broken replacement.
+  // they were found in.
   const warnings = [...unknownPlaceholderWarnings, ...scenarioWarnings, ...emptyRuleWarnings, ...backgroundWarnings]
-  warnings.sort((left, right) => Option.getOrElse(left.line, () => 0) - Option.getOrElse(right.line, () => 0))
+  warnings.sort((left, right) => left.line - right.line)
   return warnings
 }

@@ -102,8 +102,7 @@ interface OrderedArgument {
  * every step ever pickled and would therefore discriminate nothing at all, which is the trap
  * `test/fixtures/README.md`'s Group E paragraph was written to close.
  */
-const orderOf = (argumentIndex: number | undefined): number =>
-  Option.getOrElse(Option.fromUndefinedOr(argumentIndex), () => 0)
+const orderOf = (argumentIndex: number | undefined): number => argumentIndex ?? 0
 
 /**
  * Wrap a step's raw argument as an ordered list of `StepArgument`s located at `uri`:`line`.

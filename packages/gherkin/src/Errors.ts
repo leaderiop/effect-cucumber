@@ -96,7 +96,6 @@
  * from that package's barrel at all. That mistake is not repeated here, and the derived name
  * is pinned by a test on both classes.
  */
-import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
 
 /**
@@ -325,35 +324,29 @@ export type LoadFeatureWarningReason =
  * A non-fatal finding. Plain data, deliberately NOT an `Error` subclass, and never thrown:
  * Group C findings are surfaced through `ParsedFeature.warnings` by locked decision.
  *
- * `line` is `Option<number>`, not `number | undefined` — no `Schema`/`Schema.TaggedError`
- * involved here (this is a plain interface, not a class), so there is no constructor-key
- * requirement the way `LoadFeatureError`/`StepPatternError` have; `makeWarning` below still
- * accepts a plain optional `line?: number` argument and does the `Option` wrapping itself.
+ * `line` is a plain, required `number`: every warning this package emits is located on a line
+ * (an Examples column, a Scenario, a Rule, a Background), so an `Option` here was dead
+ * generality — a case no call site ever produced and every consumer still had to unwrap
+ * (ADR-EC-022, as amended).
  */
 export interface LoadFeatureWarning {
   readonly _tag: "LoadFeatureWarning"
   readonly reason: LoadFeatureWarningReason
   readonly uri: string
-  readonly line: Option.Option<number>
+  readonly line: number
   readonly message: string
 }
 
-/**
- * Build a `LoadFeatureWarning`, normalising an omitted `line` to `Option.none()`.
- *
- * The factory exists so call sites are not forced to write `Option.none()` by hand for every
- * warning that has no line — `line?: number` stays a plain, omittable argument, and this is
- * the one place that converts it to the field's `Option<number>` type.
- */
+/** Build a `LoadFeatureWarning`. The `_tag` is the one field a call site never spells. */
 export const makeWarning = (args: {
   reason: LoadFeatureWarningReason
   uri: string
-  line?: number
+  line: number
   message: string
 }): LoadFeatureWarning => ({
   _tag: "LoadFeatureWarning",
   reason: args.reason,
   uri: args.uri,
-  line: Option.fromUndefinedOr(args.line),
+  line: args.line,
   message: args.message
 })
