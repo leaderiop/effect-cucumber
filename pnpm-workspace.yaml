@@ -22,7 +22,7 @@ catalog:
   "@types/node": ^20.0.0
 
 # Ranges — peerDependencies only. `catalog:` expands verbatim at pack time
-# (PITFALLS Pitfall 20), so an exact pin here would publish an exact peer
+# (ADR-EC-015), so an exact pin here would publish an exact peer
 # range and strand every consumer sitting on a different rc.
 catalogs:
   peer:

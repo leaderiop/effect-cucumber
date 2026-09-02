@@ -27,7 +27,7 @@ fail() {
 scan() {
   # $1: a path list (space separated) relative to ROOT_DIR. Prints file:line:text hits.
   # shellcheck disable=SC2086
-  (cd "$ROOT_DIR" && grep -rnE --include='*.ts' --include='*.sh' --include='*.feature' "$FORBIDDEN_RE" $1 2>/dev/null | grep -v "^$SELF:" || true)
+  (cd "$ROOT_DIR" && grep -rnE --include='*.ts' --include='*.sh' --include='*.feature' --include='*.yml' --include='*.yaml' --include='*.json' "$FORBIDDEN_RE" $1 2>/dev/null | grep -v "^$SELF:" || true)
 }
 
 # Positive control: the scan must catch a planted token, or every clean result below is vacuous.
@@ -39,12 +39,12 @@ if ! grep -rnE "$FORBIDDEN_RE" "$CONTROL_DIR" >/dev/null 2>&1; then
 fi
 echo "✓ positive control: a planted citation outside the repository is caught"
 
-STRICT_HITS="$(scan "scripts vitest.config.ts vitest.tags.ts packages/vitest/vitest.config.ts packages/gherkin/vitest.config.ts")"
+STRICT_HITS="$(scan "scripts vitest.config.ts vitest.tags.ts packages/vitest/vitest.config.ts packages/gherkin/vitest.config.ts .github pnpm-workspace.yaml tsconfig.json tsconfig.base.json packages/vitest/tsconfig.json packages/vitest/tsconfig.test.json packages/gherkin/tsconfig.json packages/gherkin/tsconfig.test.json")"
 if [[ -n "$STRICT_HITS" ]]; then
   echo "$STRICT_HITS"
-  fail "$(echo "$STRICT_HITS" | wc -l | tr -d ' ') line(s) under scripts/ or a vitest config cite a planning artefact (listed above). Replace the citation with the spec document or the test that now carries the fact, or delete the sentence."
+  fail "$(echo "$STRICT_HITS" | wc -l | tr -d ' ') line(s) under scripts/, .github/ or a workspace/tsconfig/vitest config cite a planning artefact (listed above). Replace the citation with the spec document or the test that now carries the fact, or delete the sentence."
 fi
-echo "✓ scripts/ and the vitest configs cite no planning artefact"
+echo "✓ scripts/, .github/ and the workspace, tsconfig and vitest configs cite no planning artefact"
 
 PACKAGE_HITS="$(scan "packages/gherkin/src packages/gherkin/test packages/vitest/src packages/vitest/test")"
 PACKAGE_COUNT="$(if [[ -n "$PACKAGE_HITS" ]]; then echo "$PACKAGE_HITS" | wc -l | tr -d ' '; else echo 0; fi)"

@@ -17,7 +17,7 @@ permissions:
 jobs:
   # `pnpm lint` is `oxlint -f unix && dprint check` — this single job covers
   # both the lint gate (including the vendored Effect rules) and the format
-  # gate of Phase 1 success criterion 3.
+  # gate.
   lint:
     name: Lint and format
     runs-on: ubuntu-latest
@@ -130,7 +130,7 @@ jobs:
       # `vitest run`, one shot, one collection — it never watches, so it has no
       # opinion about watching. The place a non-watched fixture is discovered is
       # a consumer's dev loop, where they add a Scenario, see stale results and
-      # conclude the library is broken (PITFALLS Pitfall 3). Measured both ways
+      # conclude the library is broken. Measured both ways
       # by the gate itself: the `?raw` import form reruns in ~620ms, and the
       # path-based `loadFeature` form does not rerun at all inside a 60s poll.
       # This is also the ONE gate in the repository that mutates a file, and it
@@ -180,10 +180,10 @@ jobs:
       - run: pnpm circular
       # `pnpm test` exiting 0 does NOT prove @effect-cucumber/gherkin cannot
       # reach a test runner — a green suite is equally consistent with src/
-      # having quietly grown a vitest import. This is PARSE-01's structural
-      # proof (a loadFeature that cannot reach a runner cannot register a test)
-      # and ADR-EC-015's mechanical guard against effect appearing in a
-      # consumer-facing dependency field. See scripts/verify-no-runner-dep.sh.
+      # having quietly grown a vitest import. A loadFeature that cannot reach a
+      # runner cannot register a test; the script is also ADR-EC-015's mechanical
+      # guard against effect appearing in a consumer-facing dependency field.
+      # See scripts/verify-no-runner-dep.sh.
       - run: pnpm verify:no-runner-dep
       # `pnpm test` and `pnpm build` both exiting 0 do NOT prove that
       # packages/vitest/src/Runner.ts and TestApi.ts are free of a test-framework
@@ -200,9 +200,8 @@ jobs:
       # re-runs and `-t`-narrowed selections, so observation cannot tell "has no
       # mutable cross-step state" from "has it and did not trip on it today".
       # `pnpm lint`, `pnpm build` and `pnpm typecheck:test` are all equally
-      # silent, measured as mutation A. This is INV-EC-006's first automated
-      # enforcement anywhere in the repository, and roadmap Phase 11 Success
-      # Criterion 2. See scripts/verify-acceptance-ref-state.sh.
+      # silent, measured as mutation A. This is INV-EC-006's only automated
+      # enforcement. See scripts/verify-acceptance-ref-state.sh.
       - run: pnpm verify:acceptance-ref-state
       # `pnpm build` and `pnpm typecheck:test` exiting 0 do NOT prove the
       # acceptance suite is free of the TypeScript escape-hatch type — the whole

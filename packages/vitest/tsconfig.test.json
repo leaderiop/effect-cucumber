@@ -14,14 +14,10 @@
     // The base sets `${configDir}/src`, which would reject every file under test/.
     "rootDir": "${configDir}",
     //
-    // The base sets `types: []`, which puts NOTHING ambient in scope — `console` included.
-    // packages/vitest/src/describeFeature.ts calls `console.warn` once per unused step definition
-    // (06-CONTEXT.md D-02 channel 1, MATCH-05), and this config's `include` below covers `src` as
-    // well as `test`, so without this line every one of those calls is a TS2584 here even though
-    // packages/vitest/tsconfig.json compiles them fine. The dependency backing it is
-    // `"@types/node": "catalog:"` in packages/vitest/package.json — under pnpm's isolated layout
-    // the root workspace's copy is not hoisted, and `types: ["node"]` without that declaration is
-    // TS2688, not a resolution that quietly works.
+    // The base sets `types: []`, so nothing ambient is in scope. `include` covers `src` too, and
+    // packages/vitest/src/describeFeature.ts and VitestTestApi.ts call `console.warn`, which is
+    // TS2584 without the node types. `@types/node` is a devDependency of this package because pnpm's
+    // isolated layout does not hoist the root workspace's copy.
     "types": ["node"]
     //
     // NOTE — this config still deliberately does NOT carry one override that its sibling
