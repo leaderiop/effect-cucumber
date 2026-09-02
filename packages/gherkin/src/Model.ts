@@ -1,36 +1,12 @@
 /**
- * The `ParsedFeature` contract: the one shape that crosses the package boundary out of
- * `@effect-cucumber/gherkin` and into `@effect-cucumber/vitest`.
+ * The `ParsedFeature` contract — the one shape that crosses from `@effect-cucumber/gherkin` into
+ * `@effect-cucumber/vitest`. Types only; no runtime value.
  *
- * Types only. There are no runtime values in this module. Its local imports are `./Errors.ts` and
- * `./StepArguments.ts`, both type-only — the second joined in Phase 4, when `ParsedStep` gained
- * `stepArguments` and the contract started surfacing a first-party wrapper type rather than only
- * third-party ones. Neither import can cycle back: `StepArguments.ts` reaches `./DataTable.ts` and
- * `./Errors.ts` and nothing else, and nothing under `src/` imports this module for a runtime value,
- * because it has none to give.
- *
- * The design rule behind every field: ADR-EC-014 says `loadFeature` CORRELATES the raw
- * `GherkinDocument` with `compile()`'s pickles, it does not re-derive them. Placeholder
- * substitution, tag inheritance and Background stacking are read off the pickle. The AST
- * walk exists only to recover what a pickle structurally cannot carry: step keyword, step
- * origin, step line, Rule membership, and the un-interpolated Scenario name.
- *
- * The third-party types this contract surfaces are re-exported at the bottom of the file.
- * `document` and `pickles` are deliberately kept as escape hatches, which exposes the
- * `@cucumber/messages` types either way, and `parameterTypes` exposes
- * `@cucumber/cucumber-expressions`' `ParameterTypeRegistry`; re-exporting them means a consumer
- * is never forced to declare either package itself. No subpath export is added to
- * `package.json` for them: a single barrel avoids having to maintain `exports` and
- * `publishConfig.exports` in lockstep.
- *
- * Only THIRD-PARTY types are re-exported there. `StepArgument` — surfaced by `ParsedStep`'s
- * `stepArguments` — is first-party and is deliberately absent from that block: `index.ts` publishes
- * it from `./StepArguments.ts`, the module that declares it, so every type this package owns has
- * exactly ONE export path and a consumer's import can never disagree with another's about where a
- * type lives.
- *
- * Both third-party imports reach the package BARREL, never a deep path into a published build
- * directory — the same rule `ParameterTypes.ts` and `StepMatcher.ts` follow.
+ * ADR-EC-014's rule behind every field: `loadFeature` CORRELATES the raw `GherkinDocument` with `compile()`'s
+ * pickles and never re-derives them. Substitution, tag inheritance and Background stacking are read off the
+ * pickle; the AST walk recovers only what a pickle cannot carry. `document` and `pickles` stay as escape hatches,
+ * so the third-party types they expose are re-exported at the bottom; every first-party type (`StepArgument`)
+ * has exactly one export path, from the module that declares it.
  */
 import type { ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
 import type {
@@ -45,75 +21,36 @@ import type * as Option from "effect/Option"
 import type { LoadFeatureWarning } from "./Errors.ts"
 import type { StepArgument } from "./StepArguments.ts"
 
-/**
- * Which container a step was written in, recovered by the AST walk.
- *
- * Never infer this from `PickleStep.astNodeIds.length`. That heuristic is verified wrong for
- * plain-Scenario pickles, where a Background step and a Scenario step both have length 1.
- */
+/** Which container a step was written in, from the AST walk — never inferred from `astNodeIds.length`, which
+ * carries no signal in a plain-Scenario pickle. */
 export type StepOwner = "feature-background" | "rule-background" | "scenario"
 
-/**
- * One step of one Scenario, after correlation.
- */
+/** One step of one Scenario, after correlation. */
 export interface ParsedStep {
   /** The `PickleStep.id`. */
   readonly id: string
-  /**
-   * Step text, already placeholder-substituted by `compile()`. The one documented exception
-   * is a Background nested under a Scenario Outline, whose placeholders survive
-   * un-interpolated; `Validate.ts` catches that case and fails loudly.
-   */
+  /** Step text, placeholder-substituted by `compile()` — except a Background under an Outline, which
+   * `Validate.ts` rejects. */
   readonly text: string
-  /**
-   * The AST keyword, recovered through the `byStepId` index and trimmed. The raw AST value
-   * carries a trailing space (`"Given "`, `"And "`, `"* "`).
-   */
+  /** The AST keyword, trimmed (the raw value carries a trailing space). */
   readonly keyword: string
-  /**
-   * The AST `keywordType`, which includes `Conjunction`. `PickleStep.type` has no
-   * `Conjunction` member, so this value must come from the AST rather than the pickle.
-   */
+  /** The AST `keywordType`, which has `Conjunction`; the pickle's own does not. */
   readonly keywordType: StepKeywordType
   readonly origin: StepOwner
   /** From the AST step location. `PickleStep` carries no location at all. */
   readonly line: number
-  /**
-   * A step's DocString or table argument, passed through RAW and unwrapped, exactly as
-   * `compile()` produced it.
-   *
-   * Kept for the same reason `ParsedFeatureCore.document` and `.pickles` are kept: a consumer
-   * who needs something the wrapper does not expose should never have to re-parse anything to
-   * get at it. `stepArguments` below is the wrapped, ordered form most consumers actually want.
-   *
-   * Neither field is derived from the other at READ time. Both are produced once, in the same
-   * place — `Correlate.ts`'s `resolveStep` — from the same `PickleStep`, so reading one can
-   * never disagree with reading the other, and no consumer is ever tempted to rebuild a
-   * `DataTable` from the raw side. `test/Correlate.test.ts` asserts that this field carries no
-   * `hashes`/`raw`/`rowsHash` property, which is what keeps the raw field raw.
-   */
+  /** The raw DocString or table argument, as `compile()` produced it — the escape hatch. Produced together with
+   * `stepArguments` in `Correlate.ts`'s `resolveStep`, so the two never disagree (`test/Correlate.test.ts`). */
   readonly argument: Option.Option<PickleStepArgument>
   /**
-   * The step's arguments WRAPPED and ordered: a `DocString` for a doc string, a `DataTable` — with
-   * `raw()`, `hashes()` and `rowsHash()` on it — for a table, in the source order
-   * `@cucumber/gherkin` recorded on `argumentIndex`. Empty for a step that carries no argument.
-   *
-   * REQUIRED, not optional, for the reason `ParsedFeature.parameterTypes` is required: an optional
-   * field lets a later consumer forget the wrapper exists and fall back to re-deriving one from
-   * `argument`, which is the exact duplication this field was added to remove.
-   *
-   * Named `stepArguments` rather than `arguments` on purpose. `arguments` differs from `argument`
-   * directly above it by a single character, and a reader skimming a diff — or an autocomplete
-   * list — cannot reliably tell the two apart. The `step` prefix is redundant on a `ParsedStep`,
-   * and that redundancy is the whole point of it.
+   * The step's arguments WRAPPED and in source order: a `DocString`, or a `DataTable` with `raw()`/`hashes()`/
+   * `rowsHash()`. Required, not optional, so no consumer rebuilds a wrapper from `argument`. Named with the
+   * `step` prefix because `arguments` and `argument` differ by one character.
    */
   readonly stepArguments: ReadonlyArray<StepArgument>
 }
 
-/**
- * One executable Scenario. For a Scenario Outline this is one Examples body row, not the
- * Outline itself.
- */
+/** One executable Scenario; for an Outline, one Examples body row. */
 export interface ParsedScenario {
   /** The `Pickle.id`. */
   readonly id: string
@@ -121,28 +58,15 @@ export interface ParsedScenario {
   readonly astId: string
   /** The interpolated `Pickle.name`. */
   readonly name: string
-  /**
-   * The un-interpolated AST `Scenario.name`. Both names are required: a Scenario is matched
-   * to its registered definition by the un-interpolated name, and retrofitting this once
-   * Phase 6 consumes the contract is expensive.
-   */
+  /** The un-interpolated AST `Scenario.name`; a Scenario is matched to its registration by this. */
   readonly astName: string
   /** The AST `Scenario.keyword`, trimmed. Localised, e.g. `Plan du scenario`. */
   readonly keyword: string
-  /**
-   * `Pickle.tags` names, already flattened by `compile()` in
-   * feature then rule then scenario then examples-block order. Do not recompute inheritance.
-   */
+  /** `Pickle.tags` names as `compile()` flattened them (feature, rule, scenario, examples). Never recomputed. */
   readonly tags: ReadonlyArray<string>
-  /**
-   * Run order: feature-background steps, then rule-background steps, then the Scenario's
-   * own. Read off `pickle.steps`; do not re-stack Background steps.
-   */
+  /** Run order: feature Background, rule Background, then the Scenario's own — as `pickle.steps` has them. */
   readonly steps: ReadonlyArray<ParsedStep>
-  /**
-   * `Pickle.location`, which is per-Examples-row precise for an Outline and the Scenario's
-   * own location otherwise. Do not look up `astNodeIds.at(-1)` in a row-id map.
-   */
+  /** `Pickle.location`: per-Examples-row for an Outline, the Scenario's own otherwise. */
   readonly location: Location
   /** The enclosing AST `Rule.id`, or `Option.none()` at feature level. */
   readonly ruleId: Option.Option<string>
@@ -150,9 +74,7 @@ export interface ParsedScenario {
   readonly pickle: Pickle
 }
 
-/**
- * A `Rule:` block and the Scenarios inside it.
- */
+/** A `Rule:` block and the Scenarios inside it. */
 export interface ParsedRule {
   readonly id: string
   readonly name: string
@@ -164,14 +86,9 @@ export interface ParsedRule {
   readonly scenarios: ReadonlyArray<ParsedScenario>
 }
 
-/**
- * Everything `Correlate.ts` can produce on its own, with no validation pass.
- */
+/** Everything `Correlate.ts` produces on its own, before validation. */
 export interface ParsedFeatureCore {
-  /**
-   * Always supplied by the caller. `GherkinDocument.uri` is `undefined` when parsing from a
-   * string, so it can never be the source of this value.
-   */
+  /** Always the caller's: `GherkinDocument.uri` is `undefined` when parsing from a string. */
   readonly uri: string
   readonly name: string
   readonly keyword: string
@@ -190,33 +107,13 @@ export interface ParsedFeatureCore {
   readonly pickles: ReadonlyArray<Pickle>
 }
 
-/**
- * The public result of `loadFeature`.
- *
- * The split from `ParsedFeatureCore` exists because `Correlate.ts` produces the core and
- * `Validate.ts` produces the warnings; `loadFeature.ts` joins them. Phase 6 already needs a
- * Feature-level warning channel for MATCH-05, so this is one carrier built now rather than
- * two carriers built later.
- *
- * `parameterTypes` joins at the same seam and for the same reason: `Correlate.ts` knows nothing
- * about parameter types, so the field belongs here and not on the core.
- */
+/** The public result of `loadFeature`: the core plus `Validate.ts`'s warnings and the per-call registry. */
 export interface ParsedFeature extends ParsedFeatureCore {
   readonly warnings: ReadonlyArray<LoadFeatureWarning>
   /**
-   * A FRESH `ParameterTypeRegistry`, built for THIS call and never shared with another
-   * `ParsedFeature`.
-   *
-   * It already carries the eleven built-in parameter types plus every custom parameter type
-   * recorded in the store at the moment the call ran — ADR-EC-007's second correction, which
-   * makes custom types permanent data replayed into a per-call registry rather than a live
-   * registry anyone holds on to. This is the value a consumer hands to `createStepMatcher`.
-   *
-   * The consequence a reader will otherwise trip on: because it is per-call, two `ParsedFeature`
-   * values from two `loadFeature` calls hold two DIFFERENT registry objects, and a
-   * `CucumberExpression` compiled against one must never be reused against the other. That is
-   * exactly why the compilation cache in `StepMatcher.ts` is keyed on the registry INSTANCE and
-   * not on the pattern string alone.
+   * A FRESH `ParameterTypeRegistry` for THIS call — built-ins plus every custom type the provided store holds —
+   * and the value handed to `createStepMatcher`. Two `ParsedFeature`s hold two different registries, which is why
+   * `StepMatcher.ts` keys its cache on the registry instance.
    */
   readonly parameterTypes: ParameterTypeRegistry
 }

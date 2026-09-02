@@ -1,38 +1,6 @@
 /**
  * PARSE-03, one test per Group A structural row and per Group C heuristic row of the phase
  * fixture table.
- *
- * **These tests assert `err.reason`, never the message text.** That is the one place this file
- * deliberately deviates from the repo's existing test analog
- * (`tools/oxlint/effect/test/no-js-extension-imports.test.ts`, which asserts on `.message`). The
- * roadmap's success criterion is "a distinct, named `LoadFeatureError`", and a reason tag is what
- * makes "distinct" and "named" mechanically checkable. Asserting message prose instead would pin
- * the wording and let a check that fires for the wrong reason pass.
- *
- * Four rows are deliberate exceptions, because on each of them the message IS the requirement:
- * the duplicate-name row ("names BOTH line numbers"), the F14 mitigation row and the F14 warning
- * ("the description is reproduced verbatim"), the F7 row (ADR-EC-014's prescribed
- * Background-limitation sentence, which is the whole reason PARSE-03 exists), and the F9 row
- * ("names the columns that DO exist"). Each is asserted on the substring that carries the
- * requirement, not on the prose around it.
- *
- * Four controls guard the suite against the obvious ways it could pass for nothing:
- *
- * - a POSITIVE control — a correct feature validates and returns — because a `validateFeature`
- *   that rejected every input would otherwise satisfy every other test here;
- * - a per-scope NEGATIVE control — two Rules each holding a `Scenario: happy path` stays legal —
- *   which is the executable form of the locked per-scope decision. A whole-Feature-scoped
- *   implementation fails exactly there and nowhere else;
- * - three D4 NEGATIVE controls — `2 < 3`, `<div>hello</div>` and `<a@b.com>` in a plain Scenario
- *   — all `[VERIFIED]` to survive `compile()` unchanged as valid Gherkin. A leftover-placeholder
- *   check written as a bare `<...>` regex passes every positive test in this file and fails
- *   exactly these three;
- * - a BOUNDING control — the same three texts inside an Outline may warn but must never throw,
- *   which pins the cost of the heuristic half of the check.
- *
- * Imports reach into `../src/*.ts` directly, never through `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and fails
- * `pnpm lint` on a relative value-import whose basename is `index.*`.
  */
 import { IdGenerator } from "@cucumber/messages"
 import * as Option from "effect/Option"
@@ -232,7 +200,6 @@ describe("the ZeroStepScenario message mitigates the swallowed-step trap (F14 / 
   })
 
   it("neither truncates nor elides that description", () => {
-    // The package's full-content policy (threat T-02-02, ACCEPTED) forbids a length cap here.
     const error = errorFrom(swallowedSoleStep, uri)
     expect(error.message).not.toContain("…")
     expect(error.message).not.toContain("...")

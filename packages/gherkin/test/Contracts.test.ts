@@ -43,7 +43,7 @@ describe("LoadFeatureError", () => {
     expect(makeError().name).toBe("LoadFeatureError")
   })
 
-  it("carries the _tag discriminator for the Phase 6 error channel", () => {
+  it("carries the _tag discriminator for the runner's error channel", () => {
     // Destructured rather than read by dotted member access off the error:
     // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
     // object destructuring.
@@ -209,7 +209,7 @@ describe("StepPatternError", () => {
     expect(makeError().name).toBe("StepPatternError")
   })
 
-  it("carries the StepPatternError _tag discriminator for the Phase 6 error channel", () => {
+  it("carries the StepPatternError _tag discriminator for the runner's error channel", () => {
     // Destructured rather than read by dotted member access off the error:
     // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
     // object destructuring.

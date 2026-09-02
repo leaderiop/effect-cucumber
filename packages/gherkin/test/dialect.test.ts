@@ -1,22 +1,6 @@
 /**
  * Gap 5: a `# language:` non-English feature file parses, correlates and validates with ZERO
  * special handling.
- *
- * The point is not that French works. The point is that nothing in this package branches on
- * English. `Parser.ts` hands the dialect header to `@cucumber/gherkin`'s own token matcher, and
- * the two places that must recognise a keyword — the Outline and plain-Scenario checks behind
- * F3 and F4 — look the keyword up in `dialects[language]` rather than in a hardcoded list. The
- * inline-source test at the bottom is what distinguishes those two implementations: a hardcoded
- * English list would read `Plan du scénario` as a plain Scenario and raise
- * `ScenarioKeywordWithExamples` on a completely legitimate file.
- *
- * Markdown feature files (`GherkinInMarkdownTokenMatcher`) are a different axis and are
- * deliberately out of scope for this milestone — the omission is a decision, not an oversight.
- * Only `GherkinClassicTokenMatcher` is wired.
- *
- * Imports reach `../src/loadFeature.ts` and `../src/Correlate.ts` directly, never
- * `../src/index.ts`: `effect/no-import-from-barrel-package` runs with
- * `checkRelativeIndexImports: true`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"

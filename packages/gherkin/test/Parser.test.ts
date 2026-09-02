@@ -1,18 +1,6 @@
 /**
  * One test per Group B row of the fixture table, each asserting the DISTINCT `reason` tag its
  * failure carries.
- *
- * Assertions target `err.reason`, never message text. That is the entire point of one reason
- * tag per fixture row: it makes "a distinct, named `LoadFeatureError`" a mechanical check
- * rather than a prose claim, and it survives any rewording of the messages. The single
- * exception is the collapsed-consequence count, which IS the behavior under test there.
- *
- * `readFeatureSource` requires `FileSystem.FileSystem` as of the real `@effect/platform-node`
- * migration, so every helper that touches it is async now and provides `NodeFileSystem.layer` —
- * see `captureError`/`parseFixture` below.
- *
- * Imports are direct module paths. `effect/no-import-from-barrel-package` flags any relative
- * value-import whose basename is `index.*`, so nothing here reaches through the barrel.
  */
 import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import { IdGenerator } from "@cucumber/messages"
@@ -150,13 +138,6 @@ describe("parseDocument", () => {
   })
 
   it("F20 wraps a feature-level Background placed after a Rule as ParseFailed", async () => {
-    // This fixture pins the REFUTATION of PITFALLS.md Pitfall 30. Pitfall 30 claims Gherkin
-    // permits a feature-level `Background:` after a `Rule:` with silently different semantics,
-    // and recommends a walk-time AST check. Verified false: the grammar
-    // (`Feature := header Background? ScenarioDefinition* Rule*`) forbids it outright and the
-    // parser throws. That walk-time check is therefore dead work and is deliberately not
-    // implemented anywhere in this phase; this test is what guards the assumption if upstream
-    // ever relaxes the grammar.
     const error = await failureOf("parse-failed-background-after-rule.feature")
 
     expect(error.reason).toBe("ParseFailed")

@@ -1,41 +1,6 @@
 /**
  * PARSE-01 (BEH-EC-001): `loadFeature` parses a `.feature` file and has no observable effect on
  * the test run by itself.
- *
- * ## Read this before "cleaning up" the top-level call
- *
- * `topLevelFeature` below is computed at MODULE TOP LEVEL, outside every `describe` and `it`,
- * exactly where a real consumer writes it. That placement IS the test. The literal form of the
- * criterion — a file that calls `loadFeature` and declares no tests at all — cannot be written:
- * verified, vitest answers `Error: No test suite found in file ...` and the suite goes red, so
- * the file that proves the point best is the one that looks broken.
- *
- * The working formulation is this one. The file declares N tests and vitest reports exactly N in
- * exactly one file. `loadFeature` ran during module evaluation and contributed none of them.
- * Moving the call inside an `it` deletes the only evidence this file exists to produce.
- *
- * ## Top-level `await`, not `Effect.runSync`
- *
- * This section previously kept `Effect.runSync` working at module top level, because the
- * interim (pre-`FileSystem`) implementation wrapped a genuinely synchronous
- * `node:fs.readFileSync`. Adopting the real `@effect/platform-node` `NodeFileSystem` ends
- * that: `NodeFileSystem.readFileString` suspends internally, and `Effect.runSync` on it throws
- * `AsyncFiberError` — reproduced directly against the real package, not assumed (see
- * `Source.ts`'s and `loadFeature.ts`'s doc comments). `topLevelFeature` below is therefore
- * `await Effect.runPromise(loadFeature(fixturePath).pipe(Effect.provide(NodeFileSystem.layer)))`
- * — genuine top-level `await`, which ESM (and vitest's module loader) supports natively: the
- * import of this file waits for the top-level `await` to settle before vitest proceeds to
- * collect the `describe`/`it` calls below, which is what keeps this file's core guarantee
- * (`loadFeature` alone registers no tests) intact under the new signature. A rejection here
- * still surfaces as a vitest COLLECTION error for the whole file, not a single failing test —
- * same failure shape as the old `Effect.runSync` throw, just reached through a rejected
- * promise instead of a synchronous throw.
- *
- * ## Imports
- *
- * `../src/loadFeature.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and fails
- * `pnpm lint` on a relative value-import whose basename is `index.*`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Cause from "effect/Cause"

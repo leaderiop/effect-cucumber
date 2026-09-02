@@ -1,24 +1,5 @@
 /**
  * Pins the verified decode-failure shape of `effect@4.0.0-rc.112`'s `Schema` module.
- *
- * This file imports NOTHING from `../src`. It talks to the dependency directly, on purpose — the
- * same rule, and the same reason, as `expressions-pin.test.ts` (which pins
- * `@cucumber/cucumber-expressions@20.1.0`) and `upstream-pin.test.ts` (which pins
- * `@cucumber/gherkin`).
- *
- * The concrete consequence, spelled out because it is the whole point of the separation:
- * `decodeHashes` in `src/DataTable.ts` recovers a data table's BODY-ROW ORDINAL and its COLUMN
- * NAME by walking the issue tree asserted below — the array index in the accumulated `Pointer`
- * path is the `.hashes()` body-row index, and the record key after it is the header column name.
- * `effect` is a peer dependency (ADR-EC-021) and is therefore free to move under this library
- * within the rc line. When an rc bump reshapes that tree, the failure must land HERE, where it is
- * attributable to the dependency, and NOT in `DataTable.test.ts`, where it would read as a bug in
- * this library's own locator arithmetic.
- *
- * The walker below is deliberately a LOCAL copy of the walk `DataTable.ts#firstIssuePath`
- * performs, not an import of it. Importing the real one would make this file assert that the
- * walker agrees with itself; writing it twice makes it assert that the dependency still produces
- * what the walker assumes.
  */
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
@@ -113,9 +94,6 @@ describe("upstream effect@4.0.0-rc.112 Schema decode failures", () => {
   })
 
   it("the path's first element is a number and its second is a string", () => {
-    // decodeHashes branches on exactly these two runtime types. If effect ever emitted the array
-    // index as a string, `index + 1` would produce a string concatenation or a NaN and the
-    // reported row ordinal would be silently wrong rather than absent (threat T-04-06).
     const error = failureOf(Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }]))
     const [path] = pointerPaths(error.issue, [])
     if (path === undefined) {

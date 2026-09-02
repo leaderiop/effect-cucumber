@@ -1,29 +1,6 @@
 /**
  * The MATCH-01 type test: `{int}` is `number`, `{float}` is `number`, `{string}` is `string` and
  * `{word}` is `string` — asserted at COMPILE TIME, which is the only place the claim exists.
- *
- * The `.types.ts` suffix is load-bearing. vitest's default include glob is
- * `**\/*.{test,spec}.?(c|m)[jt]s?(x)`, so this file is never collected as a suite — renaming it
- * to `StepArgs.test.ts` would make `pnpm test` fail with "No test suite found". Meanwhile
- * `packages/gherkin/tsconfig.test.json` has `include: ["src", "test"]`, so `pnpm typecheck:test`
- * — a required step in `.github/workflows/check.yml`'s `types` job since plan 01-06 — compiles
- * it on every push. The file therefore runs in CI without pretending to be a runtime suite.
- * `packages/vitest/test/tsgo-gate/src/missing-layer-context.ts` is the repo's precedent for a
- * compiled-but-never-executed probe.
- *
- * Two properties keep this file from being vacuous, and both were proven by mutation (recorded
- * in `.planning/phases/03-parameter-types-and-step-matching/03-02-SUMMARY.md`):
- *
- * (a) The positives assert exact type EQUALITY, not assignability. An assignability check would
- *     pass for a `StepArgs` that resolved every parameter to `unknown` — that is, for a
- *     `StepArgs` that had stopped doing its job entirely.
- *
- * (b) The negatives are `@ts-expect-error` lines, which fail the build when the error they
- *     expect STOPS occurring. They are what catches the other degenerate direction, a `StepArgs`
- *     that resolved everything to the top-of-both-worlds type and made every positive pass.
- *
- * Nothing in this file may be widened with a type assertion: one such escape hatch anywhere
- * makes the surrounding equality assertion prove nothing.
  */
 import type { BuiltInParameterTypeMap, StepArgs } from "../src/StepArgs.ts"
 
@@ -118,12 +95,6 @@ export const builtInIntEntryIsNumber = expectTrue(equality<BuiltInParameterTypeM
 /** The anonymous built-in's key really is the empty string. */
 export const builtInAnonymousEntryIsString = expectTrue(equality<BuiltInParameterTypeMap[""], string>())
 
-/**
- * The result must be a genuine TUPLE, usable as a rest-parameter list. This assignment fails to
- * compile if `StepArgs` ever widens to an array type — the exact regression Phase 5's `Given`
- * signature cannot survive, because a widened `unknown[]` would erase every step body's
- * parameter types while leaving the equality assertions above intact.
- */
 type TwoArgumentStepBody = (...args: StepArgs<"I have {int} cukes and {word} left">) => void
 
 /** Explicit parameter annotations, so the tuple's element types and order are both asserted. */

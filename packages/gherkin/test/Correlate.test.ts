@@ -1,15 +1,5 @@
 /**
  * PARSE-02, asserted row by row on the F21 fixture.
- *
- * Deliberately NOT a snapshot. The roadmap's success criterion says "asserted row by row", and
- * a single deep-equal would pass just as happily on a correlation that stacked Background steps
- * itself, sorted the tags, or read the keyword off the pickle — the three things this module is
- * forbidden to do. Every value below is named, so a regression names itself.
- *
- * Imports reach into `../src/Parser.ts`, `../src/Pickles.ts` and `../src/Correlate.ts`
- * directly, never through `../src/index.ts`: `effect/no-import-from-barrel-package` runs with
- * `checkRelativeIndexImports: true` and fails `pnpm lint` on a relative value-import whose
- * basename is `index.*`.
  */
 import { IdGenerator } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
@@ -314,14 +304,6 @@ describe("an Outline whose row names all differ (F26)", () => {
   })
 
   it("F26: exposes the single un-interpolated astName on BOTH rows", () => {
-    // Roadmap success criterion 4, and ARCHITECTURE.md Open Question 4: a Scenario is matched to
-    // its registered definition by the UN-INTERPOLATED name, because that is the only string the
-    // author actually typed in the `.steps.ts` file. Phase 6 consumes this. If correlation ever
-    // stopped carrying `astName` — or "helpfully" set it to the interpolated value — every
-    // Outline row would fail to find its definition, and nothing else in this suite would say so.
-    //
-    // Asserted with `toBe` on the exact literal, angle brackets included: a `toContain("outline")`
-    // would pass just as happily on the interpolated `"outline a"`.
     for (const scenario of scenarios()) {
       expect(scenario.astName).toBe("outline <name>")
     }
@@ -350,11 +332,6 @@ describe("an Outline whose row names are all identical (F27)", () => {
   })
 
   it("F27: gives each row a distinct location.line, the raw material for a unique title", () => {
-    // This phase deliberately does NOT invent a test title. Exposing a per-row `location` is
-    // this phase's job; deciding how to turn "same title" x3 into three unique, `-t`-filterable
-    // vitest titles is Phase 6's (Pitfalls 21/23, Gap 4). Appending a row index or a line number
-    // here would put the title format in two places at once, and Phase 6 would inherit a format
-    // it never chose.
     const lines = scenarios().map((scenario) => scenario.location.line)
     expect(new Set(lines).size).toBe(3)
   })
@@ -451,18 +428,6 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
   })
 
   it("F25: leaves the argument a RAW PickleStepArgument, with no wrapper methods on it", () => {
-    // The executable guard for the Phase 4 scope boundary. `@effect-cucumber/gherkin`'s
-    // `DataTable` wrapper — `.hashes()`, `.raw()`, `.rowsHash()` — and the calling convention
-    // for a step carrying both arguments are PARSE-04's deliverable (ADR-EC-008). THIS phase
-    // must pass the argument through unwrapped (inside the `Option`, but otherwise raw).
-    //
-    // Phase 4 owns that decision. A wrapper added here would not conflict at merge time; it
-    // would quietly ship a second, competing DataTable API. Asserting the ABSENCE of the
-    // methods turns that into a named test failure the moment someone "helpfully" adds one.
-    //
-    // That wrapper now EXISTS, on `stepArguments` (see the four tests below) — which is exactly
-    // why this assertion still matters and still reads the same. Two fields, one wrapped and one
-    // raw, both produced once by `resolveStep`; this test is what keeps the raw one raw.
     const argument = argumentOf()
     for (const method of ["hashes", "raw", "rowsHash"]) {
       expect(argument).not.toHaveProperty(method)

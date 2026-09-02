@@ -2,22 +2,6 @@
  * MATCH-02: a custom parameter type declared once as data is present in every registry built
  * afterwards, repeated builds in one process never throw, and each name a registry already
  * provides is rejected by the `define` call itself.
- *
- * **Every test below creates its OWN store with `createParameterTypeStore()`, except the single
- * test dedicated to the module-level default one.** That is not a style preference. The default
- * store is append-only for the life of the process — there is no `remove` and no `clear`, by
- * design — so a test that defined into it would make every later test in the same worker
- * order-dependent, and a second run of the same name would fail with `DuplicateParameterTypeName`
- * for reasons that have nothing to do with what that test was checking. The store-isolation test
- * below is what makes the rest of this file hermetic.
- *
- * Assertions read `err.reason`, never the message text, following `Validate.test.ts`. The two
- * exceptions are the two places where the MESSAGE *is* the requirement: the built-in rejection
- * must name the offending name, and the duplicate rejection must name BOTH definition sites.
- * Those assert on the substring carrying the requirement, not on the prose around it.
- *
- * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
  */
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
@@ -168,9 +152,6 @@ describe("a custom parameter type is data, not a registration", () => {
   })
 
   it("builds twenty registries in a row from one store without throwing", () => {
-    // The core MATCH-02 property, and the one a process-global registry fails on iteration two
-    // with upstream's duplicate-name throw (Pitfall 14, reproduced across three
-    // cypress-cucumber-preprocessor issues).
     const store = createParameterTypeStore()
     store.define({
       name: "money",
@@ -244,9 +225,6 @@ describe("a name the registry already provides is rejected at definition time", 
   }
 
   it("raises the built-in rejection from the define call itself, recording nothing", () => {
-    // Pitfall 14's fourth "how to avoid" bullet: the error must point at the caller's own define
-    // call, not at a replay deep inside loadFeature. Two things prove it here — the store is still
-    // empty afterwards, and no buildRegistry call was needed to surface the failure.
     const store = createParameterTypeStore()
 
     expect(
@@ -290,8 +268,6 @@ describe("a name defined twice in one store is rejected at definition time", () 
     )
 
     expect(error.reason).toBe("DuplicateParameterTypeName")
-    // The message IS the requirement here: a duplicate reported without both sites sends the
-    // caller hunting for the other definition (threat T-03-10).
     expect(error.message).toContain("steps/money.ts:3")
     expect(error.message).toContain("steps/other.ts:9")
   })

@@ -1,6 +1,6 @@
 # Gherkin fixture corpus
 
-One `.feature` file per row of `02-RESEARCH.md`'s fixture table, named for the reason it triggers so a failing test
+One `.feature` file per row of the parser fixture table (pinned by `test/upstream-pin.test.ts`), named for the reason it triggers so a failing test
 names the defect. Every behavior recorded below was reproduced against `@cucumber/gherkin@42.0.1` and is pinned by an
 executable assertion in [`../upstream-pin.test.ts`](../upstream-pin.test.ts) — an upstream bump that changes any of it
 fails loudly instead of silently altering this library's semantics.

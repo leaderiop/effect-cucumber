@@ -1,21 +1,6 @@
 /**
  * `stepArgumentsOf`'s ordering rule and wrapping, asserted on SYNTHETIC `PickleStepArgument`
  * literals. This file parses no `.feature` file at all.
- *
- * That is the point of it. `Correlate.test.ts` asserts the same rule end to end through F25 and
- * F33, which proves the rule agrees with what `@cucumber/gherkin` really emits; these tests drive
- * `argumentIndex` directly, which proves the ORDER comes from that value and not from a fixture
- * happening to be written in a convenient order. A failure here is attributable to
- * `StepArguments.ts` alone.
- *
- * The literals below reproduce the real upstream shape rather than a tidied version of it — in
- * particular the `argumentIndex` KEY is present with the value `undefined` wherever upstream leaves
- * it that way, which is exactly what `test/upstream-pin.test.ts` pins for a single-argument step.
- * A synthetic input that omitted the key would test a shape the parser never produces.
- *
- * Imports reach `../src/StepArguments.ts` and `../src/DataTable.ts` directly, never
- * `../src/index.ts`: `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports:
- * true`, and that rule is unaffected by the barrel now being real public API.
  */
 import type { PickleDocString, PickleStepArgument, PickleTable } from "@cucumber/messages"
 import * as Option from "effect/Option"
