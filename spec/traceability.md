@@ -374,10 +374,17 @@ says so in its own words.
 
 ## §6 Coverage targets
 
-| Scope                  | Statements   | Branches     | Enforced by                                           |
-| ---------------------- | ------------ | ------------ | ----------------------------------------------------- |
-| `packages/vitest/src`  | 90% (target) | 90% (target) | Not yet wired — planned `vitest.config.ts` thresholds |
-| `packages/gherkin/src` | 90% (target) | 90% (target) | Not yet wired — planned `vitest.config.ts` thresholds |
+| Scope                  | Statements | Branches | Enforced by                                                                           |
+| ---------------------- | ---------- | -------- | ------------------------------------------------------------------------------------- |
+| `packages/vitest/src`  | 90%        | 90%      | `pnpm coverage` (`@vitest/coverage-v8`, root `vitest.config.ts`); Node 24 CI leg only |
+| `packages/gherkin/src` | 90%        | 90%      | `pnpm coverage` (`@vitest/coverage-v8`, root `vitest.config.ts`); Node 24 CI leg only |
 
-Targets are stated now so the eventual `vitest.config.ts` has a number to
-enforce; until it exists, nothing here is actually gated.
+Thresholds are also declared per-package in `packages/*/vitest.config.ts`, so
+`pnpm -F <package> test -- --coverage` enforces the same number standalone.
+A handful of branches below 90% at the file level are defensive code this
+library cannot reach through the pinned `@cucumber/gherkin`/
+`@cucumber/cucumber-expressions` versions (e.g. `DataTable.ts`'s `?? ""`
+fallbacks, guarded upstream by the parser's own rectangular-row guarantee,
+`test/upstream-pin.test.ts`) — several of those are still exercised directly,
+by exporting the otherwise-private function under test rather than through
+the public API, documented inline at each such export.
