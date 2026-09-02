@@ -138,8 +138,8 @@ const constructExpression = (registry: ParameterTypeRegistry, pattern: string): 
         sentences: [
           `the step pattern \`${pattern}\` names ${describeName(undefinedName)},`,
           "which is not registered in the parameter type registry it was compiled against.",
-          `Define it with defineParameterType({ name: "${undefinedName}", ... }) at module scope,`,
-          "before any loadFeature call runs."
+          `Define it with ParameterTypeStore.layer([{ name: "${undefinedName}", ... }]) and provide`,
+          "that Layer to the loadFeature call that parsed this feature."
         ],
         cause
       })

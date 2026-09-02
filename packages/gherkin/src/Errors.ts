@@ -160,7 +160,7 @@ export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("Lo
  *   `ParameterTypeRegistry`'s constructor pre-registers (`int`, `float`, `word`, `string`,
  *   the anonymous `""`, `double`, `bigdecimal`, `byte`, `short`, `long`, `biginteger`).
  *   Raised at DEFINITION time, never at replay or match time, so the error points at the
- *   caller's own `defineParameterType` call rather than at a `loadFeature` call several
+ *   caller's own `define` call rather than at a `loadFeature` call several
  *   modules away (Pitfall 14).
  * - `DuplicateParameterTypeName` — the same store already holds a definition under this
  *   name. Also raised at definition time, for the same reason: replaying two records with

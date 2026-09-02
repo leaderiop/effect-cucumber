@@ -27,11 +27,13 @@
  * (b) **Why a module-level default store is correct here** even though Anti-Pattern 4 forbids a
  *     module-level singleton for the vitest package's step `Registry`. That anti-pattern is about
  *     mutable PER-RUN state: two `describeFeature` calls sharing one step map cross-contaminate,
- *     and its tests become order-dependent. This store holds APPEND-ONLY definitions that are
- *     meant to be process-wide — a custom parameter type declared at module scope in a
- *     `.steps.ts` file is supposed to be visible to every feature loaded afterwards, which is the
- *     entire point of (a). `createParameterTypeStore()` exists so that a test — or any caller
- *     wanting isolation — never has to depend on the default one.
+ *     and its tests become order-dependent. There is NO process-wide store here either (ADR-EC-023,
+ *     as amended): `ParameterTypeStore.Default` builds a fresh built-ins-only store every time the
+ *     Layer is built, `ParameterTypeStore.layer(definitions)` builds one carrying custom types, and
+ *     `createParameterTypeStore()` hands a caller a plain store to fill by hand. A store is
+ *     append-only for its own lifetime, and its lifetime is the Layer build that made it — so a
+ *     module evaluated twice (a watch-mode rerun, `isolate: false`) never trips a
+ *     `DuplicateParameterTypeName` on a store it did not create.
  *
  * (c) **Why the store is a plain object and not a `Layer`-provided service.** ADR-EC-007's
  *     correction floats exposing custom-type registration as a `Context.Service` + `Layer`, and
@@ -71,8 +73,10 @@
  */
 import { ParameterType, ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
 import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
+import { StepPatternError } from "./Errors.ts"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /**
@@ -205,8 +209,8 @@ const toUpstreamParameterType = (definition: ParameterTypeDefinition<unknown>): 
   )
 
 /**
- * A new, empty store sharing no state with any other store — including
- * `defaultParameterTypeStore`.
+ * A new, empty store sharing no state with any other store — including the one
+ * `ParameterTypeStore.Default` builds.
  *
  * An append-only collection of custom parameter type definitions, plus the replay that turns
  * them into a registry. There is no `remove` and no `clear`, on purpose: a definition that could
@@ -416,32 +420,6 @@ export const createParameterTypeStore = () => {
 export type ParameterTypeStoreShape = ReturnType<typeof createParameterTypeStore>
 
 /**
- * The process-wide store, and the one a caller gets by default.
- *
- * Append-only for the life of the process by design — see (b) in the module doc comment. A test
- * that needs isolation uses `createParameterTypeStore()` instead; a definition added here cannot
- * be withdrawn.
- */
-export const defaultParameterTypeStore: ParameterTypeStoreShape = createParameterTypeStore()
-
-/**
- * Record a custom parameter type in the default store.
- *
- * This is the call a `.steps.ts` module makes at module scope. It touches no registry, so calling
- * it before, between or after any number of `loadFeature` calls is equally correct. Deliberately
- * plain and `Effect`-free, even though `ParameterTypeStore` below is a real `Context.Service` now
- * — a step-definition author declaring a custom parameter type should never need to reach for
- * `Effect.gen`/`Effect.provide` just to register one.
- */
-export const defineParameterType = <T>(definition: ParameterTypeDefinition<T>): void =>
-  defaultParameterTypeStore.define(definition)
-
-/**
- * Build a fresh registry from the default store. Called once per `loadFeature`, never memoized.
- */
-export const buildParameterTypeRegistry = (): ParameterTypeRegistry => defaultParameterTypeStore.buildRegistry()
-
-/**
  * The `ParameterTypeStore` shape delivered as an ambient `Effect` dependency, replacing the
  * `LoadFeatureOptions.parameterTypes` argument this package used to take.
  * [ADR-EC-023](../../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md)
@@ -461,10 +439,38 @@ export class ParameterTypeStore
     Layer.succeed(ParameterTypeStore, ParameterTypeStore.of(store))
 
   /**
-   * Wraps `defaultParameterTypeStore` — the SAME singleton `defineParameterType` writes into —
-   * so a `.steps.ts` module's module-scope `defineParameterType` calls are visible to any
-   * `loadFeature`/`parseFeature` call this Layer is provided to, exactly matching today's
-   * behavior. Not provided automatically: see the class doc comment and ADR-EC-023.
+   * A FRESH built-ins-only store per Layer build — there is no process-wide store to share
+   * (ADR-EC-023, as amended). Two builds of this Layer never see each other's definitions, and
+   * nothing outside a build can append to it. Not provided automatically: see the class doc
+   * comment and ADR-EC-023.
    */
-  static readonly Default: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.layerOf(defaultParameterTypeStore)
+  static readonly Default: Layer.Layer<ParameterTypeStore> = Layer.sync(
+    ParameterTypeStore,
+    () => ParameterTypeStore.of(createParameterTypeStore())
+  )
+
+  /**
+   * The consumer-facing way to declare custom parameter types: a fresh store carrying the
+   * built-ins plus `definitions`, replayed in order. A rejected definition — a built-in or
+   * duplicate name, a malformed regexp — surfaces as `StepPatternError` in the Layer's error
+   * channel, so the failure is a typed one where the Layer is provided rather than a throw at
+   * module scope. Asserted by `test/ParameterTypes.test.ts`.
+   */
+  static readonly layer = (
+    definitions: ReadonlyArray<ParameterTypeDefinition<unknown>>
+  ): Layer.Layer<ParameterTypeStore, StepPatternError> =>
+    Layer.effect(
+      ParameterTypeStore,
+      Effect.suspend(() => {
+        try {
+          const store = createParameterTypeStore()
+          for (const definition of definitions) {
+            store.define(definition)
+          }
+          return Effect.succeed(ParameterTypeStore.of(store))
+        } catch (thrown) {
+          return thrown instanceof StepPatternError ? Effect.fail(thrown) : Effect.die(thrown)
+        }
+      })
+    )
 }

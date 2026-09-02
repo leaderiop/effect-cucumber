@@ -106,7 +106,7 @@ export const customMapNarrowsUnknown = expectTrue(
 
 /**
  * A custom map may NOT shadow a built-in name — the built-in wins, mirroring the runtime rule
- * that `defineParameterType` rejects a name already registered.
+ * that a store's `define` rejects a name already registered.
  */
 export const customMapCannotShadowBuiltIn = expectTrue(
   equality<StepArgs<"I have {int} apples", { int: string }>, [number]>()

@@ -1,6 +1,6 @@
 # ADR-EC-023: `ParameterTypeStore` becomes an ambient `Context.Service`, replacing `LoadFeatureOptions`
 
-> **Status:** Accepted and implemented
+> **Status:** Accepted and implemented — amended: there is no process-wide store (see the amendment at the end)
 > **Date:** 2026-08-28
 > **Context:** direct continuation of ADR-EC-021 (effect/platform as peer dependencies, `loadFeature`
 > becomes `Effect`-returning with a `FileSystem.FileSystem` requirement) and ADR-EC-022 (`Option<T>`
@@ -57,3 +57,22 @@ a real `Context.Service`, provided via `Layer` exactly like `FileSystem.FileSyst
 - **`Layer.succeed`-backed plain services are `Effect.runSync`-safe.** Confirmed by reproduction, and relied upon directly: `parseFeature`, which requires only `ParameterTypeStore`, keeps working under `Effect.runSync` after this change, unlike `loadFeature`, which additionally requires the genuinely-asynchronous `NodeFileSystem.layer` (ADR-EC-021) and therefore does not.
 - **`Context.Service<Self, Shape>()(tagString)` is the correct v4 construction pattern**, not `Context.Tag(...)` — already established in this codebase by `World` (ADR-EC-002); re-confirmed applicable here by the same reasoning, and by the fact that the resulting class typechecks and the full test suite (301 tests) passes under it.
 - **`Layer.mergeAll(a, b)` composes two `Layer`s correctly for a single `Effect.provide` call**, confirmed by a standalone reproduction before being adopted at the four call sites that need both `NodeFileSystem.layer` and a `ParameterTypeStore` `Layer` simultaneously.
+
+## Amendment — the service is the only entry point; no process-wide store
+
+> **Amends the Decision above; the body is left as written, per ADR-EC-014's precedent.**
+> `defaultParameterTypeStore`, `defineParameterType` and `buildParameterTypeRegistry` are gone.
+> The module-level store was append-only for the life of the process and exported, so a
+> `.steps.ts` module evaluated twice — a watch-mode rerun, `isolate: false`, two consumers
+> defining one name — threw `DuplicateParameterTypeName` from a store nobody created, and two
+> copies of the package would have meant two stores and silently missing types. In its place:
+> `ParameterTypeStore.Default` is `Layer.sync` over a FRESH built-ins-only store per Layer
+> build; `ParameterTypeStore.layer(definitions)` is the consumer-facing declaration, a Layer
+> carrying a fresh store with the definitions replayed in order, whose rejections surface as
+> `StepPatternError` in the Layer's error channel; and `ParameterTypeStore.layerOf(store)`
+> remains for a store filled by hand through `createParameterTypeStore()`. The "zero-ceremony
+> module-scope `defineParameterType`" convention this ADR's Positive consequences preserved is
+> withdrawn with it: declaring a custom type is now writing a value, not performing a side
+> effect at import time. Asserted by `packages/gherkin/test/ParameterTypes.test.ts` (two
+> builds of `Default` share nothing; `layer` carries a definition; `layer` fails on a
+> duplicate).

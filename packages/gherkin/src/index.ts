@@ -31,15 +31,15 @@
  * never constructed.
  *
  * Those first two halves meet at one seam, and it is worth stating once here rather than leaving it to
- * be reassembled from three module doc comments. `defineParameterType` is called at MODULE SCOPE,
- * stays plain and `Effect`-free by design, and touches no registry at all — it appends a record
- * to `defaultParameterTypeStore`, the same singleton `ParameterTypeStore.Default` wraps. Every
- * `loadFeature` call then replays the recorded definitions into a FRESH `ParameterTypeRegistry`
+ * be reassembled from three module doc comments. A custom parameter type is DATA: a caller declares
+ * it through `ParameterTypeStore.layer([...])` (or fills a `createParameterTypeStore()` by hand
+ * and wraps it with `ParameterTypeStore.layerOf`), and provides that Layer to `loadFeature`.
+ * There is no process-wide store (ADR-EC-023, as amended). Every `loadFeature` call then replays
+ * the store's definitions into a FRESH `ParameterTypeRegistry`
  * and hands it back on `ParsedFeature.parameterTypes`. That registry is what `createStepMatcher`
  * is handed. Because it is per-call, a `CucumberExpression` compiled against one feature's
  * registry is never valid against another's — ADR-EC-007's second correction, and the reason no
- * registry here is ever a process-wide singleton (the STORE is a process-wide singleton by
- * default; the REGISTRY it builds never is).
+ * registry — or store — here is ever a process-wide singleton.
  *
  * This is a single barrel and there is no subpath export. A subpath has to be added to BOTH
  * `exports` and `publishConfig.exports` in `package.json` or it resolves locally and 404s for
@@ -67,14 +67,7 @@ export type { LoadFeatureErrorReason, LoadFeatureWarning, LoadFeatureWarningReas
  * type, since consumers need `ParameterTypeStore.Default`/`.layerOf(...)` at runtime, not only
  * its type for annotations.
  */
-export {
-  buildParameterTypeRegistry,
-  builtInParameterTypeNames,
-  createParameterTypeStore,
-  defaultParameterTypeStore,
-  defineParameterType,
-  ParameterTypeStore
-} from "./ParameterTypes.ts"
+export { builtInParameterTypeNames, createParameterTypeStore, ParameterTypeStore } from "./ParameterTypes.ts"
 export type { ParameterTypeDefinition, ParameterTypeStoreShape } from "./ParameterTypes.ts"
 
 /** Step matching: compile patterns against a registry and find EVERY entry matching a step text. */

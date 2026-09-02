@@ -77,7 +77,7 @@ import { fileURLToPath } from "node:url"
 
 // Real bytes off disk, once, at module top level. `loadFeature` runs on a module-scoped
 // ManagedRuntime over NodeFileSystem.layer and resolves to a ParsedFeature; pass a second argument
-// (`ParameterTypeStore.layerOf(store)`) when the file declares custom parameter types.
+// (`ParameterTypeStore.layer([{ name: "money", ... }])`) when the file declares custom parameter types.
 // Both of this Feature's Scenarios run the same two steps.
 const feature = await loadFeature(fileURLToPath(new URL("./catalog.feature", import.meta.url)))
 

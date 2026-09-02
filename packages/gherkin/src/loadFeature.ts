@@ -83,19 +83,17 @@
  * One `ParameterTypeRegistry` is constructed per call, alongside the per-call id generator, and
  * handed back on `ParsedFeature.parameterTypes`. Every custom parameter type recorded in the
  * store `yield* ParameterTypeStore` resolves to is replayed into it. ADR-EC-007's SECOND
- * correction is the governing text: custom parameter types are permanent, ordinary DATA, so a
- * definition added at module scope (`defineParameterType`, still plain and `Effect`-free — see
- * `ParameterTypes.ts`) is correctly present in every subsequent call rather than landing once in
- * a registry that no longer exists by the time a second call needs one. A fresh registry also has
+ * correction is the governing text: custom parameter types are ordinary DATA held by the provided
+ * store (`ParameterTypeStore.layer([...])` — see `ParameterTypes.ts`), so a definition is
+ * correctly present in every call that store is provided to rather than landing once in a
+ * registry that no longer exists by the time a second call needs one. A fresh registry also has
  * nothing registered into it yet, which is what makes re-acquiring the eleven built-ins safe and
  * makes a second call's replay incapable of a duplicate-name throw — the failure Pitfall 14
  * records three times over in `cypress-cucumber-preprocessor`.
  *
- * `ParameterTypeStore.Default` provides `defaultParameterTypeStore` — the same module-scope
- * singleton `defineParameterType` writes into — so `Effect.provide(ParameterTypeStore.Default)`
- * reproduces exactly the behavior the old `options` argument's absence used to give for free. A
- * caller wanting isolation provides `ParameterTypeStore.layerOf(createParameterTypeStore())`
- * instead of the old `{ parameterTypes: Option.some(store) }` argument.
+ * `ParameterTypeStore.Default` provides a fresh built-ins-only store per Layer build; a caller
+ * with custom types provides `ParameterTypeStore.layer([...])` or
+ * `ParameterTypeStore.layerOf(store)` instead. No store is process-wide (ADR-EC-023, as amended).
  *
  * It is built EAGERLY, once, right here. Not memoized at module scope, not cached per store, not
  * hidden behind a lazy getter: freshness IS the requirement (MATCH-02), not an implementation

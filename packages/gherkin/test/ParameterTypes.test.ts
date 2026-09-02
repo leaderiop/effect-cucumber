@@ -26,17 +26,18 @@ import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
 import { parseFeature } from "../src/loadFeature.ts"
-import {
-  buildParameterTypeRegistry,
-  builtInParameterTypeNames,
-  createParameterTypeStore,
-  defaultParameterTypeStore,
-  defineParameterType,
-  ParameterTypeStore
-} from "../src/ParameterTypes.ts"
+import { builtInParameterTypeNames, createParameterTypeStore, ParameterTypeStore } from "../src/ParameterTypes.ts"
 
 /** A transform whose result is trivially checkable, reused by most definitions below. */
 const amount = (...match: Array<string>): number => Number(match[0])
+
+/** The store one build of `ParameterTypeStore.Default` provides. */
+const buildStore = (): ReturnType<typeof createParameterTypeStore> =>
+  Effect.runSync(
+    Effect.gen(function*() {
+      return yield* ParameterTypeStore
+    }).pipe(Effect.provide(ParameterTypeStore.Default))
+  )
 
 /**
  * Runs `action`, asserts it threw a `StepPatternError`, and returns it.
@@ -541,23 +542,63 @@ describe("stores share no state", () => {
     expect(second.definitions()).toHaveLength(1)
   })
 
-  it("records into the module-level default store and replays it, sharing nothing with a fresh store", () => {
-    // The ONLY test in this file that touches the default store, and `moneyDefaultStoreProbe` is
-    // deliberately never reused anywhere: the default store is append-only for the life of the
-    // process, so defining this name a second time would fail with DuplicateParameterTypeName.
-    defineParameterType({
-      name: "moneyDefaultStoreProbe",
+  it("ParameterTypeStore.Default builds a FRESH store per Layer build, so two builds share nothing", () => {
+    // mutation: turning `Default` back into a Layer over one module-level store turns this red —
+    // the second build would then see the first build's definition.
+    const first = buildStore()
+    first.define({
+      name: "firstBuildOnly",
       regexp: /\d+/,
       transform: amount,
-      definedAt: Option.some("packages/gherkin/test/ParameterTypes.test.ts"),
+      definedAt: Option.none(),
       useForSnippets: Option.none(),
       preferForRegexpMatch: Option.none()
     })
+    const second = buildStore()
 
-    expect(buildParameterTypeRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeDefined()
-    expect(defaultParameterTypeStore.definitions().some((definition) => definition.name === "moneyDefaultStoreProbe"))
-      .toBe(true)
-    expect(createParameterTypeStore().buildRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeUndefined()
+    expect(first.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeDefined()
+    expect(second.definitions()).toHaveLength(0)
+    expect(second.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeUndefined()
+  })
+
+  it("ParameterTypeStore.layer(definitions) provides a store carrying the built-ins plus every definition", () => {
+    const store = Effect.runSync(
+      Effect.gen(function*() {
+        return yield* ParameterTypeStore
+      }).pipe(
+        Effect.provide(ParameterTypeStore.layer([{
+          name: "money",
+          regexp: /\d+/,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        }]))
+      )
+    )
+
+    expect(store.buildRegistry().lookupByTypeName("money")).toBeDefined()
+    expect(store.buildRegistry().lookupByTypeName("int")).toBeDefined()
+  })
+
+  it("ParameterTypeStore.layer(definitions) fails in the Layer's error channel on a rejected definition", () => {
+    const money = {
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    }
+    const exit = Effect.runSyncExit(
+      Effect.gen(function*() {
+        return yield* ParameterTypeStore
+      }).pipe(Effect.provide(ParameterTypeStore.layer([money, money])))
+    )
+
+    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+    expect(failure).toBeInstanceOf(StepPatternError)
+    expect((failure as StepPatternError).reason).toBe("DuplicateParameterTypeName")
   })
 })
 

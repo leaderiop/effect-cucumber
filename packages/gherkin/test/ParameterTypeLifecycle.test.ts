@@ -7,12 +7,10 @@
  * registry; this file is the only one that goes through the composition root, which is what makes
  * it the executable form of the criterion rather than a restatement of a unit test.
  *
- * ## This file never writes to the module-level default store
+ * ## Every custom type here lives in a store this file created
  *
- * `defaultParameterTypeStore` is append-only for the life of the process — there is no `remove`
- * and no `clear`, by design. A definition recorded into it here would be visible to every later
- * test in the same worker, and a second run of the same name would fail with
- * `DuplicateParameterTypeName` for reasons having nothing to do with what that test checks. Every
+ * There is no process-wide store (ADR-EC-023, as amended): `ParameterTypeStore.Default` builds a
+ * fresh built-ins-only store per Layer build. Every
  * test below that needs a custom type builds its own store with `createParameterTypeStore()` and
  * provides it as a `ParameterTypeStore` Layer via `ParameterTypeStore.layerOf(store)`
  * ([ADR-EC-023](../../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md)
