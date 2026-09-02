@@ -232,8 +232,9 @@ const currentTestName = (): string => expect.getState().currentTestName ?? ""
  * `shuffle: false` keeps the Feature emitted first and the observer `describe` after it whatever
  * `--sequence.shuffle` does to the file. `pnpm test:shuffle` is the gate.
  */
+const unshuffledSuite: typeof describe = describe
 const orderedBlock = (block: () => void): void => {
-  describe("", { shuffle: false }, block)
+  unshuffledSuite("", { shuffle: false }, block)
 }
 
 /**

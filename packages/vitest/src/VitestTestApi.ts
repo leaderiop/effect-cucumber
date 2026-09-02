@@ -182,12 +182,19 @@ const makeDegradingEffect = (
  *
  * @param featureUri - the `.feature` file every warning from this adapter is located against
  */
+/**
+ * The module-level `describe`, reached through an alias: oxlint's vitest rules read a literal
+ * `describe(name, options, fn)` call as a malformed test declaration, but this is a library adapter
+ * forwarding a block with the `shuffle: false` option (BEH-EC-002), not a test file declaring one.
+ */
+const block: typeof describe = describe
+
 export const vitestTestApi = (featureUri: string): TestApi => ({
   // `shuffle: false`: a Feature's Scenarios run in DOCUMENT order even under `--sequence.shuffle`
   // (BEH-EC-002). Gherkin order is meaningful — a hooks Feature whose second Scenario observes the
   // first's teardown is the acceptance suite's own example — so the block opts out of shuffling.
   describe: (name, define) => {
-    describe(name, { shuffle: false }, define)
+    block(name, { shuffle: false }, define)
   },
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     it.effect(name, self, emitOptions)
@@ -267,7 +274,7 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
   return {
     describe: (name, define) => {
       if (sharedIt !== null) {
-        describe(name, { shuffle: false }, define)
+        block(name, { shuffle: false }, define)
         return
       }
       // The Feature block is OUR `describe` (so it can carry `shuffle: false`, like the plain path),
@@ -275,7 +282,7 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
       // moment the current suite is this block, so the framework's `beforeAll(build)` and
       // `afterAll(closeScope)` land on the Feature block exactly as the named `layer(...)(name, cb)` form's would. Measured by
       // `emission.test.ts`'s lifecycle block and `verify-shared-layer-once.sh`.
-      describe(name, { shuffle: false }, () => {
+      block(name, { shuffle: false }, () => {
         // HOLD one memo-map reference to the shared build for the whole block. The framework's
         // one-argument form closes ITS scope from the last block test's `onTestFinished` — before any
         // `afterAll` runs — so without this hold the AfterAllScenarios teardown (registered below,
