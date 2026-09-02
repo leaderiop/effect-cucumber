@@ -225,6 +225,33 @@ export interface ScenarioDsl<ROut> {
   readonly And: StepRegistrar<ROut>
   /** Register a `But` step definition — a continuation of whichever keyword precedes it. */
   readonly But: StepRegistrar<ROut>
+  /**
+   * Register every step of a step module (`defineSteps`, ADR-EC-027) into THIS container's scope,
+   * as if each had been written here: a module used inside a `Rule` is Rule-scoped, one used at
+   * Feature level is Feature-scoped, and the module's own definition sites are what ambiguity
+   * ordering reports.
+   *
+   * The parameter is spelled as an anonymous structural type whose FIRST property is the Effect
+   * witness, NOT as `StepModule<ROut>` — note (g). A module whose `R` names a service this
+   * container's ambient Layer does not provide is rejected by `effect(missingEffectContext)`,
+   * which is the whole point; the named alias form would report a bare TS2345 without the
+   * diagnostic (measured; `test/tsgo-gate/src/step-module-missing-service.ts` pins it).
+   */
+  readonly use: (module: {
+    readonly requires: Effect.Effect<void, never, ROut | Scope.Scope>
+    readonly steps: ReadonlyArray<ModuleStep>
+  }) => void
+}
+
+/**
+ * One step a `defineSteps` module carries: what `Registry.ts`'s `register` takes, spelled
+ * structurally here so this types-only module stays a leaf (no import of `Plan.ts`/`Registry.ts`).
+ */
+export interface ModuleStep {
+  readonly keyword: "Given" | "When" | "Then" | "And" | "But"
+  readonly pattern: string
+  readonly body: (...params: ReadonlyArray<any>) => Effect.Effect<any, any, any>
+  readonly definedAt: { readonly file: string; readonly line: number; readonly column: number } | null
 }
 
 /**

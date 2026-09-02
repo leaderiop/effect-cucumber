@@ -149,6 +149,30 @@ stay Feature-only and are a compile error on a Rule's dsl. A Rule also gets its 
 like the Feature's), so a `.feature` file with a `Rule:`-level `Background:` has somewhere to register its steps; Rule-
 and Feature-level registrations never resolve each other's steps, and the innermost matching scope wins.
 
+**Steps are reusable across Features through typed step modules.** `defineSteps<R>(define)` records step definitions
+in a shared file without registering them anywhere; every container's `use(module)` registers them into that
+container's scope — Feature-scoped at Feature level, Rule-scoped inside a `Rule` — exactly as if they had been written
+there, with the module file as their definition site. `R` is what the module's steps need and is declared, not
+inferred: a Feature whose Layer lacks a service the module names cannot `use` it, by name
+(`effect(missingEffectContext)`, asserted by `pnpm verify:tsgo-gate`). Using one module twice in one scope is an
+ambiguity like any duplicate; `Background` cannot `use` a module.
+
+```ts
+// steps/apples.ts
+export const applesSteps = defineSteps<World>(({ Given, Then, When }) => {
+  Given("I have {int} apples", function*(count) {
+    yield* Ref.set((yield* World).apples, count)
+  })
+  // ...
+})
+
+// checkout.steps.test.ts
+describeFeature(feature, World.layer, ({ Rule, use }) => {
+  use(applesSteps)
+  Rule("Limits", ({ use: useInRule }) => useInRule(limitSteps))
+})
+```
+
 **Step parameters are typed by the pattern, and Scenario Outline rows are typed for free and individually filterable.**
 `Given("I have {int} apples", function*(count) { … })` receives `count: number` with no annotation, and
 `function*(count: string)` on that pattern is a compile error: the body's parameters are `StepParams<P>`, the pattern's

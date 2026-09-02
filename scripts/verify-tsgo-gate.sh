@@ -37,6 +37,8 @@ OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.ok.json"
 FLOATING_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.floating.json"
 STEP_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-ok.json"
 STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
+STEP_MODULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-module-ok.json"
+STEP_MODULE_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-module-missing.json"
 WORLD_FIELD_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.world-field.json"
 LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
 PER_SCENARIO_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.per-scenario-rin.json"
@@ -61,6 +63,7 @@ fail() {
 }
 
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
+  "$STEP_MODULE_OK_CONFIG" "$STEP_MODULE_NEG_CONFIG" \
   "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$PER_SCENARIO_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
   "$HOOK_NEG_CONFIG" "$RULE_OK_CONFIG" \
   "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG"; do
@@ -202,6 +205,37 @@ if ! grep -q "effect(missingEffectContext)" <<<"$STEP_NEG_OUTPUT"; then
   fail "the step was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the StepRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST. TypeScript then reports the generator against that member as a plain shape mismatch ('missing the following properties: toJSON, ...'), which the plugin has no reason to read as a context problem. See Dsl.ts note (a) and RESEARCH.md Finding 2."
 fi
 echo "✓ a step requiring an unprovided service is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertions 6b and 6c: step modules (ADR-EC-027, BEH-EC-019). A module's `R`
+# is reconciled against the consuming container's Layer at the `use` call —
+# through the Effect witness that is `use`'s parameter's FIRST property. The
+# positive control proves a satisfied module (and a module needing nothing)
+# compiles at Feature level, inside a Rule, and against a wider Layer; the
+# negative proves a module needing an unprovided service is rejected BY NAME.
+# The name is the load-bearing half: spelling `use`'s parameter as the named
+# `StepModule<ROut>` alias keeps the rejection and loses the diagnostic.
+# ---------------------------------------------------------------------------
+STEP_MODULE_OK_OUTPUT="$($TSC -p "$STEP_MODULE_OK_CONFIG" 2>&1)" && STEP_MODULE_OK_EXIT=0 || STEP_MODULE_OK_EXIT=$?
+
+if [[ "$STEP_MODULE_OK_EXIT" -ne 0 ]]; then
+  echo "$STEP_MODULE_OK_OUTPUT"
+  fail "the step-module positive control failed to compile — a module declaring R = World was rejected in a Feature whose Layer provides World (or more), or a module declaring nothing was rejected somewhere. Either the fixture is broken or \`use\`'s parameter type in Dsl.ts stopped accepting a module whose R is a subset of ROut."
+fi
+echo "✓ step-module positive control compiles clean (Feature level, inside a Rule, wider Layer, R = never)"
+
+STEP_MODULE_NEG_OUTPUT="$($TSC -p "$STEP_MODULE_NEG_CONFIG" 2>&1)" && STEP_MODULE_NEG_EXIT=0 || STEP_MODULE_NEG_EXIT=$?
+
+if [[ "$STEP_MODULE_NEG_EXIT" -eq 0 ]]; then
+  echo "$STEP_MODULE_NEG_OUTPUT"
+  fail "a step module requiring an unprovided service was ACCEPTED by use() — a module declaring R = Db compiled in a Feature whose Layer provides only World. Most likely cause: the requires witness on StepModule/use in packages/vitest/src/{StepModule,Dsl}.ts degraded to Effect<void, never, never> or any."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$STEP_MODULE_NEG_OUTPUT"; then
+  echo "$STEP_MODULE_NEG_OUTPUT"
+  fail "the step module was rejected, but NOT by effect(missingEffectContext). Most likely cause: use()'s parameter in packages/vitest/src/Dsl.ts was rewritten as the named StepModule<ROut> alias (or the requires witness is no longer its FIRST property) — TypeScript then reports a bare TS2345 and the tsgo diagnostic never fires. See Dsl.ts note (g) and ADR-EC-027."
+fi
+echo "✓ a step module requiring an unprovided service is rejected by name at use(): effect(missingEffectContext)"
 
 # ---------------------------------------------------------------------------
 # Assertion 7: DSL-03 — a World field absent from the declared type.

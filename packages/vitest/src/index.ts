@@ -207,6 +207,7 @@ export type {
   BackgroundDsl,
   FeatureDsl,
   HookRegistrar,
+  ModuleStep,
   RuleDsl,
   RuleRegistrar,
   ScenarioDsl,
@@ -214,6 +215,14 @@ export type {
   StepParams,
   StepRegistrar
 } from "./Dsl.ts"
+
+/**
+ * Cross-Feature step reuse (ADR-EC-027, BEH-EC-019). `defineSteps<R>` produces a `StepModule<R>`
+ * value; every container's `use(module)` registers its steps into that container's scope, and a
+ * module needing a service the consuming Feature's Layer lacks is rejected by name at the `use`.
+ */
+export { defineSteps } from "./StepModule.ts"
+export type { StepModule } from "./StepModule.ts"
 
 /**
  * The two channels step drift reaches a consumer through (BEH-EC-013, ADR-EC-019).

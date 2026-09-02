@@ -25,7 +25,7 @@ Layer is built exactly once per Feature while every Scenario still keeps its own
 
 **The library runs its own spec.** The worked examples from `spec/behaviors/` execute as real `.feature` +
 `.steps.test.ts` pairs under [`packages/vitest/test/acceptance/`](./packages/vitest/test/acceptance), and all 22 v1
-requirements carry an acceptance tag that a traceability check counts on every push.
+requirements (plus one for step modules) carry an acceptance tag that a traceability check counts on every push.
 
 Still ahead, and stated so nobody discovers it the hard way: the doc-examples compile check is not wired, and
 editing a `.feature` file under a watching runner does not trigger a rerun when the file was loaded by path.

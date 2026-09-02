@@ -229,7 +229,7 @@ ALLOW_MARKER_RE='//[[:space:]]*GATE-ALLOW-MUTATION:[[:space:]]*[^[:space:]]'
 # call inside a factory, which is the opposite of the module-scope holder
 # PROH-11-03 forbids and is documented as deliberate at the site. Raising this
 # number is a review decision, and making it one is the point.
-ALLOWED_MUTATIONS=2
+ALLOWED_MUTATIONS=3
 
 # The banner goes to STDERR, and that is not stylistic. Three things follow from
 # a failure written to stdout: it is SWALLOWED when the function is reached from

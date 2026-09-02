@@ -37,6 +37,7 @@ exists now, so the thing it was waiting on is no longer what blocks it. See
 | [05 — Step matching and parameter types](./behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015          | cucumber-expression matching, parameter types                          |
 | [06 — DataTable and DocString arguments](./behaviors/06-datatable-and-docstring-arguments.md)  | BEH-EC-016          | `DataTable`/`DocString` step arguments                                 |
 | [07 — Hook ordering and guarantees](./behaviors/07-hook-ordering-and-guarantees.md)            | BEH-EC-017          | Hook execution order and guarantees                                    |
+| [08 — Step modules](./behaviors/08-step-modules.md)                                            | BEH-EC-019          | Typed step modules reused across Features                              |
 
 ### Decisions
 

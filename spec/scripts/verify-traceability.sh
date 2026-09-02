@@ -286,7 +286,7 @@ fi
 # spec/ gate to GSD-internal files, which is threat T-11-06-05, accepted
 # knowingly rather than mitigated.
 # ---------------------------------------------------------------------------
-EXPECTED_REQ_COUNT=22
+EXPECTED_REQ_COUNT=23
 
 if [[ "$GIT_SCAN_AVAILABLE" -eq 0 ]]; then
   : # already reported above

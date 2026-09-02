@@ -346,7 +346,15 @@ export const collect = (
     When: registrar("When"),
     Then: registrar("Then"),
     And: registrar("And"),
-    But: registrar("But")
+    But: registrar("But"),
+    // A step module's records go into the CURRENT scope frame, exactly like a `Given` written here
+    // (ADR-EC-027): used inside a Rule they are Rule-scoped, at Feature level Feature-scoped. The
+    // module's own definition sites are kept, so an ambiguity between two modules names both files.
+    use: (module) => {
+      for (const step of module.steps) {
+        registry.register(step.keyword, step.pattern, step.body, step.definedAt)
+      }
+    }
   }
 
   // ADR-EC-017: a Background gets `Given` and `And` only. The omission is the contract, not a gap.

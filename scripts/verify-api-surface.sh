@@ -43,11 +43,12 @@ for (const m of barrel.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
 }
 for (const m of barrel.matchAll(/export\s+(?:const|function|class|type|interface)\s+([A-Za-z_$][\w$]*)/g)) exported.add(m[1])
 
-// 2. DSL members: every `readonly Name:` member of an exported container interface.
+// 2. DSL members: every top-level (two-space-indented) `readonly Name:` member of an exported
+//    container interface; a `readonly` nested inside a member's parameter type is not a member.
 const dsl = stripComments(fs.readFileSync(dslPath, "utf8"))
 const members = new Set()
 for (const iface of dsl.matchAll(/export interface (\w+Dsl)<[^>]*>[^{]*\{([\s\S]*?)\n\}/g)) {
-  for (const m of iface[2].matchAll(/^\s+readonly\s+([A-Za-z_$][\w$]*)\s*[:<(]/gm)) members.add(m[1])
+  for (const m of iface[2].matchAll(/^ {2}readonly\s+([A-Za-z_$][\w$]*)\s*[:<(]/gm)) members.add(m[1])
 }
 
 // 3. The two tables in the overview, located by their markers.
