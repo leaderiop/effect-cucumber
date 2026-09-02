@@ -254,10 +254,10 @@ describe("decodeHashes", () => {
     // error-level, and this file's `succeeds`/`fails` helpers already establish throwing as how a
     // precondition that did not hold is reported.
     const { cause } = error
-    if (!Option.isSome(cause)) {
+    if (cause === undefined) {
       throw new Error("expected the decode failure to carry the underlying SchemaError as its cause")
     }
-    const { _tag } = cause.value as { readonly _tag: string }
+    const { _tag } = cause as { readonly _tag: string }
     expect(_tag).toBe("SchemaError")
   })
 

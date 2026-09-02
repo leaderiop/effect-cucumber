@@ -69,10 +69,10 @@ describe("readFeatureSource", () => {
     expect(error.uri).toBe(missing)
     expect(error.line).toEqual(Option.none())
     expect(error.message).toContain(missing)
-    // `.cause` is `Option<PlatformError>` now, not the raw Node error directly: the real
-    // ENOENT details live one level deeper, at `.cause.cause` — confirmed by reproduction
-    // against the real `NodeFileSystem`, not assumed.
-    const platformError = Option.getOrThrow(error.cause) as { readonly cause?: { readonly code?: unknown } }
+    // `.cause` is the PlatformError, not the raw Node error directly: the real ENOENT details
+    // live one level deeper, at `.cause.cause` — confirmed by reproduction against the real
+    // `NodeFileSystem`, not assumed.
+    const platformError = error.cause as { readonly cause?: { readonly code?: unknown } }
     expect(platformError.cause?.code).toBe("ENOENT")
   })
 
@@ -82,7 +82,7 @@ describe("readFeatureSource", () => {
 
     expect(error.reason).toBe("ReadFailed")
     expect(error.uri).toBe(directory)
-    expect(Option.isSome(error.cause)).toBe(true)
+    expect(error.cause).toBeDefined()
   })
 
   it("reports a permission failure as PermissionDenied, discriminating on the PlatformError's own tag", async () => {
@@ -124,7 +124,7 @@ describe("parseDocument", () => {
     expect(error.reason).toBe("UnknownDialect")
     expect(error.reason).not.toBe("ParseFailed")
     expect(error.line).toEqual(Option.some(1))
-    expect(Option.isSome(error.cause) && error.cause.value instanceof Errors.CompositeParserException).toBe(true)
+    expect(error.cause instanceof Errors.CompositeParserException).toBe(true)
   })
 
   it("F18 rejects a prototype-key dialect header as UnknownDialect rather than a TypeError-backed ParseFailed", async () => {
@@ -168,7 +168,7 @@ describe("parseDocument", () => {
 
     expect(error.reason).toBe("NoFeature")
     expect(error.line).toEqual(Option.none())
-    expect(error.cause).toEqual(Option.none())
+    expect(error.cause).toBeUndefined()
   })
 
   it("no raw gherkin or Node exception escapes for any Group B fixture", async () => {
@@ -242,7 +242,7 @@ describe("parseDocument", () => {
       expect(error.uri).toBe("bare.feature")
       // The bare shape carries its own `.location`, unlike the composite.
       expect(error.line).toEqual(Option.fromUndefinedOr(bareLine))
-      expect(Option.isSome(error.cause) && error.cause.value).toBe(bare)
+      expect(error.cause).toBe(bare)
     } finally {
       spy.mockRestore()
     }

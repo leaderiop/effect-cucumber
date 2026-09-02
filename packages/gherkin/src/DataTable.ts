@@ -126,8 +126,7 @@ const dataTableError = (args: {
     line: Option.some(args.line),
     row: args.row,
     column: args.column,
-    message: `${args.uri}:${args.line}: ${args.reason}: ${args.sentences.join(" ")}`,
-    cause: Option.none()
+    message: `${args.uri}:${args.line}: ${args.reason}: ${args.sentences.join(" ")}`
   })
 
 /**
@@ -387,7 +386,7 @@ const rowDecodeFailed = (
     row,
     column,
     message: `${located}: ${schemaError.message} ${subject}`,
-    cause: Option.some(schemaError)
+    cause: schemaError
   })
 }
 

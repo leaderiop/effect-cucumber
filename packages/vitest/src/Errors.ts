@@ -55,9 +55,10 @@
  *          `Schema.Literal(a, b)` throws a schema validation error when used as a
  *          `Schema.TaggedError` field in this build, even though the same union works standalone.
  *       2. `Schema.Defect`, bare or wrapped in `Schema.optional`, throws at construction time
- *          inside `SchemaAST.js`. `Schema.OptionFromUndefinedOr(Schema.Unknown)` is used for
- *          `cause` instead, and it preserves referential equality with the wrapped value.
- *       3. Every optional field is `Schema.OptionFromUndefinedOr`, which is a TRANSFORMATION, and
+ *          inside `SchemaAST.js`. `Schema.optionalKey(Schema.Unknown)` is used for `cause`
+ *          instead: plain `Error.cause`, `unknown | undefined`, preserving referential equality
+ *          with the wrapped value and readable by every error-chain tool (ADR-EC-022 amendment).
+ *       3. Every OTHER optional field is `Schema.OptionFromUndefinedOr`, which is a TRANSFORMATION, and
  *          a `Schema.TaggedError` constructor validates against the Type side rather than the
  *          Encoded side. So every construction site must pass an explicit `Option.some(x)` or
  *          `Option.none()`; omitting the key fails construction outright, and there is no implicit
@@ -193,7 +194,7 @@ export class StepMatchError extends Schema.TaggedError<StepMatchError>()("StepMa
   matchedPatterns: Schema.Array(Schema.String),
   suggestion: Schema.OptionFromUndefinedOr(Schema.String),
   message: Schema.String,
-  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+  cause: Schema.optionalKey(Schema.Unknown)
 }) {}
 
 /**

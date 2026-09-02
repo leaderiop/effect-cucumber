@@ -40,6 +40,6 @@ export const raiseStepPatternError = (args: {
     parameterTypeName: Option.fromUndefinedOr(args.parameterTypeName),
     pattern: Option.fromUndefinedOr(args.pattern),
     message: `${args.reason}: ${args.sentences.join(" ")}`,
-    cause: Option.fromUndefinedOr(args.cause)
+    cause: args.cause
   })
 }

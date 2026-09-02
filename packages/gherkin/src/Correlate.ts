@@ -218,8 +218,7 @@ const featureOf = (document: GherkinDocument, uri: string): Feature => {
       reason: "NoFeature",
       uri,
       line: Option.none(),
-      message: `${uri} cannot be correlated: the parsed document declares no Feature:.`,
-      cause: Option.none()
+      message: `${uri} cannot be correlated: the parsed document declares no Feature:.`
     })
   }
   return feature
@@ -420,8 +419,7 @@ const resolveStep = (
       message: `Pickle step ${JSON.stringify(pickleStep.text)} in ${uri} references AST node `
         + `${sourceId === undefined ? "<none>" : sourceId}, which the parsed document does not `
         + `declare. The parser and the pickle compiler disagree about this file; they must have `
-        + `been given the same id generator and the same document.`,
-      cause: Option.none()
+        + `been given the same id generator and the same document.`
     })
   }
   return {

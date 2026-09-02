@@ -98,8 +98,7 @@ const outlineWithoutExamples = (uri: string, node: AstScenarioInfo): LoadFeature
     message: `${at(uri, node.location.line)}OutlineWithoutExamples: ${describeNode(node)} is declared with an `
       + `Outline keyword but has no Examples: block. It still compiles — to a single scenario whose step text `
       + `keeps its literal <placeholders> un-substituted — so it runs and passes instead of failing. Add an `
-      + `Examples: table with a header row and at least one body row, or change the keyword to a plain scenario.`,
-    cause: Option.none()
+      + `Examples: table with a header row and at least one body row, or change the keyword to a plain scenario.`
   })
 
 /**
@@ -135,8 +134,7 @@ const emptyExamples = (
     message: `${at(uri, line)}EmptyExamples: ${describeNode(node)}: ${which} compiled to zero scenarios, so it `
       + `never runs and no test reports it as missing${others}. An Examples: block with no header row, or a `
       + `header row with no body rows, produces no scenarios and no error. Give every Examples: block a header `
-      + `row and at least one body row, or delete the empty block.`,
-    cause: Option.none()
+      + `row and at least one body row, or delete the empty block.`
   })
 }
 
@@ -157,8 +155,7 @@ const scenarioKeywordWithExamples = (uri: string, node: AstScenarioInfo): LoadFe
     message: `${at(uri, node.location.line)}ScenarioKeywordWithExamples: ${describeNode(node)} uses a plain `
       + `scenario keyword but carries ${node.examplesCount} Examples: block(s). The compiler branches on the `
       + `presence of Examples: and never on the keyword, so this silently compiles as an Outline, one scenario `
-      + `per body row. Change the keyword to the Outline form for this language, or remove the Examples: table.`,
-    cause: Option.none()
+      + `per body row. Change the keyword to the Outline form for this language, or remove the Examples: table.`
   })
 
 /**
@@ -191,8 +188,7 @@ const zeroStepScenario = (uri: string, node: AstScenarioInfo, line: number): Loa
       reason: "ZeroStepScenario",
       uri,
       line: Option.some(line),
-      message: base,
-      cause: Option.none()
+      message: base
     })
   }
   return new LoadFeatureError({
@@ -201,8 +197,7 @@ const zeroStepScenario = (uri: string, node: AstScenarioInfo, line: number): Loa
     line: Option.some(line),
     message: `${base}\n\nThis scenario has a description. A mistyped step keyword written before any valid `
       + `step is silently absorbed into the description instead of being reported, so if you meant to write a `
-      + `step here, it is in the text below — check it for a misspelled keyword:\n${node.description}`,
-    cause: Option.none()
+      + `step here, it is in the text below — check it for a misspelled keyword:\n${node.description}`
   })
 }
 
@@ -273,8 +268,7 @@ const duplicateScenarioName = (
       + `${JSON.stringify(node.name)} — the first on line ${first.location.line}, this one on line ${line}. `
       + `Scenario names are how a scenario is matched to its registered step definitions, so a repeated name `
       + `is ambiguous with no correct runtime resolution. Rename one of them. Names only have to be unique `
-      + `within a scope: two different Rule: blocks may each contain a scenario of the same name.`,
-    cause: Option.none()
+      + `within a scope: two different Rule: blocks may each contain a scenario of the same name.`
   })
 }
 
@@ -438,8 +432,7 @@ const uninterpolatedPlaceholder = (
     line: Option.some(line),
     message: `${at(uri, line)}UninterpolatedPlaceholder: <${leftover.name}> is an Examples column of `
       + `${describeNode(node)}, but it is still present, un-substituted, in ${leftover.site} of the step on `
-      + `line ${line}. ${explanation} That text reads, in full:\n${leftover.content}`,
-    cause: Option.none()
+      + `line ${line}. ${explanation} That text reads, in full:\n${leftover.content}`
   })
 }
 

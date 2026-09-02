@@ -61,7 +61,7 @@ const loadFeatureError = (args: {
     uri: args.uri,
     line: Option.fromUndefinedOr(args.line),
     message: args.message,
-    cause: Option.fromUndefinedOr(args.cause)
+    cause: args.cause
   })
 
 /**
@@ -160,8 +160,7 @@ export const parseDocument = (source: string, uri: string, newId: IdGenerator.Ne
       uri,
       line: Option.some(prototypeKeyHeader.line),
       message: `Unknown dialect in ${uri}:\n(${prototypeKeyHeader.line}:1): Language not supported: `
-        + `${prototypeKeyHeader.language}`,
-      cause: Option.none()
+        + `${prototypeKeyHeader.language}`
     })
   }
   let document: GherkinDocument
@@ -198,8 +197,7 @@ export const parseDocument = (source: string, uri: string, newId: IdGenerator.Ne
       uri,
       line: Option.none(),
       message: `${uri} parsed cleanly but declares no Feature:. A file with only comments or `
-        + `whitespace is valid Gherkin and contributes no scenarios.`,
-      cause: Option.none()
+        + `whitespace is valid Gherkin and contributes no scenarios.`
     })
   }
   return document

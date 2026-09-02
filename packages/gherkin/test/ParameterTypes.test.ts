@@ -450,7 +450,7 @@ describe("a malformed definition is rejected at definition time", () => {
 
     expect(error.reason).toBe("InvalidParameterTypeRegexp")
     expect(Option.getOrUndefined(error.parameterTypeName)).toBe("bad")
-    expect(Option.isSome(error.cause)).toBe(true)
+    expect(error.cause).toBeDefined()
     expect(store.definitions()).toHaveLength(0)
   })
 
@@ -588,7 +588,7 @@ describe("a rejection only knowable at replay time is still a named library erro
     expect(error.reason).toBe("InvalidParameterTypeDefinition")
     expect(Option.getOrUndefined(error.parameterTypeName)).toBe("digits")
     expect(error.message).toContain("preferForRegexpMatch")
-    expect(Option.isSome(error.cause)).toBe(true)
+    expect(error.cause).toBeDefined()
   })
 
   it("reaches parseFeature as a StepPatternError, never as a feature-file ParseFailed", () => {

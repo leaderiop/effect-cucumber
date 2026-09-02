@@ -79,7 +79,7 @@ export const readFeatureSource = Effect.fn("readFeatureSource")(function*(path: 
         uri: path,
         line: Option.none(),
         message: `Cannot read feature file ${path}: ${platformError.message}`,
-        cause: Option.some(platformError)
+        cause: platformError
       })
     )
   )

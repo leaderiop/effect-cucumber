@@ -419,8 +419,7 @@ const undefinedStep = (args: {
     scenarioName: scenario.name,
     matchedPatterns: [],
     suggestion: Option.some(suggestion),
-    message: `${at(feature.uri, step.line)}UndefinedStep: ${sentences.join(" ")}`,
-    cause: Option.none()
+    message: `${at(feature.uri, step.line)}UndefinedStep: ${sentences.join(" ")}`
   })
 }
 
@@ -475,8 +474,7 @@ const ambiguousStep = (args: {
     scenarioName: scenario.name,
     matchedPatterns: ordered.map((definition) => definition.pattern),
     suggestion: Option.none(),
-    message: `${at(feature.uri, step.line)}AmbiguousStep: ${sentences.join(" ")}`,
-    cause: Option.none()
+    message: `${at(feature.uri, step.line)}AmbiguousStep: ${sentences.join(" ")}`
   })
 }
 

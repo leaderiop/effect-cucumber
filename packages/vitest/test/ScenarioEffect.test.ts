@@ -245,8 +245,7 @@ const undefinedStepError = new StepMatchError({
   scenarioName: "a scenario",
   matchedPatterns: [],
   suggestion: Option.none(),
-  message: "test/scenario-effect.feature:7: UndefinedStep: the step matched none of the step definitions",
-  cause: Option.none()
+  message: "test/scenario-effect.feature:7: UndefinedStep: the step matched none of the step definitions"
 })
 
 /**

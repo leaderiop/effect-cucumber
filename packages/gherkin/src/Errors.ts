@@ -25,20 +25,22 @@
  *     package, not guessed:
  *       - `Schema.Defect` (bare or `Schema.optional`-wrapped) throws
  *         `Cannot read properties of undefined (reading 'encoding')` inside `SchemaAST.js`
- *         at construction time. `Schema.optional(Schema.Unknown)` is used for `cause`
- *         instead — functionally equivalent for this package's purposes (an opaque,
- *         unvalidated upstream error), and confirmed to preserve referential equality
- *         (`err.cause === upstream`).
+ *         at construction time. `Schema.optionalKey(Schema.Unknown)` is used for `cause`
+ *         instead — an opaque, unvalidated upstream error that preserves referential
+ *         equality (`err.cause === upstream`).
  *       - `Schema.Literal(...)` (the variadic multi-argument form) throws a schema
  *         validation error when used as a `Schema.TaggedError` field — even though the
  *         exact same union works standalone via `Schema.decodeUnknownSync`. `Schema.Literals`
  *         (the array-argument, plural form) does not have this problem and is used for
  *         every `reason` field below.
  *
- *     Every optional field below is `Schema.OptionFromUndefinedOr`, not `Schema.optional` —
- *     `line`, `cause`, `parameterTypeName`, `pattern` are all `Option<T>`, not `T | undefined`
- *     (the [Effect-feature-adoption report](../../../.planning/research/effect-feature-adoption-report.md)'s
- *     recommendation, extended to the public API surface). This has a real, confirmed cost:
+ *     Every optional field below EXCEPT `cause` is `Schema.OptionFromUndefinedOr`, not
+ *     `Schema.optional` — `line`, `parameterTypeName`, `pattern` are `Option<T>`, not
+ *     `T | undefined` (ADR-EC-022). `cause` is the one exemption, recorded in that ADR's
+ *     amendment: `Error.cause` has platform semantics — Node's inspector, `Cause.pretty` and
+ *     every error-chain tool read it natively — so it is `Schema.optionalKey(Schema.Unknown)`,
+ *     `unknown | undefined`, omitted when there is nothing to attach. The Option fields have a
+ *     real, confirmed cost:
  *     `Schema.OptionFromUndefinedOr` is a transformation (Encoded `T | undefined` → Type
  *     `Option<T>`), and a `Schema.TaggedError` constructor validates against the Type side,
  *     not the Encoded side — so every constructor call must pass an actual `Option.some(x)`
@@ -118,9 +120,10 @@ export type LoadFeatureErrorReason =
 /**
  * A fatal problem found while loading a feature file.
  *
- * `line` and `cause` are `Option<number>`/`Option<unknown>`, not `T | undefined` — every
- * constructor call passes `Option.some(x)` or `Option.none()` explicitly (see this module's
- * doc comment (a) for why omitting the key is not an option). No custom constructor:
+ * `line` is `Option<number>`, not `number | undefined` — every constructor call passes
+ * `Option.some(x)` or `Option.none()` explicitly (see this module's doc comment (a) for why
+ * omitting the key is not an option). `cause` is plain `Error.cause`: `unknown`, and omitted
+ * when there is no upstream failure to attach. No custom constructor:
  * `@effect/tsgo`'s `overriddenSchemaConstructor` diagnostic rejects any constructor override
  * on a `Schema.TaggedError` subclass outright (confirmed by trying one and reading the
  * diagnostic, not assumed) — Schema-decoded reconstruction bypasses a custom constructor
@@ -145,7 +148,7 @@ export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("Lo
   uri: Schema.String,
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   message: Schema.String,
-  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+  cause: Schema.optionalKey(Schema.Unknown)
 }) {}
 
 /**
@@ -206,8 +209,8 @@ export type StepPatternErrorReason =
  * assigned), same "no custom constructor" reasoning, same `Option<T>` fields for the same
  * reason (see `LoadFeatureError`'s doc comment and this module's doc comment (a)). Every
  * constructor call in this package — `StepPatternMessages.ts#raiseStepPatternError` and
- * `test/Contracts.test.ts`'s direct constructions alike — passes `parameterTypeName`,
- * `pattern`, and `cause` as explicit `Option.some(x)`/`Option.none()` values.
+ * `test/Contracts.test.ts`'s direct constructions alike — passes `parameterTypeName` and
+ * `pattern` as explicit `Option.some(x)`/`Option.none()` values; `cause` is plain `Error.cause`.
  *
  * Both locators are optional because neither is always knowable: a definition-time failure
  * has a `parameterTypeName` and no pattern, while a malformed pattern has a `pattern` and
@@ -228,7 +231,7 @@ export class StepPatternError extends Schema.TaggedError<StepPatternError>()("St
   parameterTypeName: Schema.OptionFromUndefinedOr(Schema.String),
   pattern: Schema.OptionFromUndefinedOr(Schema.String),
   message: Schema.String,
-  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+  cause: Schema.optionalKey(Schema.Unknown)
 }) {}
 
 /**
@@ -261,8 +264,9 @@ export type DataTableErrorReason =
  * A fatal problem with a step's DataTable argument, or with decoding one.
  *
  * Shaped like the two classes above — same derived `_tag`/`name`, same "no custom constructor"
- * constraint, same `Option<T>` fields that every construction site must fill with an explicit
- * `Option.some(x)`/`Option.none()` (module doc comment (a)). See note (e) for why this is a third
+ * constraint, same `Option<T>` locator fields that every construction site must fill with an
+ * explicit `Option.some(x)`/`Option.none()` and the same plain `Error.cause` (module doc comment
+ * (a)). See note (e) for why this is a third
  * class and not more members on either existing reason union.
  *
  * Two field choices are worth stating, because neither is guessable from the code:
@@ -294,7 +298,7 @@ export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTa
   row: Schema.OptionFromUndefinedOr(Schema.Number),
   column: Schema.OptionFromUndefinedOr(Schema.String),
   message: Schema.String,
-  cause: Schema.OptionFromUndefinedOr(Schema.Unknown)
+  cause: Schema.optionalKey(Schema.Unknown)
 }) {}
 
 /**

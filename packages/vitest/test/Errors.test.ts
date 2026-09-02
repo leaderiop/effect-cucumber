@@ -77,6 +77,7 @@
  */
 import { describe, expect, it } from "@effect/vitest"
 import * as Option from "effect/Option"
+import { inspect } from "node:util"
 import {
   type ExcludedScenariosNoticeReason,
   makeExcludedScenariosNotice,
@@ -136,8 +137,7 @@ const undefinedStepError = () =>
     scenarioName: "a shopper fills a basket",
     matchedPatterns: [],
     suggestion: Option.some("Given(\"I have {int} cucumbers in my basket\", function*(count: number) {})"),
-    message: untruncatedMessage,
-    cause: Option.none()
+    message: untruncatedMessage
   })
 
 const ambiguousStepError = () =>
@@ -149,8 +149,7 @@ const ambiguousStepError = () =>
     scenarioName: "a shopper fills a basket",
     matchedPatterns: ambiguousPatterns,
     suggestion: Option.none(),
-    message: untruncatedMessage,
-    cause: Option.none()
+    message: untruncatedMessage
   })
 
 const unusedWarning = (definedAt?: string) =>
@@ -242,28 +241,43 @@ describe("StepMatchError, reason AmbiguousStep (MATCH-04)", () => {
 
 describe("StepMatchError construction under this rc build's constraints", () => {
   it("fails when an Option-typed key is omitted, rather than defaulting it", () => {
-    // Verified fact 3 of the plan, and `packages/gherkin/src/Errors.ts` note (a): every optional
-    // field is `Schema.OptionFromUndefinedOr`, a TRANSFORMATION, and the constructor validates
-    // against the Type side — so there is no implicit `Option.none()` for an omitted key. The cast
-    // is load-bearing rather than a workaround: the parameter type REQUIRES `cause`, so the
+    // `packages/gherkin/src/Errors.ts` note (a): every Option-typed field is
+    // `Schema.OptionFromUndefinedOr`, a TRANSFORMATION, and the constructor validates against the
+    // Type side — so there is no implicit `Option.none()` for an omitted key. The cast is
+    // load-bearing rather than a workaround: the parameter type REQUIRES `suggestion`, so the
     // omission is unwriteable without one, and this test is about the runtime behaviour a
     // JavaScript caller or a Schema-decoded reconstruction would otherwise meet unannounced.
-    const withoutCause = {
+    // `cause` is the one key that MAY be omitted — it is plain `Error.cause` (ADR-EC-022
+    // amendment), and the test below this one proves that omission constructs fine.
+    const withoutSuggestion = {
       reason: "UndefinedStep",
       uri: "features/checkout.feature",
       line: Option.none(),
       stepText: "I omit a required key",
       scenarioName: "omission",
       matchedPatterns: [],
-      suggestion: Option.none(),
-      message: "cause was omitted"
+      message: "suggestion was omitted"
     } as unknown as StepMatchErrorArgs
 
-    const thrown = thrownBy(() => new StepMatchError(withoutCause))
+    const thrown = thrownBy(() => new StepMatchError(withoutSuggestion))
     expect(thrown).toBeInstanceOf(Error)
   })
 
-  it("exposes cause as Option.some of the supplied value, preserving reference equality", () => {
+  it("constructs with cause omitted, and exposes it as undefined", () => {
+    const error = new StepMatchError({
+      reason: "UndefinedStep",
+      uri: "features/checkout.feature",
+      line: Option.none(),
+      stepText: "I omit the cause",
+      scenarioName: "omission",
+      matchedPatterns: [],
+      suggestion: Option.none(),
+      message: "cause was omitted"
+    })
+    expect(error.cause).toBeUndefined()
+  })
+
+  it("exposes cause natively, preserving reference equality and the inspected chain", () => {
     const upstream = new Error("the step body threw")
     const error = new StepMatchError({
       reason: "UndefinedStep",
@@ -274,10 +288,10 @@ describe("StepMatchError construction under this rc build's constraints", () => 
       matchedPatterns: [],
       suggestion: Option.none(),
       message: "wrapping an upstream throw",
-      cause: Option.some(upstream)
+      cause: upstream
     })
-    expect(error.cause).toEqual(Option.some(upstream))
-    expect(Option.getOrThrow(error.cause)).toBe(upstream)
+    expect(error.cause).toBe(upstream)
+    expect(inspect(error)).toContain("the step body threw")
   })
 })
 

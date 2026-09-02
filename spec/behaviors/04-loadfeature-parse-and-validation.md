@@ -59,6 +59,12 @@ REQUIREMENT: loadFeature MUST reject, with a distinct named error identifying
              written for a human reading a failed test run and is NOT a stable
              interface — it MUST NOT be pattern-matched.
 
+             Where an upstream failure exists it is attached as the error's
+             plain `Error.cause` (`unknown`, absent otherwise) — never wrapped
+             in an Option — so Node's inspector, `Cause.pretty` and any
+             error-chain tool render the chain natively (ADR-EC-022, as
+             amended). Every other optional field is an `Option<T>`.
+
              An exception this library did not anticipate — anything that is
              neither a LoadFeatureError nor a StepPatternError — is a DEFECT
              (Effect.die), never a typed failure: relabelling it ParseFailed

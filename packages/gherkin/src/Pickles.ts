@@ -40,7 +40,7 @@ export const compilePickles = (
       uri,
       line: Option.none(),
       message: `Failed to compile pickles for ${uri}: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-      cause: Option.some(thrown)
+      cause: thrown
     })
   }
 }
