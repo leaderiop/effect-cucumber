@@ -371,6 +371,54 @@ export interface UndeclaredTagWarning {
  * The explicit return annotation is required, not stylistic: `composite: true` demands it for
  * declaration emit on anything exported.
  */
+/**
+ * A `Rule(...)` or `Scenario(...)` container was registered under a name the Feature does not
+ * contain (F-11). The registration is INERT — its steps, Background and hooks can never run — and
+ * without this the only symptom is a cluster of "matched no step" warnings pointing everywhere but
+ * at the typo.
+ */
+export type UnknownContainerWarningReason = "UnknownContainer"
+
+export interface UnknownContainerWarning {
+  readonly _tag: "UnknownContainerWarning"
+  readonly reason: UnknownContainerWarningReason
+  /** The `.feature` file the Feature was read from. */
+  readonly uri: string
+  /** Which container call was made. */
+  readonly kind: "Rule" | "Scenario"
+  /** The name the author wrote, verbatim. */
+  readonly name: string
+  /** For a `Scenario` inside a `Rule`: that Rule's name. `null` at Feature level or for a Rule. */
+  readonly ruleName: string | null
+  /** The names the Feature does contain at that level, in document order. */
+  readonly known: ReadonlyArray<string>
+  /** The rendered warning line, every author-controlled component quoted. */
+  readonly message: string
+}
+
+export const makeUnknownContainerWarning = (args: {
+  uri: string
+  kind: "Rule" | "Scenario"
+  name: string
+  ruleName: string | null
+  known: ReadonlyArray<string>
+}): UnknownContainerWarning => ({
+  _tag: "UnknownContainerWarning",
+  reason: "UnknownContainer",
+  uri: args.uri,
+  kind: args.kind,
+  name: args.name,
+  ruleName: args.ruleName,
+  known: args.known,
+  message: `${quoted(args.uri)}: UnknownContainer: no ${args.kind} named ${quoted(args.name)} exists in this Feature${
+    args.ruleName === null ? "" : ` inside Rule ${quoted(args.ruleName)}`
+  } (known: ${
+    args.known.length === 0 ? "none" : quotedList(args.known)
+  }). Everything registered inside that ${args.kind} — ${
+    args.kind === "Rule" ? "steps, Background and hooks" : "steps"
+  } — can never run; its steps will be reported as matching no step. Check the name against the .feature file (an Outline is registered by its un-interpolated title).`
+})
+
 export const makeUndeclaredTagWarning = (args: {
   uri: string
   scenarioName: string

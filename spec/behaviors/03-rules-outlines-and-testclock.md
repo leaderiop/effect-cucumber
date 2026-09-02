@@ -45,6 +45,16 @@ REQUIREMENT: A service contributed by extraLayer MUST be usable by a step
              that way contributes no services of its own.
 ```
 
+```
+REQUIREMENT: A Rule(...) container registered under a name the Feature does
+             not contain MUST produce one UnknownContainerWarning naming the
+             file, the name written and the Rules the Feature does contain;
+             its steps, Background and hooks are inert and the warning is the
+             only signal. Scenarios registered inside such a Rule produce no
+             warning of their own — the Rule's covers them. Asserted by
+             packages/vitest/test/describeFeature.test.ts.
+```
+
 ## BEH-EC-010: Scenario Outline Examples are typed for free
 
 > **See:** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md), [ADR-EC-014](../decisions/014-loadfeature-consumes-gherkindocument-and-pickles.md)

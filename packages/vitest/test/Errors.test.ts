@@ -81,6 +81,7 @@ import {
   type ExcludedScenariosNoticeReason,
   makeExcludedScenariosNotice,
   makeUndeclaredTagWarning,
+  makeUnknownContainerWarning,
   makeUnusedStepDefinitionWarning,
   StepMatchError,
   type UndeclaredTagWarningReason,
@@ -588,5 +589,33 @@ describe("ExcludedScenariosNotice content (RUN-05, D-10)", () => {
     expect(message).toContain(JSON.stringify(forgingTag))
     expect(message.includes("\n")).toBe(false)
     expect(message).not.toContain(forgingTag)
+  })
+})
+
+describe("UnknownContainerWarning (F-11)", () => {
+  it("quotes the file, the name and every known name, and says none when nothing is known", () => {
+    const withKnown = makeUnknownContainerWarning({
+      uri: "features/a \"quoted\".feature",
+      kind: "Scenario",
+      name: "Creating a usr",
+      ruleName: "Limits",
+      known: ["Over the limit", "line\nbreak"]
+    })
+    const { _tag, reason } = withKnown
+    expect(_tag).toBe("UnknownContainerWarning")
+    expect(reason).toBe("UnknownContainer")
+    expect(withKnown).not.toBeInstanceOf(Error)
+    expect(withKnown.message).toContain(
+      "\"features/a \\\"quoted\\\".feature\": UnknownContainer: no Scenario named \"Creating a usr\" exists in this Feature inside Rule \"Limits\" (known: \"Over the limit\", \"line\\nbreak\")"
+    )
+    const withoutKnown = makeUnknownContainerWarning({
+      uri: "f.feature",
+      kind: "Rule",
+      name: "Limts",
+      ruleName: null,
+      known: []
+    })
+    expect(withoutKnown.message).toContain("no Rule named \"Limts\" exists in this Feature (known: none)")
+    expect(withoutKnown.message).toContain("steps, Background and hooks")
   })
 })

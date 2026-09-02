@@ -249,6 +249,8 @@ export type {
   StepMatchErrorReason,
   UndeclaredTagWarning,
   UndeclaredTagWarningReason,
+  UnknownContainerWarning,
+  UnknownContainerWarningReason,
   UnusedStepDefinitionWarning,
   UnusedStepDefinitionWarningReason
 } from "./Errors.ts"

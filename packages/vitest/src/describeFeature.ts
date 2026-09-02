@@ -158,7 +158,12 @@ import type {
   ScenarioRegistrar,
   StepRegistrar
 } from "./Dsl.ts"
-import { makeExcludedScenariosNotice, makeUndeclaredTagWarning } from "./Errors.ts"
+import {
+  makeExcludedScenariosNotice,
+  makeUndeclaredTagWarning,
+  makeUnknownContainerWarning,
+  type UnknownContainerWarning
+} from "./Errors.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
 // `StepBody` is declared in `Plan.ts` and borrowed here, never the reverse — and the planning stage
@@ -283,6 +288,12 @@ export type FeatureCollection = {
    * stage adds its own field at the join seam rather than a later stage recomputing it.
    */
   readonly plan: FeaturePlan
+  /**
+   * Every `Rule(...)`/`Scenario(...)` registered under a name the Feature does not contain (F-11).
+   * Plain data on the collection for the same reason `plan.warnings` is: `collectFeature` stays
+   * silent and `describeFeature` prints them.
+   */
+  readonly containerWarnings: ReadonlyArray<UnknownContainerWarning>
   /**
    * Every FEATURE-LEVEL hook, grouped by kind and in registration order within each kind (D-01).
    *
@@ -690,9 +701,11 @@ const invokeDefine = <Dsl>(
  * name, that is deterministic rather than ambiguous; detecting the upstream case is not attempted
  * here, because nothing in this phase can produce it.
  */
+const unregisteredRulePrefix = "unregistered-rule:"
+
 const resolveRuleId = (feature: ParsedFeature, name: string): string => {
   const match = feature.rules.find((rule) => rule.name === name)
-  return match === undefined ? `unregistered-rule:${name}` : match.id
+  return match === undefined ? `${unregisteredRulePrefix}${name}` : match.id
 }
 
 /**
@@ -832,6 +845,25 @@ const collect = (
    * registration blew up still resolves against the Layer it asked for rather than against a
    * silently narrower ambient one.
    */
+  const containerWarnings: Array<UnknownContainerWarning> = []
+
+  /**
+   * F-11: a `Scenario(...)` whose name matches nothing at its level is inert, so say so once. A
+   * Scenario is matched by its UN-interpolated title (`astName`, `Plan.ts` note (c)), which is why
+   * `known` lists those. Inside an unknown Rule every Scenario is unknown too; the Rule's own
+   * warning already covers that, so nothing is added for them.
+   */
+  const noteUnknownScenario = (ruleId: string | null, name: string): void => {
+    if (ruleId !== null && ruleId.startsWith(unregisteredRulePrefix)) return
+    const rule = ruleId === null ? null : feature.rules.find((candidate) => candidate.id === ruleId)
+    const scenarios = ruleId === null ? feature.scenarios : rule === undefined || rule === null ? [] : rule.scenarios
+    const known = [...new Set(scenarios.map((scenario) => scenario.astName))]
+    if (known.includes(name)) return
+    containerWarnings.push(
+      makeUnknownContainerWarning({ uri: feature.uri, kind: "Scenario", name, ruleName: rule?.name ?? null, known })
+    )
+  }
+
   const makeScenarioRegistrar = (
     ruleId: string | null,
     ambientLayer: ErasedExtraLayer
@@ -841,6 +873,7 @@ const collect = (
     extraLayerOrDefine: ErasedExtraLayer | ((dsl: ScenarioDsl<any>) => void),
     maybeDefine?: (dsl: ScenarioDsl<any>) => void
   ): void => {
+    noteUnknownScenario(ruleId, name)
     // The two-argument form records NOTHING, and that absence is the contract `scenarioLayers`'
     // own field comment states: no entry means "this Scenario runs against its scope's ambient
     // Layer unchanged". Writing `Layer.empty` here instead would be the plausible tidy-up and would
@@ -905,6 +938,17 @@ const collect = (
       // argument, and `Registry.ts` note (e) / `Plan.ts` note (e) are the two consumers that depend
       // on it never being `null`.
       const ruleId = resolveRuleId(feature, ruleName)
+      if (ruleId.startsWith(unregisteredRulePrefix)) {
+        containerWarnings.push(
+          makeUnknownContainerWarning({
+            uri: feature.uri,
+            kind: "Rule",
+            name: ruleName,
+            ruleName: null,
+            known: feature.rules.map((rule) => rule.name)
+          })
+        )
+      }
 
       // Merged HERE, where `extraLayer` is captured, and exactly once per `Rule(...)` call — the
       // same "compute the single Layer to hand downstream once, at the point the extra argument is
@@ -1018,6 +1062,7 @@ const collect = (
     sharedLayer,
     definitions,
     plan: planFeature({ feature, definitions }),
+    containerWarnings,
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
     // the `hooks` field's own doc comment on `FeatureCollection`.
     //
@@ -1198,6 +1243,9 @@ export function describeFeature(
   // different things, and it would drop the `JSON.stringify` quoting that stops a pattern containing
   // a control character from rewriting the terminal line (threat T-06-07-01).
   for (const warning of collection.plan.warnings) {
+    console.warn(warning.message)
+  }
+  for (const warning of collection.containerWarnings) {
     console.warn(warning.message)
   }
 

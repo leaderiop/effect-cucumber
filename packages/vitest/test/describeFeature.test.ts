@@ -1261,3 +1261,70 @@ describe("a Scenario's extra Layer merges onto whatever was ambient where it was
     })
   })
 })
+
+describe("a Rule or Scenario name the Feature does not contain is warned about (F-11)", () => {
+  const containerFeature = Effect.runSync(
+    parseFeature(
+      `Feature: container names
+  Scenario: Creating a user
+    Given a step
+  Scenario Outline: adding <count>
+    Given a step
+    Examples:
+      | count |
+      | 1     |
+  Rule: Limits
+    Scenario: Over the limit
+      Given a step
+`,
+      "test/container-names.feature"
+    ).pipe(Effect.provide(ParameterTypeStore.Default))
+  )
+  it("is silent when every container name exists, matching an Outline by its un-interpolated title", () => {
+    const collected = collectFeature(containerFeature, Layer.empty, ({ Rule, Scenario }) => {
+      Scenario("Creating a user", ({ Given }) => Given("a step", noop))
+      Scenario("adding <count>", ({ Given }) => Given("a step", noop))
+      Rule("Limits", ({ Scenario: ruleScenario }) => {
+        ruleScenario("Over the limit", ({ Given }) => Given("a step", noop))
+      })
+    })
+    expect(collected.containerWarnings).toEqual([])
+  })
+
+  it("names a misspelled Feature-level Scenario, the file, and the names that do exist", () => {
+    const collected = collectFeature(containerFeature, Layer.empty, ({ Scenario }) => {
+      Scenario("Creating a usr", ({ Given }) => Given("a step", noop))
+    })
+    expect(collected.containerWarnings).toHaveLength(1)
+    const warning = collected.containerWarnings[0]
+    expect(warning?.kind).toBe("Scenario")
+    expect(warning?.name).toBe("Creating a usr")
+    expect(warning?.ruleName).toBeNull()
+    expect(warning?.known).toEqual(["Creating a user", "adding <count>"])
+    expect(warning?.message).toContain(
+      "\"test/container-names.feature\": UnknownContainer: no Scenario named \"Creating a usr\""
+    )
+  })
+
+  it("names a misspelled Rule and lists the Rules that exist, and does not also warn for its Scenarios", () => {
+    const collected = collectFeature(containerFeature, Layer.empty, ({ Rule }) => {
+      Rule("Limts", ({ Scenario: ruleScenario }) => {
+        ruleScenario("Over the limit", ({ Given }) => Given("a step", noop))
+      })
+    })
+    expect(collected.containerWarnings.map((warning) => [warning.kind, warning.name])).toEqual([["Rule", "Limts"]])
+    expect(collected.containerWarnings[0]?.known).toEqual(["Limits"])
+  })
+
+  it("scopes a Scenario's known names to its Rule", () => {
+    const collected = collectFeature(containerFeature, Layer.empty, ({ Rule }) => {
+      Rule("Limits", ({ Scenario: ruleScenario }) => {
+        // A real Feature-level Scenario, registered inside the wrong Rule.
+        ruleScenario("Creating a user", ({ Given }) => Given("a step", noop))
+      })
+    })
+    expect(collected.containerWarnings).toHaveLength(1)
+    expect(collected.containerWarnings[0]?.ruleName).toBe("Limits")
+    expect(collected.containerWarnings[0]?.known).toEqual(["Over the limit"])
+  })
+})

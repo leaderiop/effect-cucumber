@@ -172,6 +172,18 @@ REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
              the mechanism, pinned by `test/describeFeature.test.ts`.
 ```
 
+```
+REQUIREMENT: A Scenario(...) container registered under a name the Feature
+             does not contain at that level (a Scenario is matched by its
+             UN-interpolated title) MUST produce one UnknownContainerWarning
+             on the collection and on the terminal, naming the file, the
+             name written and the names the Feature does contain. Nothing
+             registered inside it can run, and without the warning the only
+             symptom is a cluster of "matched no step" reports pointing
+             everywhere but at the typo. Asserted by
+             packages/vitest/test/describeFeature.test.ts.
+```
+
 ## BEH-EC-003: A step is an Effect-returning function
 
 > **See:** [ADR-EC-001](../decisions/001-steps-are-effects.md), [ADR-EC-005](../decisions/005-effect-fn-for-step-and-hook-bodies.md)
