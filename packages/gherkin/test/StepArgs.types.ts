@@ -1,5 +1,5 @@
 /**
- * The MATCH-01 type test: `{int}` is `number`, `{float}` is `number`, `{string}` is `string` and
+ * The BEH-EC-015 type test: `{int}` is `number`, `{float}` is `number`, `{string}` is `string` and
  * `{word}` is `string` — asserted at COMPILE TIME, which is the only place the claim exists.
  */
 import type { BuiltInParameterTypeMap, StepArgs } from "../src/StepArgs.ts"
@@ -21,16 +21,16 @@ const expectTrue = (verdict: true): true => verdict
 // Positive assertions — one named const each, so a failure names itself.
 //
 
-/** MATCH-01: `{int}` coerces to `number`. */
+/** BEH-EC-015: `{int}` coerces to `number`. */
 export const intIsNumber = expectTrue(equality<StepArgs<"I have {int} cukes">, [number]>())
 
-/** MATCH-01: `{float}` coerces to `number`. */
+/** BEH-EC-015: `{float}` coerces to `number`. */
 export const floatIsNumber = expectTrue(equality<StepArgs<"I paid {float} euros">, [number]>())
 
-/** MATCH-01: `{string}` coerces to `string`, quotes already stripped by the transform. */
+/** BEH-EC-015: `{string}` coerces to `string`, quotes already stripped by the transform. */
 export const stringIsString = expectTrue(equality<StepArgs<"my name is {string}">, [string]>())
 
-/** MATCH-01: `{word}` coerces to `string`. */
+/** BEH-EC-015: `{word}` coerces to `string`. */
 export const wordIsString = expectTrue(equality<StepArgs<"the {word} is red">, [string]>())
 
 /** Arguments arrive left to right, in pattern order, with no reordering or deduplication. */

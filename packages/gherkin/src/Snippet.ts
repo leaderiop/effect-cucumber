@@ -1,5 +1,5 @@
 /**
- * Turn an unmatched step's text into a copy-pasteable step-definition fragment (MATCH-03, ADR-EC-019), through
+ * Turn an unmatched step's text into a copy-pasteable step-definition fragment (BEH-EC-015, ADR-EC-019), through
  * upstream's `CucumberExpressionGenerator` so `I have 5 apples` suggests `I have {int} apples`.
  *
  * It lives in this package because `@effect-cucumber/vitest` declares no dependency on

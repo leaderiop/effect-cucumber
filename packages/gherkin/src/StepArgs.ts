@@ -15,13 +15,13 @@
 /** The eleven built-ins every fresh registry pre-registers, mapped to what their transform produces
  * (`test/expressions-pin.test.ts`). */
 export interface BuiltInParameterTypeMap {
-  /** `{int}` — MATCH-01 names this one by ID. Verified `number`. Does not match `5.5`. */
+  /** `{int}` — BEH-EC-015 names this one. Verified `number`. Does not match `5.5`. */
   readonly int: number
-  /** `{float}` — MATCH-01 names this one by ID. Verified `number`, and it also matches integer text (`"v 5"` yields `5`). */
+  /** `{float}` — BEH-EC-015 names this one. Verified `number`, and it also matches integer text (`"v 5"` yields `5`). */
   readonly float: number
-  /** `{word}` — MATCH-01 names this one by ID. Verified `string`. Matches a single unquoted word. */
+  /** `{word}` — BEH-EC-015 names this one. Verified `string`. Matches a single unquoted word. */
   readonly word: string
-  /** `{string}` — MATCH-01 names this one by ID. Verified `string`, with the surrounding quotes already stripped. */
+  /** `{string}` — BEH-EC-015 names this one. Verified `string`, with the surrounding quotes already stripped. */
   readonly string: string
   /** `{double}` — verified `number`. */
   readonly double: number

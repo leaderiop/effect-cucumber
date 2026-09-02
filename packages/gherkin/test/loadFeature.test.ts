@@ -1,5 +1,5 @@
 /**
- * PARSE-01 (BEH-EC-001): `loadFeature` parses a `.feature` file and has no observable effect on
+ * BEH-EC-001: `loadFeature` parses a `.feature` file and has no observable effect on
  * the test run by itself.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"

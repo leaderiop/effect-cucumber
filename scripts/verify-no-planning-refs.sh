@@ -7,14 +7,13 @@
 # in exactly ONE place below (FORBIDDEN_RE) and this file excludes itself from the scan,
 # so the gate cannot false-positive on its own definition. Positive control: a temp
 # file outside the repository carrying one token must be caught before anything is
-# scanned. `STRICT_PACKAGES=1` turns hits under packages/ into failures; the default is
-# 0 until every comment-prune slice has landed, and they are reported as a warning count.
+# scanned. `STRICT_PACKAGES=0` downgrades hits under packages/ to a warning; the default is strict.
 #
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SELF="scripts/verify-no-planning-refs.sh"
-STRICT_PACKAGES="${STRICT_PACKAGES:-0}"
+STRICT_PACKAGES="${STRICT_PACKAGES:-1}"
 
 FORBIDDEN_RE='\.planning|RESEARCH\.md|CONTEXT\.md|PITFALLS|REQUIREMENTS\.md|STATE\.md|SUMMARY\.md|\b(D|T|PROH|WR|SC)-[0-9]{2}(-[0-9]{2}){0,2}\b|\b[Pp]lan [0-9]{2}-[0-9]{2}\b|\b[0-9]{2}-(CONTEXT|RESEARCH|PLAN|SUMMARY)\b|\b[Pp]hase [0-9]{1,2}\b|\([0-9]{2}-[0-9]{2}\)|\b(RUN|DSL|MATCH|PARSE|LINT)-[0-9]{2}\b'
 

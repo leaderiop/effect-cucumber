@@ -1,5 +1,5 @@
 /**
- * Correlating a parsed `GherkinDocument` with `compile()`'s pickles (ADR-EC-014, PARSE-02).
+ * Correlating a parsed `GherkinDocument` with `compile()`'s pickles (ADR-EC-014, BEH-EC-014).
  *
  * The AST walk exists ONLY to recover what a pickle cannot carry: step keyword, `keywordType`, origin and line,
  * Rule membership, the un-interpolated Scenario name, and the Examples column names. Everything a pickle DOES

@@ -1,5 +1,5 @@
 /**
- * PARSE-03, one test per Group A structural row and per Group C heuristic row of the phase
+ * BEH-EC-014, one test per Group A structural row and per Group C heuristic row of the phase
  * fixture table.
  */
 import { IdGenerator } from "@cucumber/messages"
@@ -236,7 +236,7 @@ describe("validateFeature rejects a leftover Examples-column placeholder (F7, F8
 
   it("F7 reproduces ADR-EC-014's prescribed Background-limitation wording", () => {
     // The one message assertion that is not incidental: this sentence IS the deliverable of
-    // PARSE-03. Without it the author meets a downstream "no step matched" failure with nothing
+    // BEH-EC-014. Without it the author meets a downstream "no step matched" failure with nothing
     // pointing at their Background, which is the confusion the whole check exists to remove.
     const error = errorFromFixture("uninterpolated-placeholder-background.feature")
     expect(error.message).toContain(

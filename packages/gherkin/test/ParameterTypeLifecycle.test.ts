@@ -1,5 +1,5 @@
 /**
- * MATCH-02 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
+ * BEH-EC-015 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"

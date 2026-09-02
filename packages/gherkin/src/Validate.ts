@@ -1,5 +1,5 @@
 /**
- * Validation of the correlated feature (PARSE-03): the checks that need an AST node AND the pickles it produced,
+ * Validation of the correlated feature (BEH-EC-014): the checks that need an AST node AND the pickles it produced,
  * run as a separate pass after `Correlate.ts` so a failing fixture says which of the two broke.
  *
  * `@cucumber/gherkin`'s `compile()` produces runnable pickles, not authoring errors: an Outline without Examples,

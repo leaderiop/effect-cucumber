@@ -11,7 +11,7 @@
  * `ParsedFeature.warnings`. One uuid id generator is built per call and shared by `AstBuilder` and `compile`
  * (`test/upstream-pin.test.ts`: separate or counter-based generators collide), so node ids are stable only within
  * one `ParsedFeature` — never persist or compare them across calls. One `ParameterTypeRegistry` is built EAGERLY
- * per call from the provided store (freshness is MATCH-02's requirement). Markdown feature files are out of scope.
+ * per call from the provided store (freshness is BEH-EC-015's requirement). Markdown feature files are out of scope.
  */
 import { IdGenerator } from "@cucumber/messages"
 import * as Effect from "effect/Effect"

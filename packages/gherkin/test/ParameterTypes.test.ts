@@ -1,5 +1,5 @@
 /**
- * MATCH-02: a custom parameter type declared once as data is present in every registry built
+ * BEH-EC-015: a custom parameter type declared once as data is present in every registry built
  * afterwards, repeated builds in one process never throw, and each name a registry already
  * provides is rejected by the `define` call itself.
  */

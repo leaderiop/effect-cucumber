@@ -1,5 +1,5 @@
 /**
- * PARSE-04's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
+ * BEH-EC-016's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
  */
 import type { PickleTable } from "@cucumber/messages"
 import * as Effect from "effect/Effect"

@@ -85,7 +85,7 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `outline-identical-row-names.feature` | F27 | 3 pickles with identical `name` and distinct `location.line` (8, 9, 10)                                                              |
 | `docstring-and-datatable.feature`     | F25 | One step carries both, with `argumentIndex` 1 (DocString) and 2 (DataTable) recording source order                                   |
 
-## Group E — DataTable and DocString argument shapes (PARSE-04)
+## Group E — DataTable and DocString argument shapes (BEH-EC-016)
 
 | Fixture                              | Row | Reason tag           | Verified upstream behavior                                                                                                                                |
 | ------------------------------------ | --- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |

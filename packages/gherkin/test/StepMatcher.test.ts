@@ -1,5 +1,5 @@
 /**
- * MATCH-01's runtime half, plus the two properties `StepMatcher` exists for.
+ * BEH-EC-015's runtime half, plus the two properties `StepMatcher` exists for.
  */
 import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
@@ -54,7 +54,7 @@ const rejectedBy = (action: () => void): StepPatternError => {
   throw new Error("expected the matcher to throw a StepPatternError, but it returned normally")
 }
 
-describe("StepMatcher coerces built-in parameter types at runtime (MATCH-01)", () => {
+describe("StepMatcher coerces built-in parameter types at runtime (BEH-EC-015)", () => {
   it("hands {int} to the caller as a JavaScript number", () => {
     const { args } = soleMatch("I have {int} cukes", "I have 42 cukes")
 
@@ -131,7 +131,7 @@ describe("StepMatcher coerces built-in parameter types at runtime (MATCH-01)", (
 })
 
 /**
- * The compile-time companion to Group A, in the same file so the two halves of MATCH-01 are read
+ * The compile-time companion to Group A, in the same file so the two halves of BEH-EC-015 are read
  * together. Checked by `pnpm typecheck:test` (a required step in `check.yml`'s `types` job), never
  * by vitest — the values below are exported so `noUnusedLocals` does not elide the claim.
  */
