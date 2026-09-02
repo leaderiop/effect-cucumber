@@ -117,6 +117,12 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              (ADR-EC-018 note 6).
 ```
 
+> **Correction (2026-09-02, F-24):** the Feature block on the shared path is the library's own
+> `describe(name, { shuffle: false }, …)` with the framework's one-argument `layer(...)` called inside
+> its factory, not the named form; the lifetime guarantee above is unchanged and the adapter holds
+> one memo-map reference for the block so the AfterAllScenarios teardown still reaches the memoised
+> build. ADR-EC-018 note 9 has the measurement.
+
 > **Correction (2026-08-30, Phase 10 implementation, measured against the installed
 > `@effect/vitest@4.0.0-rc.112` rather than reasoned about):** the BUILD half of the
 > requirement above shipped as written and is asserted on every push. The RELEASE half

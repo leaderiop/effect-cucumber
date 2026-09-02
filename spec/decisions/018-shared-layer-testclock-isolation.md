@@ -164,6 +164,8 @@ decision shipped as written.]**
 > Measured against the installed build: `Feature > Rule > Scenario`, one Feature-named
 > level, release before the next sibling suite.
 >
+> **9. Note 8 is narrowed (2026-09-02, F-24): the Feature block is the library's own `describe`, and the one-argument form is called INSIDE it.** The named form cannot carry suite options, and BEH-EC-002 now requires every emitted block to be `shuffle: false` so Scenarios run in document order under `--sequence.shuffle`. Calling `layer(sharedTier, options)(callback)` inside the Feature's own `describe` factory lands the framework's hooks on that block exactly as the named form did — with one measured difference: the one-argument form closes its scope from the LAST block test's `onTestFinished`, before any `afterAll`, so the adapter holds one extra memo-map reference in a `beforeAll` and releases it in an `afterAll` registered before the framework's, which under `sequence.hooks: "stack"` runs last. The AfterAllScenarios teardown therefore still reaches the memoised build (`emission.test.ts`'s "not a rebuild" observer; `verify-shared-layer-once.sh`).
+>
 > **8. Once-per-Feature hooks are typed by the shared tier alone (2026-09-02, F-10).**
 > `BeforeAllScenarios` and `AfterAllScenarios` used to be `HookRegistrar<ROut>` — the union of
 > both tiers — while the runner provided them the per-Scenario tier: a private build no

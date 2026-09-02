@@ -27,7 +27,9 @@ satisfied/starved fixture pairs, checking the exit code _and_ the diagnostic nam
 rejection that no longer proves anything.
 
 **A Feature file runs.** `describeFeature` emits one `describe` named after the Feature, containing one `it.effect` per
-Scenario titled with its interpolated name — nested inside a further `describe` per `Rule` where the Feature has them.
+Scenario titled with its interpolated name — nested inside a further `describe` per `Rule` where the Feature has them. Both blocks are registered
+unshuffled, so a Feature's Scenarios run in document order even under `--sequence.shuffle` — Gherkin order is meaningful,
+and `pnpm test:shuffle` proves it on every push.
 Each Scenario's Background steps run first, as leading `yield*`s inside the same `Effect.gen`, so the first failure
 short-circuits every step after it. A step matching no registered pattern, or more than one, fails its own Scenario
 with a located `StepMatchError` — the ambiguous case naming every matching pattern with the file and line it was

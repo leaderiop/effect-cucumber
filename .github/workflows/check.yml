@@ -78,6 +78,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # `pnpm test` exiting 0 does NOT prove the suite is free of declaration-order
+      # coupling: vitest runs a file's suites in order unless told otherwise, and
+      # an observer `describe` that reads what an earlier Feature recorded passes
+      # by that accident. Shuffling suites and tests is what catches it, and it
+      # doubles as the proof that describeFeature's blocks stay in document
+      # order under shuffle (BEH-EC-002). Node 24 only — structural, not per-runtime.
+      - if: matrix.node-version == 24
+        run: pnpm test:shuffle
       # `pnpm test` exiting 0 does NOT prove any tag reached a real runner task.
       # The gap is narrow: Runner.test.ts watches the TestApi seam against a
       # recording fake, and emission.test.ts watches the undeclared-tag warning —

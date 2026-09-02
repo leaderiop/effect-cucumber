@@ -173,6 +173,15 @@ REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
 ```
 
 ```
+REQUIREMENT: Every block describeFeature emits — the Feature's and each
+             Rule's — MUST be registered unshuffled (`shuffle: false`), so
+             a Feature's Scenarios run in DOCUMENT order even under vitest's
+             `--sequence.shuffle`. Gherkin order is meaningful: the acceptance
+             suite's hooks Feature has a second Scenario that observes the
+             first's teardown. Proven by `pnpm test:shuffle` in CI.
+```
+
+```
 REQUIREMENT: A Scenario(...) container registered under a name the Feature
              does not contain at that level (a Scenario is matched by its
              UN-interpolated title) MUST produce one UnknownContainerWarning

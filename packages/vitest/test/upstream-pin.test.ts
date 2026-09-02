@@ -34,9 +34,7 @@ const probeLayer: Layer.Layer<Probe, never, never> = Layer.effect(
 // Live-clock reads are far past 2001-09-09 (1e12 ms); a TestClock starts at 0.
 const looksLikeWallClock = (millis: number): boolean => millis > 1_000_000_000_000
 
-describe("@effect/vitest facts VitestTestApi.ts relies on", () => {
-  const hookOrder: Array<string> = []
-
+describe("@effect/vitest facts VitestTestApi.ts relies on", { shuffle: false }, () => {
   describe("the named layer(...) form", () => {
     let handed: Vitest.MethodsNonLive<Probe> | null = null
     let observedInsideCallback: Record<string, boolean> = {}
@@ -47,12 +45,6 @@ describe("@effect/vitest facts VitestTestApi.ts relies on", () => {
         effect: typeof methods.effect === "function",
         live: "live" in methods
       }
-      // Registered AFTER the framework's own afterAll(closeScope): under vitest's default
-      // `sequence.hooks: "stack"` it therefore runs BEFORE the scope closes. VitestTestApi.ts's
-      // shared adapter registers AfterAllScenarios the same way.
-      afterAll(() => {
-        hookOrder.push("ours")
-      })
       methods.effect(
         "builds the shared tier ONCE and on the LIVE clock (excludeTestServices)",
         () =>
@@ -85,32 +77,7 @@ describe("@effect/vitest facts VitestTestApi.ts relies on", () => {
   })
 })
 
-describe("hook ordering: vitest's default sequence.hooks is \"stack\"", () => {
-  const order: Array<string> = []
-  afterAll(() => {
-    order.push("first-registered")
-  })
-  afterAll(() => {
-    order.push("second-registered")
-  })
-  it("registers two afterAll hooks", () => {
-    assert.deepStrictEqual(order, [])
-  })
-  describe("observed from a later sibling", () => {
-    // Nothing observable here at collection time; the real assertion is the one below, which
-    // vitest runs after the sibling's afterAll hooks fired in reverse registration order.
-    it("is a placeholder so the parent block has a test to run first", () => {
-      assert.strictEqual(true, true)
-    })
-  })
-  afterAll(() => {
-    // Runs first of the three (registered last), so it cannot observe the others — assert only
-    // its own position by leaving the array untouched here. The reverse order is asserted by
-    // `sequence-hooks` below through a fresh describe.
-  })
-})
-
-describe("sequence-hooks", () => {
+describe("sequence-hooks", { shuffle: false }, () => {
   const order: Array<string> = []
   describe("inner", () => {
     afterAll(() => {

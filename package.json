@@ -8,6 +8,7 @@
     "prepare": "effect-tsgo patch",
     "build": "tsc -b",
     "test": "vitest run",
+    "test:shuffle": "vitest run --sequence.shuffle",
     "format": "dprint fmt",
     "format:check": "dprint check",
     "lint": "oxlint -f unix && dprint check",

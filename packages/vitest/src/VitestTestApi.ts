@@ -5,9 +5,11 @@
  * forbidden to (`scripts/verify-testapi-seam.sh`), and `describeFeature.ts` composes these rather
  * than reaching for the framework itself.
  */
-import { afterAll, describe, it, layer, type Vitest } from "@effect/vitest"
+import { afterAll, beforeAll, describe, it, layer, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
 import { makeUndeclaredTagWarning } from "./Errors.ts"
@@ -181,7 +183,12 @@ const makeDegradingEffect = (
  * @param featureUri - the `.feature` file every warning from this adapter is located against
  */
 export const vitestTestApi = (featureUri: string): TestApi => ({
-  describe,
+  // `shuffle: false`: a Feature's Scenarios run in DOCUMENT order even under `--sequence.shuffle`
+  // (BEH-EC-002). Gherkin order is meaningful — a hooks Feature whose second Scenario observes the
+  // first's teardown is the acceptance suite's own example — so the block opts out of shuffling.
+  describe: (name, define) => {
+    describe(name, { shuffle: false }, define)
+  },
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     it.effect(name, self, emitOptions)
   }),
@@ -198,20 +205,22 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
  *
  * **The Feature block IS `layer(...)`'s own `describe`.** `Runner.ts` emits exactly one top-level
  * `describe` per Feature, first, before any test node (`emitFeature`'s walk opens it before either
- * Scenario loop). This adapter's `describe` therefore opens the FIRST block it is asked for through
- * the framework's NAMED `layer(sharedTier, options)(name, callback)` form, which wraps its own
- * `describe(name, …)` and registers `beforeAll(build)` and `afterAll(closeScope)` on THAT block —
- * so the shared tier is built when the Feature's block starts and released when it ends, not when
- * the whole file does (ADR-EC-018 implementation note 2, as amended; BEH-EC-007). Every later
- * `describe` — a Rule's — is the module-level one, nested inside. Measured against the installed
- * build: the tree renders `Feature > Rule > Scenario`, with no second Feature-named block, because
- * the named form's `describe` is the only Feature block there is. `emission.test.ts`'s
- * "two shared Features in one file" block observes the release point from the second Feature.
+ * Scenario loop). This adapter's `describe` therefore opens the FIRST block it is asked for as its
+ * OWN `describe(name, { shuffle: false }, factory)` and calls the framework's `layer(sharedTier,
+ * options)(callback)` — the one-argument form — INSIDE that factory. At that moment the current
+ * suite is the Feature block, so the framework's `beforeAll(build)` and `afterAll(closeScope)` land
+ * on it: the shared tier is built when the Feature's block starts and released when it ends, not
+ * when the whole file does (ADR-EC-018 implementation notes 8 and 9; BEH-EC-007). Owning the
+ * `describe` is what lets the block carry `shuffle: false`, the same document-order guarantee the
+ * plain path gives (BEH-EC-002). Every later `describe` — a Rule's — is nested inside, unshuffled
+ * too. Measured: `Feature > Rule > Scenario`, one Feature-named level;
+ * `emission.test.ts`'s lifecycle block observes the release point from the second Feature.
  *
- * The one-argument form this adapter previously used registered its `afterAll` on the FILE suite:
- * vitest defers a `describe` factory, so at the instant that form diffed the current suite's task
- * list nothing had been registered yet, and it fell through to the file-level close. That is the
- * "released at file end, not Feature end" divergence BEH-EC-007's first correction records.
+ * The one-argument form called at FILE level (this adapter's first shape) registered its hooks on
+ * the file suite, because vitest defers a `describe` factory and the form diffs the CURRENT suite's
+ * task list; called inside the Feature's own factory, the current suite is the Feature. That is
+ * the "released at file end" divergence BEH-EC-007's first correction records, and why the call
+ * site moved.
  *
  * **`memoMap` is passed in, never made here**, so the composition root and any hook that must reach
  * the SAME memoised build (`afterAll` below) share one map: `Layer.buildWithMemoMap` against the map
@@ -220,14 +229,14 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
  * **Two emission routes**, chosen per node by `EmitOptions.contextFree`: the library's own `⚠` nodes,
  * whose body is `Effect.void`, go through the module-level constructor (`vitestTestApi`'s `effect`,
  * reused as a value so `makeDegradingEffect` stays ONE implementation); every Scenario goes through
- * the `it` the named form handed back, which carries the shared tier's services.
+ * the `it` the framework's callback handed back, which carries the shared tier's services.
  *
  * **`Effect.provide(testEnv)` at the EMISSION boundary** is ADR-EC-018's per-Scenario clock/console
  * isolation, and `excludeTestServices: true` at the `layer(...)` call is its other half; the two guard
  * DIFFERENT services (ADR-EC-018 note 4) and neither is redundant. `ScenarioEffect.ts` stays ignorant
  * of the two paths (its note (b)).
  *
- * Pitfall 29: the `it` the named form hands back is a `MethodsNonLive` with no `live` member, so a
+ * Pitfall 29: the `it` the framework hands back is a `MethodsNonLive` with no `live` member, so a
  * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. Documented
  * limitation, not a defect.
  *
@@ -255,16 +264,33 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
   })
   // The module-level `describe`, under a name oxlint's vitest rules do not recognise as a test-file
   // call: this is a library adapter forwarding a block, not a test declaring one.
-  const nestedBlock: TestApi["describe"] = describe
   return {
     describe: (name, define) => {
       if (sharedIt !== null) {
-        nestedBlock(name, define)
+        describe(name, { shuffle: false }, define)
         return
       }
-      layer(sharedTier, { excludeTestServices: true, memoMap })(name, (methods) => {
-        sharedIt = methods
-        define()
+      // The Feature block is OUR `describe` (so it can carry `shuffle: false`, like the plain path),
+      // and the framework's `layer(...)` is called INSIDE its factory in the one-argument form: at that
+      // moment the current suite is this block, so the framework's `beforeAll(build)` and
+      // `afterAll(closeScope)` land on the Feature block exactly as the named `layer(...)(name, cb)` form's would. Measured by
+      // `emission.test.ts`'s lifecycle block and `verify-shared-layer-once.sh`.
+      describe(name, { shuffle: false }, () => {
+        // HOLD one memo-map reference to the shared build for the whole block. The framework's
+        // one-argument form closes ITS scope from the last block test's `onTestFinished` — before any
+        // `afterAll` runs — so without this hold the AfterAllScenarios teardown (registered below,
+        // during `define()`) would find the memoised build released and rebuild it. `beforeAll` here
+        // is registered FIRST and so runs first; the release `afterAll` is registered before the
+        // framework's and the teardown's, and under vitest's default `sequence.hooks: "stack"` runs
+        // LAST — teardown, then the framework's close, then this release. Pinned by
+        // `emission.test.ts`'s "teardown ... not a rebuild" observer and `verify-shared-layer-once.sh`.
+        const hold = Scope.makeUnsafe()
+        beforeAll(() => Effect.runPromise(Effect.asVoid(Layer.buildWithMemoMap(sharedTier, memoMap, hold))))
+        afterAll(() => Effect.runPromise(Scope.close(hold, Exit.void)))
+        layer(sharedTier, { excludeTestServices: true, memoMap })((methods) => {
+          sharedIt = methods
+          define()
+        })
       })
     },
     effect: (name, self, emitOptions) =>
@@ -272,7 +298,7 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
         // Nothing here can force the shared Layer to build.
         ? contextFreeEffect(name, self, emitOptions)
         : sharedRouteEffect(name, self, emitOptions),
-    // Registered INSIDE the block the named form opened (asserted by `requireSharedIt`), so it lands
+    // Registered INSIDE the Feature block (asserted by `requireSharedIt`), so it lands
     // on the Feature's own block after the framework's scope-closing `afterAll` and therefore runs
     // BEFORE it under the framework's default reverse hook order. The shared tier is reached by
     // building `sharedTier` through the SAME memo map the framework built it through: a memo hit,
