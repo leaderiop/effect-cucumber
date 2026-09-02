@@ -90,7 +90,8 @@
  * `createRegistry` (and its `Registry`/`StepDefinition` types), `register` from `Step.ts`,
  * `captureCallSite` from `CallSite.ts`, `planFeature` from `Plan.ts`, `buildScenarioEffect` from
  * `ScenarioEffect.ts`, `emitFeature` from `Runner.ts`, the `TestApi` seam they reach the framework
- * through, and `collectFeature` from `describeFeature.ts`. Every one of them is an internal stage of
+ * through, `collect` from `Collect.ts`, the two framework adapters in `VitestTestApi.ts`, and
+ * `collectFeature` from `describeFeature.ts`. Every one of them is an internal stage of
  * `describeFeature` with no standalone consumer contract, following `@effect-cucumber/gherkin`'s own
  * precedent, where `Parser`, `Pickles`, `Correlate`, `Source` and `Validate` are internal and only
  * `loadFeature` is published. This package's tests import them by relative path.

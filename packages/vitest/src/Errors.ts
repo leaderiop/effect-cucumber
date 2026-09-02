@@ -21,7 +21,7 @@
  * `UndeclaredTagWarning` (RUN-05, 09-CONTEXT.md D-08) is not a failure either, and its whole reason
  * for existing is that the thing it reports would OTHERWISE be one. `vitest@4.1.11`'s `strictTags`
  * defaults to `true`, and emitting a tag no `vitest.config.ts` declares throws and collects ZERO
- * tests from the entire file. `describeFeature.ts` catches that throw at its adapter boundary,
+ * tests from the entire file. `VitestTestApi.ts` catches that throw at its adapter boundary,
  * re-emits the Scenario UNTAGGED, and prints one of these — degrading a whole-file collection
  * failure into a warning about one Scenario, which is ADR-EC-019's "dead code, not a broken
  * Scenario" instinct applied to a different upstream trap.
@@ -298,7 +298,7 @@ export type UndeclaredTagWarningReason = "UndeclaredTag"
  * `vitest@4.1.11`'s `strictTags` defaults to `true` (09-CONTEXT.md D-08, correcting D-04).
  *
  * Plain data, not an `Error` subclass and not a tagged `Schema` error class — note (c). The upstream
- * event IS a throw, but this library catches it at `describeFeature.ts`'s adapter boundary and re-emits
+ * event IS a throw, but this library catches it at `VitestTestApi.ts`'s adapter boundary and re-emits
  * the Scenario untagged, so nothing is failed with and nothing is re-thrown. Degrading a whole-file
  * collection failure (0 tests collected) into one warning about one Scenario is the entire point of
  * the type.
@@ -307,7 +307,7 @@ export type UndeclaredTagWarningReason = "UndeclaredTag"
  * offending subset, and the message below is worded to say exactly that rather than to imply every
  * entry was rejected. This is a real limit and it is stated rather than papered over: `strictTags`
  * rejects a `TestOptions.tags` array as a UNIT and names the offenders only in its own message text,
- * and `describeFeature.ts`'s adapter is forbidden from reading that text (it discriminates the catch
+ * and `VitestTestApi.ts`'s adapter is forbidden from reading that text (it discriminates the catch
  * structurally, by outcome, so an upstream wording change cannot silently disable the degradation —
  * see that module's note (e)). The producer therefore cannot compute the offending subset without
  * taking on the exact dependency this library refuses. Reporting the whole list under an honest

@@ -123,7 +123,7 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > ships in a **weaker form than the wording claims**, and the divergence is recorded here
 > rather than by narrowing the requirement to fit what was built.
 >
-> **What holds.** `packages/vitest/src/describeFeature.ts` calls the framework's
+> **What holds.** `packages/vitest/src/VitestTestApi.ts` calls the framework's
 > `layer(sharedTier, { excludeTestServices: true })` in its one-argument form, which builds
 > the shared Layer exactly once for everything its callback registers. The shared build
 > ordinals every Scenario reaches are asserted as `[1, 1, 1]` in
@@ -207,7 +207,7 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > **Correction (2026-09-02, F-09, measured against the installed `@effect/vitest@4.0.0-rc.112`):**
 > the RELEASE half now holds AS WRITTEN. The first correction above recorded that the scope
 > closed at the FILE's teardown because the one-argument `layer(...)` form diffed a deferred
-> `describe`'s empty task list. `packages/vitest/src/describeFeature.ts`'s shared adapter now
+> `describe`'s empty task list. `packages/vitest/src/VitestTestApi.ts`'s shared adapter now
 > opens the Feature's own block through the framework's NAMED form,
 > `layer(sharedTier, { excludeTestServices: true, memoMap })(feature.name, callback)`, which wraps
 > its own `describe(name, …)` and registers `beforeAll(build)` and `afterAll(closeScope)` on THAT

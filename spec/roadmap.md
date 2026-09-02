@@ -161,7 +161,7 @@ research archived on the `planning-archive` branch. High-level shape:
    §1 preamble for why). Tag routing and `@skip`/`@only` (Phase 9) are built on
    top of it as well: `Tags.ts` holds the reserved constants and the
    registration filter, `Runner.ts` carries each Scenario's tags and its skip
-   flag across the `TestApi` seam, `describeFeature.ts`'s adapter is the one
+   flag across the `TestApi` seam, `VitestTestApi.ts`'s adapter is the one
    place that names the framework's option object and the one place that
    catches an undeclared-tag rejection, and `GherkinTags.ts` is the config-time
    helper a consumer calls to declare the tag universe in the first place. Both

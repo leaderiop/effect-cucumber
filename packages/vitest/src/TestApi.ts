@@ -105,7 +105,7 @@ import type * as Scope from "effect/Scope"
 /**
  * How ONE emitted test node differs from a bare, untagged, running one — the library's own plain
  * data, carried across the seam and translated into whatever the real test framework wants by the
- * single adapter in `describeFeature.ts`.
+ * adapters in `VitestTestApi.ts`.
  *
  * This type names no framework type and must not start to. Modelling the framework's own options
  * type here would type-check, lint clean, pass every test in the repo, and quietly dissolve the seam
@@ -126,7 +126,7 @@ export interface EmitOptions {
    * against, so normalising it away would silently break every filter a consumer writes.
    *
    * `ReadonlyArray`, matching `Model.ts` and `Plan.ts` all the way up the chain. The single
-   * widening to a mutable array happens in `describeFeature.ts`'s adapter, at the one point that
+   * widening to a mutable array happens in `VitestTestApi.ts`'s adapter, at the one point that
    * already touches the test framework, and NOWHERE else: a mutable array declared further up would
    * let any stage in between rewrite a Scenario's tags with nothing going red.
    */
@@ -231,7 +231,7 @@ export interface TestApi {
    *
    * `Runner.ts` registers a Feature's `AfterAllScenarios` teardown through this, inside the
    * Feature's own block (note (e) there). A test node cannot carry that guarantee: test selection
-   * skips it. A block-level teardown hook can, and the adapter in `describeFeature.ts` maps this
+   * skips it. A block-level teardown hook can, and the adapter in `VitestTestApi.ts` maps this
    * onto the framework's own `afterAll`, running the Effect against the same shared tier the block's
    * tests saw. `name` is reporting data only — the framework's hooks are anonymous, so it appears in
    * a failure's message rather than as a node title.

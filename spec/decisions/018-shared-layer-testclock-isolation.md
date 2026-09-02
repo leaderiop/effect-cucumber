@@ -151,7 +151,7 @@ decision shipped as written.]**
 > is still rejected — by overload resolution rather than by name, and BEH-EC-007 says so.
 >
 > **8. Note 2 is reversed (2026-09-02, F-09): the NAMED call form is now the mechanism.**
-> `describeFeature.ts`'s shared adapter opens the Feature's own block through
+> `VitestTestApi.ts`'s shared adapter opens the Feature's own block through
 > `layer(sharedTier, options)(feature.name, callback)`. Note 2's objection — a second
 > Feature-named block — does not arise, because the adapter hands `Runner.ts`'s single
 > top-level `describe` call to the named form instead of to vitest's `describe`: the

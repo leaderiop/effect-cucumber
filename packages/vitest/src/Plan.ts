@@ -291,7 +291,7 @@ export type ScenarioPlan = {
    * field would let the emission walk see `undefined` and emit nothing, with nothing going red.
    *
    * `ReadonlyArray`, and it stays one the whole way down. The test framework's own options type wants
-   * a mutable array; the single spread that widens it lives in `describeFeature.ts`'s adapter, which
+   * a mutable array; the single spread that widens it lives in `VitestTestApi.ts`'s adapter, which
    * is the one module allowed to name that framework at all. Widening the field here to "fix" the
    * assignment error that appears at that boundary would move a one-line adapter concern into the
    * plan's public shape.

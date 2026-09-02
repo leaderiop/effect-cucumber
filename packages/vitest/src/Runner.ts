@@ -234,7 +234,7 @@
  * Local imports are `./Plan.ts` and `./TestApi.ts` (both type-only), `./ScenarioEffect.ts`,
  * `./OutlineTitle.ts`, `./Hook.ts` and `./ScenarioKey.ts`. That last one is a LEAF holding the
  * `scenarioLayers` key encoding, and it is a module rather than a private helper here for a reason
- * its own header states: `describeFeature.ts` writes that map and this file reads it, this file
+ * its own header states: `Collect.ts` writes that map and this file reads it, this file
  * cannot import `describeFeature.ts` (that edge closes a cycle and fails `pnpm circular`), and two
  * independently-written copies of the encoding compile, type-check and lint while disagreeing — a
  * disagreement that reads as "no Scenario asked for an extra Layer" on every lookup. This
@@ -552,7 +552,7 @@ export const emitFeature = (
           },
         // The Scenario's own tags, passed through by reference and never copied, re-sorted or
         // de-duplicated: `ScenarioPlan.tags` is already the flattened inheritance chain and the one
-        // widening to a mutable array belongs to `describeFeature.ts`'s adapter alone.
+        // widening to a mutable array belongs to `VitestTestApi.ts`'s adapter alone.
         //
         // `contextFree: false` (plan 10-07): a Scenario's body is the author's own step Effects,
         // which may require anything either Layer tier provides.

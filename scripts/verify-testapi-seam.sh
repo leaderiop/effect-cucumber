@@ -7,7 +7,8 @@
 #
 # Both target files state this rule in their own note (a): the emission module
 # computes library-owned plain data and hands it to an injected seam, and only
-# the composition root (`describeFeature.ts`) is permitted to name a framework.
+# the adapter module (`VitestTestApi.ts`) and the composition root (`describeFeature.ts`)
+# are permitted to name a framework.
 # That seam is what makes the recording fake in `Runner.test.ts` writable at
 # all. Phase 9 is the first phase that gives somebody a concrete reason to
 # reach for a framework's own options type in `TestApi.ts` ("we are modelling
