@@ -130,19 +130,21 @@ complete; its per-phase record is archived with the research.
 | Coverage thresholds                               | Wired — `pnpm coverage`, 90%/90% statements/branches per package (`spec/traceability.md` §6), Node 24 CI leg only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | GSD project planning                              | Complete and archived on the `planning-archive` branch; `.planning/` is no longer tracked on `main` (F-27)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-## Blocking first release
+## Blocking first release (resolved — kept for history)
 
-The dependency-graph-verified 11-phase build order (Phase 0 tooling policy →
-Phase 1 `loadFeature` → Phase 2 parameter types → ... → Phase 9 shared Layer →
-Phase 10 composition root + dogfooded acceptance suite) came out of the
+Both packages are published on npm as `0.1.0` (see the README's "## Status"), so nothing below is still blocking;
+this section is the record of what the first release required, not a live punch list. The
+dependency-graph-verified 11-phase build order (Phase 0 tooling policy → Phase 1 `loadFeature` → Phase 2 parameter
+types → ... → Phase 9 shared Layer → Phase 10 composition root + dogfooded acceptance suite) came out of the
 research archived on the `planning-archive` branch. High-level shape:
 
-1. Finish Phase 0 tooling/dependency policy (partially done: peer deps
-   fixed via ADR-EC-015, extended to `@effect-cucumber/gherkin` via
-   ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; still open:
-   `publishConfig.exports` swap, pnpm catalogs, CI, and ADR-EC-021's
-   Follow-up items — the actual `Source.ts`/`loadFeature.ts`/`Errors.ts`
-   rewrite, `BEH-EC-001` update, and `ParameterTypeStore`-as-Layer decision).
+1. Finish Phase 0 tooling/dependency policy — **done.** Peer deps fixed via ADR-EC-015, extended to
+   `@effect-cucumber/gherkin` via ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; `publishConfig.exports`, pnpm
+   catalogs and CI (`.github/workflows/`) are all in place, and ADR-EC-021's Follow-up items that gated this —
+   the `Source.ts`/`loadFeature.ts`/`Errors.ts` rewrite, the `BEH-EC-001` update, and the `ParameterTypeStore`-as-Layer
+   migration (`Context.Service` in `packages/gherkin/src/ParameterTypes.ts`) — are all shipped. One follow-up from
+   that ADR is still genuinely undecided and tracked under "Under consideration" below: which package owns
+   `ManagedRuntime` construction.
 2. Implement `@effect-cucumber/gherkin`'s parse→compile→correlate pipeline
    (the riskiest phase — several silent-failure edge cases in
    `@cucumber/gherkin`'s `compile()` must become loud errors here).
@@ -220,9 +222,55 @@ research archived on the `planning-archive` branch. High-level shape:
   script over this repository's own directory cannot travel, so for a consumer
   the invariant is still a reviewed convention. LINT-01 is what would close it,
   and it is deferred to a later milestone (the v2 backlog archived on the `planning-archive` branch).
+- **A bundled helper for asserting a Scenario's expected failure by tag** —
+  `Effect.exit`/`Cause.squash` is the only pattern the docs show for "this
+  Scenario should fail, and fail with the right tag," and no narrowing
+  assertion ships beside it — the gap `@effect/vitest`'s own `assertSome`/
+  `assertTrue` close for their case. Every consumer is left to hand-roll
+  `fault instanceof Error && "_tag" in fault ? String(fault._tag) : "Unknown"`,
+  which also degrades a non-`Error` failure to the string `"Unknown"` instead
+  of failing loudly with the actual value. A `Testing.failureTag(exit)`
+  (name open) that returns the tag or fails the assertion outright would
+  remove the duplication at the source. Raised by a downstream framework-gap
+  audit (the "BDD Quality Ceiling" report, Gap #2, 2026-09-02); not yet
+  designed.
+- **A Rule that can narrow or replace the ambient World's `Context.Service`,
+  not only extend it** — today's `Rule(name, extraLayer, define)` only ever
+  adds to what's ambient via `Layer.provideMerge` (see "A third 'shared
+  within a Rule' Layer scope" below, [ADR-EC-006](decisions/006-two-layer-scopes-only.md)/
+  [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md)), so a
+  Feature whose Scenarios produce two mutually exclusive result shapes (an
+  audit that either emits a remediation report or exports a BOM, say) has no
+  primitive for "two disjoint, compiler-checked result Worlds in one Feature
+  file" — the only escape today is splitting into two Feature files purely to
+  satisfy the type system. Raised by the same audit (Gap #3); of its three
+  gaps this is the one load-bearing case, the only dimension (State
+  management) that report found no code-only fix could bring past 4/5 while
+  keeping one Feature file. Needs a design that does not reopen
+  [ADR-EC-006](decisions/006-two-layer-scopes-only.md)'s "no third Layer
+  scope" decision — this narrows the RESULT type a Rule's Scenarios see, not
+  a new build-once tier.
+- **Citing the failing step's text and `.feature` file:line in the runner's
+  failure panel** — today the panel names the Scenario and the assertion
+  only; the step pattern reaches a separate stdout block through
+  [ADR-EC-005](decisions/005-effect-fn-for-step-and-hook-bodies.md)'s
+  `Effect.fn(pattern)` span, which is not the same thing and does not
+  appear beside the failure itself. Measured FALSE against the "Looks Done
+  But Isn't" checklist (RUN-06) rather than assumed; not yet designed.
+- **A rerun trigger for a `.feature` file loaded via `loadFeature(path)`
+  under a watching runner** — a plain filesystem read is invisible to
+  Vite's module graph, so only the `?raw` import form reruns on edit today.
+  Also measured FALSE against the "Looks Done But Isn't" checklist rather
+  than assumed; needs either a documented workaround (recommend `?raw`) or
+  a real fix (a Vite plugin watching the glob `gherkinTags` already
+  declares, say) — not yet decided which.
 
 ## Under consideration
 
+- **Which package owns `ManagedRuntime` construction** — `@effect-cucumber/vitest` itself, or a separate thin
+  adapter shared with a future non-vitest runner package. Raised as a Follow-up item in
+  [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md) during the `Source.ts`/
+  `loadFeature.ts`/`Errors.ts` rewrite; not decided by that ADR and still open.
 - **Vendored `@effect/oxc` rules** (`tools/oxlint/effect/`, from GSD Stack
   research) — 4 of Effect's own 5 unpublished oxlint rules, MIT-licensed,
   with `no-unused-internal` deliberately excluded (its one rule requiring

@@ -236,11 +236,11 @@ and producing real passing `it.effect` tests as part of the ordinary `pnpm test`
 `spec/behaviors/01`–`03` are among them, so the specification's examples are executed rather than merely read. All 22
 v1 requirements carry a `@REQ-EC-NNN` acceptance tag.
 
-**What is still ahead of this package:** the doc-examples compile check that would keep the fences on this page
-compiling against the real API. That is a gate the repository has yet to wire, not a gap in this package's behaviour.
-One limitation is worth knowing before you rely
-on it: editing a `.feature` file under a watching runner does **not** trigger a rerun when the file was loaded by
-path, because a filesystem read is invisible to Vite's module graph; the `?raw` import form does rerun. See
+**Two limitations are worth knowing before you rely on this package.** Editing a `.feature` file under a watching
+runner does **not** trigger a rerun when the file was loaded by path, because a filesystem read is invisible to
+Vite's module graph — the `?raw` import form does rerun. And a failing step's entry in the runner's failure panel
+names the Scenario and the assertion, but neither the step text nor the `.feature` file and line — the step pattern
+does reach a separate stdout block (`Effect.fn(pattern)`'s own span), which is not the same thing. See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
 authority on build status.
 
