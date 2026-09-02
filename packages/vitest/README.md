@@ -49,7 +49,9 @@ plain `Layer` — the default, per-Scenario scope, built fresh for every Scenari
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
 through `@effect/vitest`'s own `layer(...)` helper while `perScenario` beside it is still rebuilt every Scenario.
 `perScenario` is a **required** key even for a Feature with no per-Scenario-fresh state at all: write
-`perScenario: Layer.empty`. The two tiers are never merged into one, so where both name the same service the
+`perScenario: Layer.empty`. `perScenario` may be built **from** `shared` — its input type is bounded by the shared
+tier's output, so a per-Scenario `World` over a shared `Database` is one `Layer.effect` away, while an input neither
+tier provides is a compile error at the `describeFeature` call. The two tiers are never merged into one, so where both name the same service the
 `perScenario` implementation is the one a step resolves. Every Scenario keeps its **own** simulated clock and its own
 console on both scopes — one Scenario's `TestClock.adjust` is never observable by another, whichever form the Feature
 used. One constraint comes with `shared`, and it is a type error rather than advice: its error channel must be `never`.

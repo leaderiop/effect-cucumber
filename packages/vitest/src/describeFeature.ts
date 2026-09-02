@@ -191,7 +191,7 @@ import type { TestApi } from "./TestApi.ts"
  */
 type LayerArgument =
   | ErasedLayer
-  | { readonly shared: ErasedLayer; readonly perScenario: ErasedLayer }
+  | { readonly shared: ErasedLayer; readonly perScenario: ErasedExtraLayer }
 
 /**
  * `describeFeature`'s optional fourth argument: the registration-time tag filter (D-01, D-03).
@@ -257,7 +257,7 @@ export type FeatureCollection = {
    *
    * See note (d) for the collision rule and for the provision order that now delivers it.
    */
-  readonly layer: ErasedLayer
+  readonly layer: ErasedExtraLayer
   /**
    * The SHARED tier, or `null` — see note (d).
    *
@@ -318,7 +318,7 @@ export type FeatureCollection = {
    *
    * `Runner.ts` is what threads these into emission, and that wiring is plan 08-07's.
    */
-  readonly ruleLayers: ReadonlyMap<string, ErasedLayer>
+  readonly ruleLayers: ReadonlyMap<string, ErasedExtraLayer>
   /**
    * One entry per `Rule(...)` call, carrying only the hooks registered through THAT Rule's dsl —
    * `Before`/`After`/`BeforeStep`/`AfterStep` only, since `RuleDsl` exposes no other registrar
@@ -354,7 +354,7 @@ export type FeatureCollection = {
    * F22 makes Scenario names unique per SCOPE only, so a Rule's Scenario and a same-named
    * Feature-level one are both legal and must not collide here.
    */
-  readonly scenarioLayers: ReadonlyMap<string, ErasedLayer>
+  readonly scenarioLayers: ReadonlyMap<string, ErasedExtraLayer>
 }
 
 /**
@@ -624,7 +624,7 @@ const splitLayerArgument = (
   argument: LayerArgument
 ): {
   readonly shared: ErasedLayer | null
-  readonly perScenario: ErasedLayer
+  readonly perScenario: ErasedExtraLayer
 } =>
   "perScenario" in argument
     ? { shared: argument.shared, perScenario: argument.perScenario }
@@ -734,13 +734,13 @@ const collect = (
   // Every Rule this Feature's define callback actually called `Rule(...)` for, keyed by the id
   // `resolveRuleId` produced — real or sentinel. Declared before the `dsl` literal because the `Rule`
   // member's closure mutates it while `define(dsl)` runs, and read only after that call returns.
-  const ruleLayers = new Map<string, ErasedLayer>()
+  const ruleLayers = new Map<string, ErasedExtraLayer>()
 
   // Every THREE-argument `Scenario(...)` call, from either level, keyed by `scenarioKey`. Beside
   // `ruleLayers` because it has the identical lifecycle — mutated by a container closure while
   // `define(dsl)` runs, read only after it returns — and never keyed by name alone, for the reason
   // `ScenarioKey.ts` note (a) gives.
-  const scenarioLayers = new Map<string, ErasedLayer>()
+  const scenarioLayers = new Map<string, ErasedExtraLayer>()
 
   // One registrar per keyword, all five behind the same three lines: normalise the body through
   // `Step.ts` (which is where the bare-generator auto-wrap and its pass-through live), then record
@@ -834,7 +834,7 @@ const collect = (
    */
   const makeScenarioRegistrar = (
     ruleId: string | null,
-    ambientLayer: ErasedLayer
+    ambientLayer: ErasedExtraLayer
   ): ScenarioRegistrar<any> =>
   (
     name: string,
@@ -1077,7 +1077,7 @@ export function collectFeature<RShared, RScenario, E2>(
   feature: ParsedFeature,
   layer: {
     readonly shared: Layer.Layer<RShared, never, never>
-    readonly perScenario: Layer.Layer<RScenario, E2, never>
+    readonly perScenario: Layer.Layer<RScenario, E2, RShared>
   },
   define: (dsl: FeatureDsl<RShared | RScenario>) => void
 ): FeatureCollection
@@ -1153,7 +1153,11 @@ export function describeFeature<RShared, RScenario, E2>(
   feature: ParsedFeature,
   layer: {
     readonly shared: Layer.Layer<RShared, never, never>
-    readonly perScenario: Layer.Layer<RScenario, E2, never>
+    // `RShared`, not `never`: the per-Scenario tier may be built FROM the shared tier's services
+    // (a World over a shared Database), and the runtime already establishes the shared tier around
+    // every Scenario's `Effect.provide(perScenario)`. A requirement neither tier provides is still
+    // rejected — `test/tsgo-gate/src/per-scenario-missing-rin.ts`.
+    readonly perScenario: Layer.Layer<RScenario, E2, RShared>
   },
   define: (dsl: FeatureDsl<RShared | RScenario>) => void,
   options?: DescribeFeatureOptions

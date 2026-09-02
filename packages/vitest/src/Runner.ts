@@ -272,7 +272,7 @@ import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
 import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.ts"
 import { buildScenarioTitles } from "./OutlineTitle.ts"
-import type { ErasedLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
+import type { ErasedExtraLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
 import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
@@ -484,11 +484,11 @@ export const emitFeature = (
   args: {
     readonly api: TestApi
     readonly plan: FeaturePlan
-    readonly layer: ErasedLayer
+    readonly layer: ErasedExtraLayer
     readonly hooks: HookSet
     readonly ruleHooks: ReadonlyMap<string, HookSet>
-    readonly ruleLayers: ReadonlyMap<string, ErasedLayer>
-    readonly scenarioLayers: ReadonlyMap<string, ErasedLayer>
+    readonly ruleLayers: ReadonlyMap<string, ErasedExtraLayer>
+    readonly scenarioLayers: ReadonlyMap<string, ErasedExtraLayer>
     readonly tagFilter: TagFilter
     readonly onEmitted?: ((outcome: EmitOutcome) => void) | undefined
   }

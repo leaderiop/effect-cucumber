@@ -98,6 +98,18 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              own always-passing warning nodes are routed off the shared emission
              path (ADR-EC-026, plan 10-07). Its resources MUST be released once,
              after every Scenario in the Feature has run — not once per Scenario.
+             The perScenario tier MAY require services the shared tier
+             provides — its input type is bounded by the shared tier's output
+             (perScenario: Layer<RScenario, E2, RShared>), and the runtime
+             establishes the shared tier around every Scenario's own
+             Effect.provide, so a World built from a shared Database is one
+             Layer.effect away. A perScenario input NEITHER tier provides is
+             rejected at the describeFeature call by overload resolution
+             ("No overload matches this call" — TypeScript reports a failed
+             overloaded call against the plain-Layer form, so the by-name
+             effect(missingLayerContext) diagnostic is the plain form's only;
+             test/tsgo-gate/src/per-scenario-missing-rin.ts pins the
+             rejection, test/SharedLayerConstraint.types.ts the acceptance).
              The shared tier is built on the LIVE clock and console: it is
              constructed once, before any Scenario's own TestClock exists, so a
              fiber it forks that sleeps runs on wall-clock time. Only the

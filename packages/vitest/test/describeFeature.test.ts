@@ -136,10 +136,12 @@ const noop = function*() {
  * two halves D-03/D-04 are about; `whoProvidesShared`, below the tests that need it, is the other.
  *
  * The error channel is `unknown` rather than `never` because `FeatureCollection.layer` erases the
- * two overloads' error channels (describeFeature.ts's `LayerArgument` note). A Layer that fails to build
+ * two overloads' error channels (describeFeature.ts's `LayerArgument` note), and the context is `any`
+ * because a per-Scenario tier may be built from the shared tier (BEH-EC-007) — on the plain form used
+ * here there is nothing left to provide, and `runPromise` accepts it. A Layer that fails to build
  * would surface here as a test failure, which is the right outcome; narrowing it would need a cast.
  */
-const whoProvides = (collected: FeatureCollection): Effect.Effect<string, unknown> =>
+const whoProvides = (collected: FeatureCollection): Effect.Effect<string, unknown, any> =>
   Effect.provide(
     Effect.gen(function*() {
       return (yield* Marker).who
@@ -286,7 +288,7 @@ describe("a step definition records where its author wrote it", () => {
     // lines further down. Editing anything above this point in the file moves it, and this
     // assertion fails until the literal is updated. That is deliberate — it is exactly what a
     // hoisted, removed or off-by-one capture changes, and nothing weaker can see the difference.
-    const givenLine = 291
+    const givenLine = 293
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -717,7 +719,7 @@ const ruleAMarkerBuiltOnAmbient = Layer.effect(
 )
 
 /** Read `Marker` back out of an arbitrary collected Layer — `whoProvides`, without the collection. */
-const markerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+const markerFrom = (layer: Layer.Layer<any, any, any>): Effect.Effect<string, unknown, any> =>
   Effect.provide(
     Effect.gen(function*() {
       return (yield* Marker).who
@@ -726,7 +728,7 @@ const markerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, 
   )
 
 /** The same, for the Rule-only service. */
-const ruleMarkerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+const ruleMarkerFrom = (layer: Layer.Layer<any, any, any>): Effect.Effect<string, unknown, any> =>
   Effect.provide(
     Effect.gen(function*() {
       return (yield* RuleMarker).who
@@ -741,7 +743,7 @@ const ruleMarkerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<stri
  * then resolve against the FEATURE's Layer, and the "the Rule's Layer provides the extra service"
  * assertion would report a `Marker` mismatch instead of the absent entry that actually caused it.
  */
-const ruleLayerOf = (collected: FeatureCollection, ruleId: string): Layer.Layer<any, any, never> => {
+const ruleLayerOf = (collected: FeatureCollection, ruleId: string): Layer.Layer<any, any, any> => {
   const found = collected.ruleLayers.get(ruleId)
   if (found === undefined) {
     throw new Error(`the collection has no ruleLayers entry for "${ruleId}"`)
@@ -1087,7 +1089,7 @@ const scenarioMarkerBuiltOnRule = Layer.effect(
 const scenarioOwnMarker = Layer.succeed(Marker, Marker.of({ who: "scenario's own" }))
 
 /** Read the Scenario-only service back out of a collected Layer. */
-const scenarioMarkerFrom = (layer: Layer.Layer<any, any, never>): Effect.Effect<string, unknown> =>
+const scenarioMarkerFrom = (layer: Layer.Layer<any, any, any>): Effect.Effect<string, unknown, any> =>
   Effect.provide(
     Effect.gen(function*() {
       return (yield* ScenarioMarker).who
@@ -1117,7 +1119,7 @@ const scenarioLayerOf = (
   collected: FeatureCollection,
   ruleId: string | null,
   name: string
-): Layer.Layer<any, any, never> => {
+): Layer.Layer<any, any, any> => {
   const key = scenarioKeyIn(ruleId, name)
   const found = collected.scenarioLayers.get(key)
   if (found === undefined) {

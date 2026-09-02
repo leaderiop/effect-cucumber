@@ -143,6 +143,13 @@ decision shipped as written.]**
 > it is accepted: a per-Scenario `TestClock` cannot drive a resource shared by every
 > Scenario. BEH-EC-007 states it as part of the requirement.
 >
+> **7. The per-Scenario tier may be built FROM the shared tier (F-18).** The object form's
+> `perScenario` is `Layer<RScenario, E2, RShared>`, not `Layer<RScenario, E2, never>`: the
+> shared tier is already ambient around every Scenario's `Effect.provide(perScenario)`, so a
+> per-Scenario World over a shared Database is expressible without rebuilding the Database
+> per Scenario, which the `never` pin had forced. A `perScenario` input neither tier provides
+> is still rejected — by overload resolution rather than by name, and BEH-EC-007 says so.
+>
 > **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
 > claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
 > hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted

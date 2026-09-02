@@ -63,6 +63,13 @@ declare const feature: ParsedFeature
 declare const okShared: Layer.Layer<Shared, never, never>
 declare const failing: Layer.Layer<Shared, SharedLayerBuildError, never>
 
+class World extends Context.Service<World, { readonly ok: boolean }>()("SharedLayerConstraint/World") {}
+class Db extends Context.Service<Db, { readonly ok: boolean }>()("SharedLayerConstraint/Db") {}
+/** A per-Scenario tier built FROM the shared tier's service (BEH-EC-007). */
+declare const worldOverShared: Layer.Layer<World, never, Shared>
+/** A per-Scenario tier needing a service NEITHER tier provides. */
+declare const worldOverDb: Layer.Layer<World, never, Db>
+
 //
 // describeFeature — the published entry point.
 //
@@ -77,6 +84,14 @@ describeFeature(feature, { shared: okShared, perScenario: Layer.empty }, () => {
 /** ASYMMETRY CONTROL: `perScenario` is unconstrained — a failable per-Scenario Layer is legitimate. */
 describeFeature(feature, { shared: okShared, perScenario: failing }, () => {})
 
+// F-18: `perScenario` may require what `shared` provides ...
+describeFeature(feature, { shared: okShared, perScenario: worldOverShared }, () => {})
+
+// ... and nothing else. (The by-name diagnostic is asserted by verify-tsgo-gate.sh's
+// per-scenario-missing-rin fixture; this line only pins that the call is rejected at all.)
+// @ts-expect-error a per-Scenario tier needing a service neither tier provides is rejected
+describeFeature(feature, { shared: okShared, perScenario: worldOverDb }, () => {})
+
 //
 // collectFeature — the internal entry point, identical constraint, deliberately no `options` arity.
 //
@@ -90,3 +105,8 @@ collectFeature(feature, { shared: okShared, perScenario: Layer.empty }, () => {}
 
 /** ASYMMETRY CONTROL: `perScenario` is unconstrained on this entry point as well. */
 collectFeature(feature, { shared: okShared, perScenario: failing }, () => {})
+
+collectFeature(feature, { shared: okShared, perScenario: worldOverShared }, () => {})
+
+// @ts-expect-error a per-Scenario tier needing a service neither tier provides is rejected
+collectFeature(feature, { shared: okShared, perScenario: worldOverDb }, () => {})

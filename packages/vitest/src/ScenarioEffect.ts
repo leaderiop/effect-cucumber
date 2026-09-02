@@ -138,7 +138,7 @@
 import * as Effect from "effect/Effect"
 import type * as Scope from "effect/Scope"
 import { type HookSet, runHookBatch } from "./Hook.ts"
-import type { ErasedLayer, PlannedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
+import type { ErasedExtraLayer, PlannedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
 
 /**
  * Whether `planned` is the step-did-not-resolve member of the union.
@@ -187,7 +187,7 @@ const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep =>
 export const buildScenarioEffect = (
   args: {
     readonly plan: ScenarioPlan
-    readonly layer: ErasedLayer
+    readonly layer: ErasedExtraLayer
     readonly hooks: HookSet
   }
 ): Effect.Effect<void, unknown, Scope.Scope> =>

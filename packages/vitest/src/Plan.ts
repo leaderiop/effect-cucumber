@@ -180,7 +180,7 @@ export type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any
 
 /**
  * The ONE place the runtime core erases a Layer's type parameters (INV-EC-003's boundary
- * paragraph names it). Every Layer that reaches `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts` or
+ * paragraph names it): the shared tier, whose input is `never`. Every Layer that reaches `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts` or
  * the composition root has already been checked against the step and hook bodies it serves by
  * `Dsl.ts`'s `StepRegistrar<ROut>`/`HookRegistrar<ROut>` at authoring time; from here on the value
  * is only carried and provided, never written against. Spelling the erasure once keeps it from being
@@ -189,8 +189,10 @@ export type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any
 export type ErasedLayer = Layer.Layer<any, any, never>
 
 /**
- * An EXTRA Layer a `Rule` or `Scenario` merges onto its ambient tier — see `ErasedLayer`. Its input
- * is left open because the ambient tier is what satisfies it, through `Layer.provideMerge`.
+ * A Layer whose INPUT another tier satisfies at run time — see `ErasedLayer`. The per-Scenario tier
+ * (its input may be the shared tier's output, BEH-EC-007) and every `Rule`/`Scenario` extra Layer
+ * (its input is the ambient tier, through `Layer.provideMerge`) are both this; only the shared tier
+ * is an `ErasedLayer`, because nothing is established around it.
  */
 export type ErasedExtraLayer = Layer.Layer<any, any, any>
 

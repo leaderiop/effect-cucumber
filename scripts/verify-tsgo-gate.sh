@@ -39,6 +39,7 @@ STEP_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-ok.json"
 STEP_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-missing.json"
 WORLD_FIELD_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.world-field.json"
 LAYER_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.layer-rin.json"
+PER_SCENARIO_RIN_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.per-scenario-rin.json"
 STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-error.json"
 STEP_TABLE_ANNOTATION_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-table-annotation.json"
 HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
@@ -59,7 +60,7 @@ fail() {
 }
 
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
-  "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
+  "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$PER_SCENARIO_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
   "$HOOK_NEG_CONFIG" "$RULE_OK_CONFIG" \
   "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
@@ -253,6 +254,30 @@ if ! grep -q "effect(missingLayerContext)" <<<"$LAYER_RIN_OUTPUT"; then
   fail "the Layer argument was rejected, but NOT by name — effect(missingLayerContext) did not fire, so ADR-EC-016's gate has stopped covering describeFeature's layer argument while CI stays green. Most likely cause: the two overloads in packages/vitest/src/describeFeature.ts were reordered so the plain-Layer form is no longer LAST. TypeScript reports a failed overloaded call against the last overload, so with the object form last the message becomes \"Type 'Layer<World, never, Db>' is missing the following properties from type '{ shared; perScenario }'\" — which names the wrong problem entirely and produces no Effect diagnostic. The call is still rejected, which is why nothing else in this repo goes red. See describeFeature.ts note (a) and RESEARCH.md Finding 6."
 fi
 echo "✓ an unsatisfied Layer argument is rejected by name: effect(missingLayerContext) — overload order intact"
+
+# ---------------------------------------------------------------------------
+# Assertion 8b: the object form's per-Scenario tier may require what the shared
+# tier provides (BEH-EC-007, F-18) and NOTHING else. A `perScenario` whose input
+# names a service neither tier provides must be rejected. It is rejected by
+# overload resolution, and TypeScript reports a failed overloaded call against
+# the LAST overload (the plain-Layer form), so the message is "No overload
+# matches this call" rather than a by-name Effect diagnostic — assertion 8 keeps
+# the by-name guarantee for the plain form, and this one pins that the object
+# form's rejection exists at all (test/SharedLayerConstraint.types.ts pins the
+# accepted direction). Stated in BEH-EC-007 as measured.
+# ---------------------------------------------------------------------------
+PER_SCENARIO_RIN_OUTPUT="$($TSC -p "$PER_SCENARIO_RIN_CONFIG" 2>&1)" && PER_SCENARIO_RIN_EXIT=0 || PER_SCENARIO_RIN_EXIT=$?
+
+if [[ "$PER_SCENARIO_RIN_EXIT" -eq 0 ]]; then
+  echo "$PER_SCENARIO_RIN_OUTPUT"
+  fail "a perScenario tier whose input names a service NEITHER tier provides was accepted — { shared: Layer<Catalog>, perScenario: Layer<World, never, Db> } compiled. Every Scenario would fail at run time with a service-not-found. Most likely cause: the object-form overload's perScenario third type argument in packages/vitest/src/describeFeature.ts stopped being pinned to RShared."
+fi
+
+if ! grep -q "No overload matches this call" <<<"$PER_SCENARIO_RIN_OUTPUT"; then
+  echo "$PER_SCENARIO_RIN_OUTPUT"
+  fail "the perScenario tier was rejected, but not by overload resolution as BEH-EC-007 records — the diagnostic shape changed. If it now fires effect(missingLayerContext), that is an IMPROVEMENT: assert the name here and update BEH-EC-007's sentence in the same commit."
+fi
+echo "✓ a perScenario tier needing a service neither tier provides is rejected (overload resolution; BEH-EC-007 records the by-name half as the plain form's only)"
 
 # ---------------------------------------------------------------------------
 # Assertion 9: the supplementary stacked-directive fixture.

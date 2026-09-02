@@ -2748,3 +2748,74 @@ describe("a shared Layer with every Scenario excluded stays unbuilt, even with a
     )
   })
 })
+
+// ---------------------------------------------------------------------------------------------
+// F-18 / BEH-EC-007: the per-Scenario tier may be built FROM the shared tier. `DependentWorld`
+// requires `DependentCatalog`, which only the shared tier provides. Every assertion is made INSIDE
+// the emitted Scenarios, so nothing here depends on suite declaration order.
+// mutation: pin the object form's `perScenario` back to `Layer<_, _, never>` and this file stops
+// compiling; hoist `dependentCatalogLayer` into `perScenario` and `catalogOrdinal` reads 1, 2, 3.
+// ---------------------------------------------------------------------------------------------
+
+class DependentCatalog extends Context.Service<DependentCatalog, { readonly buildOrdinal: number }>()(
+  "emission/DependentCatalog"
+) {}
+
+let dependentCatalogBuilds = 0
+
+const dependentCatalogLayer: Layer.Layer<DependentCatalog, never, never> = Layer.effect(
+  DependentCatalog,
+  Effect.sync(() => {
+    dependentCatalogBuilds += 1
+    return DependentCatalog.of({ buildOrdinal: dependentCatalogBuilds })
+  })
+)
+
+class DependentWorld extends Context.Service<DependentWorld, {
+  readonly catalogOrdinal: number
+  readonly worldOrdinal: number
+}>()("emission/DependentWorld") {}
+
+let dependentWorldBuilds = 0
+
+/** Built FROM the shared tier: `Layer<DependentWorld, never, DependentCatalog>`, the F-18 shape. */
+const dependentWorldLayer: Layer.Layer<DependentWorld, never, DependentCatalog> = Layer.effect(
+  DependentWorld,
+  Effect.gen(function*() {
+    const catalog = yield* DependentCatalog
+    dependentWorldBuilds += 1
+    return DependentWorld.of({ catalogOrdinal: catalog.buildOrdinal, worldOrdinal: dependentWorldBuilds })
+  })
+)
+
+const seenDependentWorldOrdinals = new Set<number>()
+
+const dependentTierFeature = Effect.runSync(
+  parseFeature(
+    `Feature: perScenario built from shared
+  Scenario: the first dependent scenario
+    When the dependent world is read
+  Scenario: the second dependent scenario
+    When the dependent world is read
+  Scenario: the third dependent scenario
+    When the dependent world is read
+`,
+    "test/per-scenario-from-shared.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+describeFeature(
+  dependentTierFeature,
+  { shared: dependentCatalogLayer, perScenario: dependentWorldLayer },
+  ({ When }) => {
+    When("the dependent world is read", function*() {
+      const world = yield* DependentWorld
+      // The shared tier was built exactly once, and the per-Scenario tier read THAT build.
+      assert.strictEqual(world.catalogOrdinal, 1)
+      assert.strictEqual(dependentCatalogBuilds, 1)
+      // The per-Scenario tier is still fresh per Scenario: no ordinal is seen twice.
+      assert.isFalse(seenDependentWorldOrdinals.has(world.worldOrdinal))
+      seenDependentWorldOrdinals.add(world.worldOrdinal)
+    })
+  }
+)
