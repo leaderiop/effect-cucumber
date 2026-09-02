@@ -5,9 +5,8 @@
  * deliberately NOT from the `@effect-cucumber/vitest` barrel: that barrel re-exports
  * `describeFeature.ts`, which imports `@effect/vitest`, and a config file is loaded outside any
  * test context. `GherkinTags.ts` is a leaf whose only imports are `node:fs`, `node:path` and
- * `tinyglobby`, which is what makes it safe to reach from here. The root config's notes (d) and
- * (e) explain every hand-written entry below and the reserved `@undeclared-on-purpose` tag that
- * must never join them.
+ * `tinyglobby`, which is what makes it safe to reach from here. `@undeclared-on-purpose` is
+ * reserved by `emission.test.ts`'s undeclared-tag path and must never join the list below.
  */
 import { gherkinTags } from "./packages/vitest/src/GherkinTags.ts"
 

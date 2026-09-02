@@ -221,3 +221,7 @@ jobs:
       # API table leaves it, build and test all green. See
       # scripts/verify-api-surface.sh.
       - run: pnpm verify:api-surface
+      # Source and test comments must not cite the planning artefacts that live on
+      # the planning-archive branch (or ids that resolve only there): a citation a
+      # reader cannot open rots silently. See scripts/verify-no-planning-refs.sh.
+      - run: pnpm verify:no-planning-refs

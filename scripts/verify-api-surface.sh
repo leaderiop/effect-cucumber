@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-#
-# Asserts that `spec/overview.md` § "Public API surface" and the real public surface of
-# `@effect-cucumber/vitest` agree, in BOTH directions:
-#
-#   1. every name exported by `packages/vitest/src/index.ts` (values and types) has a row in
-#      the "Exports" table, and every row names a real export;
-#   2. every member the dsl hands `define` (the `readonly X:` members of the container
-#      interfaces in `packages/vitest/src/Dsl.ts`) has a row in the "DSL members" table, and
-#      every row names a real member.
-#
-# METHOD NOTE: `pnpm build` and `pnpm test` exiting 0 prove nothing about the spec's table —
-# an export added to the barrel and never written down leaves both green. Only a structural
-# comparison can catch that, and the positive controls below make sure the comparison is
-# scanning something: an emptied barrel or a renamed heading would otherwise pass by
-# comparing nothing with nothing.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

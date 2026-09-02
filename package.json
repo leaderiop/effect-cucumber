@@ -29,6 +29,7 @@
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
     "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
     "verify:api-surface": "bash scripts/verify-api-surface.sh",
+    "verify:no-planning-refs": "bash scripts/verify-no-planning-refs.sh",
     "changeset": "changeset",
     "release": "pnpm build && changeset publish"
   },
