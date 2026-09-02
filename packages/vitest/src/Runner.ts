@@ -363,9 +363,21 @@ const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
  *
  * The plain `started` boolean is sound because the framework runs the tests of one file
  * sequentially, and every node this module emits runs to completion before the next one begins —
- * there is no interleaving for two callers to race inside. `Deferred.await` on the second and later
- * callers, rather than re-running `body`, is what makes a FAILING `BeforeAllScenarios` reach every
- * Scenario individually rather than only the first one to run — D-08's literal requirement.
+ * there is no interleaving for two callers to race inside. That is a precondition, not an
+ * observation: a Feature emitted under `sequence.concurrent: true` or inside a consumer's
+ * `describe.concurrent` is UNSUPPORTED (BEH-EC-017, F-21), because two Scenario fibers could then
+ * enter this cell together and the second would await a body the first has only just started.
+ * `Deferred.await` on the second and later callers, rather than re-running `body`, is what makes a
+ * FAILING `BeforeAllScenarios` reach every Scenario individually rather than only the first one to
+ * run — D-08's literal requirement.
+ *
+ * EVERY exit is memoised, interruption included, and none is retried. The plausible tidy-up —
+ * "an interrupted setup should be retried by the next Scenario" — would make Scenario N's outcome
+ * depend on how far Scenario 1's setup got before the framework's per-test timeout cut it, and could
+ * re-run a body whose side effects half-applied. BEH-EC-017 asks for the SAME outcome reported by
+ * every Scenario, and an interrupt is an outcome. Two consequences a consumer needs stated:
+ * `BeforeAllScenarios` runs inside the first attempted Scenario's timeout budget (raise
+ * `testTimeout` for slow setup), and a Scenario `retry` cannot make a failed setup succeed.
  *
  * The explicit return annotation is required, not stylistic: `composite: true` demands it, and
  * pinning `Effect<void, unknown, Scope.Scope>` here keeps `any` out of the emitted contract.

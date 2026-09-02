@@ -50,6 +50,13 @@ runs once when a run is narrowed with `-t` or `--tagsFilter` to one Scenario, an
 Feature was attempted; a failure in it reports against the Feature's block. It relies on vitest's default
 `sequence.hooks: "stack"` ordering to run before the shared tier is released — `"list"` is not supported.
 
+Two preconditions come with the once-per-Feature hooks and are stated rather than left to be discovered.
+`BeforeAllScenarios` is a once-cell: it runs inside the **first attempted Scenario's** timeout budget (raise
+`testTimeout` for slow setup), and its first exit — success, failure, or the timeout interrupting it — is what every later
+Scenario reports; it is never retried, so a Scenario-level `retry` cannot make a failed setup pass. And Scenarios must run
+sequentially: a Feature emitted under `sequence.concurrent: true` or inside your own `describe.concurrent` is unsupported,
+because two Scenarios could enter the once-cell together.
+
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature

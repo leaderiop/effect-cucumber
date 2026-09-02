@@ -1133,6 +1133,10 @@ describe("the recording fake itself", () => {
  * D-08's runtime proof: running the recorded thunks shows `BeforeAllScenarios` executes exactly once
  * across N Scenarios, in either run order, and that its failure reaches every Scenario individually by
  * reference identity — never only the first one to run.
+ *
+ * Every thunk here is run to completion before the next starts, which is the sequential precondition
+ * `makeOnce` states (F-21): concurrent Scenario execution is unsupported, and nothing in this file
+ * pretends otherwise by racing two thunks.
  */
 describe("BeforeAllScenarios runs exactly once across every Scenario in the Feature (D-08)", () => {
   it.effect("runs ahead of both Scenarios' steps, exactly once, when run in document order (1 then 2)", () =>
