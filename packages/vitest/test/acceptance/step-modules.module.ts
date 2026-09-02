@@ -1,7 +1,8 @@
 /**
- * The reusable half of the `step-modules` acceptance pair (BEH-EC-019): a step module defined in
- * its OWN file, the way a consumer shares steps across Feature files. `step-modules.steps.test.ts`
- * uses it; nothing here calls `describeFeature`.
+ * The reusable half of the `step-modules` acceptance pair (BEH-EC-019): a step module defined in its OWN file, the
+ * way a consumer shares steps across Feature files.
+ *
+ * Carries: BEH-EC-019.
  */
 import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
@@ -19,7 +20,7 @@ export class World extends Context.Service<World, { readonly apples: Ref.Ref<num
   )
 }
 
-/** `R = World`, declared: a Feature whose Layer lacks `World` cannot `use` this (asserted by the tsgo gate). */
+// `R = World`, declared: a Feature whose Layer lacks `World` cannot `use` this (asserted by the tsgo gate).
 export const applesSteps = defineSteps<World>(({ Given, Then, When }) => {
   Given("I have {int} apples", function*(count) {
     const { apples } = yield* World

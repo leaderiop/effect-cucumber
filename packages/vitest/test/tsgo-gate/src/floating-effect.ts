@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect"
 
-// Valid TypeScript. Rejected only by @effect/tsgo.
+// Valid TypeScript.
 export const run = (): void => {
   Effect.sync(() => 1)
 }

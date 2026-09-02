@@ -23,7 +23,7 @@ in prose satisfies; check 5 matches the §5 TABLE and nothing else. Check 5 also
 one-Scenario-per-id rule. See that script's own comment above check 5 for the three failures check 4 is structurally
 unable to see.
 
-The ids are permanent. They are allocated contiguously, in the order the `REQUIREMENTS.md` archived on the `planning-archive` branch writes the
+The ids are permanent. They are allocated contiguously, in the order the requirements list archived on the `planning-archive` branch writes the
 requirements, and are never renumbered and never reused (AGENTS.md §6,
 `spec/process/requirement-id-scheme.md`).
 
@@ -59,7 +59,7 @@ the gherkin corpus.
 ## Every cross-step value lives in a `Ref` obtained from a Layer-provided service
 
 Every value one step writes for a later step in the same Scenario goes through a `Ref` on a `World`-shaped
-`Context.Service` (RUN-06, INV-EC-006, ADR-EC-009). No `let`, no `var`, and **no module-scope mutable array, object or
+`Context.Service` (INV-EC-006, ADR-EC-009). No `let`, no `var`, and **no module-scope mutable array, object or
 counter standing in for one** — the module-scope escape hatch is closed on purpose. A module-scope holder satisfies the
 letter of the no-`let` rule while defeating its entire intent, and it is additionally unable to observe per-Scenario
 Layer freshness: one array is one array however many times the Layer was built. `scripts/verify-acceptance-ref-state.sh`
@@ -71,7 +71,7 @@ INV-EC-003's guarantee holds for step bodies free of `any`. One `any` in a step 
 disables that guarantee for that step — inside the suite whose entire job is to prove the guarantee. Nothing here may
 introduce one to make something compile. `scripts/verify-acceptance-no-any.sh` enforces it, and because that gate counts
 a standalone token, an acceptance step's Gherkin text and a `.steps.test.ts` string literal must avoid the bare English
-word as a standalone token too — a rule this repo has now hit three times (STATE.md 03-04, 10-01, 10-02): a grep-based
+word as a standalone token too — a rule this repo has hit three times before: a grep-based
 criterion that forbids a literal also forbids explaining it.
 
 ## Every pair carries its own mutation record
@@ -99,7 +99,7 @@ The minimum set for a new pair is the analogue of mutations C, D and E recorded 
 This directory's most useful measured finding, and the reason the minimum mutation set above starts at C: `pnpm test`
 exiting 0 does **not** prove an acceptance pair ran. Mutation A on the first pair pointed the config's `gherkinTags`
 glob at a pattern matching no file, leaving every acceptance tag undeclared — and the suite stayed green, 777 passed,
-exit 0, because `describeFeature`'s D-08 path catches the collection-time throw and re-emits each Scenario untagged
+exit 0, because `describeFeature`'s undeclared-tag path (BEH-EC-008) catches the collection-time throw and re-emits each Scenario untagged
 behind a warning. A renamed directory, a `.steps.ts` that should have been `.steps.test.ts`, or a Feature that emits
 nothing all look identical from the outside: a smaller number nobody is watching. Assert how many tests the pair
 produced.

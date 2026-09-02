@@ -1,7 +1,7 @@
 /**
- * Type-level assertions for `StepRegistrar` / `StepParams` (BEH-EC-003, Dsl.ts note (d)). Compiled
- * by `pnpm typecheck:test`, never run. Every `@ts-expect-error` is load-bearing: removing the
- * `StepArgs` constraint from `StepParams` turns each one into an unused-directive error.
+ * Type-level assertions for `StepRegistrar` / `StepParams` (BEH-EC-003, Dsl.ts note (d)).
+ *
+ * Carries: BEH-EC-003.
  */
 import type { DataTable, DocString } from "@effect-cucumber/gherkin"
 import * as Context from "effect/Context"
@@ -58,8 +58,8 @@ export const use = (dsl: FeatureDsl<World>): void => {
     return amount
   })
 
-  // The trailing DataTable/DocString parameter is annotatable on a zero-hole pattern, and after
-  // the holes on a pattern that has them.
+  // The trailing DataTable/DocString parameter is annotatable on a zero-hole pattern, and after the holes on a
+  // pattern that has them.
   dsl.Given("the cart contains:", function*(table: DataTable) {
     yield* Effect.void
     return table.raw()

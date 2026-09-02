@@ -3,27 +3,12 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import { gherkinTags } from "../src/GherkinTags.ts"
 
-/**
- * The pattern prefix every test below builds on, derived rather than hardcoded — and the derivation
- * is the point.
- *
- * `gherkinTags` resolves a pattern against `process.cwd()` (GherkinTags.ts note (e)), while this
- * repo's fixture-locating precedent — `packages/gherkin/test/Parser.test.ts` — yields an ABSOLUTE
- * path from `import.meta.url`. Those two only agree once the absolute path is made relative to the
- * runner's own working directory, which is what `path.relative` does here; the `split`/`join` pair
- * normalises Windows separators back to the `/` a glob needs.
- *
- * A hardcoded `packages/vitest/test/fixtures/**\/*.feature` would work from the repo root and match
- * NOTHING if the suite were ever run with `packages/vitest` as the cwd. That failure would be
- * invisible: a zero-match pattern deliberately returns `[]` instead of throwing (note (b)), so every
- * "excludes X" assertion below would still pass and every "includes X" one would have to be deleted
- * to keep the file green. Deriving the prefix is what stops this file from passing vacuously.
- */
+// The pattern prefix every test below builds on, derived rather than hardcoded — and the derivation is the point.
 const fixtures = path.relative(process.cwd(), fileURLToPath(new URL("./fixtures", import.meta.url)))
   .split(path.sep)
   .join("/")
 
-/** Every tag written across the fixtures, sorted ascending, minus the DocStrings' decoys. */
+// Every tag written across the fixtures, sorted ascending, minus the DocStrings' decoys.
 const allFixtureTags = [
   "@fixture-alpha",
   "@fixture-beta",
@@ -35,7 +20,7 @@ const allFixtureTags = [
   "@fixture-nested-fence"
 ]
 
-/** The same list without the tags only the nested-directory fixture carries. */
+// The same list without the tags only the nested-directory fixture carries.
 const topLevelFixtureTags = allFixtureTags.filter((name) => name !== "@fixture-nested")
 
 const names = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray<string> => tags.map((tag) => tag.name)
@@ -44,9 +29,8 @@ describe("gherkinTags", () => {
   it("expands a globstar pattern into every tag in the tree, sorted and de-duplicated", () => {
     const result = gherkinTags(`${fixtures}/**/*.feature`)
 
-    // Exact equality, not `toContain`: a scan that returned every token in the file would satisfy a
-    // containment assertion while being useless. The list is also the sort/dedup proof — the fixtures
-    // write `@fixture-alpha` in two different files and `@fixture-beta @fixture-gamma` on one line.
+    // Exact equality, not `toContain`: a scan that returned every token in the file would satisfy a containment
+    // assertion while being useless.
     expect(names(result)).toEqual(allFixtureTags)
   })
 
@@ -54,8 +38,8 @@ describe("gherkinTags", () => {
     const result = names(gherkinTags(`${fixtures}/tag-scan-docstring.feature`))
 
     expect(result).not.toContain("@fixture-not-a-tag")
-    // The same file's real Feature tag IS collected, so the exclusion above is fence tracking rather
-    // than the file being skipped wholesale.
+    // The same file's real Feature tag IS collected, so the exclusion above is fence tracking rather than the file
+    // being skipped wholesale.
     expect(result).toEqual(["@fixture-docstring"])
   })
 
@@ -95,8 +79,8 @@ describe("gherkinTags", () => {
       `${fixtures}/tag-scan-nested/**/*.feature`
     ]))
 
-    // `@fixture-alpha` is written in BOTH matched files, so a union that did not de-duplicate would
-    // return it twice and fail here.
+    // `@fixture-alpha` is written in BOTH matched files, so a union that did not de-duplicate would return it twice
+    // and fail here.
     expect(result).toEqual([
       "@fixture-alpha",
       "@fixture-beta",
@@ -122,8 +106,8 @@ describe("gherkinTags", () => {
   it("resolves a relative pattern against options.cwd instead of process.cwd() when one is given", () => {
     const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url))
 
-    // `process.cwd()` is the repo root (or the package directory under `pnpm -r test`); neither
-    // contains a top-level `tag-scan-a.feature`, so without `cwd` this pattern matches nothing.
+    // `process.cwd()` is the repo root (or the package directory under `pnpm -r test`); neither contains a top-level
+    // `tag-scan-a.feature`, so without `cwd` this pattern matches nothing.
     expect(gherkinTags("tag-scan-a.feature")).toEqual([])
     expect(names(gherkinTags("tag-scan-a.feature", { cwd: fixturesDir }))).toEqual([
       "@fixture-alpha",
@@ -132,8 +116,7 @@ describe("gherkinTags", () => {
       "@fixture-epsilon",
       "@fixture-gamma"
     ])
-    // The recursive form agrees with the cwd-less scan of the same tree, so `cwd` changes the base
-    // and nothing else.
+    // The recursive form agrees with the cwd-less scan of the same tree, so `cwd` changes the base and nothing else.
     expect(names(gherkinTags("**/*.feature", { cwd: fixturesDir }))).toEqual(allFixtureTags)
   })
 

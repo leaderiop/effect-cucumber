@@ -1,10 +1,8 @@
 /**
- * `defineSteps` / `use` (ADR-EC-027, BEH-EC-019): a step module is a value whose steps register
- * into whichever container `use`s it, scoped like a step written there.
+ * `defineSteps` / `use` (ADR-EC-027, BEH-EC-019): a step module is a value whose steps register into whichever
+ * container `use`s it, scoped like a step written there.
  *
- * mutation: registering module steps into the FEATURE frame regardless of where `use` was called
- * turns "Rule-scoped" red; dropping `definedAt` from the module record turns the call-site test
- * red; skipping duplicate patterns on `use` turns the ambiguity test red.
+ * Carries: ADR-EC-027, BEH-EC-019.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
 import { describe, expect, it } from "@effect/vitest"
@@ -52,7 +50,7 @@ const errorOf = (planned: PlannedStep | undefined): UnresolvedPlannedStep["error
 const tagsOf = (steps: ReadonlyArray<PlannedStep> | undefined): ReadonlyArray<string> =>
   (steps ?? []).map(({ _tag }) => _tag)
 
-/** The reusable module — defined ONCE here, used from two containers below. */
+// The reusable module — defined ONCE here, used from two containers below.
 const apples = defineSteps<World>(({ Given }) => {
   Given("I have {int} apples", function*(count) {
     const { apples: ref } = yield* World

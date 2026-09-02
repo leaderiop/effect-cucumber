@@ -23,7 +23,7 @@
     // reaches this file for exactly the reason the rootDir comment above describes: every fixture
     // imports `@effect-cucumber/vitest`, that self-reference resolves through the package's
     // `exports["."]` to packages/vitest/src/, and src/describeFeature.ts calls `console.warn` for
-    // MATCH-05's unused-step-definition warnings. The base sets `types: []`, so without this line
+    // BEH-EC-013's unused-step-definition warnings. The base sets `types: []`, so without this line
     // every fixture program fails with TS2584 on a file it merely imported — including the POSITIVE
     // controls, which turns the gate from ENFORCED into a false failure.
     //

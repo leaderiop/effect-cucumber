@@ -1,8 +1,4 @@
-// MUST COMPILE CLEAN. Asserted by scripts/verify-tsgo-gate.sh as exit 0.
-//
-// The positive control for step modules (ADR-EC-027): a module declaring `R = World` is usable in
-// a Feature whose Layer provides `World`, in a Feature whose Layer provides MORE than `World`, and
-// inside a Rule; a module declaring nothing (`R = never`) is usable anywhere.
+// MUST COMPILE CLEAN.
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import { defineSteps, describeFeature } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"

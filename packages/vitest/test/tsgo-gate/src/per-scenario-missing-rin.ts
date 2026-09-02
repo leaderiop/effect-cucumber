@@ -1,8 +1,4 @@
-// MUST FAIL TO COMPILE, by name: effect(missingLayerContext). Asserted by scripts/verify-tsgo-gate.sh.
-//
-// The object form's `perScenario` tier may require what the `shared` tier provides (BEH-EC-007,
-// F-18) — and nothing else. Here `World` needs a `Db` that neither tier provides, so every Scenario
-// would fail at run time with a service-not-found; ADR-EC-003 moves that to authoring time.
+// MUST FAIL TO COMPILE, by name: effect(missingLayerContext).
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import { describeFeature } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"

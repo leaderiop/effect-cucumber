@@ -1,8 +1,6 @@
 /**
  * Pins the `@effect/vitest` and vitest behaviours the runtime relies on (F-23), the way
- * `packages/gherkin/test/upstream-pin.test.ts` pins `@cucumber/*`. Each `it` names the source module
- * that depends on the fact. A red test here means the installed framework moved, not that the
- * library broke — fix the citing module in the same commit.
+ * `packages/gherkin/test/upstream-pin.test.ts` pins `@cucumber/*`.
  */
 import { afterAll, assert, beforeAll, describe, it, layer, type Vitest } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -58,9 +56,6 @@ describe("@effect/vitest facts VitestTestApi.ts relies on", { shuffle: false }, 
         "gives the test BODY the live clock too — testEnv is the library's to provide",
         () =>
           Effect.gen(function*() {
-            // This is why VitestTestApi.ts's shared route wraps every emission in
-            // `Effect.provide(testEnv)`: with `excludeTestServices: true` the framework supplies NO
-            // TestClock/TestConsole to the shared block's tests, unlike the module-level `it.effect`.
             assert.strictEqual(looksLikeWallClock(yield* Clock.currentTimeMillis), true)
           })
       )

@@ -1,9 +1,7 @@
 /**
  * `loadFeature` (ADR-EC-024): the Promise-returning wrapper over a module-scoped ManagedRuntime.
  *
- * Mutations that turn this file red: dropping the `ParameterTypeStore` default; providing the
- * per-call store OUTSIDE the runtime (the override would then lose to the runtime's base Layer);
- * catching the typed failure and rethrowing a plain Error.
+ * Carries: ADR-EC-024.
  */
 import { createParameterTypeStore, LoadFeatureError, ParameterTypeStore } from "@effect-cucumber/gherkin"
 import { describe, expect, it } from "@effect/vitest"
