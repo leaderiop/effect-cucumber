@@ -12,16 +12,16 @@
 // everything BELOW the text a pattern matches, so no pattern literal can express its presence.
 //
 // The REQUIREMENT then reads as though the annotation is load-bearing. It is not checked in either
-// direction, and `Dsl.ts` note (d) is why. `StepRegistrar` infers `Params` FROM THE BODY:
+// direction, and `Dsl.ts` note (d) is why. `StepRegistrar` types a body's parameters as
 //
-//     <Params extends ReadonlyArray<any>, A, E>(pattern: string, fn: (...p: Params) => ...): void
+//     StepParams<P> = [...StepArgs<P, Record<string, any>>, ...ReadonlyArray<any>]
 //
-// `Params` is inferred from whatever the author wrote, never checked against `StepArgs<pattern>`.
-// Constraining it to `StepArgs<P>` would break generator inference, which note (d) records as the
-// reason the `any` in that position is the one `any` this package permits at all. So a body may
-// declare the WRONG type for its trailing parameter and get a runtime shape error rather than a
-// compile error — and it may also declare NO trailing parameter at all and silently ignore a table
-// the author wrote in the `.feature` file.
+// The pattern's HOLES are checked against `StepArgs<P>` (that half closed in F-03). The trailing
+// parameter sits in the `...ReadonlyArray<any>` tail, because a table is everything BELOW the text a
+// pattern matches and no pattern literal can express its presence. So a body may declare the WRONG
+// type for its trailing parameter and get a runtime shape error rather than a compile error — and it
+// may also declare NO trailing parameter at all and silently ignore a table the author wrote in the
+// `.feature` file.
 //
 // `packages/vitest/test/acceptance/parsing-and-matching.steps.test.ts`'s append-order Scenario is the
 // other half of this: because the annotation proves nothing, that step's body ASSERTS the runtime

@@ -61,28 +61,22 @@
  *     so reaching for `When` on a Background dsl is `TS2339`. That is the intended behavior, not a
  *     gap to be filled by "making the two container types consistent."
  *
- * (d) **`Params extends ReadonlyArray<any>`, not `unknown[]`, and the generator branch is NOT
- *     `Generator<any, A, any>`.** BEH-EC-003's published signature writes both of those, and both
- *     are wrong. `unknown[]` does not accept a generator's inferred parameter tuple cleanly, and a
- *     vacuous `any` yield type makes a step requiring an unprovided service compile clean, exit 0 —
- *     INV-EC-003 becomes decorative under the spec's own text (RESEARCH.md Finding 4, reproduced).
- *     Do not copy BEH-EC-003 as written; plan 05-06 corrects the spec to match this file. That
- *     `Params` constraint is the ONLY `any` permitted anywhere in a STEP OR HOOK BODY's declared
- *     type: one more `any` in that position is assignable to everything and disables the whole
- *     guarantee.
- *
- *     THE CONSEQUENCE THIS NOTE OWES A READER, because BEH-EC-016 now cites it by name. `Params` is
- *     inferred FROM THE BODY and is never compared to `StepArgs<pattern>`, so a step body's
- *     parameter list is unchecked against its own pattern in BOTH directions. BEH-EC-016 requires
- *     the author to annotate a step's trailing `stepArguments` parameter — `(table: DataTable)` —
- *     precisely because nothing can infer it; the corollary is that nothing VERIFIES it either.
- *     `Given("the cart contains:", function*(table: string) { … })` compiles, and so does a body
- *     that omits the parameter and silently drops a table its `.feature` file carries.
- *     Constraining `Params` to `StepArgs<P>` is what would close this, and it breaks generator
- *     inference — which is the whole reason the `any` above is here. The gap is pinned as a fact by
- *     `test/tsgo-gate/src/step-table-annotation-unchecked.ts`, which `scripts/verify-tsgo-gate.sh`
- *     asserts must keep compiling clean; if it ever stops, this paragraph and BEH-EC-016's matching
- *     one come out in the same commit.
+ * (d) **A step body's parameters are `StepParams<P>`: the pattern's holes typed by `StepArgs`, then an
+ *     UNCHECKED tail.** `P` is inferred from the pattern literal before the body is contextually
+ *     typed, so `Given("I have {int} apples", function*(count) { … })` receives `count: number` with
+ *     no annotation, and `function*(count: string)` on that pattern is a compile error. Two positions
+ *     stay `any`, deliberately and for different reasons. A CUSTOM parameter type (`{money}`) is
+ *     runtime data whose transform's return type no pattern literal can recover, so its hole is
+ *     `any` (`StepArgs`'s `Custom` argument is `Record<string, any>`) and the author's own annotation
+ *     is what types it — an `unknown` there would REJECT that annotation under strictFunctionTypes.
+ *     The trailing `DataTable`/`DocString` parameter is not part of the text a pattern matches, so
+ *     nothing can infer it and the `...ReadonlyArray<any>` tail lets the author annotate it; that
+ *     tail is the one remaining gap BEH-EC-016 records, pinned by
+ *     `test/tsgo-gate/src/step-table-annotation-unchecked.ts`. The generator branch is NOT
+ *     `Generator<any, A, any>`: a vacuous yield type makes a step requiring an unprovided service
+ *     compile clean, and INV-EC-003 becomes decorative. Those are the only `any`s permitted in a
+ *     step or hook body's declared type; one more is assignable to everything and disables the whole
+ *     guarantee. Asserted by `test/StepRegistrar.types.ts`.
  *
  *     The `any` in `Layer.Layer<R2, E2, any>` — the `extraLayer` parameter of `FeatureDsl.Rule` and
  *     of `ScenarioRegistrar`'s three-argument signature — is a DIFFERENT position and is not covered
@@ -149,6 +143,7 @@
  * inferred variance here is already correct, and annotating risks pinning it wrong
  * (RESEARCH.md Finding 8, "Variance context").
  */
+import type { StepArgs } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
@@ -160,21 +155,28 @@ import type * as Scope from "effect/Scope"
  * generic per CALL SITE in `Params`/`A`/`E` while `ROut` stays fixed by the enclosing
  * `describeFeature` — note (e).
  */
+/**
+ * The parameter list a step body registered against the pattern `P` receives: every `{hole}` of the
+ * pattern, typed by `StepArgs` (built-ins exactly, custom parameter types as `any`), followed by an
+ * unchecked tail for the trailing `DataTable`/`DocString` argument — note (d).
+ */
+export type StepParams<P extends string> = [...StepArgs<P, Record<string, any>>, ...ReadonlyArray<any>]
+
 export interface StepRegistrar<ROut> {
   /**
    * Register `fn` as the body of every step whose text matches the cucumber-expression `pattern`.
    *
    * `fn` may be a bare generator function (auto-wrapped with `Effect.fn(pattern)` — ADR-EC-005) or
    * an already-wrapped function returning an Effect. Both branches are accepted; `Step.ts`'s
-   * `register` tells them apart at runtime.
+   * `register` tells them apart at runtime. Its parameters are `StepParams<P>` — note (d).
    *
    * The generator branch MUST stay first — note (a). This is the most dangerous line in the file.
    */
-  <Params extends ReadonlyArray<any>, A, E>(
-    pattern: string,
+  <P extends string, A, E>(
+    pattern: P,
     fn:
-      | ((...p: Params) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
-      | ((...p: Params) => Effect.Effect<A, E, ROut | Scope.Scope>)
+      | ((...p: StepParams<P>) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
+      | ((...p: StepParams<P>) => Effect.Effect<A, E, ROut | Scope.Scope>)
   ): void
 }
 

@@ -3,8 +3,9 @@
  *
  * `StepMatcher` extracts a step's arguments at runtime; nothing in the type system says that
  * `{int}` means `number`. `StepArgs<P>` is that mapping, derived from the pattern string
- * literal alone. Phase 5's `Given`/`When`/`Then` signatures thread it into the step body, so a
- * body registered against `"I have {int} cukes"` receives `(count: number)` at compile time.
+ * literal alone. `@effect-cucumber/vitest`'s `StepRegistrar` (`Dsl.ts`, `StepParams<P>`) threads
+ * it into the step body, so a body registered against `"I have {int} cukes"` receives
+ * `(count: number)` at compile time, and a body annotating that parameter `string` is rejected.
  * That is the type-level half of MATCH-01, and it is also the reason DSL-06 needs no separate
  * typed "example row" mechanism: `compile()` substitutes an `Examples` value into the step
  * text, the same cucumber-expression then coerces it, and this map is what tells the compiler
@@ -21,12 +22,14 @@
  *     runtime does not back up.
  *
  * (b) An unrecognised `{name}` resolves to `unknown`, NOT to a type error. A custom parameter
- *     type is registered as runtime data (`defineParameterType({ name, regexp, transform })`);
- *     nothing about its transform's return type can be recovered from a pattern string literal.
- *     Failing to compile would make every custom type unusable, so the honest answer is
- *     `unknown`, and the `Custom` type parameter is the escape hatch for a caller who wants it
- *     narrowed. Built-ins deliberately win over `Custom`, mirroring the runtime rule that a
- *     custom parameter type may never shadow a built-in name.
+ *     type is registered as runtime data on a `ParameterTypeStore`; nothing about its
+ *     transform's return type can be recovered from a pattern string literal. Failing to
+ *     compile would make every custom type unusable, so the honest answer is `unknown`, and the
+ *     `Custom` type parameter is the escape hatch for a caller who wants it narrowed. The vitest
+ *     DSL passes `Record<string, any>` as `Custom`, so a custom hole is `any` there and the step
+ *     author's own annotation types it — `unknown` would reject that annotation under
+ *     strictFunctionTypes. Built-ins deliberately win over `Custom`, mirroring the runtime rule
+ *     that a custom parameter type may never shadow a built-in name.
  *
  * (c) The recursion below walks BRACE PAIRS, not characters. A per-character formulation
  *     (`P extends `${infer C}${infer Rest}``) exhausts TypeScript's instantiation depth

@@ -179,13 +179,17 @@ REQUIREMENT: A step defined inside `define` whose Effect requires an `R` not
 ```ts
 // `ROut` is the ambient Layer's output type, fixed by the enclosing describeFeature —
 // NOT a per-call type parameter. A callable interface, so `Params`/`A`/`E` stay per call site.
+// The pattern's holes, typed by StepArgs (built-ins exactly, custom parameter types `any`),
+// then an unchecked tail for the trailing DataTable/DocString argument (BEH-EC-016).
+export type StepParams<P extends string> = [...StepArgs<P, Record<string, any>>, ...ReadonlyArray<any>]
+
 export interface StepRegistrar<ROut> {
-  <Params extends ReadonlyArray<any>, A, E>(
-    pattern: string,
+  <P extends string, A, E>(
+    pattern: P,
     fn:
       // ORDER IS LOAD-BEARING: the generator branch MUST be listed first.
-      | ((...p: Params) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
-      | ((...p: Params) => Effect.Effect<A, E, ROut | Scope.Scope>)
+      | ((...p: StepParams<P>) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
+      | ((...p: StepParams<P>) => Effect.Effect<A, E, ROut | Scope.Scope>)
   ): void
 }
 // Given, When, Then, And and But are each a StepRegistrar<ROut> on the dsl object.
@@ -224,11 +228,28 @@ export interface StepRegistrar<ROut> {
 > `Scope.Scope` appears only in the step's required-context position, never on the dsl or Layer types
 > — that is what lets a step using `Effect.acquireRelease` compile against a plain `Layer<World>`,
 > because the runner provides the Scope, while a step using an unprovided `Db` is still rejected.
+>
+> **Correction (audit remediation F-03):** the previous signature inferred `Params` from the body
+> and never compared it with the pattern, so an unannotated `{int}` parameter was `any` with no
+> diagnostic and `(count: string)` on `{int}` compiled. `P` is now a literal type parameter and the
+> body's parameters are `StepParams<P>`; the claim that a `StepArgs` constraint "breaks generator
+> inference" was measured false against `typescript@7.0.2` + `@effect/tsgo@0.38.0`. Asserted by
+> `packages/vitest/test/StepRegistrar.types.ts`: `{int}` → `number` unannotated, `{word}` →
+> `string`, a wrong annotation on a hole is a compile error, a custom `{money}` hole accepts the
+> author's own annotation, and a trailing `(table: DataTable)` still compiles (its tail is the gap
+> BEH-EC-016 records).
 
 ```
 REQUIREMENT: Given/When/Then/And/But MUST accept a bare generator function and
              wrap it with Effect.fn(stepText) internally. They MUST also
              accept an already-Effect.fn-wrapped function directly, unchanged.
+
+             A step body's parameters MUST be typed from the pattern literal:
+             every built-in {hole} arrives with StepArgs's type for it, with
+             no annotation required, and an annotation that disagrees with
+             the hole's type is a compile error. A custom parameter type's
+             hole and the trailing DataTable/DocString parameter are `any`
+             (BEH-EC-016).
 
              "Unchanged" means BY IDENTITY — the same function object, not a
              re-binding and not a wrapper closure. The two accepted forms are

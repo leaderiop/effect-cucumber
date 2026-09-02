@@ -301,9 +301,9 @@ STEP_TABLE_ANNOTATION_OUTPUT="$($TSC -p "$STEP_TABLE_ANNOTATION_CONFIG" 2>&1)" &
 
 if [[ "$STEP_TABLE_ANNOTATION_EXIT" -ne 0 ]]; then
   echo "$STEP_TABLE_ANNOTATION_OUTPUT"
-  fail "the step-argument annotation characterization fixture stopped compiling clean (output above). This is very likely an IMPROVEMENT, not a break: something now type-checks a step body's trailing stepArguments parameter against its pattern, which BEH-EC-016 records as impossible. Do NOT loosen anything to make this pass. Delete whichever wrong-annotation case is now caught, and remove the matching sentence from BEH-EC-016's step-body-signature REQUIREMENT and from Dsl.ts note (d), in the same commit."
+  fail "the step-argument annotation characterization fixture stopped compiling clean (output above). This is very likely an IMPROVEMENT, not a break: something now type-checks a step body's TRAILING stepArguments parameter (the ...ReadonlyArray<any> tail of StepParams<P>), which BEH-EC-016 records as impossible. Do NOT loosen anything to make this pass. Delete whichever wrong-annotation case is now caught, and remove the matching sentence from BEH-EC-016's step-body-signature REQUIREMENT and from Dsl.ts note (d), in the same commit."
 fi
-echo "✓ characterization: a step body's trailing stepArguments annotation is still UNCHECKED in both directions (BEH-EC-016 records this as a known gap)"
+echo "✓ characterization: a step body's TRAILING stepArguments annotation is still UNCHECKED in both directions — the pattern holes themselves are typed by StepParams<P> (BEH-EC-016 records the tail as the remaining gap)"
 
 # ---------------------------------------------------------------------------
 # Assertions 10 and 11: THE HOOK SATISFIED/STARVED FLIP PAIR.

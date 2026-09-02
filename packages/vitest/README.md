@@ -131,9 +131,14 @@ stay Feature-only and are a compile error on a Rule's dsl. A Rule also gets its 
 like the Feature's), so a `.feature` file with a `Rule:`-level `Background:` has somewhere to register its steps; Rule-
 and Feature-level registrations never resolve each other's steps, and the innermost matching scope wins.
 
-**Scenario Outline rows are typed for free and individually filterable.** An Examples value consumed by an `{int}` or
-`{float}` pattern reaches the step body already coerced to `number` — the pattern's own cucumber-expression coercion
-does it, with no separate typed-example-row mechanism. Each row emits its own test, titled with the row's interpolated
+**Step parameters are typed by the pattern, and Scenario Outline rows are typed for free and individually filterable.**
+`Given("I have {int} apples", function*(count) { … })` receives `count: number` with no annotation, and
+`function*(count: string)` on that pattern is a compile error: the body's parameters are `StepParams<P>`, the pattern's
+holes typed by `StepArgs`. Two positions stay `any` on purpose — a custom parameter type's hole (its transform's type is
+runtime data, so your own annotation types it) and the trailing `DataTable`/`DocString` parameter (not part of the text a
+pattern matches; see the BEH-EC-016 note in the spec). An Examples value consumed by an `{int}` or `{float}` pattern
+reaches the step body already coerced to `number` — the pattern's own cucumber-expression coercion does it, with no
+separate typed-example-row mechanism. Each row emits its own test, titled with the row's interpolated
 name plus every Examples column and that row's value for it —
 `Applying a valid discount code (code=SAVE10, percent=10, expected=31.50)` — appended whether or not the title text
 already referenced a placeholder, so `-t` can filter on any column value. Two rows of one Outline share no mutable
@@ -205,8 +210,12 @@ That is not a caveat better types could remove, so the remedy is configuration i
 ours. Three settings, covering three different ways the escape hatch gets in:
 
 ```jsonc
-// tsconfig.json — the IMPLICIT half: a parameter or binding TypeScript would
-// otherwise infer as `any` because nothing annotated it.
+// tsconfig.json — the IMPLICIT half: a binding TypeScript would otherwise infer
+// as `any` because nothing annotated it. A step's pattern-hole parameters are
+// NOT in this category — they are typed from the pattern — but a custom
+// parameter type's hole and the trailing DataTable/DocString parameter are `any`
+// unless you annotate them, and `noImplicitAny` does not see a contextually
+// typed `any`, so annotate those two positions.
 {
   "compilerOptions": {
     "noImplicitAny": true, // implied by "strict": true, which is what this repository runs

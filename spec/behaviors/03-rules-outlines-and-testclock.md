@@ -61,7 +61,10 @@ regular step.
 REQUIREMENT: A Scenario Outline row value referenced from inside a step's
              cucumber-expression pattern MUST be coerced to that pattern's
              declared type (e.g. {int}, {float}) with no separate decoding
-             step required from the step author.
+             step required from the step author — at run time by the
+             cucumber-expression transform, and at compile time by
+             StepParams<P> (BEH-EC-003), so the body's parameter is `number`
+             without an annotation.
 ```
 
 ## BEH-EC-011: Cross-step state lives in World, never a closure

@@ -209,6 +209,7 @@ export type {
   RuleRegistrar,
   ScenarioDsl,
   ScenarioRegistrar,
+  StepParams,
   StepRegistrar
 } from "./Dsl.ts"
 
