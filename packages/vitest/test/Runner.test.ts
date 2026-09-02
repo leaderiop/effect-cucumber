@@ -62,11 +62,11 @@
  *      `BeforeAllScenarios`-failed `AfterAllScenarios` test (the second Scenario's steps now actually
  *      run, since its own `flatMap` proceeds on the once-cell's fabricated success, leaking "the cart
  *      is empty"/"I refund" into the log).
- * - M. the `AfterAllScenarios` node is emitted after the warnings loop instead of before it → the
- *      emission-shape test fails, because the node's position in `shapeOf(records)` no longer matches.
- * - N. the `AfterAllScenarios` node's body is composed to `Effect.flatMap` the `BeforeAllScenarios`
- *      cell first → the runs-even-when-`BeforeAllScenarios`-failed test fails, because the node's own
- *      exit becomes a failure instead of a success.
+ * - M. the `AfterAllScenarios` teardown is registered after the warnings loop instead of before it →
+ *      the emission-shape test fails, because its position in `shapeOf(records)` no longer matches.
+ * - N. the `AfterAllScenarios` teardown's body is composed to `Effect.flatMap` the `BeforeAllScenarios`
+ *      cell first → the runs-even-when-`BeforeAllScenarios`-failed test fails, because the teardown's
+ *      own exit becomes a failure instead of a success.
  * - O. `ScenarioEffect.ts`'s per-step unit has its `BeforeStep` and `AfterStep` batches swapped (the
  *      unit's `yield*` runs `AfterStep` and its `onExit` finalizer runs `BeforeStep`) → the headline
  *      full-ordering test below fails, and by construction nothing else in this file does: no other
@@ -97,7 +97,7 @@
  * - V. the FEATURE-level loop's `continue` removed, so the filter counts an exclusion and emits the
  *      Scenario anyway → 4 of 39 fail, and every one of them names the criterion it carries: the
  *      excludeTags test, the includeTags test, the both-arrays test, and the filtered-out
- *      `⚙ AfterAllScenarios` suppression test. This is the proof the filter is asserted by TITLE and
+ *      teardown no-op test. This is the proof the filter is asserted by TITLE and
  *      not merely by a count — the `excludedScenarioCount` half of each of those tests still passes
  *      under this mutation, because the counter is exactly what the mutation leaves intact.
  * - W. the filter moved OUT of the walk and into a pre-filter of `plan.scenarios` in
@@ -106,10 +106,10 @@
  *      the whole file. Not a failed assertion: a thrown `Error` during collection, whose own message
  *      blames `Plan.ts` for a filter written two modules away. This is why the placement is a lettered
  *      note in `Runner.ts` rather than a comment on the `continue`.
- * - X. the `runnableScenarioCount > 0` conjunct dropped from the `⚙ AfterAllScenarios` condition → 3
- *      of 39 fail, one per way of reaching zero: every Scenario `@skip`-tagged, every Scenario
- *      filtered out, and a Feature declaring no Scenario at all. Nothing else moves, which is what
- *      makes the conjunct's three separate justifications each independently load-bearing.
+ * - X. the `attempted` gate dropped from the `AfterAllScenarios` teardown's body → 3 of the no-op
+ *      tests fail, one per way of reaching "nothing ran": every Scenario `@skip`-tagged, every
+ *      Scenario filtered out, and a Feature declaring no Scenario at all. Nothing else moves, which
+ *      is what makes the gate's three separate justifications each independently load-bearing.
  * - Y. `Tags.ts`'s `isSkipped` made to always return `false` → 4 of 713 fail across the whole repo: in
  *      this file the `@skip`-routes-to-skip test and the fully-skipped suppression test, and in
  *      `test/Tags.test.ts` its own two `isSkipped` truth cases. Nothing in the SC1, SC3 or SC4 blocks
@@ -194,7 +194,7 @@ import type { EmitOptions, TestApi } from "../src/TestApi.ts"
  * implementation that reached the framework's only-mode could not do it through this seam at all.
  */
 type EmissionRecord = {
-  readonly kind: "describe" | "effect"
+  readonly kind: "describe" | "effect" | "afterAll"
   readonly name: string
   readonly depth: number
   readonly self: (() => Effect.Effect<void, unknown, Scope.Scope>) | null
@@ -234,6 +234,9 @@ const makeRecordingApi = (): {
     },
     effect: (name, self, options) => {
       records.push({ kind: "effect", name, depth, self, options })
+    },
+    afterAll: (name, self) => {
+      records.push({ kind: "afterAll", name, depth, self, options: null })
     }
   }
   return { api, records }
@@ -314,6 +317,14 @@ const routingOf = (
  * would turn a wrong index into `Cannot read properties of undefined`, which says nothing about
  * which assertion was mis-indexed.
  */
+const teardownAt = (records: ReadonlyArray<EmissionRecord>): () => Effect.Effect<void, unknown, Scope.Scope> => {
+  const found = records.find(({ kind }) => kind === "afterAll")
+  if (found === undefined || found.self === null) {
+    throw new Error("no afterAll was registered")
+  }
+  return found.self
+}
+
 const thunkAt = (
   records: ReadonlyArray<EmissionRecord>,
   index: number
@@ -632,7 +643,7 @@ const filtering = parse(
   "test/runner-filtering.feature"
 )
 
-/** Every Scenario `@skip`-tagged — one of the three `⚙ AfterAllScenarios` suppression cases. */
+/** Every Scenario `@skip`-tagged — one of the three teardown no-op cases. */
 const allSkipped = parse(
   `@skip
 Feature: All Skipped
@@ -651,8 +662,8 @@ Feature: All Skipped
  * tags in the slightest.
  *
  * It falls out of the same condition for the same reason (`Runner.ts` note (e)): a Feature with
- * nothing to run never reaches the `BeforeAllScenarios` once-cell either, so an `⚙ AfterAllScenarios`
- * node would tear down what was never built. Asserted separately because a reader would otherwise
+ * nothing to run never reaches the `BeforeAllScenarios` once-cell either, so the `AfterAllScenarios`
+ * teardown would tear down what was never built. Asserted separately because a reader would otherwise
  * reasonably assume the suppression is tag-specific and "fix" it by guarding on the filter alone.
  */
 const emptyFeature = parse(
@@ -1236,12 +1247,12 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
 })
 
 /**
- * D-09's runtime proof: `AfterAllScenarios` is emitted as one constant-titled node, positioned after
- * every Scenario and before every warning, and it runs — and succeeds — regardless of what failed
- * before it.
+ * D-09's runtime proof: `AfterAllScenarios` is registered as the Feature block's ONE teardown hook
+ * through `TestApi.afterAll`, positioned after every Scenario and before every warning, and it runs —
+ * and succeeds — regardless of what failed before it.
  */
-describe("AfterAllScenarios is emitted as one node after every Scenario and before every warning (D-09)", () => {
-  it("adds exactly one extra node, titled '⚙ AfterAllScenarios', after every Scenario and before every warning", () => {
+describe("AfterAllScenarios is registered as one teardown hook after every Scenario and before every warning (D-09)", () => {
+  it("registers exactly one afterAll, named '⚙ AfterAllScenarios', after every Scenario and before every warning", () => {
     const { api, records } = makeRecordingApi()
     const hooks = hooksWith({ AfterAllScenarios: [recordingHook("afterAll")] })
 
@@ -1266,7 +1277,7 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
       { kind: "describe", name: "Checkout", depth: 0 },
       { kind: "effect", name: "paying", depth: 1 },
       { kind: "effect", name: "refunding", depth: 1 },
-      { kind: "effect", name: "⚙ AfterAllScenarios", depth: 1 },
+      { kind: "afterAll", name: "⚙ AfterAllScenarios", depth: 1 },
       {
         kind: "effect",
         name: `⚠ unused step definition: Given "I never happen" (/repo/test/runner.steps.ts:9:5)`,
@@ -1336,7 +1347,8 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
 
 /**
  * Plan 10-07, Task 2 — pins `EmitOptions.contextFree`'s ROUTING claim structurally: every Scenario
- * node and the `⚙ AfterAllScenarios` node are NOT context-free, and every `⚠` warning node IS.
+ * node is NOT context-free, every `⚠` warning node IS, and the `AfterAllScenarios` teardown carries
+ * no emit options at all because it is an `afterAll`, not a node (F-06).
  *
  * This is the framework-free half of the claim and it catches something `emission.test.ts`'s
  * behavioural test (plan 10-07, Task 1) structurally cannot: the MIRROR-IMAGE mistake of marking the
@@ -1359,7 +1371,7 @@ describe("AfterAllScenarios is emitted as one node after every Scenario and befo
  * `describeFeature.ts` in `emission.test.ts`).
  */
 describe("EmitOptions.contextFree routes each node kind correctly (10-07)", () => {
-  it("marks every Scenario and the ⚙ AfterAllScenarios node NOT context-free, and every ⚠ warning node context-free", () => {
+  it("marks every Scenario NOT context-free, every ⚠ warning node context-free, and the teardown as an afterAll with no options", () => {
     const { api, records } = makeRecordingApi()
     // The SAME fixture the AfterAllScenarios describe block above already uses — a runnable Scenario
     // pair, an `AfterAllScenarios` hook, and one unused step definition — rather than a new one, per
@@ -1390,7 +1402,7 @@ describe("EmitOptions.contextFree routes each node kind correctly (10-07)", () =
       { kind: "describe", name: "Checkout", contextFree: null },
       { kind: "effect", name: "paying", contextFree: false },
       { kind: "effect", name: "refunding", contextFree: false },
-      { kind: "effect", name: "⚙ AfterAllScenarios", contextFree: false },
+      { kind: "afterAll", name: "⚙ AfterAllScenarios", contextFree: null },
       {
         kind: "effect",
         name: `⚠ unused step definition: Given "I never happen" (/repo/test/runner.steps.ts:9:5)`,
@@ -2058,88 +2070,115 @@ describe("a tag filter cannot change which step definitions are reported unused 
 })
 
 /**
- * `Runner.ts` note (e)'s new conjunct: the `⚙ AfterAllScenarios` node is suppressed exactly when no
- * runnable Scenario was emitted.
+ * `Runner.ts` note (e)'s run-time gate: the `AfterAllScenarios` teardown is ALWAYS registered, and its
+ * body is a no-op exactly when no Scenario in the Feature was attempted.
  *
- * "Runnable" is both halves — survived the filter AND not `@skip` — because a skipped test's thunk is
- * never invoked either, so it reaches the `BeforeAllScenarios` once-cell no more than an excluded
- * Scenario does. All three ways of reaching zero get their own test, because a reader would otherwise
- * reasonably assume the condition is about tags and guard on the filter alone.
+ * "Attempted" is decided by the framework invoking a Scenario's thunk, not by what was emitted: a
+ * skipped test's thunk is never invoked, an excluded Scenario is never emitted, and a `-t`-deselected
+ * one is narrowed to skip by the framework itself — none of which this recording fake can tell apart
+ * from a Scenario that simply has not run YET. So each test below runs the teardown's thunk against a
+ * recorder and asserts the hook left NO trace, then (where a Scenario exists) runs one Scenario thunk
+ * and shows the very same teardown thunk now runs the hook. All three ways of having nothing to run get
+ * their own test, because a reader would otherwise reasonably assume the condition is about tags.
  */
-describe("the AfterAllScenarios node is suppressed when nothing runnable was emitted (D-09, Pitfall 6)", () => {
+describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, and runs once something was (D-09, F-06)", () => {
   const afterAllHooks = (): HookSet => hooksWith({ AfterAllScenarios: [recordingHook("afterAll")] })
+  it.effect("runs the hook after a Scenario was attempted, even with a skipped sibling", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
 
-  it("still emits the node when at least one emitted Scenario is not skipped", () => {
-    const { api, records } = makeRecordingApi()
+      emitFeature({
+        api,
+        plan: planFeature({ feature: reserved, definitions: browseIn("Reserved") }),
+        layer: recorderLayer,
+        hooks: afterAllHooks(),
+        ...noRuleScope,
+        ...unfiltered
+      })
 
-    emitFeature({
-      api,
-      plan: planFeature({ feature: reserved, definitions: browseIn("Reserved") }),
-      layer,
-      hooks: afterAllHooks(),
-      ...noRuleScope,
-      ...unfiltered
-    })
+      // `skipped one` is skipped; `only one` and `plain one` are not. The teardown is registered
+      // beside them, never as a test node.
+      assert.deepStrictEqual(titlesOf(records), ["skipped one", "only one", "plain one"])
 
-    // `skipped one` is skipped; `only one` and `plain one` are not. One runnable Scenario is the
-    // threshold, and this fixture clears it while containing a skipped Scenario — so it also rules out
-    // the wrong reading "suppress whenever ANY Scenario is skipped".
-    assert.deepStrictEqual(titlesOf(records), ["skipped one", "only one", "plain one", "⚙ AfterAllScenarios"])
-  })
+      // Before anything ran: the teardown does nothing.
+      yield* teardownAt(records)()
+      assert.deepStrictEqual(yield* Ref.get(log), [])
 
-  it("suppresses the node when EVERY Scenario is @skip-tagged — the Scenarios still emit", () => {
-    const { api, records } = makeRecordingApi()
+      // One Scenario attempted — `only one`, records index 2 — and the SAME teardown now runs the hook.
+      yield* Effect.exit(thunkAt(records, 2)())
+      yield* teardownAt(records)()
+      assert.deepStrictEqual(yield* Ref.get(log), ["afterAll:start", "afterAll:end"])
+    }))
 
-    emitFeature({
-      api,
-      plan: planFeature({ feature: allSkipped, definitions: browseIn("All Skipped") }),
-      layer,
-      hooks: afterAllHooks(),
-      ...noRuleScope,
-      ...unfiltered
-    })
+  it.effect("does nothing when EVERY Scenario is @skip-tagged — the Scenarios still emit", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
 
-    // Both Scenarios ARE emitted, as skipped tests — that is D-05 and it is unchanged. What is absent
-    // is the teardown node: `BeforeAllScenarios` is a once-cell reached only from inside a Scenario
-    // thunk, and no thunk here will ever be invoked, so it structurally cannot have run.
-    assert.deepStrictEqual(emissionOf(records), [
-      { kind: "describe", name: "All Skipped", depth: 0, tags: null, skip: null },
-      { kind: "effect", name: "skipped one", depth: 1, tags: [skipTag], skip: true },
-      { kind: "effect", name: "skipped two", depth: 1, tags: [skipTag], skip: true }
-    ])
-  })
+      emitFeature({
+        api,
+        plan: planFeature({ feature: allSkipped, definitions: browseIn("All Skipped") }),
+        layer: recorderLayer,
+        hooks: afterAllHooks(),
+        ...noRuleScope,
+        ...unfiltered
+      })
 
-  it("suppresses the node when EVERY Scenario is filtered out", () => {
-    const { api, records } = makeRecordingApi()
+      // Both Scenarios ARE emitted, as skipped tests — that is D-05 and it is unchanged. The teardown
+      // is registered too; a skipped test's thunk is never invoked, so `attempted` never flips.
+      assert.deepStrictEqual(emissionOf(records), [
+        { kind: "describe", name: "All Skipped", depth: 0, tags: null, skip: null },
+        { kind: "effect", name: "skipped one", depth: 1, tags: [skipTag], skip: true },
+        { kind: "effect", name: "skipped two", depth: 1, tags: [skipTag], skip: true },
+        { kind: "afterAll", name: "⚙ AfterAllScenarios", depth: 1, tags: null, skip: null }
+      ])
+      yield* teardownAt(records)()
+      assert.deepStrictEqual(yield* Ref.get(log), [])
+    }))
 
-    emitFeature({
-      api,
-      plan: planFeature({ feature: filtering, definitions: browseIn("Filtering") }),
-      layer,
-      hooks: afterAllHooks(),
-      ...noRuleScope,
-      tagFilter: makeTagFilter({ includeTags: ["@exampletag"] })
-    })
+  it.effect("does nothing when EVERY Scenario is filtered out", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
 
-    assert.deepStrictEqual(titlesOf(records), [])
-  })
+      emitFeature({
+        api,
+        plan: planFeature({ feature: filtering, definitions: browseIn("Filtering") }),
+        layer: recorderLayer,
+        hooks: afterAllHooks(),
+        ...noRuleScope,
+        tagFilter: makeTagFilter({ includeTags: ["@exampletag"] })
+      })
 
-  it("suppresses the node for a Feature that declares no Scenario at all", () => {
-    const { api, records } = makeRecordingApi()
+      assert.deepStrictEqual(titlesOf(records), [])
+      yield* teardownAt(records)()
+      assert.deepStrictEqual(yield* Ref.get(log), [])
+    }))
 
-    emitFeature({
-      api,
-      // No definitions: a Feature with no steps to resolve also has no definition that could go
-      // unused, so this recording contains the `describe` and nothing else.
-      plan: planFeature({ feature: emptyFeature, definitions: [] }),
-      layer,
-      hooks: afterAllHooks(),
-      ...noRuleScope,
-      ...unfiltered
-    })
+  it.effect("does nothing for a Feature that declares no Scenario at all", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+      const { layer: recorderLayer, log } = makeRecorderLayer()
 
-    // Not a tag case at all, and it falls out of the same conjunct for the same reason — which is why
-    // the condition counts RUNNABLE EMISSIONS rather than inspecting the filter.
-    assert.deepStrictEqual(shapeOf(records), [{ kind: "describe", name: "Empty", depth: 0 }])
-  })
+      emitFeature({
+        api,
+        // No definitions: a Feature with no steps to resolve also has no definition that could go
+        // unused, so this recording contains the `describe`, the teardown, and nothing else.
+        plan: planFeature({ feature: emptyFeature, definitions: [] }),
+        layer: recorderLayer,
+        hooks: afterAllHooks(),
+        ...noRuleScope,
+        ...unfiltered
+      })
+
+      // Not a tag case at all, and it falls out of the same gate for the same reason — which is why
+      // the gate is "was anything attempted" rather than an inspection of the filter.
+      assert.deepStrictEqual(shapeOf(records), [
+        { kind: "describe", name: "Empty", depth: 0 },
+        { kind: "afterAll", name: "⚙ AfterAllScenarios", depth: 1 }
+      ])
+      yield* teardownAt(records)()
+      assert.deepStrictEqual(yield* Ref.get(log), [])
+    }))
 })

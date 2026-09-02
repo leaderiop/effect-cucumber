@@ -87,19 +87,29 @@ REQUIREMENT: After, AfterStep and AfterAllScenarios each run WHETHER the thing
                steps failed, or whether any earlier After/AfterStep hook
                failed.
 
+               AfterAllScenarios is NOT a test node. It is the Feature
+               block's own teardown hook (the runner's afterAll), so a run
+               narrowed with -t or --tagsFilter to a single Scenario of the
+               Feature still runs it once, after that Scenario — test
+               selection cannot skip it (F-06). A failing AfterAllScenarios
+               reports as a failure of the Feature's block, not of a node.
+
                ONE CARVE-OUT applies to AfterAllScenarios, and only to the
                case where NO Scenario was attempted at all — every Scenario
-               in the Feature skipped (@skip) or removed by a registration
-               filter (includeTags/excludeTags), or the Feature declaring no
-               Scenarios in the first place. In that case the node MUST NOT
-               be emitted: BeforeAllScenarios is reachable only from inside
-               a Scenario's body, so it structurally CANNOT have run, and an
-               AfterAllScenarios node would tear down resources nothing ever
-               set up. This carves the VACUOUS case out of the guarantee; it
-               does not weaken it. All three "regardless of" clauses above
-               are unchanged, because what they are about is a FAILURE being
+               in the Feature skipped (@skip), removed by a registration
+               filter (includeTags/excludeTags) or deselected by a CLI
+               filter, or the Feature declaring no Scenarios in the first
+               place. In that case the hook's body MUST do nothing:
+               BeforeAllScenarios is reachable only from inside a Scenario's
+               body, so it structurally CANNOT have run, and a teardown would
+               release resources nothing ever set up. The decision is made
+               AT RUN TIME, from whether any Scenario's body was invoked,
+               because under a CLI filter it cannot be made at registration.
+               This carves the VACUOUS case out of the guarantee; it does not
+               weaken it. All three "regardless of" clauses above are
+               unchanged, because what they are about is a FAILURE being
                unable to stop teardown — and a failing Scenario was still
-               attempted, so it still emits the node.
+               attempted, so it still tears down.
 
              A guaranteed hook that itself fails does NOT mask or replace the
              failure it was guarding — both reach the reported failure,

@@ -143,7 +143,7 @@
  * `packages/vitest/src/index.ts` — see `index.ts`'s own header for why.
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
-import { describe, it, layer, type Vitest } from "@effect/vitest"
+import { afterAll, describe, it, layer, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as TestClock from "effect/testing/TestClock"
@@ -531,7 +531,13 @@ const vitestTestApi = (featureUri: string): TestApi => ({
   describe,
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     it.effect(name, self, emitOptions)
-  })
+  }),
+  // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
+  // constructor would run a body: scoped, against a fresh simulated clock and console. Nothing on the
+  // plain path has a shared tier to reach.
+  afterAll: (_name, self) => {
+    afterAll(() => Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv))))
+  }
 })
 
 /**
@@ -613,7 +619,27 @@ const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, memoMap
       emitOptions.contextFree
         // Nothing here can force the shared Layer to build.
         ? contextFreeEffect(name, self, emitOptions)
-        : sharedRouteEffect(name, self, emitOptions)
+        : sharedRouteEffect(name, self, emitOptions),
+    // Registered INSIDE the block the named form opened (asserted by `requireSharedIt`), so it lands
+    // on the Feature's own block after the framework's scope-closing `afterAll` and therefore runs
+    // BEFORE it under the framework's default reverse hook order. The shared tier is reached by
+    // building `sharedTier` through the SAME memo map the framework built it through: a memo hit,
+    // refcounted against a scope of this hook's own, never a rebuild — measured against the installed
+    // build, and the reason `memoMap` is a parameter of this adapter rather than a local.
+    afterAll: (_name, self) => {
+      requireSharedIt("afterAll")
+      afterAll(() =>
+        Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function*() {
+              const scope = yield* Effect.scope
+              const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
+              yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
+            })
+          )
+        )
+      )
+    }
   }
 }
 

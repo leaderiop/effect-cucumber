@@ -156,16 +156,9 @@ export interface EmitOptions {
    * need nothing, because the flag is a routing decision and a Scenario's body is the author's.
    *
    * The `⚠ unused step definition` node is `contextFree: true`: its whole body is `Effect.void`, so
-   * it needs nothing the shared tier or the per-Scenario tier provides. The `⚙ AfterAllScenarios`
-   * node is EQUALLY synthetic — neither corresponds to a Scenario a `.feature` file wrote — and is
-   * emphatically `contextFree: false`: its body runs the Feature's teardown hooks, which may name a
-   * service the shared tier provides, and that tier is reachable only through the shared emission
-   * route (`describeFeature.ts`'s `sharedLayerTestApi`). A reader who sets this flag on both synthetic
-   * node kinds, reasoning "they are both synthetic", converts this field into a new silent defect —
-   * a Feature's teardown routed away from the shared tier, failing at run time with a missing-service
-   * defect the moment it names one. Say it here because the two node kinds otherwise look alike: both
-   * are library-owned, both carry `emptyEmitOptions`-style untagged/unskipped defaults, and only this
-   * field tells them apart.
+   * it needs nothing the shared tier or the per-Scenario tier provides. It is the ONLY node kind
+   * that is: a Feature's `AfterAllScenarios` teardown is not a node at all any more — it goes through
+   * `afterAll` below and reaches the shared tier through the adapter, never through this flag.
    *
    * Setting `true` on a Scenario is the mirror of that mistake and is WORSE, because one of its two
    * outcomes is silent: a Scenario naming a shared service fails loudly with a missing-service
@@ -191,7 +184,7 @@ export interface EmitOptions {
 }
 
 /**
- * The subset of a test framework's surface `Runner.ts` uses — two members, and no more.
+ * The subset of a test framework's surface `Runner.ts` uses — three members, and no more.
  */
 export interface TestApi {
   /**
@@ -221,8 +214,8 @@ export interface TestApi {
    * `Scope.Scope` is the whole of the remaining required context — note (d).
    *
    * `options` is REQUIRED, and there is no `EmitOptions | undefined`. `Runner.ts` computes a value
-   * for EVERY emission it makes, the synthetic `⚙ AfterAllScenarios` and `⚠` warning nodes
-   * included, so there is no call site that legitimately has nothing to say. An optional parameter
+   * for EVERY emission it makes, the synthetic `⚠` warning nodes included, so there is no call site
+   * that legitimately has nothing to say. An optional parameter
    * would let a future call site simply forget the argument and emit an untagged, never-skipped test
    * with nothing going red — the same reasoning `describeFeature.ts`'s required-fields comment and
    * `Runner.ts`'s required maps already apply one layer up.
@@ -232,4 +225,20 @@ export interface TestApi {
     self: () => Effect.Effect<void, unknown, Scope.Scope>,
     options: EmitOptions
   ) => void
+  /**
+   * Run `self`'s Effect ONCE after every test in the CURRENT block has finished — whether the run
+   * was whole or narrowed by `-t`/`--tagsFilter` to a single test in it, and after a failure.
+   *
+   * `Runner.ts` registers a Feature's `AfterAllScenarios` teardown through this, inside the
+   * Feature's own block (note (e) there). A test node cannot carry that guarantee: test selection
+   * skips it. A block-level teardown hook can, and the adapter in `describeFeature.ts` maps this
+   * onto the framework's own `afterAll`, running the Effect against the same shared tier the block's
+   * tests saw. `name` is reporting data only — the framework's hooks are anonymous, so it appears in
+   * a failure's message rather than as a node title.
+   *
+   * The framework's own scope-closing hook is registered before this one and runs AFTER it (hooks of
+   * this kind run in reverse registration order), so the shared tier is still open when the teardown
+   * runs. That ordering is the framework's default and is what the adapter relies on.
+   */
+  readonly afterAll: (name: string, self: () => Effect.Effect<void, unknown, Scope.Scope>) => void
 }

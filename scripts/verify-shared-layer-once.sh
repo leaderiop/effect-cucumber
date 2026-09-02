@@ -405,6 +405,19 @@ if [[ "$STATUS_SHARED_C" != "passed" ]]; then
   fail "the shared-build Scenario is \"$STATUS_SHARED_C\" when it is the ONLY selected test, expected \"passed\" — it passed in the whole-file run (assertion A2). Title: \"$TITLE_SHARED_BUILD\". The shared Layer's build-once claim must not depend on which siblings the filter happened to leave behind."
 fi
 echo "✓ C2 run C: the shared-build Scenario passed as the ONLY selected test — build-once does not depend on its siblings"
+# F-06: the shared-build Feature's AfterAllScenarios teardown reads the shared tier and writes a marker.
+# It must run in the whole run and in run C (narrowed to one of its Scenarios), and must NOT run in run
+# B (narrowed to a Scenario of a DIFFERENT Feature — nothing in the shared-build Feature was attempted).
+MARKER_SHARED_AFTER_ALL="SHARED_AFTER_ALL_SCENARIOS_RAN"
+grep -q -- "$MARKER_SHARED_AFTER_ALL" "$LOG_A" ||
+  fail "the whole-file run printed no $MARKER_SHARED_AFTER_ALL marker — the shared-build Feature's AfterAllScenarios teardown did not run, or could not reach the shared tier (its body reads SharedProbe through the block's memo map). Check describeFeature.ts's shared adapter afterAll."
+grep -q -- "$MARKER_SHARED_AFTER_ALL" "$LOG_C" ||
+  fail "the run narrowed with -t to the shared-build Scenario printed no $MARKER_SHARED_AFTER_ALL marker — the teardown was skipped by test selection on the SHARED path (F-06)."
+if grep -q -- "$MARKER_SHARED_AFTER_ALL" "$LOG_B"; then
+  cat "$LOG_B"
+  fail "the run narrowed with -t to the clock-isolation Scenario printed the $MARKER_SHARED_AFTER_ALL marker — the shared-build Feature's teardown ran although NONE of that Feature's Scenarios was attempted. The attempted gate in Runner.ts is not holding under a real -t run."
+fi
+echo "✓ C3 the shared-path AfterAllScenarios teardown ran whole and under -t, against the memoised build, and stayed a no-op for a Feature -t left untouched"
 
 # ---------------------------------------------------------------------------
 # A5: run A reported no FAILED test. LAST on purpose, and the ordering is

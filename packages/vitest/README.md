@@ -42,7 +42,10 @@ register more than one hook of a kind, and they run in registration order; a bat
 combined rather than first-wins. A Scenario's own steps run only if every `Before` hook succeeded. `After`, `AfterStep`
 and `AfterAllScenarios` each run whether the thing they guard succeeded or failed, and never mask its error.
 `BeforeAllScenarios` runs once per Feature, shared across every Scenario, and its failure is reported by every
-Scenario individually.
+Scenario individually. `AfterAllScenarios` is the Feature block's own teardown hook rather than a test node, so it still
+runs once when a run is narrowed with `-t` or `--tagsFilter` to one Scenario, and does nothing when no Scenario in the
+Feature was attempted; a failure in it reports against the Feature's block. It relies on vitest's default
+`sequence.hooks: "stack"` ordering to run before the shared tier is released — `"list"` is not supported.
 
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built

@@ -87,47 +87,27 @@
  *     direction. `OutlineTitle.ts` note (a) has the empirical verification. Only Scenario titles go
  *     through it; `warningTitle` and `afterAllScenariosTitle` are untouched by D-03.
  *
- * (e) **`BeforeAllScenarios`/`AfterAllScenarios` share one Feature-wide execution through a
- *     synchronous `Deferred`, computed and composed entirely inside this module — `TestApi.ts` gains
- *     no new member.** `Deferred`'s unsafe constructor is synchronous, so it is constructible during the
- *     emission walk itself, unlike `Effect.cached` (whose memo is only reachable by running an
- *     Effect first — it does not compose with a synchronous walk that must hand N independent
- *     thunks to `TestApi.effect`) or `Effect.once` (which does not exist in this build). `makeOnce`,
- *     declared at module scope below, turns a `BeforeAllScenarios` batch into an Effect that runs the
- *     batch on its first execution and hands every later caller the SAME outcome — success or
- *     failure — via `Deferred.await`. That `await` on the second and later callers is what makes
- *     D-08's literal requirement true: a failing `BeforeAllScenarios` reaches every Scenario
- *     individually, not only whichever one happened to run first. The Feature's Layer is provided
- *     INSIDE the cell, at the point `makeOnce` is called, rather than inside whichever Scenario's own
- *     composed Effect happens to trigger it — providing it there would bind the Feature-wide hook to
- *     Scenario one's particular Layer instance, which is not what a Feature-wide hook means.
+ * (e) **`BeforeAllScenarios` is a once-cell; `AfterAllScenarios` is the Feature block's own teardown
+ *     hook, registered through `TestApi.afterAll`.** `makeOnce`, declared at module scope below,
+ *     turns a `BeforeAllScenarios` batch into an Effect that runs the batch on its first execution
+ *     and hands every later caller the SAME outcome — success or failure — via `Deferred.await`, so a
+ *     failing `BeforeAllScenarios` reaches every Scenario individually (BEH-EC-017). The cell is
+ *     reachable only from inside a Scenario thunk, which is what makes it run exactly once whatever
+ *     the runner selected.
  *
- *     `AfterAllScenarios`, by contrast, is not a once-cell at all: it is ONE extra node emitted after
- *     every Scenario (Rules included) and before the warnings, whose body runs the batch directly,
- *     AND ONLY WHEN AT LEAST ONE RUNNABLE SCENARIO WAS EMITTED. That last conjunct is new and the
- *     rest of this note is not; the distinction matters, because the guarantee the paragraph below
- *     describes is untouched by it. What D-09's "runs always" is about is a FAILURE not being able to
- *     stop teardown — a failed Scenario, or a failed `BeforeAllScenarios` — and that still holds
- *     exactly as written. What the conjunct removes is the VACUOUS case, which is a different thing
- *     entirely: when no runnable Scenario was emitted, `BeforeAllScenarios` is a once-cell reachable
- *     only from inside a Scenario thunk, so it structurally CANNOT have run, and an
- *     `AfterAllScenarios` node would tear down resources nothing ever set up. "Runnable" means both
- *     halves: a Scenario the tag filter kept AND one that is not `@skip`-tagged — a skipped test's
- *     thunk is never invoked either, so it reaches the once-cell no more than an excluded one does. A
- *     Feature that declares no Scenarios at all falls in the same case for the same reason and is not
- *     a separate rule. Note that a failing Scenario is still runnable and still emits the node: it
- *     RAN, so it reached the cell.
- *
- *     A separate emitted node is what makes D-09's "runs always" structural rather than arranged: it
- *     does not await the `BeforeAllScenarios` deferred, so a failed `BeforeAllScenarios` cannot stop
- *     it, and it is a sibling of the Scenario nodes, so a failed Scenario cannot stop it either. The
- *     plausible tidy-up "wrap the whole `describe` block in a finalizer instead" has nothing to wrap —
- *     `TestApi.describe`'s `define` returns `void` (note (c) above), so there is no Effect there to
- *     attach a finalizer to. The other plausible tidy-up, "emit it after the warnings, they come
- *     last", is note (c)'s own rule read backwards: the warnings are always-passing footnotes and
- *     this node can fail, so it belongs with the things that report results, not below them. Emission
- *     order stays document order throughout; running "always" is a runtime property of the emitted
- *     Effects, never a reordering of the emitted nodes.
+ *     `AfterAllScenarios` used to be ONE extra test node emitted after every Scenario. A test node is
+ *     subject to test selection: `-t "<scenario>"` or `--tagsFilter` narrowed everything else to skip,
+ *     the selected Scenario fired the once-cell, and the untagged teardown node never ran — setup
+ *     without teardown, in exactly the workflow those filters exist for (F-06). It is now handed to
+ *     the seam's `afterAll`, which the adapter registers on the Feature's own block, so the framework
+ *     runs it once after the block's tests whether the run was whole or narrowed. The body is gated
+ *     on `attempted` — a flag set the moment ANY Scenario thunk in this Feature is invoked — so a
+ *     Feature nothing ran in (every Scenario `@skip`, every one filtered out, a Feature with no
+ *     Scenario, or a `-t` that selected none of them) tears down nothing, because its once-cell can
+ *     never have been reached. That is BEH-EC-017's carve-out, made at run time rather than at
+ *     emission time, which is the only place it can be made correctly under a CLI filter. A failing
+ *     Scenario is still attempted, so it still triggers teardown; a failed `BeforeAllScenarios`
+ *     cannot stop it either, because the hook never awaits the cell.
  *
  * (f) **The Layer a Scenario runs with is SUBSTITUTED from three tiers, never merged here; the
  *     `HookSet` is the opposite, and is merged here — once per Rule.** The two look symmetrical in
@@ -196,9 +176,8 @@
  *     execution — suppressing them would make a filtered run look like a Feature with no unused
  *     definitions, which is a different and false claim. And the `describe` blocks emit even when
  *     they end up empty, for that reason plus note (c)'s: a Feature or Rule the reader can find in the
- *     reporter and see is empty beats one that silently is not there. Only the `⚙ AfterAllScenarios`
- *     node is suppressed, and note (e) has the reason, which is about resource lifecycle rather than
- *     about visibility.
+ *     reporter and see is empty beats one that silently is not there. The Feature's teardown hook is
+ *     registered regardless and gates ITSELF at run time — note (e).
  *
  *     Emitting the `⚠` nodes is free only if they do not travel the route that carries the shared
  *     tier's build (plan 10-07, closing the gap `10-VERIFICATION.md` found): on the shared path every
@@ -329,7 +308,7 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
   })`
 
 /**
- * The title of the synthetic node that runs a Feature's `AfterAllScenarios` hooks — note (e).
+ * The name the Feature's `AfterAllScenarios` teardown hook is registered under — note (e).
  *
  * A CONSTANT string with no interpolation of any Feature, Rule or Scenario name, deliberately:
  * `warningTitle`'s `JSON.stringify` is what defends against a pattern string forging a second node in
@@ -339,55 +318,22 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
 /**
- * The emit options both SYNTHETIC node kinds share the shape of — untagged, never skipped — and now
- * differ on in exactly `contextFree` (plan 10-07). Split from what was formerly one shared
- * `emptyEmitOptions` constant into these two, because the gap `10-VERIFICATION.md` found is precisely
- * that the two kinds were indistinguishable to the emission route: an always-passing `⚠` node forced
- * the same shared-Layer build a teardown node legitimately needs, and nothing said the two should be
- * routed differently.
+ * The `⚠` warning nodes' emit options — untagged, never skipped, `contextFree: true`.
  *
- * What both constants below still share, carried forward from the one constant this replaces:
+ * These nodes are this library's own; no `.feature` file wrote them, so there are no tags they could
+ * honestly carry, and giving them the enclosing Feature's tags would let a `--tagsFilter` select or
+ * skip a library footnote the author never asked to filter. `skip: false` restates note (c): an unused
+ * definition is a warning and its node is always-passing, never skipped, because the skipped count a
+ * reporter prints has to keep meaning "tests the author chose not to run".
  *
- * These nodes are this library's own; no `.feature` file wrote them and none of them corresponds to a
- * Scenario, so there are no tags they could honestly carry. Giving them the enclosing Feature's tags
- * is the plausible tidy-up and is wrong twice over: a `--tagsFilter` invocation naming any of those
- * tags would then also select — or, naming a different one, SKIP — a Feature's teardown, which is not
- * a thing an author asked to filter; and it would push author-controlled strings through a second
- * validation site in the test framework for no benefit at all.
+ * `contextFree: true` because the whole body is `Effect.void` (note (c)): it needs nothing either
+ * Layer tier provides, so routing it away from the shared emission route is SAFE and is what keeps a
+ * Feature with every Scenario excluded from building its shared tier.
  *
- * `skip: false` restates note (c): an unused definition is a warning and its node is always-passing,
- * never skipped, because the skipped count a reporter prints has to keep meaning "tests the author
- * chose not to run" — and `⚙ AfterAllScenarios` is likewise never skipped, it either runs or (note (e))
- * is not emitted at all.
- *
- * ONE shared value per kind rather than a fresh literal per emission, which is safe for
- * `noTagFilter`'s and `emptyHookSet`'s reason: every field is `readonly`, `tags` is a `ReadonlyArray`,
- * and nothing in this package mutates an `EmitOptions` — `describeFeature.ts`'s adapter spreads `tags`
- * into a fresh array before it reaches anything that could.
- */
-
-/**
- * The `⚠` warning nodes' options — `contextFree: true`.
- *
- * Its whole body is `Effect.void` (note (c)), so it needs nothing either Layer tier provides. That is
- * what makes routing it away from the shared emission route SAFE: nothing about what the node reports
- * changes, only which constructor registers it, because a node whose body requires nothing cannot
- * observe which constructor ran it.
+ * ONE shared value rather than a fresh literal per emission: every field is `readonly`, `tags` is a
+ * `ReadonlyArray`, and nothing in this package mutates an `EmitOptions`.
  */
 const warningEmitOptions: EmitOptions = { tags: [], skip: false, contextFree: true }
-
-/**
- * The `⚙ AfterAllScenarios` node's options — `contextFree: false`.
- *
- * Its body runs the Feature's `AfterAllScenarios` hooks (note (e)), which provide the per-Scenario
- * tier and leave whatever else the hook needs on the Effect's own requirements, where the ambient
- * context satisfies it at run time (note (f)'s last paragraph) — that "whatever else" may be a
- * service the shared tier alone provides, so this node MUST stay on the route that carries it. Setting
- * this to `true` would route a Feature's teardown hooks away from the shared tier, so a teardown hook
- * naming a shared service would fail at run time with a missing-service defect — Task 2's routing
- * projection and Task 3 mutation 3 in the 10-07 plan summary pin this the other way.
- */
-const afterAllScenariosEmitOptions: EmitOptions = { tags: [], skip: false, contextFree: false }
 
 /**
  * The `scenarioLayers` key one planned Scenario is looked up under — note (f).
@@ -498,13 +444,12 @@ export const emitFeature = (
   // Both counters are written by the two Scenario loops below and read after the outermost
   // `describe` has returned — safe because `define` is synchronous (`TestApi.ts` note (c)).
   //
-  // `excluded` is this call's whole reported outcome. `runnable` is the `⚙ AfterAllScenarios`
-  // suppression condition of note (e), and it is deliberately NOT the complement of `excluded`: a
-  // `@skip`-tagged Scenario is emitted, so it is not excluded, and its thunk is never invoked, so it
-  // is not runnable either. Deriving one from the other would collapse that distinction and emit a
-  // teardown node for a Feature whose every Scenario is `@skip`.
+  // `excluded` is this call's whole reported outcome. `attempted` is the teardown hook's run-time
+  // gate (note (e)): set inside every Scenario thunk, the moment the framework invokes one, so it is
+  // `true` exactly when at least one Scenario in this Feature actually ran — a `@skip`-tagged or
+  // `-t`-deselected Scenario's thunk is never invoked, and an excluded one is never emitted.
   let excludedScenarioCount = 0
-  let runnableScenarioCount = 0
+  let attempted = false
 
   // Built once, before anything is emitted, and not per lookup: the walk below visits every Scenario
   // exactly once, so a linear search per visit would be quadratic in a Feature's Scenario count for
@@ -571,19 +516,23 @@ export const emitFeature = (
       // Nothing branches on `onlyTag`, here or anywhere — D-06. `@only` reaches the node as one more
       // entry of `tags` and changes nothing else about the emission.
       const skip = isSkipped(scenarioPlan.tags)
-      if (!skip) {
-        runnableScenarioCount += 1
-      }
       const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? layer
       api.effect(
         titleFor(scenarioPlan),
+        // `attempted = true` FIRST, inside the thunk — note (e): the framework invokes the thunk only
+        // for a Scenario it is actually going to run.
         beforeAllScenariosCell === null
-          ? () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
-          : () =>
-            Effect.flatMap(
+          ? () => {
+            attempted = true
+            return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
+          }
+          : () => {
+            attempted = true
+            return Effect.flatMap(
               beforeAllScenariosCell,
               () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
-            ),
+            )
+          },
         // The Scenario's own tags, passed through by reference and never copied, re-sorted or
         // de-duplicated: `ScenarioPlan.tags` is already the flattened inheritance chain and the one
         // widening to a mutable array belongs to `describeFeature.ts`'s adapter alone.
@@ -628,9 +577,6 @@ export const emitFeature = (
             continue
           }
           const skip = isSkipped(scenarioPlan.tags)
-          if (!skip) {
-            runnableScenarioCount += 1
-          }
           // The third and innermost tier, and it SUBSTITUTES rather than wraps, for the same reason
           // `ruleLayer` does: `describeFeature.ts` built this entry on top of whichever Layer was
           // ambient where the `Scenario(...)` call was written, which inside a Rule is that Rule's
@@ -638,13 +584,19 @@ export const emitFeature = (
           const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? ruleLayer
           api.effect(
             titleFor(scenarioPlan),
+            // `attempted = true` first, for the Feature-level loop's reason — note (e).
             beforeAllScenariosCell === null
-              ? () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
-              : () =>
-                Effect.flatMap(
+              ? () => {
+                attempted = true
+                return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+              }
+              : () => {
+                attempted = true
+                return Effect.flatMap(
                   beforeAllScenariosCell,
                   () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
-                ),
+                )
+              },
             // `contextFree: false`, for the same reason as the Feature-level loop's identical field
             // above.
             { tags: scenarioPlan.tags, skip, contextFree: false }
@@ -653,21 +605,21 @@ export const emitFeature = (
       })
     }
 
-    // AfterAllScenarios — note (e). ONE extra always-attempted node, a sibling of the Scenario nodes
-    // rather than a finalizer wrapped around this block, emitted after every Scenario (Rules
-    // included) and before the warnings.
-    //
-    // The second conjunct is note (e)'s vacuous-case suppression: with no runnable Scenario emitted,
-    // the `BeforeAllScenarios` once-cell is unreachable, so this node would tear down what was never
-    // set up. It is a conjunct rather than a replacement — a Feature that registered no
-    // `AfterAllScenarios` hook still emits nothing, exactly as before.
-    if (hooks.AfterAllScenarios.length > 0 && runnableScenarioCount > 0) {
-      api.effect(afterAllScenariosTitle, () => {
+    // AfterAllScenarios — note (e): the Feature block's own teardown hook, through the seam's
+    // `afterAll`, registered after every Scenario (Rules included). Registered whenever a hook exists;
+    // what it DOES is decided at run time by `attempted`, so a narrowed run that selected one Scenario
+    // still tears down, and a Feature nothing ran in tears down nothing. It never awaits the
+    // `BeforeAllScenarios` cell, so a failed setup cannot stop it.
+    if (hooks.AfterAllScenarios.length > 0) {
+      api.afterAll(afterAllScenariosTitle, () => {
+        if (!attempted) {
+          return Effect.void
+        }
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
           hooks.AfterAllScenarios
         ).pipe(Effect.provide(layer))
         return afterAllScenariosEffect
-      }, afterAllScenariosEmitOptions) // contextFree: false — note (e); must stay on the shared route
+      })
     }
 
     // Last, and always passing — note (c). Reversing this to put the warnings first pushes the

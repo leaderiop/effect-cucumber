@@ -339,6 +339,15 @@ if [[ "$STATUS_UNTAGGED_B" != "skipped" ]]; then
   fail "a Scenario the $FILTER_TAG filter did not select is \"$STATUS_UNTAGGED_B\" in the filtered report, expected \"skipped\". Title: \"$TITLE_UNTAGGED\". A \"passed\" status means the filter is not narrowing at all, so assertion 6's selection proves nothing."
 fi
 echo "✓ run B: an unselected Scenario is PRESENT and skipped — a CLI filter narrows, it does not remove"
+# F-06: the Feature's AfterAllScenarios teardown must run under a narrowed run. The four-level Feature
+# in $TEST_FILE registers one that writes a marker to stdout; run B narrowed everything but its
+# @only Scenario to skip, and the teardown — a block hook, not a test node — still has to fire.
+MARKER_AFTER_ALL="AFTER_ALL_SCENARIOS_RAN"
+grep -q -- "$MARKER_AFTER_ALL" "$LOG_A" ||
+  fail "the unfiltered run printed no $MARKER_AFTER_ALL marker — the four-level Feature's AfterAllScenarios teardown did not run at all, so the filtered assertion below would be vacuous. Check that the Feature still registers the marker hook and that Runner.ts still registers the teardown through TestApi.afterAll."
+grep -q -- "$MARKER_AFTER_ALL" "$LOG_B" ||
+  fail "the run filtered on $FILTER_TAG printed no $MARKER_AFTER_ALL marker — the AfterAllScenarios teardown was SKIPPED by test selection. BEH-EC-017 requires it to run once after a Feature's tests whether the run was whole or narrowed; a teardown emitted as a test node is exactly what a filter skips (F-06)."
+echo "✓ run B: the AfterAllScenarios teardown ran under --tagsFilter=$FILTER_TAG — a block hook, not a filterable node"
 
 # ---------------------------------------------------------------------------
 # Assertion 8: run A reported no FAILED test. This is assertion 2's other half —

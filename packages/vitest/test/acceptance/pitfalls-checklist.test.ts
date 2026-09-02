@@ -302,7 +302,7 @@ const tagsOf = (steps: ReadonlyArray<PlannedStep>): ReadonlyArray<string> => ste
 
 /** One call a recording `TestApi` received. No `depth`: no assertion below is about nesting. */
 interface EmissionRecord {
-  readonly kind: "describe" | "effect"
+  readonly kind: "describe" | "effect" | "afterAll"
   readonly name: string
   readonly self: (() => Effect.Effect<void, unknown, Scope.Scope>) | null
   readonly options: EmitOptions | null
@@ -328,6 +328,9 @@ const makeRecordingApi = (): {
     },
     effect: (name, self, options) => {
       records.push({ kind: "effect", name, self, options }) // GATE-ALLOW-MUTATION: same function-local array as above; a TestApi callback is synchronous and cannot yield a Ref update.
+    },
+    afterAll: (name, self) => {
+      records.push({ kind: "afterAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
     }
   }
   return { api, records }

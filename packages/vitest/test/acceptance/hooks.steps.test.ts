@@ -71,13 +71,11 @@
  *   `packages/vitest/test/Hook.test.ts`, which is where the batch composition itself is tested; this
  *   Feature registers exactly one hook per kind, so it cannot distinguish a batch from a singleton.
  * - **`AfterAllScenarios`'s POSITION in the sequence.** Structurally unobservable from inside a step:
- *   the node is emitted AFTER every Scenario, so no step body can be running when it fires, and
- *   neither expected array below can contain its label. What this pair does show is that it ran at
- *   all — registering the hook makes the runner emit a THIRD node, `⚙ AfterAllScenarios`, and that
- *   node passing is its body having succeeded. Measured, not assumed: this file reports 3 passing
- *   tests, not 2. Its POSITION is pinned by `packages/vitest/test/Runner.test.ts`'s full-sequence
- *   assertion, and `emission.test.ts` carries both the executed-for-real proof and the all-skipped
- *   suppression carve-out.
+ *   it runs as the Feature block's teardown hook AFTER every Scenario, so no step body can be running
+ *   when it fires, and neither expected array below can contain its label. It is not a test node, so
+ *   this file reports 2 passing tests; a failing teardown would report as a suite hook failure. Its
+ *   POSITION is pinned by `packages/vitest/test/Runner.test.ts`'s full-sequence assertion, and
+ *   `emission.test.ts` carries both the executed-for-real proof and the nothing-attempted no-op.
  *
  * ## The directory's two standing deviations apply here unchanged
  *
@@ -102,7 +100,7 @@
  *
  * The directory README's standing rule: a passing acceptance test proves nothing on its own, so each
  * entry names what went RED and — the part that is easiest to omit — what stayed GREEN. This pair
- * emits THREE tests — the two Scenarios plus the `⚙ AfterAllScenarios` node. B, C and E attack the
+ * emits TWO tests — the two Scenarios; the `AfterAllScenarios` teardown is a block hook. B, C and E attack the
  * two gate scripts this plan also builds and are recorded in the METHOD NOTE of the script each one
  * attacks, beside the code they mutate; A and D are recorded here, because this file is what they
  * mutate.
@@ -126,14 +124,14 @@
  *
  * - **F. The expected sequence really comes from the `.feature` file.** `AfterStep` and `BeforeStep`
  *      transposed in the SECOND Scenario's expected string in `hooks.feature`, this module untouched →
- *      **exactly 1 of 3 red**, `expected [ 'BeforeAllScenarios', …(13) ] to deeply equal
+ *      **exactly 1 of 2 red**, `expected [ 'BeforeAllScenarios', …(13) ] to deeply equal
  *      [ 'BeforeAllScenarios', …(13) ]` with the arrays first differing at index 4. The first Scenario
- *      and the `⚙ AfterAllScenarios` node stayed GREEN, and that narrow blast radius is the point:
+ *      stayed GREEN, and that narrow blast radius is the point:
  *      each Scenario asserts its OWN file-supplied sequence rather than a constant this module holds,
  *      so a change to one expectation cannot turn the other red by accident.
  * - **G. `BeforeAllScenarios` composed per Scenario rather than once.** Its registration deleted and
  *      its label appended from the `Before` hook body instead, so it lands once per Scenario →
- *      **exactly 1 of 3 red, and it is the SECOND Scenario**, `expected [ 'BeforeAllScenarios', …(14) ]
+ *      **exactly 1 of 2 red, and it is the SECOND Scenario**, `expected [ 'BeforeAllScenarios', …(14) ]
  *      to deeply equal [ 'BeforeAllScenarios', …(13) ]`. The FIRST Scenario stayed GREEN and correctly
  *      so — with one Scenario run, once-per-Feature and once-per-Scenario produce the identical log.
  *      That is the whole reason the second Scenario exists, and no assertion available to the first
@@ -227,10 +225,10 @@ describeFeature(feature, { shared: HookLog.layer, perScenario: Layer.empty }, (d
     yield* record("After")
   })
 
-  // Registered and real, and this pair asserts NOTHING about it — the node is emitted after every
-  // Scenario, so no step body can be running when it fires. The header names the two files that do
-  // state it. Registering it here anyway is the point of "all six kinds from one `define` callback":
-  // a Feature that omitted it would not be exercising `FeatureDsl`'s sixth member at all.
+  // Registered and real, and this pair asserts NOTHING about it — it runs as the block's teardown
+  // after every Scenario, so no step body can be running when it fires. The header names the two
+  // files that do state it. Registering it here anyway is the point of "all six kinds from one
+  // `define` callback": a Feature that omitted it would not be exercising `FeatureDsl`'s sixth member.
   dsl.AfterAllScenarios(function*() {
     yield* record("AfterAllScenarios")
   })

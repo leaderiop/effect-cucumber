@@ -108,11 +108,11 @@
  *      loses, which is why it is asserted separately rather than folded into a single match.
  * - C. `describeFeature` calls `collect` and never emits → the `completedScenarios` assertion in the
  *      last block fails.
- * - D. `Runner.ts`'s `AfterAllScenarios` node is never emitted (its `if (hooks.AfterAllScenarios.length
- *      > 0)` guard forced to skip) → every emitted hook test still PASSES (nothing downstream of the
- *      node depends on it), and only the new final block's "exactly once and last" assertion fails,
- *      because `hookLog`'s last two entries are Scenario 2's own `after2:start`/`:end` instead of
- *      `afterAllScenarios:start`/`:end`.
+ * - D. `Runner.ts`'s `AfterAllScenarios` teardown is never registered (its `if
+ *      (hooks.AfterAllScenarios.length > 0)` guard forced to skip) → every emitted hook test still
+ *      PASSES (nothing downstream of the teardown depends on it), and only the "exactly once and last"
+ *      assertion fails, because `hookLog`'s last two entries are Scenario 2's own `after2:start`/`:end`
+ *      instead of `afterAllScenarios:start`/`:end`.
  * - E. `BeforeAllScenarios` composed inside `ScenarioEffect.ts`'s `buildScenarioEffect` (run once per
  *      Scenario execution) instead of through `Runner.ts`'s once-cell → the second hook Scenario's own
  *      `Then` body assertion fails: its log prefix gains a SECOND `beforeAllScenarios:start`/`:end`
@@ -139,7 +139,7 @@
  * Mutations 1 and 2 reproduce the gap `10-VERIFICATION.md` found (the `shared` Layer still building
  * for a Feature with every Scenario excluded, forced open by an always-passing warning node) from the
  * two ends of the fix — `describeFeature.ts`'s routing and `Runner.ts`'s classification. Mutation 3 is
- * the mirror-image mistake — marking the `⚙ AfterAllScenarios` node context-free too — and is caught
+ * the mirror-image mistake — routing the Feature's teardown away from the shared tier — and is caught
  * by `Runner.test.ts`'s structural routing projection (Task 2), not by this file, which is the
  * asymmetry that assertion exists to record. Mutation 4 exercises the block's own non-vacuity control.
  *
@@ -496,7 +496,7 @@ describeFeature(
     // One BeforeStep and one AfterStep — wraps EVERY resolved step, the `When` and the `Then` alike.
     BeforeStep(bracketed("beforeStep"))
     AfterStep(bracketed("afterStep"))
-    // One BeforeAllScenarios and one AfterAllScenarios — the once-cell and the trailing node.
+    // One BeforeAllScenarios and one AfterAllScenarios — the once-cell and the block's teardown hook.
     BeforeAllScenarios(bracketed("beforeAllScenarios"))
     AfterAllScenarios(bracketed("afterAllScenarios"))
 
@@ -660,18 +660,19 @@ describeFeature(outlineFeature, logLayer, ({ Then, When }) => {
 /**
  * DECLARED LAST ON PURPOSE, after every other `describe` block in this file — the identical
  * "vitest runs a file's suites in declaration order" reasoning `completedScenarios`'s own last block
- * uses. Both hook Scenarios above, and the `⚙ AfterAllScenarios` node emitted after them, have already
- * run by the time this executes.
+ * uses. Both hook Scenarios above, and the `AfterAllScenarios` teardown the Feature's block runs after
+ * them, have already run by the time this executes — a block's `afterAll` runs before the next sibling
+ * suite starts.
  *
  * This is the real-run half of roadmap success criterion 3/D-09: `test/Runner.test.ts`'s recording
- * fake can prove the `AfterAllScenarios` node was EMITTED at the right position, but only a real vitest
- * run — this file — can prove it was actually EXECUTED, since a recording fake never runs anything on
- * its own.
+ * fake can prove the `AfterAllScenarios` teardown was REGISTERED at the right position, but only a
+ * real vitest run — this file — can prove it was actually EXECUTED, since a recording fake never runs
+ * anything on its own.
  */
 describe("the hook Feature's real-run AfterAllScenarios proof", () => {
-  it("ran the AfterAllScenarios node last, and its own hook exactly once", () => {
-    // Mutation D's target: an `AfterAllScenarios` node that was never emitted leaves the log ending
-    // with Scenario 2's own `after2:start`/`:end` instead.
+  it("ran the AfterAllScenarios teardown last, and its own hook exactly once", () => {
+    // Mutation D's target: an `AfterAllScenarios` teardown that was never registered leaves the log
+    // ending with Scenario 2's own `after2:start`/`:end` instead.
     expect(hookLog.slice(-2)).toEqual(["afterAllScenarios:start", "afterAllScenarios:end"])
     // Exactly once — not "at least once", which the position check above already implies but does not
     // by itself rule out a stray extra pair earlier in the log.
@@ -1132,7 +1133,15 @@ Feature: Four-level tagging
 // below is a counter increment requiring no service, and this block's subject is tags rather than
 // composition, which the four blocks above already cover. Nothing wraps the call — the warnings it can
 // produce are printed later, during collection, into `collectionWarnings`.
-describeFeature(fourLevelFeature, Layer.empty, ({ Rule, When }) => {
+describeFeature(fourLevelFeature, Layer.empty, ({ AfterAllScenarios, Rule, When }) => {
+  // The marker `scripts/verify-tags-filter.sh` greps for on a run narrowed with `--tagsFilter` to the
+  // `@only` Scenario alone: the teardown ran even though every other test in this block was narrowed
+  // to skip (F-06). `process.stdout.write`, not `Console.log` — the plain adapter runs this hook
+  // against a TestConsole, which would swallow the line.
+  AfterAllScenarios(function*() {
+    yield* Effect.void
+    process.stdout.write("AFTER_ALL_SCENARIOS_RAN\n")
+  })
   When("the untagged four-level scenario runs", recordFourLevel("untagged"))
   When("the slow four-level scenario runs", recordFourLevel("slow"))
   When("the only-tagged four-level scenario runs", recordFourLevel("only-tagged"))
@@ -1288,9 +1297,9 @@ describeFeature(skipFeature, Layer.empty, ({ After, AfterStep, Before, BeforeSte
  * This is the runtime half of plan 09-04's `AfterAllScenarios` suppression, and `Runner.ts` note (e)
  * has the argument it makes true. `BeforeAllScenarios` is a once-cell reachable ONLY from inside a
  * Scenario thunk, and a skipped test never invokes its thunk — so in this state the setup hook
- * structurally CANNOT have run. An unconditional teardown node would therefore tear down resources
- * that were never set up, which is why the emission condition carries a runnable-count conjunct
- * alongside the "are there any AfterAllScenarios hooks" one.
+ * structurally CANNOT have run. An unconditional teardown would therefore tear down resources that
+ * were never set up, which is why the teardown hook's body is gated on a Scenario having been
+ * attempted at all (`Runner.ts` note (e)).
  *
  * Both counters are asserted, not just the teardown's. `beforeAllScenarios` staying at zero is what
  * makes `afterAllScenarios` staying at zero mean "teardown was correctly suppressed" rather than
@@ -1354,9 +1363,9 @@ describe("a @skip Scenario runs no step and no hook (09-06)", () => {
   })
 
   it("emitted no teardown for a Feature in which every Scenario is skipped", () => {
-    // `body` at 0 is the ordinary skip claim. The other two are 09-04's suppression conjunct: the
-    // once-cell was never reached because no thunk was ever invoked, so a teardown node would run
-    // against resources nothing set up. Dropping the runnable-count conjunct from `Runner.ts` makes
+    // `body` at 0 is the ordinary skip claim. The other two are the teardown's run-time gate: the
+    // once-cell was never reached because no thunk was ever invoked, so a teardown would run against
+    // resources nothing set up. Dropping the `attempted` gate from `Runner.ts` makes
     // `afterAllScenarios` 1 while leaving `beforeAllScenarios` at 0 — the asymmetry IS the bug, and
     // asserting the pair together is what shows it.
     expect(allSkippedCounts).toEqual({ beforeAllScenarios: 0, afterAllScenarios: 0, body: 0 })
@@ -1928,6 +1937,13 @@ const collisionWinners: Array<string> = []
 const sharedScenarioNames: Array<string> = []
 
 /**
+ * What the shared-path teardown observed of the shared tier — the build ordinal it read. `[1]` means
+ * the `afterAll` reached the SAME memoised build the three Scenarios read (a memo hit through the
+ * memo map the composition root handed the adapter), not a fourth one (F-06).
+ */
+const sharedTeardownObservations: Array<number> = []
+
+/**
  * Three Scenarios, ONE shared build.
  *
  * The three Scenario TITLES are fixed: plan 10-05's real-CLI gate asserts on them by exact suffix
@@ -1955,38 +1971,56 @@ const sharedBuildFeature = Effect.runSync(
 
 // THE TWELFTH real `describeFeature` call in this file, and the first in the repo to pass the OBJECT
 // form. The argument shape is the entire difference from the block above it.
-describeFeature(sharedBuildFeature, { shared: sharedProbeLayer, perScenario: scopedProbeLayer }, ({ Then, When }) => {
-  // ONE definition, matched by all three Scenarios, so the three bodies cannot drift apart into
-  // asserting three different things about one claim.
-  When("the shared scenario reads both tiers", function*() {
-    // FIRST, and deliberately so: this is the assertion plan 10-05's CLI gate observes from outside
-    // the process, as this test node's pass/fail status. Under Anti-Pattern 3 it reads 2, then 3,
-    // then 4 — one extra build per Scenario — and the node fails before it records anything.
-    assert.strictEqual(sharedBuilds, 1)
+describeFeature(
+  sharedBuildFeature,
+  { shared: sharedProbeLayer, perScenario: scopedProbeLayer },
+  ({ AfterAllScenarios, Then, When }) => {
+    // The shared-path teardown: reads the shared tier through the block's own memo map, and writes the
+    // marker `scripts/verify-shared-layer-once.sh` greps for on the run narrowed with `-t` to one of
+    // this Feature's Scenarios (F-06).
+    AfterAllScenarios(function*() {
+      const shared = yield* SharedProbe
+      sharedTeardownObservations.push(shared.buildOrdinal)
+      process.stdout.write("SHARED_AFTER_ALL_SCENARIOS_RAN\n")
+    })
 
-    const shared = yield* SharedProbe
-    sharedBuildOrdinals.push(shared.buildOrdinal)
+    // ONE definition, matched by all three Scenarios, so the three bodies cannot drift apart into
+    // asserting three different things about one claim.
+    When("the shared scenario reads both tiers", function*() {
+      // FIRST, and deliberately so: this is the assertion plan 10-05's CLI gate observes from outside
+      // the process, as this test node's pass/fail status. Under Anti-Pattern 3 it reads 2, then 3,
+      // then 4 — one extra build per Scenario — and the node fails before it records anything.
+      assert.strictEqual(sharedBuilds, 1)
 
-    const scoped = yield* ScopedProbe
-    scopedBuildOrdinals.push(scoped.buildOrdinal)
+      const shared = yield* SharedProbe
+      sharedBuildOrdinals.push(shared.buildOrdinal)
 
-    // D-04, resolved by PROVISION order rather than merge order — see this block's header.
-    const marker = yield* CollisionMarker
-    collisionWinners.push(marker.who)
-  })
+      const scoped = yield* ScopedProbe
+      scopedBuildOrdinals.push(scoped.buildOrdinal)
 
-  Then("the shared scenario is done", function*() {
-    // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
-    yield* Effect.void
-    sharedScenarioNames.push(currentTestName())
-  })
-})
+      // D-04, resolved by PROVISION order rather than merge order — see this block's header.
+      const marker = yield* CollisionMarker
+      collisionWinners.push(marker.who)
+    })
+
+    Then("the shared scenario is done", function*() {
+      // Same `require-yield` satisfaction as the other assertion-only bodies in this file.
+      yield* Effect.void
+      sharedScenarioNames.push(currentTestName())
+    })
+  }
+)
 
 /**
  * DECLARED LAST IN THIS FILE, after the block that registered the Feature, for the declaration-order
  * reason every other reader here uses.
  */
 describe("the opt-in shared Layer scope builds exactly once per Feature (10-03)", () => {
+  it("ran the AfterAllScenarios teardown once against that same build, not a rebuild (F-06)", () => {
+    expect(sharedTeardownObservations).toEqual([1])
+    expect(sharedBuilds).toBe(1)
+  })
+
   it("gave all three Scenarios the SAME single shared build", () => {
     // RUN-03 SC #2, and the assertion this whole phase exists to make true. Under the pre-Phase-10
     // implementation — and under Anti-Pattern 3's module-level `it` — this reads one build per
@@ -2667,6 +2701,9 @@ const excludedEverythingSharedLayer = Layer.effect(
  */
 const excludedEverythingRan: Array<string> = []
 
+/** How many times this block's `AfterAllScenarios` ran. Must stay `0`: nothing was attempted. */
+let excludedEverythingTeardowns = 0
+
 /**
  * ONE Scenario, tagged so `excludeTags` removes it — the whole Feature has nothing runnable. A new,
  * unique uri: `warningsFor` filters by uri, so a reused one would read another block's lines.
@@ -2690,7 +2727,13 @@ const excludedEverythingFeature = Effect.runSync(
 describeFeature(
   excludedEverythingFeature,
   { shared: excludedEverythingSharedLayer, perScenario: Layer.empty },
-  ({ When }) => {
+  ({ AfterAllScenarios, When }) => {
+    // Registered, and a no-op: with nothing attempted the teardown must not run (F-06), which is also
+    // the only way it could not force the shared tier's build it would otherwise need.
+    AfterAllScenarios(function*() {
+      yield* Effect.void
+      excludedEverythingTeardowns += 1
+    })
     // The ONE definition the Feature's only Scenario's step matches — never reached, because the
     // Scenario is excluded before anything is emitted (note (g)).
     When("the excluded-everything step runs", function*() {
@@ -2721,6 +2764,10 @@ describe("a shared Layer with every Scenario excluded stays unbuilt, even with a
 
   it("ran no Scenario at all — separating build discipline from registration failing for an unrelated reason", () => {
     expect(excludedEverythingRan).toEqual([])
+  })
+
+  it("ran no AfterAllScenarios teardown either — nothing was attempted, so there is nothing to tear down", () => {
+    expect(excludedEverythingTeardowns).toBe(0)
   })
 
   it("still reported the unused step definition — the load-bearing non-vacuity control", () => {

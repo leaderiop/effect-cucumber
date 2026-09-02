@@ -35,7 +35,8 @@
  * independently with their failures combined rather than the batch stopping at the first one; `After`
  * and `AfterStep` are guaranteed to run whether the thing they guard succeeded or failed, and never
  * mask its error; `BeforeAllScenarios` runs once per Feature and its failure reaches every Scenario;
- * `AfterAllScenarios` runs as a trailing node regardless of what failed before it.
+ * `AfterAllScenarios` runs once as the Feature block's teardown hook, regardless of what failed before
+ * it and whether the run was whole or narrowed to one Scenario.
  *
  * **Both Layer scopes are real at run time, not only in the types** (RUN-03, RUN-04,
  * [ADR-EC-018](../../../spec/decisions/018-shared-layer-testclock-isolation.md)). A plain `Layer` in

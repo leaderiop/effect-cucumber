@@ -81,9 +81,10 @@ consequence a caller can rely on: a Feature whose Scenarios are all removed by a
 registration-time tag filter never builds its shared tier, so the tier stays as
 deferred as asking for it implies.
 
-Wherever a node's body DOES need the shared tier — every Scenario, and the
-Feature's own teardown node — the tier is NOT re-provided inside any Scenario
-Effect, so it is built once and every such node reaches that one build. The
+Wherever a body DOES need the shared tier — every Scenario, and the Feature's
+own `AfterAllScenarios` teardown hook, which reaches the identical build through
+the block's memo map — the tier is NOT re-provided inside any Scenario Effect, so
+it is built once and every such body reaches that one build. The
 per-Scenario tier is still supplied once around each Scenario Effect and is still
 rebuilt on every execution, exactly as it is on the default path.
 `packages/vitest/src/describeFeature.ts` is the one branch point
