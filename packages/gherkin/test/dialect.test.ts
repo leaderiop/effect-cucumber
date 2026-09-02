@@ -1,29 +1,13 @@
 /**
  * Gap 5: a `# language:` non-English feature file parses, correlates and validates with ZERO
  * special handling.
- *
- * The point is not that French works. The point is that nothing in this package branches on
- * English. `Parser.ts` hands the dialect header to `@cucumber/gherkin`'s own token matcher, and
- * the two places that must recognise a keyword — the Outline and plain-Scenario checks behind
- * F3 and F4 — look the keyword up in `dialects[language]` rather than in a hardcoded list. The
- * inline-source test at the bottom is what distinguishes those two implementations: a hardcoded
- * English list would read `Plan du scénario` as a plain Scenario and raise
- * `ScenarioKeywordWithExamples` on a completely legitimate file.
- *
- * Markdown feature files (`GherkinInMarkdownTokenMatcher`) are a different axis and are
- * deliberately out of scope for this milestone — the omission is a decision, not an oversight.
- * Only `GherkinClassicTokenMatcher` is wired.
- *
- * Imports reach `../src/loadFeature.ts` and `../src/Correlate.ts` directly, never
- * `../src/index.ts`: `effect/no-import-from-barrel-package` runs with
- * `checkRelativeIndexImports: true`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { isOutlineKeyword } from "../src/Correlate.ts"
+import { isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
 import { ParameterTypeStore } from "../src/ParameterTypes.ts"
@@ -126,6 +110,14 @@ Fonctionnalité: un plan de scénario en français
       | marteau  |
       | tournevis |
 `
+
+describe("a prototype-key language never reads through to Object.prototype", () => {
+  it("answers false for every keyword lookup instead of throwing or returning a function", () => {
+    expect(isOutlineKeyword("constructor", "Scenario Outline")).toBe(false)
+    expect(isScenarioKeyword("toString", "Scenario")).toBe(false)
+    expect(isOutlineKeyword("__proto__", "Scenario Outline")).toBe(false)
+  })
+})
 
 describe("Outline detection is dialect-independent", () => {
   it("recognises the French Scenario Outline keyword through the dialect table", () => {

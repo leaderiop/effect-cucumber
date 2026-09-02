@@ -1,31 +1,5 @@
 /**
- * MATCH-01's runtime half, plus the two properties `StepMatcher` exists for.
- *
- * Group A is the runtime side of the coercion claim — `{int}` really is a JavaScript `number` and
- * `{word}` really is a `string` at the moment a step body would receive them. The compile-time side
- * of the same claim lives in `test/StepArgs.types.ts`, and a small companion assertion at the end of
- * Group A repeats it here so the two halves are read together rather than drifting apart.
- *
- * Group B pins the decision that `match` returns EVERY match. Upstream does not detect two step
- * patterns matching one step text (pinned in `test/expressions-pin.test.ts`), so a first-wins
- * matcher would make a step argument's TYPE a function of registration order.
- *
- * Group C pins the cache key. A `CucumberExpression` snapshots its resolved parameter types at
- * construction, and `buildRegistry()` returns a fresh registry every call, so the cache must be
- * keyed on the `(registry, pattern)` PAIR. The reference-INEQUALITY test across two registries is
- * the one a pattern-only cache fails; the identity tests alone would pass it happily.
- *
- * Group D covers the four failures this module converts from an upstream throw, or from a caller's
- * own transform, into a named `StepPatternError`.
- *
- * Every registry below is built through a per-test `createParameterTypeStore().buildRegistry()`, so
- * no test depends on the module-level default store. Assertions read `err.reason`, never message
- * prose, except in the three places where the MESSAGE is itself the requirement: the undefined
- * parameter type must name both the type and the pattern, and the failed transform must quote the
- * raw matched text whole.
- *
- * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
+ * BEH-EC-015's runtime half, plus the two properties `StepMatcher` exists for.
  */
 import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
@@ -80,7 +54,7 @@ const rejectedBy = (action: () => void): StepPatternError => {
   throw new Error("expected the matcher to throw a StepPatternError, but it returned normally")
 }
 
-describe("StepMatcher coerces built-in parameter types at runtime (MATCH-01)", () => {
+describe("StepMatcher coerces built-in parameter types at runtime (BEH-EC-015)", () => {
   it("hands {int} to the caller as a JavaScript number", () => {
     const { args } = soleMatch("I have {int} cukes", "I have 42 cukes")
 
@@ -157,7 +131,7 @@ describe("StepMatcher coerces built-in parameter types at runtime (MATCH-01)", (
 })
 
 /**
- * The compile-time companion to Group A, in the same file so the two halves of MATCH-01 are read
+ * The compile-time companion to Group A, in the same file so the two halves of BEH-EC-015 are read
  * together. Checked by `pnpm typecheck:test` (a required step in `check.yml`'s `types` job), never
  * by vitest — the values below are exported so `noUnusedLocals` does not elide the claim.
  */
@@ -169,10 +143,6 @@ export const stepArgsRejectsStringForInt: StepArgs<"I have {int} cukes and {word
 
 describe("StepMatcher returns every matching pattern, never the first registered", () => {
   it("returns both matches when two registered patterns match one step text", () => {
-    // THE fixture. Taking the first registration here would make this step's argument a `number`
-    // or a `string` purely according to which Given happened to be written first, so an unrelated
-    // refactor that reorders two step definitions would silently change what the test asserts.
-    // Returning both is what lets Phase 6 raise MATCH-04's ambiguity error instead.
     const matches = matcherOver(builtInRegistry(), [
       { pattern: "I have {int} apples", definition: "as-int" },
       { pattern: "I have {word} apples", definition: "as-word" }

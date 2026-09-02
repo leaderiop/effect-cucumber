@@ -135,6 +135,47 @@ decision shipped as written.]**
 > not have identical capability surfaces. This is a documented limitation of the decision
 > rather than a defect in its implementation.
 >
+> **6. The shared tier itself is built on the LIVE clock.** `excludeTestServices: true` makes
+> the framework build the `shared` Layer bare, and the per-Scenario `TestEnv` is provided
+> only around each Scenario's body (note 3), so a shared Layer that forks a fiber using
+> `Effect.sleep` or reads `Clock` at build time runs on wall-clock time. That is a
+> consequence of building it once, before any Scenario's own simulated clock exists, and
+> it is accepted: a per-Scenario `TestClock` cannot drive a resource shared by every
+> Scenario. BEH-EC-007 states it as part of the requirement.
+>
+> **7. The per-Scenario tier may be built FROM the shared tier (F-18).** The object form's
+> `perScenario` is `Layer<RScenario, E2, RShared>`, not `Layer<RScenario, E2, never>`: the
+> shared tier is already ambient around every Scenario's `Effect.provide(perScenario)`, so a
+> per-Scenario World over a shared Database is expressible without rebuilding the Database
+> per Scenario, which the `never` pin had forced. A `perScenario` input neither tier provides
+> is still rejected — by overload resolution rather than by name, and BEH-EC-007 says so.
+>
+> **8. Note 2 is reversed (2026-09-02, F-09): the NAMED call form is now the mechanism.**
+> `VitestTestApi.ts`'s shared adapter opens the Feature's own block through
+> `layer(sharedTier, options)(feature.name, callback)`. Note 2's objection — a second
+> Feature-named block — does not arise, because the adapter hands `Runner.ts`'s single
+> top-level `describe` call to the named form instead of to vitest's `describe`: the
+> block the named form opens IS the Feature block. What the named form buys, and the
+> one-argument form could not: `beforeAll(build)` and `afterAll(closeScope)` land on the
+> Feature's block, so the tier is released when the Feature ends rather than when the
+> file does (BEH-EC-007's first correction recorded that divergence; its latest
+> correction records the fix), and a `memoMap` made by the composition root is passed
+> in so a hook registered on the same block can reach the identical memoised build.
+> Measured against the installed build: `Feature > Rule > Scenario`, one Feature-named
+> level, release before the next sibling suite.
+>
+> **9. Note 8 is narrowed (2026-09-02, F-24): the Feature block is the library's own `describe`, and the one-argument form is called INSIDE it.** The named form cannot carry suite options, and BEH-EC-002 now requires every emitted block to be `shuffle: false` so Scenarios run in document order under `--sequence.shuffle`. Calling `layer(sharedTier, options)(callback)` inside the Feature's own `describe` factory lands the framework's hooks on that block exactly as the named form did — with one measured difference: the one-argument form closes its scope from the LAST block test's `onTestFinished`, before any `afterAll`, so the adapter holds one extra memo-map reference in a `beforeAll` and releases it in an `afterAll` registered before the framework's, which under `sequence.hooks: "stack"` runs last. The AfterAllScenarios teardown therefore still reaches the memoised build (`emission.test.ts`'s "not a rebuild" observer; `verify-shared-layer-once.sh`).
+>
+> **8. Once-per-Feature hooks are typed by the shared tier alone (2026-09-02, F-10).**
+> `BeforeAllScenarios` and `AfterAllScenarios` used to be `HookRegistrar<ROut>` — the union of
+> both tiers — while the runner provided them the per-Scenario tier: a private build no
+> Scenario ever read, so a hook seeding a `World` there silently seeded nothing. They are now
+> `HookRegistrar<RShared>` (`never` on the plain-Layer form) and are provided nothing by the
+> runner: on the shared path the tier is ambient, on the plain path there is nothing to see.
+> A once-hook reaching for a per-Scenario service is rejected by name
+> (`scripts/verify-tsgo-gate.sh` assertion 11b). This is the typed statement of note 5's
+> spirit: a resource shared by every Scenario cannot be driven by something fresh per Scenario.
+>
 > **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
 > claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
 > hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted

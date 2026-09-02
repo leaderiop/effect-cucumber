@@ -26,11 +26,10 @@ material, not a compiled example._
 > **See:** [ADR-EC-010](../decisions/010-rule-and-scenario-scoped-extra-layers.md)
 
 ```ts
-export const Rule: <R2, E2>(
-  name: string,
-  extraLayer: Layer.Layer<R2, E2, any>,
-  define: (dsl: RuleDsl<R | R2>) => void
-) => void
+export interface RuleRegistrar<R> {
+  (name: string, define: (dsl: RuleDsl<R>) => void): void
+  <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: RuleDsl<R | R2>) => void): void
+}
 ```
 
 ```
@@ -39,6 +38,21 @@ REQUIREMENT: A service contributed by extraLayer MUST be usable by a step
              outside this Rule (at the Feature's top level, or inside a
              different Rule) that attempts to use that service MUST fail to
              compile.
+
+             The extra Layer is OPTIONAL: Rule(name, define) declares a Rule
+             whose Scenarios see the ambient Layer unchanged, exactly as the
+             two-argument Scenario(name, define) form does. A Rule declared
+             that way contributes no services of its own.
+```
+
+```
+REQUIREMENT: A Rule(...) container registered under a name the Feature does
+             not contain MUST produce one UnknownContainerWarning naming the
+             file, the name written and the Rules the Feature does contain;
+             its steps, Background and hooks are inert and the warning is the
+             only signal. Scenarios registered inside such a Rule produce no
+             warning of their own — the Rule's covers them. Asserted by
+             packages/vitest/test/describeFeature.test.ts.
 ```
 
 ## BEH-EC-010: Scenario Outline Examples are typed for free
@@ -57,7 +71,10 @@ regular step.
 REQUIREMENT: A Scenario Outline row value referenced from inside a step's
              cucumber-expression pattern MUST be coerced to that pattern's
              declared type (e.g. {int}, {float}) with no separate decoding
-             step required from the step author.
+             step required from the step author — at run time by the
+             cucumber-expression transform, and at compile time by
+             StepParams<P> (BEH-EC-003), so the body's parameter is `number`
+             without an annotation.
 ```
 
 ## BEH-EC-011: Cross-step state lives in World, never a closure
@@ -102,14 +119,10 @@ what still does not resolve, so the `TestClock` guarantee it sits above is no lo
 association.
 
 ```typescript
-// Three lines below are still pre-implementation; everything else in this example corresponds to a
+// Two lines below are still pre-implementation; everything else in this example corresponds to a
 // real export and to behaviour that ships.
-//   1. `loadFeature` is NOT exported by @effect-cucumber/vitest — ADR-EC-024's wrapped,
-//      ManagedRuntime-backed version is the one export this package is still missing. Today a caller
-//      reaches @effect-cucumber/gherkin's own Effect-returning `loadFeature` and provides its
-//      FileSystem and ParameterTypeStore requirements as Layers (BEH-EC-001).
-//   2. `expect` is used in two step bodies and imported nowhere.
-//   3. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
+//   1. `expect` is used in two step bodies and imported nowhere.
+//   2. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
 //      imports, and `effect/testing` has no barrel at all — `TestClock` lives at
 //      `effect/testing/TestClock`.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
@@ -277,7 +290,9 @@ reads. This section is the normative source for all four, and stands to BEH-EC-0
 BEH-EC-017 stands to BEH-EC-006.
 
 ```
-REQUIREMENT: BOTH extra-Layer forms exist and share one mechanism.
+REQUIREMENT: BOTH extra-Layer forms exist and share one mechanism, and
+             BOTH containers also accept the two-argument (name, define)
+             form, which merges nothing onto the ambient Layer.
              Rule(name, extraLayer, define) and
              Scenario(name, extraLayer, define) each MUST combine extraLayer
              with whatever Layer was ambient AT THAT CALL SITE via
@@ -389,6 +404,13 @@ REQUIREMENT: A Scenario Outline row's emitted test title is that row's own
              is expressly rejected: a filterable title is one whose FORM is
              predictable, and one an author can `-t` against by grepping any
              column value directly.
+
+             Two rows whose cells are byte-identical render the same suffix.
+             The second and every later occurrence of a title within one
+             Feature therefore gets ` #2`, ` #3`, ... appended, in document
+             order; the first occurrence is left as written. Two emitted tests
+             never share a title. Asserted by
+             `packages/vitest/test/OutlineTitle.test.ts`.
 ```
 
 ```

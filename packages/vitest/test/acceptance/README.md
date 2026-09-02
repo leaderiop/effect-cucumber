@@ -23,7 +23,7 @@ in prose satisfies; check 5 matches the §5 TABLE and nothing else. Check 5 also
 one-Scenario-per-id rule. See that script's own comment above check 5 for the three failures check 4 is structurally
 unable to see.
 
-The ids are permanent. They are allocated contiguously, in the order `.planning/REQUIREMENTS.md` writes the
+The ids are permanent. They are allocated contiguously, in the order the requirements list archived on the `planning-archive` branch writes the
 requirements, and are never renumbered and never reused (AGENTS.md §6,
 `spec/process/requirement-id-scheme.md`).
 
@@ -34,26 +34,21 @@ the include and exclude globs — setting either is the likeliest way to silentl
 file named `<name>.steps.ts` would therefore be collected by nothing: no error, no failing test, just a Feature that
 never runs. The suffix is what makes the file exist as far as the runner is concerned.
 
-## Two deliberate deviations from the worked examples in `spec/behaviors/01`–`03`
+## One deliberate deviation from the worked examples in `spec/behaviors/01`–`03`
 
-Both are conventions for this whole directory, not one-offs, and each acceptance step module restates them in its own
-module doc comment so a reader comparing it to the behavior doc does not read the difference as drift.
+It is a convention for this whole directory, not a one-off, and each acceptance step module restates it in its own
+module doc comment so a reader comparing it to the behavior doc does not read the difference as drift. `loadFeature`
+itself is the real `@effect-cucumber/vitest` wrapper (ADR-EC-024), reached the same way.
 
-1. **`loadFeature` comes from `@effect-cucumber/gherkin`, not from `@effect-cucumber/vitest`.** The worked examples open
-   with `import { describeFeature, loadFeature } from "@effect-cucumber/vitest"`. That `loadFeature` is ADR-EC-024's
-   `ManagedRuntime`-backed wrapper and is not exported — `spec/behaviors/03`'s own caveat block calls it the one export
-   the package is still missing. Phase 11 adds no public API, so these files reach the gherkin package's
-   Effect-returning `loadFeature` and provide `NodeFileSystem.layer` plus `ParameterTypeStore` themselves, which is
-   exactly what that caveat block says a caller does today.
-2. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`, not from the package barrel.**
+1. **`describeFeature` is imported by relative path from `../../src/describeFeature.ts`, not from the package barrel.**
    A real consumer writes `import { describeFeature } from "@effect-cucumber/vitest"`. This suite lives inside the
    package it consumes, and oxlint's `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`,
    so a relative import of `index.ts` fails `pnpm lint`. The module object reached is the same one the barrel
    re-exports.
 
-A related consequence: a path-based `loadFeature` must be awaited with a genuine top-level `await`, never
-`Effect.runSync`. `NodeFileSystem.readFileString` suspends internally and `runSync` over it throws `AsyncFiberError` —
-reproduced against the real package, not assumed.
+A related consequence: `loadFeature` returns a Promise and is awaited with a genuine top-level `await`. The gherkin
+package's Effect underneath it cannot be `Effect.runSync`'d either: `NodeFileSystem.readFileString` suspends internally
+and `runSync` over it throws `AsyncFiberError` — reproduced against the real package, not assumed.
 
 ## These `.feature` files are byte-exact and NOT formatted
 
@@ -64,7 +59,7 @@ the gherkin corpus.
 ## Every cross-step value lives in a `Ref` obtained from a Layer-provided service
 
 Every value one step writes for a later step in the same Scenario goes through a `Ref` on a `World`-shaped
-`Context.Service` (RUN-06, INV-EC-006, ADR-EC-009). No `let`, no `var`, and **no module-scope mutable array, object or
+`Context.Service` (INV-EC-006, ADR-EC-009). No `let`, no `var`, and **no module-scope mutable array, object or
 counter standing in for one** — the module-scope escape hatch is closed on purpose. A module-scope holder satisfies the
 letter of the no-`let` rule while defeating its entire intent, and it is additionally unable to observe per-Scenario
 Layer freshness: one array is one array however many times the Layer was built. `scripts/verify-acceptance-ref-state.sh`
@@ -76,7 +71,7 @@ INV-EC-003's guarantee holds for step bodies free of `any`. One `any` in a step 
 disables that guarantee for that step — inside the suite whose entire job is to prove the guarantee. Nothing here may
 introduce one to make something compile. `scripts/verify-acceptance-no-any.sh` enforces it, and because that gate counts
 a standalone token, an acceptance step's Gherkin text and a `.steps.test.ts` string literal must avoid the bare English
-word as a standalone token too — a rule this repo has now hit three times (STATE.md 03-04, 10-01, 10-02): a grep-based
+word as a standalone token too — a rule this repo has hit three times before: a grep-based
 criterion that forbids a literal also forbids explaining it.
 
 ## Every pair carries its own mutation record
@@ -104,7 +99,7 @@ The minimum set for a new pair is the analogue of mutations C, D and E recorded 
 This directory's most useful measured finding, and the reason the minimum mutation set above starts at C: `pnpm test`
 exiting 0 does **not** prove an acceptance pair ran. Mutation A on the first pair pointed the config's `gherkinTags`
 glob at a pattern matching no file, leaving every acceptance tag undeclared — and the suite stayed green, 777 passed,
-exit 0, because `describeFeature`'s D-08 path catches the collection-time throw and re-emits each Scenario untagged
+exit 0, because `describeFeature`'s undeclared-tag path (BEH-EC-008) catches the collection-time throw and re-emits each Scenario untagged
 behind a warning. A renamed directory, a `.steps.ts` that should have been `.steps.test.ts`, or a Feature that emits
 nothing all look identical from the outside: a smaller number nobody is watching. Assert how many tests the pair
 produced.

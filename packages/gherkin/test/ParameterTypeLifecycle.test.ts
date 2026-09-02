@@ -1,29 +1,5 @@
 /**
- * MATCH-02 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
- *
- * A custom parameter type declared once as data must resolve in TWO separate `loadFeature` calls
- * in the same process, with no duplicate-registration throw on the second. Every other Phase 3
- * test exercises `ParameterTypes.ts` or `StepMatcher.ts` in isolation against a hand-built
- * registry; this file is the only one that goes through the composition root, which is what makes
- * it the executable form of the criterion rather than a restatement of a unit test.
- *
- * ## This file never writes to the module-level default store
- *
- * `defaultParameterTypeStore` is append-only for the life of the process — there is no `remove`
- * and no `clear`, by design. A definition recorded into it here would be visible to every later
- * test in the same worker, and a second run of the same name would fail with
- * `DuplicateParameterTypeName` for reasons having nothing to do with what that test checks. Every
- * test below that needs a custom type builds its own store with `createParameterTypeStore()` and
- * provides it as a `ParameterTypeStore` Layer via `ParameterTypeStore.layerOf(store)`
- * ([ADR-EC-023](../../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md)
- * — this replaced the old `LoadFeatureOptions.parameterTypes` argument). The one test that
- * touches the default store only READS from it, via a built-in name.
- *
- * ## Imports
- *
- * `../src/*.ts` directly, never `../src/index.ts`: `effect/no-import-from-barrel-package` runs
- * with `checkRelativeIndexImports: true` and fails `pnpm lint` on a relative value-import whose
- * basename is `index.*`.
+ * BEH-EC-015 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"

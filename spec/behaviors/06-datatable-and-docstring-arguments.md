@@ -179,8 +179,10 @@ REQUIREMENT: A step body MUST receive its stepArguments POSITIONALLY, APPENDED
              AND THE ANNOTATION IS UNVERIFIED. Stated as part of the REQUIREMENT
              rather than as a footnote, because "the only place that claim
              exists" reads as though something checks it. Nothing does, in either
-             direction. StepRegistrar infers Params FROM THE BODY and never
-             compares it to StepArgs<pattern>, so:
+             direction. StepRegistrar types a body's parameters as
+             StepParams<P> = [...StepArgs<P, Record<string, any>>, ...ReadonlyArray<any>]:
+             the pattern's holes ARE checked, and the trailing parameter sits
+             in the unchecked tail, so:
 
                Given("the cart contains:", function*(table: string) { ... })
 
@@ -191,12 +193,11 @@ REQUIREMENT: A step body MUST receive its stepArguments POSITIONALLY, APPENDED
              frame that names the step pattern but not the annotation — not a
              compile error.
 
-             This is not an oversight being excused. Constraining Params to
-             StepArgs<P> breaks generator inference, which is why the `any` in
-             that constraint is the one `any` packages/vitest permits in a body's
-             declared type at all; see Dsl.ts note (d). It is the same hole
-             parsing-and-matching.steps.test.ts's mutation C already records for
-             PATTERN arguments — "a pattern and a body can disagree with each
+             This is not an oversight being excused. A pattern literal cannot
+             express a table's presence, so no tuple type can place it; see
+             Dsl.ts note (d). It is the same hole
+             parsing-and-matching.steps.test.ts's mutation C records for the
+             RUNTIME shape of an argument — "a pattern and a body can disagree with each
              other and only a runtime assertion notices" — and the table and doc
              string arms inherit it.
 

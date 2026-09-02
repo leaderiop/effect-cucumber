@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
 #
-# Asserts that the VENDORED Effect oxlint rules are actually LOADED and are
-# BUILD-BREAKING — i.e. that AGENTS.md §3 (submodule namespace imports) is a
-# mechanical gate rather than prose.
+# Asserts the vendored Effect oxlint rules are LOADED and build-breaking, so
+# AGENTS.md §3 (submodule namespace imports) is a mechanical gate. `pnpm lint`
+# exiting 0 cannot prove it: an unresolvable jsPlugins specifier produces the same
+# silent, clean run. Positive control: a compliant import lints clean; the negative:
+# a barrel import fails naming effect(no-import-from-barrel-package).
 #
-# METHOD NOTE (do not weaken this):
-#   `pnpm lint` exiting 0 does NOT prove the vendored plugin loaded. A
-#   `jsPlugins` specifier that fails to resolve, a renamed plugin `name`, or a
-#   deleted tools/ directory all produce the same clean, silent, exit-0 run as a
-#   correctly wired one — because the only observable difference is whether a
-#   violation that nobody committed would have been caught. The sole signal that
-#   distinguishes a live rule from a decorative config entry is the EXIT CODE on
-#   a file whose only defect is that rule's violation. That is assertion 2.
-#
-# Usage: bash scripts/verify-oxlint-plugin.sh
-
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -50,8 +41,6 @@ mkdir -p "$PROBE_DIR"
 
 # ---------------------------------------------------------------------------
 # Assertion 1: positive control. A submodule namespace import — the style
-# AGENTS.md §3 mandates — must lint CLEAN. Discriminates a working rule from a
-# config that simply rejects everything.
 # ---------------------------------------------------------------------------
 cat > "$OK_PROBE" <<'EOF'
 import * as Effect from "effect/Effect"
@@ -68,10 +57,6 @@ echo "✓ positive control: submodule namespace import lints clean"
 
 # ---------------------------------------------------------------------------
 # Assertion 2: THE GATE. A barrel import fails the lint, by name.
-#
-# If the jsPlugins specifier stops resolving, oxlint reports nothing here and
-# exits 0 — which is exactly the silent-decorative failure this script exists
-# to catch.
 # ---------------------------------------------------------------------------
 cat > "$BAD_PROBE" <<'EOF'
 import { Effect } from "effect"

@@ -14,6 +14,9 @@ changing, then go read that document — not this one.
 | Engineering rules (imports, tests, spec discipline)  | `AGENTS.md`                                                                                                                                                 |
 | Package/workspace layout                             | `spec/overview.md` § Packages                                                                                                                               |
 
+The GSD planning record that produced v1.0 (research, per-phase plans and summaries) is archived on
+the `planning-archive` branch and is not tracked on `main`; `spec/` is the only normative record.
+
 After any spec change, run `bash spec/scripts/verify-traceability.sh` before
 committing — it catches orphaned files, untraced invariants/decisions, and
 broken relative links.

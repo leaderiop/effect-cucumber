@@ -77,7 +77,13 @@ early, and it is harder to notice because nothing about it looks like a claim.
 
 ## 5. Tests
 
-`@effect/vitest`: `it.effect`, `it.layer`, `TestClock`. Every behavior in
+Tests use `@effect/vitest`. The convention, as practised: a plain `it` for a pure
+function, `it.effect` where an Effect runs, `TestClock` where time matters, and
+`assert` (never `expect`) inside an Effect-returning body. No `it.layer` anywhere;
+`describeFeature`'s own shared path is what `layer(...)` is for. Every real-run
+block in a test file must survive `pnpm test:shuffle` — an observer `describe`
+that reads what an earlier suite recorded sits in the same unshuffled block as
+that suite, never as a later sibling. Every behavior in
 `spec/behaviors/` gets tests; every `.feature` file used in the library's own
 test suite is tagged `@REQ-EC-NNN` so acceptance scenarios join the
 traceability chain (see `spec/traceability.md` §5). One exception, enforced in

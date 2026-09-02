@@ -87,19 +87,29 @@ REQUIREMENT: After, AfterStep and AfterAllScenarios each run WHETHER the thing
                steps failed, or whether any earlier After/AfterStep hook
                failed.
 
+               AfterAllScenarios is NOT a test node. It is the Feature
+               block's own teardown hook (the runner's afterAll), so a run
+               narrowed with -t or --tagsFilter to a single Scenario of the
+               Feature still runs it once, after that Scenario — test
+               selection cannot skip it (F-06). A failing AfterAllScenarios
+               reports as a failure of the Feature's block, not of a node.
+
                ONE CARVE-OUT applies to AfterAllScenarios, and only to the
                case where NO Scenario was attempted at all — every Scenario
-               in the Feature skipped (@skip) or removed by a registration
-               filter (includeTags/excludeTags), or the Feature declaring no
-               Scenarios in the first place. In that case the node MUST NOT
-               be emitted: BeforeAllScenarios is reachable only from inside
-               a Scenario's body, so it structurally CANNOT have run, and an
-               AfterAllScenarios node would tear down resources nothing ever
-               set up. This carves the VACUOUS case out of the guarantee; it
-               does not weaken it. All three "regardless of" clauses above
-               are unchanged, because what they are about is a FAILURE being
+               in the Feature skipped (@skip), removed by a registration
+               filter (includeTags/excludeTags) or deselected by a CLI
+               filter, or the Feature declaring no Scenarios in the first
+               place. In that case the hook's body MUST do nothing:
+               BeforeAllScenarios is reachable only from inside a Scenario's
+               body, so it structurally CANNOT have run, and a teardown would
+               release resources nothing ever set up. The decision is made
+               AT RUN TIME, from whether any Scenario's body was invoked,
+               because under a CLI filter it cannot be made at registration.
+               This carves the VACUOUS case out of the guarantee; it does not
+               weaken it. All three "regardless of" clauses above are
+               unchanged, because what they are about is a FAILURE being
                unable to stop teardown — and a failing Scenario was still
-               attempted, so it still emits the node.
+               attempted, so it still tears down.
 
              A guaranteed hook that itself fails does NOT mask or replace the
              failure it was guarding — both reach the reported failure,
@@ -113,6 +123,33 @@ REQUIREMENT: BeforeAllScenarios runs AT MOST ONCE per Feature, shared across
              BeforeAllScenarios fails, that SAME failure is reported by EVERY
              Scenario in the Feature individually, not by a single
              Feature-level failure with zero Scenario results.
+
+             That SAME outcome includes an interruption: BeforeAllScenarios is
+             a once-cell whose first exit — success, failure, or the runner's
+             per-test timeout interrupting it — is what every later Scenario
+             awaits. It is NOT retried, because a retry would make a later
+             Scenario's result depend on how far the first attempt got and
+             could re-run half-applied side effects. Consequences stated so
+             nobody discovers them the hard way (F-21): BeforeAllScenarios
+             runs inside the FIRST attempted Scenario's timeout budget, so a
+             slow setup needs a larger testTimeout; and a Scenario-level
+             retry cannot turn a failed setup into a passing one.
+
+             Concurrent sequencing is UNSUPPORTED: a Feature emitted under
+             vitest's `sequence.concurrent: true`, or inside a consumer's
+             `describe.concurrent`, may run two Scenarios' fibers into the
+             once-cell together and the ordering guarantees in this file
+             do not hold. The runner cannot detect that setting and does
+             not try to; it is a documented precondition.
+
+             BeforeAllScenarios and AfterAllScenarios see the SHARED tier and
+             nothing else (F-10). They are typed HookRegistrar<RShared> —
+             `RShared` being the `shared` field's output, and `never` on the
+             plain-Layer form of describeFeature — so a once-per-Feature hook
+             that reaches for a per-Scenario service is a compile error by
+             name (effect(missingEffectContext)), and the runner provides no
+             per-Scenario build to either hook. A hook that must seed state
+             every Scenario reads puts that state in `shared`.
 ```
 
 ```
@@ -158,37 +195,43 @@ class Log extends Context.Service<Log, { readonly entries: Ref.Ref<ReadonlyArray
 
 const feature = await loadFeature("./checkout.feature")
 
-describeFeature(feature, Log.layer, ({ After, AfterAllScenarios, Before, BeforeAllScenarios, Scenario }) => {
-  // Runs once for the whole Feature, ahead of every Scenario's own Before.
-  BeforeAllScenarios(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "beforeAll"])
-  })
-
-  // Gates this Scenario's steps: if this fails, no step below runs, but After still does.
-  Before(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "before"])
-  })
-
-  // Guaranteed regardless of whether this Scenario's steps succeeded or failed.
-  After(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "after"])
-  })
-
-  // Runs once, after every Scenario in the Feature, even if BeforeAllScenarios or a Scenario failed.
-  AfterAllScenarios(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "afterAll"])
-  })
-
-  Scenario("Adding an item", ({ Then, When }) => {
-    When("I add an item", function*() {
-      yield* Ref.update((yield* Log).entries, (log) => [...log, "when"])
+// `Log` lives in the SHARED tier: the two once-per-Feature hooks below see that tier and nothing
+// else, so a Log in a plain (per-Scenario) Layer would be a compile error at `BeforeAllScenarios`.
+describeFeature(
+  feature,
+  { shared: Log.layer, perScenario: Layer.empty },
+  ({ After, AfterAllScenarios, Before, BeforeAllScenarios, Scenario }) => {
+    // Runs once for the whole Feature, ahead of every Scenario's own Before.
+    BeforeAllScenarios(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "beforeAll"])
     })
 
-    Then("the cart has 1 item", function*() {
-      // ...assertion against Log's accumulated entries
+    // Gates this Scenario's steps: if this fails, no step below runs, but After still does.
+    Before(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "before"])
     })
-  })
-})
+
+    // Guaranteed regardless of whether this Scenario's steps succeeded or failed.
+    After(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "after"])
+    })
+
+    // Runs once, after every Scenario in the Feature, even if BeforeAllScenarios or a Scenario failed.
+    AfterAllScenarios(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "afterAll"])
+    })
+
+    Scenario("Adding an item", ({ Then, When }) => {
+      When("I add an item", function*() {
+        yield* Ref.update((yield* Log).entries, (log) => [...log, "when"])
+      })
+
+      Then("the cart has 1 item", function*() {
+        // ...assertion against Log's accumulated entries
+      })
+    })
+  }
+)
 ```
 
 ---

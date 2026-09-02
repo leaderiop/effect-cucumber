@@ -1,14 +1,5 @@
 /**
  * Pins the verified behavior of `@cucumber/gherkin@42.0.1` on every fixture in `./fixtures`.
- *
- * This file imports NOTHING from `../src`. It talks to the upstream parser and compiler
- * directly, on purpose: when it fails, a dependency changed its semantics. That separation is
- * what lets a later failure in `Validate.test.ts` be attributed to this library's own code
- * rather than to a bump of `@cucumber/gherkin`.
- *
- * Error classes are discriminated with `instanceof Errors.X` and never with `.name` — every one
- * of them reports `.name === "Error"`, so a `.name` switch silently matches nothing. That fact
- * is itself asserted below, so the day upstream sets `.name` properly we find out here.
  */
 import { AstBuilder, compile, Errors, GherkinClassicTokenMatcher, Parser } from "@cucumber/gherkin"
 import {
@@ -544,8 +535,6 @@ describe("upstream @cucumber/gherkin behavior", () => {
     })
 
     it("a PickleTableRow carries no location", () => {
-      // Why Phase 4's decode errors cannot name a source line per row. If a `@cucumber/messages`
-      // minor ever adds one, this is where we find out that they can start carrying it.
       expect(Object.keys(firstRowOf(tableOf(argumentOf("datatable-two-column.feature"))))).toEqual(["cells"])
     })
   })

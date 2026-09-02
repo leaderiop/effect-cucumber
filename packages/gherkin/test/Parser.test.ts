@@ -1,24 +1,14 @@
 /**
  * One test per Group B row of the fixture table, each asserting the DISTINCT `reason` tag its
  * failure carries.
- *
- * Assertions target `err.reason`, never message text. That is the entire point of one reason
- * tag per fixture row: it makes "a distinct, named `LoadFeatureError`" a mechanical check
- * rather than a prose claim, and it survives any rewording of the messages. The single
- * exception is the collapsed-consequence count, which IS the behavior under test there.
- *
- * `readFeatureSource` requires `FileSystem.FileSystem` as of the real `@effect/platform-node`
- * migration, so every helper that touches it is async now and provides `NodeFileSystem.layer` —
- * see `captureError`/`parseFixture` below.
- *
- * Imports are direct module paths. `effect/no-import-from-barrel-package` flags any relative
- * value-import whose basename is `index.*`, so nothing here reaches through the barrel.
  */
 import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import { IdGenerator } from "@cucumber/messages"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
 import * as Effect from "effect/Effect"
+import * as FileSystem from "effect/FileSystem"
 import * as Option from "effect/Option"
+import * as PlatformError from "effect/PlatformError"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it, vi } from "vitest"
 import { LoadFeatureError } from "../src/Errors.ts"
@@ -67,11 +57,40 @@ describe("readFeatureSource", () => {
     expect(error.uri).toBe(missing)
     expect(error.line).toEqual(Option.none())
     expect(error.message).toContain(missing)
-    // `.cause` is `Option<PlatformError>` now, not the raw Node error directly: the real
-    // ENOENT details live one level deeper, at `.cause.cause` — confirmed by reproduction
-    // against the real `NodeFileSystem`, not assumed.
-    const platformError = Option.getOrThrow(error.cause) as { readonly cause?: { readonly code?: unknown } }
+    // `.cause` is the PlatformError, not the raw Node error directly: the real ENOENT details
+    // live one level deeper, at `.cause.cause` — confirmed by reproduction against the real
+    // `NodeFileSystem`, not assumed.
+    const platformError = error.cause as { readonly cause?: { readonly code?: unknown } }
     expect(platformError.cause?.code).toBe("ENOENT")
+  })
+
+  it("reports a path that exists but is not a readable file as ReadFailed, not MissingFile", async () => {
+    const directory = fixturePath("")
+    const error = await captureError(() => readSource(directory))
+
+    expect(error.reason).toBe("ReadFailed")
+    expect(error.uri).toBe(directory)
+    expect(error.cause).toBeDefined()
+  })
+
+  it("reports a permission failure as PermissionDenied, discriminating on the PlatformError's own tag", async () => {
+    const denied = FileSystem.layerNoop({
+      readFileString: () =>
+        Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method: "readFileString",
+            description: "EACCES: permission denied"
+          })
+        )
+    })
+    const error = await captureError(() =>
+      Effect.runPromise(readFeatureSource("/locked/feature.feature").pipe(Effect.provide(denied)))
+    )
+
+    expect(error.reason).toBe("PermissionDenied")
+    expect(error.message).toContain("permission denied")
   })
 })
 
@@ -93,7 +112,15 @@ describe("parseDocument", () => {
     expect(error.reason).toBe("UnknownDialect")
     expect(error.reason).not.toBe("ParseFailed")
     expect(error.line).toEqual(Option.some(1))
-    expect(Option.isSome(error.cause) && error.cause.value instanceof Errors.CompositeParserException).toBe(true)
+    expect(error.cause instanceof Errors.CompositeParserException).toBe(true)
+  })
+
+  it("F18 rejects a prototype-key dialect header as UnknownDialect rather than a TypeError-backed ParseFailed", async () => {
+    const error = await failureOf("unknown-dialect-proto.feature")
+
+    expect(error.reason).toBe("UnknownDialect")
+    expect(error.line).toEqual(Option.some(1))
+    expect(error.message).toContain("constructor")
   })
 
   it("F10 wraps an inconsistent DataTable cell count as ParseFailed", async () => {
@@ -111,13 +138,6 @@ describe("parseDocument", () => {
   })
 
   it("F20 wraps a feature-level Background placed after a Rule as ParseFailed", async () => {
-    // This fixture pins the REFUTATION of PITFALLS.md Pitfall 30. Pitfall 30 claims Gherkin
-    // permits a feature-level `Background:` after a `Rule:` with silently different semantics,
-    // and recommends a walk-time AST check. Verified false: the grammar
-    // (`Feature := header Background? ScenarioDefinition* Rule*`) forbids it outright and the
-    // parser throws. That walk-time check is therefore dead work and is deliberately not
-    // implemented anywhere in this phase; this test is what guards the assumption if upstream
-    // ever relaxes the grammar.
     const error = await failureOf("parse-failed-background-after-rule.feature")
 
     expect(error.reason).toBe("ParseFailed")
@@ -129,7 +149,7 @@ describe("parseDocument", () => {
 
     expect(error.reason).toBe("NoFeature")
     expect(error.line).toEqual(Option.none())
-    expect(error.cause).toEqual(Option.none())
+    expect(error.cause).toBeUndefined()
   })
 
   it("no raw gherkin or Node exception escapes for any Group B fixture", async () => {
@@ -203,7 +223,7 @@ describe("parseDocument", () => {
       expect(error.uri).toBe("bare.feature")
       // The bare shape carries its own `.location`, unlike the composite.
       expect(error.line).toEqual(Option.fromUndefinedOr(bareLine))
-      expect(Option.isSome(error.cause) && error.cause.value).toBe(bare)
+      expect(error.cause).toBe(bare)
     } finally {
       spy.mockRestore()
     }

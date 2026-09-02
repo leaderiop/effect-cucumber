@@ -52,12 +52,12 @@ whether upstream has widened its TypeScript peer range first.
 
 ## Rule relevance to this project
 
-| Rule                            | Relevance                                                                                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `no-import-from-barrel-package` | **High.** Machine-enforces AGENTS.md §3 (`import * as Effect from "effect/Effect"`, never from the `effect` barrel). This was previously an unenforced written convention.  |
-| `no-js-extension-imports`       | **High**, conditional on adopting `rewriteRelativeImportExtensions` (recommended in `.planning/research/STACK.md` §5.3). Enforces `./x.ts` import specifiers over `./x.js`. |
-| `no-opaque-instance-fields`     | **Medium.** Applies to `Schema.Opaque` classes; relevant if ADR-EC-008's Schema decoding uses them.                                                                         |
-| `no-bigint-literals`            | **Low.** Effect supports older JS targets; effect-cucumber targets ES2022. Harmless to keep enabled.                                                                        |
+| Rule                            | Relevance                                                                                                                                                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-import-from-barrel-package` | **High.** Machine-enforces AGENTS.md §3 (`import * as Effect from "effect/Effect"`, never from the `effect` barrel). This was previously an unenforced written convention.                                  |
+| `no-js-extension-imports`       | **High**, conditional on adopting `rewriteRelativeImportExtensions` (recommended in the stack research archived on the `planning-archive` branch, §5.3). Enforces `./x.ts` import specifiers over `./x.js`. |
+| `no-opaque-instance-fields`     | **Medium.** Applies to `Schema.Opaque` classes; relevant if ADR-EC-008's Schema decoding uses them.                                                                                                         |
+| `no-bigint-literals`            | **Low.** Effect supports older JS targets; effect-cucumber targets ES2022. Harmless to keep enabled.                                                                                                        |
 
 ## Runtime dependency
 

@@ -15,7 +15,7 @@ scans this subdirectory's `.feature` files too (see the third observation below)
 ## Why these five requirements cannot be ordinary acceptance Scenarios
 
 All five are **fails-loudly** behaviors, so a Scenario demonstrating one directly would be a RED test rather than a green
-one. That is 11-CONTEXT.md **D-02**, and its answer is `scripts/verify-tsgo-gate.sh`'s satisfied/starved flip pair
+one. That is a deliberate decision, and its answer is `scripts/verify-tsgo-gate.sh`'s satisfied/starved flip pair
 (lines 139-201) lifted one level up, from compile time to run time: the deliberately-failing artifact is committed and
 carries the tag, and a wrapper drives it and asserts the specific named failure.
 
@@ -25,11 +25,11 @@ run instead of once at authoring time.
 
 | Fixture                          | Tag           | v1 requirement | What the wrapper asserts                                                                    |
 | -------------------------------- | ------------- | -------------- | ------------------------------------------------------------------------------------------- |
-| `background-placeholder.feature` | `@REQ-EC-003` | PARSE-03       | `LoadFeatureError` with `reason: "UninterpolatedPlaceholder"`, citing this file and a line  |
-| `unmatched-step.feature`         | `@REQ-EC-007` | MATCH-03       | `StepMatchError` with `reason: "UndefinedStep"`                                             |
-| `ambiguous-step.feature`         | `@REQ-EC-008` | MATCH-04       | `StepMatchError` with `reason: "AmbiguousStep"`, naming EVERY matching pattern              |
-| `unused-pattern.feature`         | `@REQ-EC-009` | MATCH-05       | exactly one `UnusedStepDefinitionWarning` on the plan, and NO error — the Feature is sound  |
-| `after-on-failure.feature`       | `@REQ-EC-018` | RUN-02         | the `After` hook ran, the third step did not, and the second step's own error is not masked |
+| `background-placeholder.feature` | `@REQ-EC-003` | BEH-EC-014     | `LoadFeatureError` with `reason: "UninterpolatedPlaceholder"`, citing this file and a line  |
+| `unmatched-step.feature`         | `@REQ-EC-007` | BEH-EC-013     | `StepMatchError` with `reason: "UndefinedStep"`                                             |
+| `ambiguous-step.feature`         | `@REQ-EC-008` | BEH-EC-013     | `StepMatchError` with `reason: "AmbiguousStep"`, naming EVERY matching pattern              |
+| `unused-pattern.feature`         | `@REQ-EC-009` | BEH-EC-013     | exactly one `UnusedStepDefinitionWarning` on the plan, and NO error — the Feature is sound  |
+| `after-on-failure.feature`       | `@REQ-EC-018` | BEH-EC-006     | the `After` hook ran, the third step did not, and the second step's own error is not masked |
 
 Each file is named for the reason it fails, so a failing wrapper assertion names the defect.
 
@@ -72,7 +72,7 @@ No glob had to be fixed, and no directory was flattened.
 
 ### Observation 3 needed a measurement the plan did not anticipate
 
-11-06-PLAN.md predicted that adding these five tags would turn check 4 **RED** until their `spec/traceability.md` §5
+It was predicted that adding these five tags would turn check 4 **RED** until their `spec/traceability.md` §5
 rows landed, and that the red gate would itself be the proof that the repo-wide grep reaches this subdirectory. It did
 not go red. Check 4's second half is `grep -q "REQ-EC-NNN" spec/traceability.md` over the WHOLE file, and §5's preamble
 already listed all five ids longhand in its not-yet-carried sentence — so a tag merely **mentioned** in prose satisfies

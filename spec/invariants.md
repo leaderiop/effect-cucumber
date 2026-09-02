@@ -68,21 +68,23 @@ declared `shared`" — is built too, as of Phase 10 (RUN-03/RUN-04, ADR-EC-018).
 
 **Mechanism.** On the `shared` path the two tiers are provided in two different
 places and never merged. The shared tier is provided by `@effect/vitest`'s
-`layer(...)` at the BLOCK level, around every node whose BODY needs it — not
-around every test node the Feature emits. The library's own always-passing
-unused-step-definition nodes are deliberately routed off that path: the framework's
-shared-block test constructor builds the memoised Layer before running ANY body,
-including one that does nothing at all, so a node whose body needs neither tier is
-instead routed through the module-level, Layer-free constructor the default path
-already uses — the choice is made per node by a routing field on the library's own
-emission options, read only at the composition root. The consequence a caller can
-rely on: a Feature whose Scenarios are all removed by a registration-time tag
-filter never builds its shared tier, so the tier stays as deferred as asking for it
-implies.
+`layer(...)` in its NAMED form, which opens the Feature's own `describe` block and
+builds the tier in that block's `beforeAll`, releasing it in that block's
+`afterAll` — so the tier lives exactly as long as the Feature's block (F-09), and
+is ambient on every node emitted inside it whose BODY needs it. The library's own
+always-passing unused-step-definition nodes are deliberately routed off that path
+through the module-level, Layer-free constructor the default path already uses —
+the choice is made per node by a routing field on the library's own emission
+options, read only at the composition root — and a Feature with no runnable
+Scenario at all is routed through the plain adapter before any block opens. The
+consequence a caller can rely on: a Feature whose Scenarios are all removed by a
+registration-time tag filter never builds its shared tier, so the tier stays as
+deferred as asking for it implies.
 
-Wherever a node's body DOES need the shared tier — every Scenario, and the
-Feature's own teardown node — the tier is NOT re-provided inside any Scenario
-Effect, so it is built once and every such node reaches that one build. The
+Wherever a body DOES need the shared tier — every Scenario, and the Feature's
+own `AfterAllScenarios` teardown hook, which reaches the identical build through
+the block's memo map — the tier is NOT re-provided inside any Scenario Effect, so
+it is built once and every such body reaches that one build. The
 per-Scenario tier is still supplied once around each Scenario Effect and is still
 rebuilt on every execution, exactly as it is on the default path.
 `packages/vitest/src/describeFeature.ts` is the one branch point
@@ -122,7 +124,10 @@ structurally cannot show.
 
 "Fresh every Scenario" therefore remains true of the per-Scenario tier on BOTH
 scopes, and is deliberately FALSE of the shared tier, which is the entire point of
-asking for one. What a `shared` Layer never costs a Scenario is its own simulated
+asking for one. The two once-per-Feature hooks are typed by the shared tier alone
+(`FeatureDsl<ROut, RShared>`, F-10) and are handed no per-Scenario build, so
+nothing that runs once per Feature can touch a tier that is fresh every Scenario
+— asserted by `scripts/verify-tsgo-gate.sh`'s once-per-Feature fixture. What a `shared` Layer never costs a Scenario is its own simulated
 clock and its own console: those stay per-Scenario on both paths (BEH-EC-012,
 ADR-EC-018), so opting into shared state is a choice about the caller's own
 services and never silently about the test environment.
@@ -151,7 +156,7 @@ would otherwise declare is erased before the check has anything to check. No
 DSL signature can prevent that, because the erasure happens in the author's own
 body, not at the boundary this invariant guards. Stated here rather than left
 implicit so the invariant claims only what a type system can actually deliver
-(`.planning/research/PITFALLS.md` Pitfall 6). The practical rule: an `any`
+(the pitfalls research archived on the `planning-archive` branch, Pitfall 6). The practical rule: an `any`
 reaching a step body's declared type is a defect in that step, not a permitted
 escape hatch — the compile-gate fixtures under
 `packages/vitest/test/tsgo-gate/` are asserted to contain none. As of Phase 11
@@ -313,7 +318,7 @@ the invariant remains a reviewed convention, and nothing this package ships can
 change that. **LINT-01** — a lint rule flagging a `let`/`var` declared inside a
 DSL callback that a step function closes over — is the mechanism that would
 close that half, and it is deferred to a later milestone: see
-`spec/roadmap.md` § Planned and `.planning/REQUIREMENTS.md` § v2.
+`spec/roadmap.md` § Planned and the v2 backlog archived on the `planning-archive` branch.
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare

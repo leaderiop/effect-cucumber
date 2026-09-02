@@ -95,6 +95,21 @@ REQUIREMENT: A custom parameter type MUST be declared as a plain
                message naming BOTH definition sites, so the caller does not
                have to search for the other one
 
+             A regexp given as a STRING source MUST be compiled once at
+             declaration time and rejected (InvalidParameterTypeRegexp) if it
+             is malformed; upstream stores string sources unparsed, so without
+             this the failure would surface at step-compile time blaming the
+             step author's pattern. A RegExp carrying a flag upstream rejects
+             (g, i, m, y) is rejected the same way.
+
+             One rejection is only knowable at REPLAY time, because it depends
+             on what the fresh registry already holds: a definition with
+             preferForRegexpMatch set whose regexp source coincides with
+             another preferential type's (the built-in {int} among them). It
+             MUST surface from loadFeature / parseFeature as a StepPatternError
+             (InvalidParameterTypeDefinition) naming the parameter type, and
+             MUST NOT be reported as a feature-file ParseFailed.
+
              A transform MUST be synchronous. The matched value is read back
              unwrapped, so an async transform would hand a step body a Promise
              where its declared parameter type says otherwise.
@@ -138,8 +153,9 @@ is what actually spends the newly-available option — but only on HOW a store r
 plain object (`ParameterTypeStoreShape`, `define`/`definitions`/`buildRegistry`, zero `Effect`
 ceremony); `ParameterTypeStore` is a `Context.Service` class that wraps one, giving
 `loadFeature`/`parseFeature` an ambient requirement the same way `FileSystem.FileSystem` already
-was, instead of a hand-passed argument. `defineParameterType`'s own module-scope calling
-convention is unaffected either way — it calls a plain method on a plain store, never an `Effect`.
+was, instead of a hand-passed argument. There is no process-wide store (ADR-EC-023, as amended):
+`ParameterTypeStore.layer(definitions)` is how a caller declares custom types, as a Layer carrying
+a fresh store, and `ParameterTypeStore.Default` builds a fresh built-ins-only store per build.
 
 **Why a built-in name is rejected rather than shadowed.** Allowing a custom type to override
 `{int}` would make the meaning of `{int}` depend on which modules happened to be imported, in which
@@ -159,16 +175,16 @@ export interface ParameterTypeDefinition<T> {
   readonly preferForRegexpMatch: Option.Option<boolean>
 }
 
-export const defineParameterType: <T>(definition: ParameterTypeDefinition<T>) => void
 export const createParameterTypeStore: () => ParameterTypeStoreShape
-export const defaultParameterTypeStore: ParameterTypeStoreShape
-export const buildParameterTypeRegistry: () => ParameterTypeRegistry
 export const builtInParameterTypeNames: ReadonlySet<string>
 
 export class ParameterTypeStore extends Context.Service<ParameterTypeStore, ParameterTypeStoreShape>()(
   "@effect-cucumber/gherkin/ParameterTypeStore"
 ) {
   static readonly layerOf: (store: ParameterTypeStoreShape) => Layer.Layer<ParameterTypeStore>
+  static readonly layer: (
+    definitions: ReadonlyArray<ParameterTypeDefinition<unknown>>
+  ) => Layer.Layer<ParameterTypeStore, StepPatternError>
   static readonly Default: Layer.Layer<ParameterTypeStore>
 }
 
@@ -189,9 +205,10 @@ constructs every one of them explicitly as `Option.some(x)`/`Option.none()`. `Pa
 is `ReturnType<typeof createParameterTypeStore>`, a derived type rather than a hand-written
 interface; it is what both `createParameterTypeStore()` and `ParameterTypeStore` (the ambient
 `Context.Service`, [ADR-EC-023](../decisions/023-parametertypestore-becomes-an-ambient-context-service.md))
-are typed over. `buildParameterTypeRegistry` builds specifically from `defaultParameterTypeStore` —
-a caller using a different store calls that store's own `.buildRegistry()` instead, or reaches it
-ambiently through `loadFeature`/`parseFeature`'s `ParameterTypeStore` requirement.
+are typed over. A registry is built from a store by that store's own `.buildRegistry()`, or
+reached ambiently through `loadFeature`/`parseFeature`'s `ParameterTypeStore` requirement; a rejected
+definition handed to `ParameterTypeStore.layer` fails in the Layer's error channel as a
+`StepPatternError`, never as a throw at module scope.
 
 `ParameterTypeRegistry` is re-exported by the package because `ParsedFeature` surfaces it;
 `CucumberExpression` is the cucumber-expressions library's own type and is reached through
@@ -222,22 +239,15 @@ and a built-in always wins over it — mirroring the runtime rejection above.
 describes; see [BEH-EC-001](./01-steps-and-world.md)'s worked example for that one.
 
 ```typescript
-import {
-  createStepMatcher,
-  defineParameterType,
-  loadFeature,
-  ParameterTypeStore,
-  type StepMatch
-} from "@effect-cucumber/gherkin"
+import { createStepMatcher, loadFeature, ParameterTypeStore, type StepMatch } from "@effect-cucumber/gherkin"
 import { NodeFileSystem } from "@effect/platform-node"
 import { Effect, Layer, Option } from "effect"
 
-// Module scope, and it touches no registry: this appends a record to the default store, which
-// every later loadFeature call replays into its own fresh registry. defineParameterType stays
-// plain and Effect-free by design (ADR-EC-023) even though ParameterTypeStore itself is now a
-// Context.Service — a step-definition author should never need Effect ceremony just to register
-// a custom type.
-defineParameterType({
+// A custom parameter type is data handed to a Layer: ParameterTypeStore.layer builds a fresh
+// store carrying the built-ins plus these definitions, and every loadFeature call the Layer is
+// provided to replays them into its own fresh registry. There is no process-wide store to write
+// into (ADR-EC-023, as amended); a rejected definition fails in the Layer's error channel.
+const parameterTypes = ParameterTypeStore.layer([{
   name: "money",
   regexp: "\\d+",
   // Synchronous, by requirement — the value is handed to the step body unwrapped.
@@ -245,18 +255,14 @@ defineParameterType({
   definedAt: Option.some("checkout.steps.ts"),
   useForSnippets: Option.none(),
   preferForRegexpMatch: Option.none()
-})
+}])
 
-// ParameterTypeStore.Default wraps the SAME defaultParameterTypeStore singleton the
-// defineParameterType call above just wrote into, so this loadFeature call sees that
-// registration — matching FileSystem.FileSystem, no Layer is baked in internally, so it must be
-// provided explicitly here. Layer.mergeAll, not chained .pipe(Effect.provide(a),
-// Effect.provide(b)) calls: @effect/tsgo's multipleEffectProvide diagnostic fails the build on
-// the chained form (ADR-EC-016).
+// Matching FileSystem.FileSystem, no Layer is baked in internally, so the store is provided
+// explicitly here. Layer.mergeAll, not chained .pipe(Effect.provide(a), Effect.provide(b)) calls:
+// @effect/tsgo's multipleEffectProvide diagnostic fails the build on the chained form
+// (ADR-EC-016).
 const feature = await Effect.runPromise(
-  loadFeature("checkout.feature").pipe(
-    Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default))
-  )
+  loadFeature("checkout.feature").pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, parameterTypes)))
 )
 
 // The registry comes off the feature this matcher will be used against, never from a registry

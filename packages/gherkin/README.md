@@ -22,8 +22,9 @@ with the former `options?` argument replaced by an ambient `ParameterTypeStore` 
 [ADR-EC-023](../../spec/decisions/023-parametertypestore-becomes-an-ambient-context-service.md), so a caller provides
 both requirements as Layers rather than passing either one. The `ParsedFeature` contract — correlated
 scenarios, steps, rules, and the `LoadFeatureError` / `LoadFeatureWarning` surface — is real. Custom parameter
-types and step matching have shipped too: `defineParameterType` records a type as plain data at module scope,
-every parse replays the recorded definitions into a fresh registry handed back on
+types and step matching have shipped too: `ParameterTypeStore.layer([...])` declares custom types as plain data
+carried by a Layer (there is no process-wide store), every parse replays that store's definitions into a fresh
+registry handed back on
 `ParsedFeature.parameterTypes`, and `createStepMatcher` matches a step text against every registered pattern
 with its arguments already coerced. The `DataTable` wrapper has shipped too: a step's DocString and data table
 arrive on `ParsedStep.stepArguments`, wrapped and in the source order the feature file wrote them, a `DataTable`

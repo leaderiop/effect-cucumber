@@ -28,15 +28,16 @@ exists now, so the thing it was waiting on is no longer what blocks it. See
 
 ### Behaviors
 
-| Document                                                                                                  | IDs                | Domain                                                                 |
-| ---------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| [01 — Steps and World](./behaviors/01-steps-and-world.md)                                                 | BEH-EC-001–004, 013 | Step shape, World, `describeFeature`                                   |
-| [02 — Background, hooks, shared Layers, and tags](./behaviors/02-shared-layers-and-tags.md)               | BEH-EC-005–008     | Background semantics, hooks, the `shared` Layer scope, `@skip`/`@only` |
-| [03 — Rules, Scenario Outlines, and TestClock](./behaviors/03-rules-outlines-and-testclock.md)            | BEH-EC-009–012, 018 | Rule-scoped Layers, Outline typing, `TestClock`                        |
-| [04 — loadFeature parse and validation](./behaviors/04-loadfeature-parse-and-validation.md)               | BEH-EC-014         | `loadFeature` parsing and validation semantics                         |
-| [05 — Step matching and parameter types](./behaviors/05-step-matching-and-parameter-types.md)             | BEH-EC-015         | cucumber-expression matching, parameter types                          |
-| [06 — DataTable and DocString arguments](./behaviors/06-datatable-and-docstring-arguments.md)             | BEH-EC-016         | `DataTable`/`DocString` step arguments                                 |
-| [07 — Hook ordering and guarantees](./behaviors/07-hook-ordering-and-guarantees.md)                       | BEH-EC-017         | Hook execution order and guarantees                                    |
+| Document                                                                                       | IDs                 | Domain                                                                 |
+| ---------------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| [01 — Steps and World](./behaviors/01-steps-and-world.md)                                      | BEH-EC-001–004, 013 | Step shape, World, `describeFeature`                                   |
+| [02 — Background, hooks, shared Layers, and tags](./behaviors/02-shared-layers-and-tags.md)    | BEH-EC-005–008      | Background semantics, hooks, the `shared` Layer scope, `@skip`/`@only` |
+| [03 — Rules, Scenario Outlines, and TestClock](./behaviors/03-rules-outlines-and-testclock.md) | BEH-EC-009–012, 018 | Rule-scoped Layers, Outline typing, `TestClock`                        |
+| [04 — loadFeature parse and validation](./behaviors/04-loadfeature-parse-and-validation.md)    | BEH-EC-014          | `loadFeature` parsing and validation semantics                         |
+| [05 — Step matching and parameter types](./behaviors/05-step-matching-and-parameter-types.md)  | BEH-EC-015          | cucumber-expression matching, parameter types                          |
+| [06 — DataTable and DocString arguments](./behaviors/06-datatable-and-docstring-arguments.md)  | BEH-EC-016          | `DataTable`/`DocString` step arguments                                 |
+| [07 — Hook ordering and guarantees](./behaviors/07-hook-ordering-and-guarantees.md)            | BEH-EC-017          | Hook execution order and guarantees                                    |
+| [08 — Step modules](./behaviors/08-step-modules.md)                                            | BEH-EC-019          | Typed step modules reused across Features                              |
 
 ### Decisions
 
@@ -46,12 +47,12 @@ each one's affected invariants.
 
 ### Process
 
-| Document                                                                       | Purpose                                                                                             |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                               |
-| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist, and a map of the merge gate — five of its seven rows wired, two still not     |
-| ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited |
-| [rc-bump checklist](./process/rc-bump-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward. Checklist item `P-18` is its existence    |
+| Document                                                                       | Purpose                                                                                                                 |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [Requirement ID scheme](./process/requirement-id-scheme.md)                    | The `EC` infix, ID families, amend-vs-supersede rules                                                                   |
+| [Definitions of Done](./process/definitions-of-done.md)                        | Per-change checklist, and a map of the merge gate — five of its seven rows wired, two still not                         |
+| ["Looks Done But Isn't" checklist](./process/looks-done-but-isnt-checklist.md) | The `P-01`–`P-24` id family: twenty-four items, each EXECUTED by a named artifact rather than cited                     |
+| [release checklist](./process/release-checklist.md)                            | Moving the pinned `effect` / `@effect/vitest` rc forward, and cutting a release. Checklist item `P-18` is its existence |
 
 ## Reading order
 

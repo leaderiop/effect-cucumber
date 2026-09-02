@@ -8,6 +8,7 @@
     "prepare": "effect-tsgo patch",
     "build": "tsc -b",
     "test": "vitest run",
+    "test:shuffle": "vitest run --sequence.shuffle",
     "format": "dprint fmt",
     "format:check": "dprint check",
     "lint": "oxlint -f unix && dprint check",
@@ -26,10 +27,15 @@
     "verify:acceptance-ref-state": "bash scripts/verify-acceptance-ref-state.sh",
     "verify:acceptance-no-any": "bash scripts/verify-acceptance-no-any.sh",
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
-    "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh"
+    "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
+    "verify:api-surface": "bash scripts/verify-api-surface.sh",
+    "verify:no-planning-refs": "bash scripts/verify-no-planning-refs.sh",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
-    "@effect/tsgo": "^0.38.0",
+    "@changesets/cli": "^3.0.1",
+    "@effect/tsgo": "0.38.0",
     "@oxlint/plugins": "1.80.0",
     "dprint": "0.56.1",
     "madge": "8.0.0",

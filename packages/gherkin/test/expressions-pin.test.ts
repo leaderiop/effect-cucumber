@@ -1,25 +1,5 @@
 /**
  * Pins the verified behavior of `@cucumber/cucumber-expressions@20.1.0`.
- *
- * This file imports NOTHING from `../src`. It talks to the upstream package directly, on
- * purpose: when it fails, a dependency changed its semantics. That separation is what lets a
- * later failure in `ParameterTypes.test.ts` or `StepMatcher.test.ts` be attributed to this
- * library's own code rather than to a bump of `@cucumber/cucumber-expressions`, which is
- * declared as `^20.1.0` and is therefore free to move under us within the major.
- *
- * Every non-obvious claim the rest of Phase 3 is designed around lives here: eleven built-ins
- * pre-registered by the registry constructor, a duplicate-name throw that includes those
- * built-ins, a CONSTRUCTION-time throw for an unregistered `{customType}`, no ambiguity
- * detection across two step patterns, and an unwrapped `Promise` out of an async transform.
- *
- * The three error classes needed to discriminate an upstream failure —
- * `CucumberExpressionError`, `UndefinedParameterTypeError` and `AmbiguousParameterTypeError` —
- * are NOT exported from the package barrel; they are reachable only by a deep path into the
- * published build directory. That is why this library discriminates STRUCTURALLY (an
- * undefined-parameter-type failure carries a string `undefinedParameterTypeName` property) and
- * never by `instanceof` against a deep import, never by the `name` property (which reports the
- * useless string `"Error"`), and never by message text. `isValidParameterTypeName` below is the sharpest illustration: the
- * message upstream throws names a different character set than the pattern actually rejects.
  */
 import { type Argument, CucumberExpression, ParameterType, ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
 import { describe, expect, it } from "vitest"
@@ -235,8 +215,6 @@ describe("upstream @cucumber/cucumber-expressions parameter type names", () => {
 
 describe("upstream @cucumber/cucumber-expressions matching semantics", () => {
   it("does not detect two step patterns both matching one step text", () => {
-    // Pitfall 15, and the reason MATCH-03/04 exist: neither construction nor match complains,
-    // and the argument's runtime TYPE depends on which definition was registered first.
     const asInt = soleValue("I have {int} apples", "I have 5 apples")
     const asWord = soleValue("I have {word} apples", "I have 5 apples")
 
@@ -274,8 +252,6 @@ describe("upstream @cucumber/cucumber-expressions matching semantics", () => {
 
 describe("upstream @cucumber/cucumber-expressions custom transforms", () => {
   it("returns an unwrapped Promise out of getValue for an async transform", () => {
-    // Pitfall 25: the step body would receive a Promise where its declared parameter type says
-    // `number`. StepMatcher must reject an async transform rather than hand this through.
     const registry = new ParameterTypeRegistry()
     registry.defineParameterType(
       new ParameterType("later", /\d+/, null, async (raw: string) => Number(raw))
@@ -287,8 +263,6 @@ describe("upstream @cucumber/cucumber-expressions custom transforms", () => {
   })
 
   it("throws synchronously out of getValue for a transform that throws", () => {
-    // Pitfall 25 again: this happens during argument extraction, outside any Effect, so it
-    // bypasses the structured error channel unless StepMatcher guards it.
     const registry = new ParameterTypeRegistry()
     registry.defineParameterType(
       new ParameterType("boom", /\d+/, null, () => {

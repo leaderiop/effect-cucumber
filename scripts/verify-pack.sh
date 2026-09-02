@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
 #
-# Asserts the shape of the artifact that actually reaches consumers -- the
-# packed tarball -- rather than the shape of the source manifest.
+# Asserts the shape of what reaches consumers — the packed tarball — not the source
+# manifest: `publishConfig.exports` applied, no `catalog:`/`workspace:` protocol left,
+# peer ranges (not pins) for effect/@effect/vitest/@effect/platform-node, gherkin
+# free of runners and concrete platforms (ADR-EC-021), dist and README and LICENSE
+# present, publint clean. The source manifest is byte-identical whether the catalog
+# holds a range or a pin, so only the packed manifest can show the difference.
 #
-# METHOD NOTE (do not weaken this):
-#   packages/vitest/package.json reads `catalog:peer` whether the catalog behind
-#   it holds a range or an exact pin. The source manifest is byte-identical
-#   either way, so grepping it proves nothing at all. A `catalog:` specifier
-#   expands verbatim at pack time (PITFALLS Pitfall 20), and the expanded value
-#   is what a consumer resolves against -- an exact pin there strands everyone
-#   on a different rc. The same goes for `publishConfig.exports`: the in-repo
-#   `exports` map points at `src/`, and only npm's pack-time merge swaps it to
-#   `dist/`. Every assertion below therefore runs against an UNPACKED TARBALL.
-#   An assertion rewritten to read packages/*/package.json is vacuous.
-#
-#   A second reason to pack: `pnpm install` exits 0 on an invalid named-catalog
-#   reference (`catalog:typo` behind a peerDependency leaves no trace in the
-#   lockfile). `pnpm pack` is the only command that catches it.
-#
-# Usage: bash scripts/verify-pack.sh
-
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,11 +24,6 @@ fail() {
   exit 1
 }
 
-# The manifest assertions, in node so the JSON is parsed rather than grepped.
-# `jq` is deliberately not used -- it is not a declared dependency of this
-# repository and may not be installed on a contributor machine or a CI runner.
-# The JSON is passed as argv rather than read with `require`/`import` so the
-# program is agnostic to whether node evaluates -e as ESM or CJS.
 assert_manifest() {
   node -e '
     const name = process.argv[1]
@@ -111,7 +93,7 @@ assert_manifest() {
     // Pitfall 20, the reason this script exists.
     if (name === "@effect-cucumber/vitest") {
       const peers = m.peerDependencies === undefined ? {} : m.peerDependencies
-      for (const dep of ["effect", "@effect/vitest"]) {
+      for (const dep of ["effect", "@effect/vitest", "@effect/platform-node"]) {
         const v = peers[dep]
         if (v === undefined) {
           fails.push("peerDependencies." + dep + " is missing from the packed manifest.")
@@ -277,6 +259,10 @@ check_package() {
   # happened rather than trusting that behaviour.
   grep -qx "package/README.md" <<<"$contents" || fail "$name: README.md is absent from the tarball -- the npm page would be blank."
   echo "  ✓ README.md is in the tarball"
+  # package.json declares "license": "MIT"; a tarball that carries the claim without the
+  # text is what this catches. npm auto-includes a LICENSE only from the package directory.
+  grep -qx "package/LICENSE" <<<"$contents" || fail "$name: LICENSE is absent from the tarball -- package.json claims MIT but ships no license text."
+  echo "  ✓ LICENSE is in the tarball"
 
   # publint reads the extracted directory, catching publish-time footguns this
   # script does not encode by hand.

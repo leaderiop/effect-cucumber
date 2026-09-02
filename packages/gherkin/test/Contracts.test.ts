@@ -1,4 +1,5 @@
 import * as Option from "effect/Option"
+import { inspect } from "node:util"
 import { describe, expect, it } from "vitest"
 import { LoadFeatureError, makeWarning, StepPatternError, type StepPatternErrorReason } from "../src/Errors.ts"
 
@@ -26,8 +27,7 @@ describe("LoadFeatureError", () => {
       reason: "EmptyExamples",
       uri: "features/checkout.feature",
       line: Option.some(12),
-      message: verboseTableMessage,
-      cause: Option.none()
+      message: verboseTableMessage
     })
 
   it("is an instance of Error", () => {
@@ -43,7 +43,7 @@ describe("LoadFeatureError", () => {
     expect(makeError().name).toBe("LoadFeatureError")
   })
 
-  it("carries the _tag discriminator for the Phase 6 error channel", () => {
+  it("carries the _tag discriminator for the runner's error channel", () => {
     // Destructured rather than read by dotted member access off the error:
     // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
     // object destructuring.
@@ -60,8 +60,7 @@ describe("LoadFeatureError", () => {
       reason: "DuplicateScenarioName",
       uri: "features/dup.feature",
       line: Option.none(),
-      message: "two Scenarios named \"checkout\" at lines 4 and 11",
-      cause: Option.none()
+      message: "two Scenarios named \"checkout\" at lines 4 and 11"
     })
     expect(err.reason).toBe("DuplicateScenarioName")
   })
@@ -83,8 +82,7 @@ describe("LoadFeatureError", () => {
       reason: "MissingFile",
       uri: "features/absent.feature",
       line: Option.none(),
-      message: "no such file",
-      cause: Option.none()
+      message: "no such file"
     })
     expect(err.line).toEqual(Option.none())
   })
@@ -106,20 +104,21 @@ describe("LoadFeatureError", () => {
     expect(message.endsWith("...")).toBe(false)
   })
 
-  it("exposes cause as Option.some(the supplied value), preserving reference equality", () => {
+  it("exposes cause natively, so reference equality holds and util.inspect shows the chain", () => {
     const upstream = new Error("(1:1): expected: #EOF, got 'Feture: x'")
     const err = new LoadFeatureError({
       reason: "ParseFailed",
       uri: "features/typo.feature",
       line: Option.some(1),
       message: "the parser rejected this file",
-      cause: Option.some(upstream)
+      cause: upstream
     })
-    expect(Option.isSome(err.cause) && err.cause.value).toBe(upstream)
+    expect(err.cause).toBe(upstream)
+    expect(inspect(err)).toContain("expected: #EOF, got 'Feture: x'")
   })
 
-  it("exposes cause as Option.none() when the constructor argument is Option.none()", () => {
-    expect(makeError().cause).toEqual(Option.none())
+  it("leaves cause undefined when no upstream error is supplied", () => {
+    expect(makeError().cause).toBeUndefined()
   })
 })
 
@@ -148,20 +147,8 @@ describe("makeWarning", () => {
     expect(warning.message).toBe("<b> is not one of the Examples columns of this Outline: a")
   })
 
-  it("round-trips the warning line as Option.some(9)", () => {
-    expect(warning.line).toEqual(Option.some(9))
-  })
-
-  it("normalises an omitted warning line to Option.none()", () => {
-    // `makeWarning`'s own `line?: number` argument stays plain and omittable (it is not a
-    // Schema-constrained class, see Errors.ts) — it is the one place that converts to the
-    // field's `Option<number>` type.
-    const noLine = makeWarning({
-      reason: "EmptyRule",
-      uri: "features/empty-rule.feature",
-      message: "this Rule contains no Scenarios and produced no pickles"
-    })
-    expect(noLine.line).toEqual(Option.none())
+  it("round-trips the warning line as a plain number", () => {
+    expect(warning.line).toBe(9)
   })
 
   it("is not an Error instance, because Group C findings never throw", () => {
@@ -204,8 +191,7 @@ describe("StepPatternError", () => {
       reason: "InvalidStepPattern",
       parameterTypeName: Option.some("money"),
       pattern: Option.some("the customer {word} pays {money}"),
-      message: verbosePatternMessage,
-      cause: Option.none()
+      message: verbosePatternMessage
     })
 
   it("is an Error instance, unlike a LoadFeatureWarning", () => {
@@ -223,7 +209,7 @@ describe("StepPatternError", () => {
     expect(makeError().name).toBe("StepPatternError")
   })
 
-  it("carries the StepPatternError _tag discriminator for the Phase 6 error channel", () => {
+  it("carries the StepPatternError _tag discriminator for the runner's error channel", () => {
     // Destructured rather than read by dotted member access off the error:
     // `no-underscore-dangle` is error-level in this repo for member expressions, and allows
     // object destructuring.
@@ -237,8 +223,7 @@ describe("StepPatternError", () => {
         reason,
         parameterTypeName: Option.none(),
         pattern: Option.none(),
-        message: `raised for ${reason}`,
-        cause: Option.none()
+        message: `raised for ${reason}`
       })
       expect(err.reason).toBe(reason)
     })
@@ -260,8 +245,7 @@ describe("StepPatternError", () => {
       reason: "InvalidParameterTypeDefinition",
       parameterTypeName: Option.none(),
       pattern: Option.none(),
-      message: "the upstream ParameterType constructor rejected this definition",
-      cause: Option.none()
+      message: "the upstream ParameterType constructor rejected this definition"
     })
 
     expect(err.parameterTypeName).toEqual(Option.none())
@@ -270,21 +254,22 @@ describe("StepPatternError", () => {
     expect("pattern" in err).toBe(true)
   })
 
-  it("forwards the cause as Option.some(...), preserving reference equality", () => {
+  it("forwards the cause natively, preserving reference equality and the inspected chain", () => {
     const upstream = new Error("This Cucumber Expression has a problem at column 7")
     const err = new StepPatternError({
       reason: "UndefinedParameterType",
       parameterTypeName: Option.some("money"),
       pattern: Option.some("I pay {money}"),
       message: "no parameter type named money is registered",
-      cause: Option.some(upstream)
+      cause: upstream
     })
 
-    expect(Option.isSome(err.cause) && err.cause.value).toBe(upstream)
+    expect(err.cause).toBe(upstream)
+    expect(inspect(err)).toContain("has a problem at column 7")
   })
 
-  it("leaves the cause as Option.none() when no upstream error is supplied", () => {
-    expect(makeError().cause).toEqual(Option.none())
+  it("leaves the cause undefined when no upstream error is supplied", () => {
+    expect(makeError().cause).toBeUndefined()
   })
 
   it("reproduces a long multi-line step pattern message verbatim, with no truncation", () => {

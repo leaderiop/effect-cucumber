@@ -1,93 +1,16 @@
 /**
- * The step-definition container behind `describeFeature` — one per call, never one per module.
- *
- * (a) **Why this is a factory and not a module singleton.** DSL-04 forbids a module-level
- *     `let currentScope` or an exported mutable registry outright, and the prohibition is the
- *     requirement itself rather than a stylistic preference. Two `describeFeature` calls in one
- *     file would share a single step map and a single scope stack: steps registered by the first
- *     feature would resolve inside the second, a `Scenario` left on the stack by an early return
- *     would silently re-parent the next feature's steps, and the whole suite would become
- *     order-dependent — passing when run together, failing when run alone, or the reverse.
- *     PITFALLS.md's Pitfall 14 records this as scar tissue rather than theory: it is the root
- *     cause behind three separate `cypress-cucumber-preprocessor` bugs (issues #298, #364, #549),
- *     each filed against a module-level singleton. So every piece of mutable state here lives in
- *     a closure created by `createRegistry`, and there is no way to reach it except through the
- *     object that call returns. `packages/gherkin/src/ParameterTypes.ts`'s
- *     `createParameterTypeStore` is the precedent being copied, structure for structure.
- *
- *     Note that reference inequality between two instances does NOT prove this. A closure that
- *     reads a module-level array still hands back two different objects. `test/Registry.test.ts`
- *     carries the assertions that actually discriminate: register into one instance, then observe
- *     that the other is still empty.
- *
- * (b) **Why `definitions()` returns a copy.** The live array keeps growing for as long as the
- *     define callback runs. A caller handed the internal reference would hold a value that mutates
- *     underneath it — a snapshot taken to count steps, or to diff before and after a `Background`,
- *     would silently report whatever the array happened to contain at read time instead of at call
- *     time. Copying makes `definitions()` a snapshot in fact and not just in name, and it also
- *     removes the only route by which a caller could splice or reorder state this module owns.
- *     The cost is a shallow copy of a handful of records per call, which is not a budget worth
- *     defending.
- *
- * (c) **Why `Fn` stays a free type parameter and this module depends on nothing.** A step body's
- *     real type is `(...params) => Effect<A, E, R>`, and that type lives in the DSL. Naming it
- *     here would tie the container to `Dsl.ts`, `describeFeature.ts` and
- *     `@effect-cucumber/gherkin`, none of which exist yet. Left abstract, the container is
- *     complete and testable on its own, ahead of the type surface that will instantiate it. This
- *     module deliberately has no dependencies of any kind — an acceptance criterion asserts the
- *     count is zero.
- *
- *     `DefinitionSite` below is declared here for exactly that reason, even though `CallSite.ts` is
- *     what produces one. A type-only `import type { DefinitionSite } from "./CallSite.ts"` would be
- *     the obvious direction and would break the claim above; pointed the other way, the leaf that
- *     already parses stack traces takes the one import and this module keeps none. There is no cycle
- *     either way, because nothing here imports anything.
- *
- * (d) **Why this is not re-exported from `packages/vitest/src/index.ts`.** A registry is an
- *     internal stage of `describeFeature`, not a surface a consumer composes against; publishing
- *     it would freeze the scope stack's shape into the public contract before the DSL that drives
- *     it is written. This follows `@effect-cucumber/gherkin`'s own precedent, where `Parser`,
- *     `Pickles` and `Correlate` are all internal and only `loadFeature` is published. Plan 05-03
- *     owns that barrel and should leave this out of it.
- *
- * (e) **`RegistryScope.ruleId` is `null` if AND ONLY IF the scope is not nested inside any
- *     `Rule(...)` call.** Every scope pushed from inside a `Rule` call carries a non-null string —
- *     either the real `ParsedRule.id` the author's Rule name resolved to, or a sentinel that can
- *     never equal a real Rule's id — NEVER `null`. The invariant is not decorative: `Plan.ts`
- *     compares `ruleId` with plain string equality and reserves `null` to mean "Feature level", so
- *     a Rule-scoped frame that left the field `null` would make its registrations visible to every
- *     Feature-level Scenario in the document, which is the exact leak the field exists to prevent.
- *
- *     This module performs NO resolution of its own. It has zero imports (note (c)) and therefore
- *     no access to a `ParsedFeature`, a `ParsedRule` or anything that could turn a Rule NAME into
- *     an id. The caller — `describeFeature.ts` — is the sole place a Rule name is resolved to an id
- *     or falls back to a sentinel, and this module records whatever string it is handed.
- *
- *     `ruleId` is a REQUIRED field for the same `exactOptionalPropertyTypes` reason spelled out for
- *     `name` below: an optional `ruleId?: string` would make "absent" and "present but undefined"
- *     two spellings of one idea, and the reader would have to handle both.
+ * Per-`describeFeature` step registry with a scope stack (Feature > Rule > Scenario/Background).
+ * Never module-level: two `describeFeature` calls in one file must not see each other's steps
+ * (`test/Registry.test.ts`).
  */
 
 /**
- * The four Gherkin constructs that can own step definitions. A string-literal union rather than
- * an enum: `erasableSyntaxOnly` is on workspace-wide, and an enum emits runtime code.
+ * The four Gherkin constructs that can own step definitions.
  */
 export type RegistryScopeKind = "feature" | "background" | "scenario" | "rule"
 
 /**
  * A frame of the scope stack.
- *
- * `name` is `string | null` and not an optional property, deliberately. `exactOptionalPropertyTypes`
- * is on, so an optional `name?: string` would make "absent" and "present but undefined" two
- * distinct states for one idea. A `Background` genuinely has no name while a `Scenario` always
- * does, so the absence is real data worth spelling — `null` says it once, and every reader has to
- * handle it.
- *
- * `ruleId` identifies the enclosing `Rule`, and `null` means there is none — note (e) states the
- * invariant that every reader downstream depends on. A Feature root frame is
- * `{ kind: "feature", name: "Checkout", ruleId: null }`; a Background nested inside a Rule is
- * `{ kind: "background", name: null, ruleId: "rule-3" }`, which is what tells it apart from the
- * Feature's own `{ kind: "background", name: null, ruleId: null }`.
  */
 export type RegistryScope = {
   readonly kind: RegistryScopeKind
@@ -95,19 +18,10 @@ export type RegistryScope = {
   readonly ruleId: string | null
 }
 
-/** The Gherkin step keywords a definition can be registered under. */
 export type StepKeyword = "Given" | "When" | "Then" | "And" | "But"
 
 /**
  * Where a definition was written: an absolute path, and V8's own 1-based line and column.
- *
- * Registration-time data this module owns, exactly as `RegistryScope` is — the MECHANISM that
- * produces one lives in `CallSite.ts`, which imports this type rather than exporting it. Note (c)
- * has the full argument for that direction.
- *
- * Absence is `null` and not an optional property, for the same `exactOptionalPropertyTypes` reason
- * spelled out for `RegistryScope.name`: a site that could not be captured is real data, and one
- * spelling of "there is none" is better than two.
  */
 export type DefinitionSite = {
   readonly file: string
@@ -116,48 +30,26 @@ export type DefinitionSite = {
 }
 
 /**
- * One registered step, together with the scope that was on top of the stack when it was
- * registered. Capturing the scope at registration time is what lets a later stage tell a
- * `Background` step from a `Scenario` step without re-walking the document.
+ * One registered step, together with the scope that was on top of the stack when it was registered.
  */
 export type StepDefinition<Fn> = {
   readonly keyword: StepKeyword
   readonly pattern: string
   readonly body: Fn
   readonly scope: RegistryScope
-  /**
-   * Where the author's own `Given`/`When`/`Then` call was written — never a line inside this
-   * package.
-   *
-   * `null` means the capture FAILED (there was no stack to read, or no frame outside the capturing
-   * module's own directory), not "deliberately not captured". The distinction matters downstream:
-   * `CallSite.ts`'s `formatCallSite` renders it as words rather than as an empty `:` pair, and
-   * `compareCallSites` sorts it last instead of pretending it is line 0.
-   *
-   * `Plan.ts` orders an ambiguous step's matching patterns by this field (CONTEXT.md D-03), so the
-   * list points the reader at the definitions to go reconcile, in an order that does not depend on
-   * which module vitest happened to import first.
-   */
   readonly definedAt: DefinitionSite | null
 }
 
 /**
  * A new registry sharing no state with any other registry.
- *
- * The stack is seeded with a single root frame for the feature, so `currentScope()` is meaningful
- * before any container callback has run and there is no "empty stack" state to represent.
  */
 export const createRegistry = <Fn>(featureName: string) => {
-  // The root frame is Feature-level by construction, so `ruleId` is `null` — note (e).
   const stack: Array<RegistryScope> = [{ kind: "feature", name: featureName, ruleId: null }]
   const records: Array<StepDefinition<Fn>> = []
 
-  /** The frame steps registered right now would be attributed to. */
   const currentScope = (): RegistryScope => {
     const top = stack[stack.length - 1]
-    // Unreachable: `popScope` refuses to remove the root frame, so the stack is never empty. The
-    // check exists because `noUncheckedIndexedAccess` types the lookup as possibly-undefined and
-    // the alternative is a non-null assertion, which would erase a real invariant into syntax.
+    // Unreachable: `popScope` refuses to remove the root frame, so the stack is never empty.
     if (top === undefined) {
       throw new Error(
         "Registry scope stack is empty, which popScope() is supposed to make impossible. "
@@ -171,12 +63,6 @@ export const createRegistry = <Fn>(featureName: string) => {
     stack.push(scope)
   }
 
-  /**
-   * Leave the innermost scope. Throws at the root rather than emptying the stack: a scope
-   * underflow means a container callback returned twice or a `pushScope` went missing, and
-   * silently tolerating it would re-parent every subsequent step onto a stack that no longer
-   * describes the document.
-   */
   const popScope = (): void => {
     if (stack.length <= 1) {
       throw new Error(
@@ -188,19 +74,10 @@ export const createRegistry = <Fn>(featureName: string) => {
     stack.pop()
   }
 
-  /**
-   * Record one step under the scope that is current right now.
-   *
-   * `definedAt` is a PARAMETER and is never captured here. This module reads no stack and constructs
-   * no `Error`, which is what keeps it dependency-free (note (c)) and testable with literal sites.
-   * The capture belongs to `describeFeature.ts`'s registrar, because the frame that matters is the
-   * author's and the registrar is the only thing the author calls directly.
-   */
   const register = (keyword: StepKeyword, pattern: string, body: Fn, definedAt: DefinitionSite | null): void => {
     records.push({ keyword, pattern, body, scope: currentScope(), definedAt })
   }
 
-  /** A snapshot — see note (b). Never the live array. */
   const definitions = (): ReadonlyArray<StepDefinition<Fn>> => [...records]
 
   return { pushScope, popScope, currentScope, register, definitions }

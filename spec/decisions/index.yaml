@@ -80,3 +80,6 @@ entries:
   - id: "ADR-EC-026"
     file: "026-registration-time-tag-filtering-and-declared-tag-universe.md"
     title: "Tags emit natively, includeTags/excludeTags filter at registration time, and the tag universe must be declared in the runner config — supersedes ADR-EC-020"
+  - id: "ADR-EC-027"
+    file: "027-typed-step-modules.md"
+    title: "Cross-Feature step reuse through typed step modules"

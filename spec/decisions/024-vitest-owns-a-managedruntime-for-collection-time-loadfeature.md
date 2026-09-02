@@ -1,6 +1,6 @@
 # ADR-EC-024: `@effect-cucumber/vitest` owns one module-scoped `ManagedRuntime` for collection-time `loadFeature` calls
 
-> **Status:** Accepted — design decision only, not yet implemented (`@effect-cucumber/vitest` remains a placeholder, see `spec/roadmap.md`)
+> **Status:** Accepted and implemented — `packages/vitest/src/loadFeature.ts`, exported from the package barrel and observed by `packages/vitest/test/loadFeature.test.ts`
 > **Date:** 2026-08-28
 > **Context:** settles the "which package owns the `ManagedRuntime` construction" question [ADR-EC-021](021-effect-and-platform-are-peer-dependencies-of-gherkin.md) raised during design and explicitly left open in its Follow-up section
 

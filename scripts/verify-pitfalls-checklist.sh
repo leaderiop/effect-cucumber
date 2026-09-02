@@ -1,151 +1,11 @@
 #!/usr/bin/env bash
 #
-# Executes the ten CLI-only items of spec/process/looks-done-but-isnt-checklist.md
-# — P-08, P-09, P-13, P-15, P-16, P-17, P-18, P-21, P-22, P-24 — and then
-# CROSS-CHECKS that all twenty-four items still have an executor that carries
-# them.
+# Executes the CLI-only items of spec/process/looks-done-but-isnt-checklist.md and
+# cross-checks that every item in that document still names an executor. Each
+# assertion echoes its `P-NN` id, so this output is the checklist's run record.
+# `pnpm test` cannot make these claims: they are about second runs, packed
+# tarballs, `-t` narrowing and the reporter, which no in-process test can observe.
 #
-# Every assertion echoes its own `P-NN` id, so this script's output IS the
-# evidence that an item ran. That is not cosmetic: the cross-check at the bottom
-# reads those echo lines back out of this file.
-#
-# METHOD NOTE (do not weaken this):
-#   A green `pnpm test` proves nothing about any of the ten items above, and the
-#   reasons differ per item rather than sharing one:
-#
-#     - a PACKED tarball's manifest (P-15, P-16) does not exist during a test
-#       run. packages/vitest/package.json reads `catalog:peer` whether the
-#       catalog behind it holds a range or an exact pin — the source manifest is
-#       byte-identical either way, and STATE.md's Phase 01-04 entry records that
-#       a source-manifest assertion reads the same in the passing and the
-#       failing case. Only `pnpm pack` expands it.
-#     - a README's install line (P-17) is not code and nothing compiles it.
-#     - a compile gate's behaviour when a directive becomes UNUSED (P-08) is the
-#       ABSENCE of a diagnostic, which no test can observe from inside a process
-#       that already compiled.
-#     - a SHUFFLED run (P-21) and a TAG-FILTERED run (P-22) are properties of an
-#       invocation. A test cannot re-invoke the CLI with a different sequencing
-#       or a different selection and compare.
-#     - what a reader sees in the failure panel (P-24) requires a run that
-#       FAILED, which a suite that must stay green cannot contain.
-#
-#   AND THE COMPLETENESS CLAIM. Roadmap success criterion 4 says the checklist
-#   "runs in full and passes". Without the cross-check that is a reader's
-#   assertion, and it decays in two directions that both leave every gate green:
-#   a test can lose its `P-NN` id while keeping its assertions, and a row's
-#   **Executed by** can be pointed at an artifact that does not carry it. Both
-#   are measured below as mutations D and E.
-#
-#   THE CROSS-CHECK ANCHORS ON THE EXECUTING FORM, NEVER ON THE BARE ID, and
-#   that is the single most load-bearing decision in this file. Plan 11-07
-#   stripped `P-04` out of a test title and measured that a whole-file
-#   `grep -c 'P-04'` STILL returned 2, satisfied by the header prose documenting
-#   the id; re-measured while writing this file, after that header grew, it
-#   returns TEN — and NINE with the title's id stripped. So the obvious
-#   cross-check would have been green against
-#   exactly the loss it exists to catch, and increasingly green over time. This
-#   is the fifth time this repository has hit the count-your-own-prose shape
-#   (STATE.md 03-04, 10-01, 10-02, plan 11-06's check 4, plan 11-07's mutation
-#   A′). The anchored forms are:
-#
-#     - a gate script -> `echo`, a quote, the check glyph, the id, a space, an
-#       em dash and a space, at the START of a line: an assertion's own success
-#       line, which only an executing assertion emits.
-#     - the in-process test file -> the id preceded by a string literal's
-#       opening quote OR by a Gherkin `Scenario: ` (P-12's two nodes are
-#       Scenario titles inside an inline Feature source), AND followed by an
-#       ASCII LETTER.
-#
-#   THE TRAILING LETTER IS LOAD-BEARING AND WAS ALSO MEASURED. The tighter
-#   `"P-04 — ` still returns 2 in that file today, because its header quotes
-#   that very anchor while explaining this hazard. Prose about a title is
-#   followed by punctuation — an apostrophe there, an ellipsis in the two `P-12`
-#   quotations — and a real title is followed by a word.
-#
-#   Both forms are things an EXECUTING artifact emits; neither is satisfiable by
-#   describing an item in a comment. This file's own METHOD NOTE names all ten
-#   of its ids in prose above and satisfies the anchor for none of them.
-#
-#   DELIBERATE DUPLICATION (PROH-11-04, 11-CONTEXT.md D-03). Several assertions
-#   here restate something another gate already checks — P-16 overlaps
-#   scripts/verify-pack.sh, P-13 and P-22 overlap scripts/verify-tags-filter.sh,
-#   P-08 and P-09 overlap scripts/verify-tsgo-gate.sh. That is the point. A
-#   checklist whose items are marked covered by pointing at other people's tests
-#   is a citation list: you cannot run it, and an item whose cited test was
-#   narrowed reads exactly like an item whose cited test still covers it. Do not
-#   "de-duplicate" any assertion in this file into a call to another script.
-#
-#   Every run is read from the runner's JSON report through `node -e`, never by
-#   grepping reporter glyphs. There is deliberately no glyph matching in this
-#   file. Every run also carries its own non-zero vacuity control, because a
-#   file that fails to COLLECT produces zero results, against which every status
-#   assertion is trivially true.
-#
-#   NOTHING HERE MUTATES A COMMITTED FILE. Three items need a fixture that does
-#   not exist in the repository — an `@only`-tagged acceptance Scenario (P-13),
-#   a three-row Outline (P-21), and a step that FAILS (P-24). Each is written
-#   into a temporary pair inside the acceptance directory and removed by a trap
-#   installed before the first write. `git status --porcelain` is empty on the
-#   success path and on every failure path.
-#
-#   AND `git status` IS NO LONGER THE EVIDENCE FOR THAT, so do not read it as
-#   such. All six paths are now in `.gitignore` — the trap covers EXIT, INT and
-#   TERM but not SIGKILL, an OOM kill or a CI timeout, and one of the files it
-#   writes is a test that FAILS ON PURPOSE that vitest's default include glob
-#   collects. Being ignored, they are now absent from `git status` whether the
-#   trap fired or not. The live detector is the `[[ -e "$tracked" ]]`
-#   precondition below, which fails the NEXT run by name if a hard kill left one
-#   behind; the `git ls-files --error-unmatch` precondition beside it is what
-#   keeps the ignore entries from becoming permission to commit one.
-#
-# MUTATION RECORD (performed, observed, reverted — plan 11-08 Task 3):
-#
-#   D. The `P-04` id was stripped from its test title in
-#      packages/vitest/test/acceptance/pitfalls-checklist.test.ts, assertions
-#      untouched. `pnpm test` STAYED GREEN at the identical counts — 39 files,
-#      816 passed, 4 skipped — and `pnpm verify:pitfalls` went RED naming the id:
-#        "P-04 is in the checklist, but its executor does not CARRY it".
-#      Nine bare occurrences of the string P-04 remained in that file after the
-#      strip, so a bare-id grep would have counted nine and stayed green. This
-#      is the exact mutation plan 11-07 recorded as uncatchable at the time it
-#      measured it. It is caught now.
-#
-#   E. P-09's **Executed by** cell was repointed from this script to
-#      scripts/verify-watch-rerun.sh, which does not carry that id. Nothing else
-#      was touched — a row that lies about who runs it is a ONE-CELL edit — and
-#      the cross-check went RED naming P-09 and the artifact it had been pointed
-#      at.
-#
-#   F. The leading pipe was removed from four rows, so the parse yielded 20 rows.
-#      The ROW-COUNT CONTROL fired FIRST, naming both numbers and naming the
-#      constant. Then, measured rather than assumed: with the control's early
-#      return disabled and the same breakage in place, the CONTIGUITY check
-#      caught it anyway, printing four "P-0N is missing from the table" lines.
-#
-#      So the honest reading is narrower than "without this control the checks
-#      pass vacuously" — for a SHRINKING parse they do not, because the
-#      contiguity loop runs P-01 upwards independently of what parsed. What the
-#      control adds is (i) one message naming both numbers instead of N messages
-#      that read as though the document lost N rows, and (ii) the one case the
-#      contiguity loop structurally cannot see: a parse that yields MORE rows
-#      than expected. That loop iterates 1..EXPECTED_CHECKLIST_ROWS, so a 25th
-#      item is outside it. Keep the control; the reason is the growth direction,
-#      not the shrink one.
-#
-#   G. THE MOST USEFUL ENTRY HERE. P-22's two unselected-Scenario checks were
-#      disabled, leaving the blunt form — "the filtered run reported at least
-#      one pass, and the tagged Scenario passed" — and the `--tagsFilter` flag
-#      was then removed from the invocation ENTIRELY. The gate STAYED GREEN,
-#      exit 0, and went on printing
-#        "P-22 — --tagsFilter=@slow selected exactly the tagged Scenario".
-#      A run with NO FILTER AT ALL satisfies the blunt form, because every
-#      Scenario passing includes the tagged one passing. The blunt form is
-#      therefore not a weaker assertion about filtering; it is not an assertion
-#      about filtering. Only "an unselected Scenario is PRESENT and SKIPPED"
-#      makes the item about a filter. Do not simplify it back.
-#
-# Usage: bash scripts/verify-pitfalls-checklist.sh
-
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -153,7 +13,7 @@ cd "$ROOT_DIR"
 
 # Spelled out in full rather than composed, so these paths stay greppable.
 CHECKLIST_DOC="spec/process/looks-done-but-isnt-checklist.md"
-RC_BUMP_DOC="spec/process/rc-bump-checklist.md"
+RC_BUMP_DOC="spec/process/release-checklist.md"
 INPROCESS_EXECUTOR="packages/vitest/test/acceptance/pitfalls-checklist.test.ts"
 ROOT_README="README.md"
 VITEST_README="packages/vitest/README.md"
@@ -174,27 +34,10 @@ FAILING_STEPS="packages/vitest/test/acceptance/pitfalls-gate-failing.gate.test.t
 P08_PROBE_FIXTURE="packages/vitest/test/tsgo-gate/src/pitfalls-gate-p08-probe.ts"
 P08_PROBE_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-p08-probe.json"
 
-# Use the repo-local runner and the repo-local, effect-tsgo-patched compiler,
-# never a global `vitest` or `tsc`.
-#
-# TSC IS AN ARRAY, expanded as `"${TSC[@]}"`. As a plain string it was a
-# two-word command relying on UNQUOTED word splitting at four call sites, which
-# works only for as long as no element ever contains a space — and the second
-# element is a PATH. `node_modules` under a checkout directory with a space in
-# it (a macOS "Application Support" path, a Windows user profile) splits into
-# two arguments and node reports a missing module rather than this gate
-# reporting a missing compiler. An array says what is meant and does not depend
-# on the surrounding filesystem.
 VITEST="node_modules/.bin/vitest"
 TSC_BIN="node_modules/typescript/bin/tsc"
 TSC=(node "$TSC_BIN")
 
-# The number of rows the checklist table must yield. WRITTEN EXACTLY ONCE in
-# this file, and it is ASSUMPTION-11-B's whole mitigation: without it, a table
-# whose format changed parses to a SMALLER set — or to none at all — and every
-# per-id assertion below passes over whatever survived. Mutation F is the
-# measurement. Adding or withdrawing an item means changing this number in the
-# same commit as the row, which is the point.
 EXPECTED_CHECKLIST_ROWS=24
 
 # The two titles P-22's tag filter is asserted against, spelled exactly as the
@@ -203,18 +46,8 @@ EXPECTED_CHECKLIST_ROWS=24
 TITLE_SLOW="Every tag on this Scenario reaches the runner"
 TITLE_NOT_SLOW="Creating a user"
 
-# The tag P-22 filters on. It must be declared in vitest.config.ts: RESEARCH
-# Finding 2 verified that `--tagsFilter` validates its pattern against
-# `test.tags` regardless of the strict-tags setting, so an undeclared pattern
-# errors rather than matching nothing.
 FILTER_TAG="@slow"
 
-# The banner goes to STDERR, and that is load-bearing rather than stylistic.
-# `fail` is reachable from inside a command substitution (packed_manifest used to
-# be called that way), and a `$( )` captures STDOUT — so a stdout banner is
-# swallowed into a variable nobody prints while the `exit 1` kills only the
-# subshell, leaving errexit to end the run with an EMPTY log. stderr is not
-# captured by `$( )`, so the diagnostic survives regardless of the call shape.
 fail() {
   {
     echo ""
@@ -226,11 +59,6 @@ fail() {
   exit 1
 }
 
-# ---------------------------------------------------------------------------
-# The cleanup contract, installed BEFORE the first byte is written anywhere.
-# PROH-11-05: a gate script must never leave the working tree dirty, and a trap
-# registered after the first write cannot clean up a failure during it.
-# ---------------------------------------------------------------------------
 TMP_DIR=""
 
 cleanup() {
@@ -248,36 +76,6 @@ TMP_DIR="$(mktemp -d)"
 # Shared helpers.
 # ---------------------------------------------------------------------------
 
-# Query one JSON report as structured data. Modes:
-#   total        -> number of test results in the report
-#   passed       -> number of results with status "passed"
-#   failed       -> number of results with status "failed"
-#   titles       -> every result title, one per line
-#   status TITLE -> that test's status, or ABSENT, or AMBIGUOUS
-#   messages     -> every failureMessage in the report, concatenated
-#
-# AMBIGUOUS is its own answer rather than a silent first-match: two tests sharing
-# a title would make a status assertion mean something other than what it reads.
-#
-# AN UNREADABLE REPORT IS A NAMED FAILURE, NOT A NODE STACK TRACE. Without the
-# guard below, an absent, truncated or malformed report made `JSON.parse` throw;
-# under `set -e` the enclosing `P13_TOTAL="$(report_query …)"` then killed the
-# script with a raw stack trace, NO `✗ pitfalls checklist: NOT ENFORCED` banner,
-# no `cat "$LOG"`, and nothing saying which item was running. That is the same
-# silent-exit shape as the `packed_manifest` bug fixed above, and
-# scripts/verify-watch-rerun.sh has carried the mitigation for its own copy of
-# this helper all along — the sibling was the one that had to survive a WATCHING
-# runner rewriting the file mid-poll, so it learned this first.
-#
-# THE CHECK LIVES IN THE BASH WRAPPER, NOT AT THE TWELVE CALL SITES. A sentinel
-# every caller must remember to test is a sentinel a thirteenth caller forgets;
-# `fail` here covers all of them and cannot be omitted by a future one. `fail`
-# writes to STDERR, so the banner survives being called from inside `$( )` —
-# which is exactly how all twelve call sites invoke this.
-#
-# The one shape that stays lossy is process substitution (`done < <(report_query
-# …)`), where errexit does not propagate to the parent: the banner still prints,
-# but the loop simply iterates nothing. Reading the banner is the recovery.
 REPORT_UNREADABLE_SENTINEL="__REPORT_UNREADABLE__"
 
 report_query() {
@@ -322,10 +120,6 @@ report_query() {
   printf '%s\n' "$answer"
 }
 
-# One scoped invocation of the repo-local runner. The exit code is deliberately
-# swallowed: every claim here is about the STRUCTURED RESULTS, and a run
-# containing a failing test still writes a report worth asserting over. The log
-# is kept and printed on failure.
 run_vitest() {
   local target="$1" report="$2" log="$3"
   shift 3
@@ -335,19 +129,6 @@ run_vitest() {
     "$@" >"$log" 2>&1 || true
 }
 
-# Pack one workspace package and set PACKED_MANIFEST to the path of the UNPACKED
-# manifest. The packing itself is not re-implemented here — this is `pnpm pack`,
-# the same command scripts/verify-pack.sh drives, and the assertions below are
-# this file's own.
-#
-# THE RESULT IS RETURNED VIA A GLOBAL, NOT VIA STDOUT, AND THAT IS DELIBERATE.
-# This function contains three `fail` calls. Called as
-# `M="$(packed_manifest …)"` the `exit 1` inside `fail` terminates only the
-# SUBSHELL, so the top-level script dies by errexit on the assignment instead —
-# and every `fail` diagnostic that had gone to stdout was captured into `M` and
-# discarded, producing exit 1 with no output at all. Writing to a global keeps
-# the `exit 1` in the top-level shell where it prints and stops the run; `fail`
-# writing to stderr is the belt to this braces.
 PACKED_MANIFEST=""
 packed_manifest() {
   local name="$1" slug="$2"
@@ -363,13 +144,6 @@ packed_manifest() {
   PACKED_MANIFEST="$dest/package/package.json"
 }
 
-# A title counts as declared only if some line of the file ENDS with
-# `Scenario: <title>` — the whole Gherkin title, not a prefix of one. A plain
-# containment grep is NOT sufficient: renaming a Scenario by APPENDING leaves
-# the old title as a substring, and for an assertion that expects ABSENCE or
-# SKIPPED that would sail through while observing nothing. This is
-# scripts/verify-tags-filter.sh's `title_is_declared`, which that file's own
-# comment records as mutation-proven.
 title_is_declared() {
   local file="$1" title="$2" line
   while IFS= read -r line; do
@@ -380,10 +154,6 @@ title_is_declared() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
-# Preconditions. A missing target must fail HERE, by name, never by turning a
-# later assertion vacuous.
-# ---------------------------------------------------------------------------
 [[ -x "$VITEST" ]] || fail "missing runner $VITEST — run \`pnpm install\` first. Without it this gate cannot invoke anything, so nothing was verified."
 # The compiler got no precondition while the runner did, so a missing
 # node_modules/typescript surfaced as an opaque node error from inside P-08 —
@@ -400,20 +170,13 @@ for tracked in "$PROBE_FEATURE" "$PROBE_STEPS" "$FAILING_FEATURE" "$FAILING_STEP
   if git ls-files --error-unmatch "$tracked" >/dev/null 2>&1; then
     fail "$tracked is TRACKED BY GIT. This gate writes and then deletes that path, so running it would delete a committed file. Rename the constant at the top of this script; do not delete the committed file to make the gate run."
   fi
-  # `if` rather than `[[ ... ]] && fail ...`. The AND-list form is CORRECT under
-  # `set -euo pipefail` — errexit exempts the left-hand side of an `&&` list, so
-  # a false test does not end the script — and that is exactly the problem: the
-  # line's correctness depends on it being the LAST command in the list, inside
-  # this loop. Move it out of the loop, or add a command after it, and the
-  # semantics change silently with nothing to notice. One extra line does not
-  # depend on the exemption.
   if [[ -e "$tracked" ]]; then
     fail "$tracked already exists on disk. A previous run did not clean up, or something else owns that path. Remove it and re-run; if it keeps reappearing, the trap in this script is not firing."
   fi
 done
 
-grep -qF -- "$FILTER_TAG" vitest.config.ts ||
-  fail "vitest.config.ts does not declare $FILTER_TAG. RESEARCH Finding 2: --tagsFilter validates its pattern against test.tags regardless of the strict-tags setting, so P-22's filtered run would error out instead of selecting anything."
+grep -qF -- "$FILTER_TAG" vitest.tags.ts ||
+  fail "vitest.tags.ts does not declare $FILTER_TAG. --tagsFilter validates its pattern against test.tags regardless of the strict-tags setting, so P-22's filtered run would error out instead of selecting anything."
 
 for title in "$TITLE_SLOW" "$TITLE_NOT_SLOW"; do
   title_is_declared "packages/vitest/test/acceptance/worked-example-02-accounts.feature" "$title" ||
@@ -423,22 +186,12 @@ done
 echo "✓ preconditions: runner present, ten target artifacts present, $FILTER_TAG declared, both P-22 titles verbatim"
 echo ""
 
-# ===========================================================================
-# P-08 — the @ts-expect-error negative type-test file compiles clean, AND fails
-# if the directive becomes unused. TWO CHECKS, never one: an exit-0 alone is
-# equally consistent with a file that has no directives left in it.
-# ===========================================================================
 P08_OK_OUTPUT="$("${TSC[@]}" -p "$STEP_EXPECT_ERROR_CONFIG" 2>&1)" && P08_OK_EXIT=0 || P08_OK_EXIT=$?
 if [[ "$P08_OK_EXIT" -ne 0 ]]; then
   echo "$P08_OK_OUTPUT" >&2
-  fail "P-08: $STEP_EXPECT_ERROR_FIXTURE no longer compiles clean (exit $P08_OK_EXIT, output above). Either the DSL type was loosened so no error occurs on the marked line (TS2578 / TS377000 — DSL-01's guarantee is gone), or the two directive comment lines were reordered. That fixture's own header says which is which."
+ fail "P-08: $STEP_EXPECT_ERROR_FIXTURE no longer compiles clean (exit $P08_OK_EXIT, output above). Either the DSL type was loosened so no error occurs on the marked line (TS2578 / TS377000 — the guarantee is gone), or the two directive comment lines were reordered. That fixture's own header says which is which."
 fi
 
-# The second check. The fixture's directives are necessary ONLY because its
-# ambient Layer does not provide `Db`. Provide it in a COPY and both directives
-# become dead — which must be an ERROR, not a shrug. Without this half, a
-# fixture that had quietly lost its defect would still exit 0 and P-08 would be
-# asserting that a file with nothing in it compiles.
 sed 's/describeFeature(feature, World.layer,/describeFeature(feature, Layer.merge(World.layer, Db.layer),/' \
   "$STEP_EXPECT_ERROR_FIXTURE" >"$P08_PROBE_FIXTURE"
 grep -q "Layer.merge(World.layer, Db.layer)" "$P08_PROBE_FIXTURE" ||
@@ -463,10 +216,6 @@ if ! grep -qE "TS2578|TS377000" <<<"$P08_DEAD_OUTPUT"; then
 fi
 echo "✓ P-08 — the @ts-expect-error negative type-test compiles clean, and FAILS on an unused directive once its defect is removed"
 
-# ===========================================================================
-# P-09 — a step using Effect.acquireRelease compiles. The positive control is
-# the whole risk: a config that compiled an EMPTY file set also exits 0.
-# ===========================================================================
 grep -q "Effect.acquireRelease" "$STEP_OK_FIXTURE" ||
   fail "P-09: $STEP_OK_FIXTURE no longer contains Effect.acquireRelease, so compiling it says nothing about a SCOPED step. Dsl.ts note (b) is the claim under assertion — Scope must not leak into the step's required context — and this fixture is where it is exercised."
 
@@ -481,15 +230,6 @@ if [[ "$P09_EXIT" -ne 0 ]]; then
 fi
 echo "✓ P-09 — a step using Effect.acquireRelease compiles, against a config proven to have compiled that file"
 
-# ---------------------------------------------------------------------------
-# The temporary acceptance pair P-13 and P-21 run against.
-#
-# It is generated rather than committed because neither fixture exists in the
-# repository: no acceptance Feature carries an `@only`-tagged Scenario, and none
-# carries a three-row Outline whose rows assert different values. Adding two
-# committed pairs for two items' benefit would enlarge the suite whose size is
-# itself asserted elsewhere; generating them keeps the cost inside this gate.
-# ---------------------------------------------------------------------------
 cat >"$PROBE_FEATURE" <<'PROBE_FEATURE_BODY'
 Feature: Pitfalls gate probe
 
@@ -555,17 +295,6 @@ describeFeature(feature, Counter.layer, ({ Given, Then }) => {
 })
 PROBE_STEPS_BODY
 
-# ===========================================================================
-# P-13 — @only produces no only-marking, and the run passes.
-#
-# ADR-EC-026 superseded ADR-EC-020: `@only` is emitted as a PLAIN TAG and is
-# never routed to the framework's only-mode, so the error the item's original
-# wording names no longer exists to produce. The executable form is the STRONGER
-# claim the current design makes, and the UNTAGGED SIBLING is what carries it —
-# had `@only` reached `it.effect.only`, that sibling would report skipped.
-# `--allowOnly=false` is passed explicitly so the claim is true of THIS
-# invocation regardless of what vitest.config.ts happens to say.
-# ===========================================================================
 P13_REPORT="$TMP_DIR/p13.json"
 P13_LOG="$TMP_DIR/p13.log"
 run_vitest "$PROBE_STEPS" "$P13_REPORT" "$P13_LOG" --allowOnly=false
@@ -599,15 +328,6 @@ if [[ "$P13_FAILED" -ne 0 ]]; then
 fi
 echo "✓ P-13 — an @only-tagged Scenario passes under --allowOnly=false and its untagged siblings still run: no only-marking was emitted (ADR-EC-026)"
 
-# ===========================================================================
-# P-21 — a three-row Outline, each row asserting its own value, under shuffled
-# sequencing. Pitfall 34's regression class: shuffling is the ordering that
-# exposes state shared between rows.
-#
-# Its own invocation, not a mode added to P-13's run (ASSUMPTION-11-A). The two
-# items assert different things about the same file and a shared run would make
-# one item's failure look like the other's.
-# ===========================================================================
 P21_REPORT="$TMP_DIR/p21.json"
 P21_LOG="$TMP_DIR/p21.log"
 run_vitest "$PROBE_STEPS" "$P21_REPORT" "$P21_LOG" --sequence.shuffle
@@ -616,11 +336,6 @@ run_vitest "$PROBE_STEPS" "$P21_REPORT" "$P21_LOG" --sequence.shuffle
   fail "P-21: the shuffled run wrote no report (output above)."
 }
 
-# The emitted titles are NOT the Outline's own text: D-03 appends the row's
-# Examples columns, so a row reads `… for 11 (start=11)`. They are therefore
-# collected from the report by PREFIX and asserted on as a set, rather than
-# reconstructed here — a gate that hard-codes D-03's suffix format would go red
-# on a title-format change that has nothing to do with this item.
 P21_TITLES=()
 while IFS= read -r title; do
   P21_TITLES+=("$title")
@@ -661,15 +376,6 @@ for title in "${P21_TITLES[@]}"; do
 done
 echo "✓ P-21 — three distinct Outline rows, each carrying its own Examples value, all pass under --sequence.shuffle (Pitfall 34)"
 
-# ===========================================================================
-# P-22 — a tag filter selects EXACTLY the tagged Scenarios.
-#
-# TWO HALVES, and mutation G is why the second is not optional: "the filtered
-# run passed" is equally true of a filter that selected everything. The
-# unselected Scenario must be PRESENT and SKIPPED — a CLI filter narrows to skip
-# and never removes (RESEARCH Finding 7), so absence would mean something else
-# entirely happened.
-# ===========================================================================
 P22_REPORT="$TMP_DIR/p22.json"
 P22_LOG="$TMP_DIR/p22.log"
 run_vitest "$ACCOUNTS_STEPS" "$P22_REPORT" "$P22_LOG" --tagsFilter="$FILTER_TAG"
@@ -693,7 +399,7 @@ fi
 P22_STATUS_OTHER="$(report_query "$P22_REPORT" status "$TITLE_NOT_SLOW")"
 if [[ "$P22_STATUS_OTHER" == "ABSENT" ]]; then
   cat "$P22_LOG" >&2
-  fail "P-22: an unselected Scenario is ABSENT from the filtered report, expected PRESENT and \"skipped\". Title: \"$TITLE_NOT_SLOW\". A CLI filter narrows non-matching tests to skip and never removes them (RESEARCH Finding 7); absence is what a REGISTRATION filter produces, and the two must stay distinguishable."
+  fail "P-22: an unselected Scenario is ABSENT from the filtered report, expected PRESENT and \"skipped\". Title: \"$TITLE_NOT_SLOW\". A CLI filter narrows non-matching tests to skip and never removes them ; absence is what a REGISTRATION filter produces, and the two must stay distinguishable."
 fi
 if [[ "$P22_STATUS_OTHER" != "skipped" ]]; then
   cat "$P22_LOG" >&2
@@ -701,26 +407,6 @@ if [[ "$P22_STATUS_OTHER" != "skipped" ]]; then
 fi
 echo "✓ P-22 — --tagsFilter=$FILTER_TAG selected exactly the tagged Scenario; an untagged one is present and SKIPPED, not passed"
 
-# ===========================================================================
-# P-24 — the failure output.
-#
-# THE ITEM'S FULL CLAIM IS CURRENTLY FALSE AND THE CHECKLIST ROW SAYS SO. Read
-# both surfaces from a deliberately failing step: vitest's `Failed Tests` panel
-# carries the Scenario title, the assertion message and seven frames of effect
-# fiber internals — no step text, no `.feature`, no line number. ADR-EC-005's
-# `Effect.fn(pattern)` span DOES name the step, in the stdout block, which is
-# exactly the shape Pitfall 31 described and exactly the half Pitfall 31 calls
-# insufficient.
-#
-# So the executed form is the reduced one: the attributed step frame reaches the
-# reader at all. That is a real regression guard — the day ADR-EC-005's span
-# stops being applied, the step name disappears from every failure in the
-# project and nothing else in this repository notices. What it is NOT is the
-# item's full claim, and the row's Note says what would complete it.
-#
-# The failing step comes from a TEMP pair. A committed failing fixture would
-# make `pnpm test` red for ever.
-# ===========================================================================
 cat >"$FAILING_FEATURE" <<'FAILING_FEATURE_BODY'
 Feature: Pitfalls gate failure output
 
@@ -804,17 +490,6 @@ if ! grep -qF -- "A deliberately failing step" "$P24_HUMAN_LOG"; then
 fi
 echo "✓ P-24 — a deliberately failing step names its Gherkin step pattern and its Scenario in the failure output (REDUCED form: see the P-24 row's Note for the half that is still owed)"
 
-# ===========================================================================
-# P-15 and P-16 — the PACKED manifests.
-#
-# Read out of a tarball, never out of packages/*/package.json. The source
-# manifest reads `catalog:peer` whether the catalog behind it holds a range or
-# an exact pin, so it is byte-identical in the passing and the failing case —
-# STATE.md's Phase 01-04 entry records that finding, and PITFALLS Pitfall 20 is
-# the mechanism: a `catalog:` specifier expands VERBATIM at pack time.
-# ===========================================================================
-# NOT `$( )` — see packed_manifest's comment: a command substitution swallows
-# its three `fail` diagnostics and reduces the run to a silent exit 1.
 packed_manifest "@effect-cucumber/vitest" "vitest"
 VITEST_MANIFEST="$PACKED_MANIFEST"
 packed_manifest "@effect-cucumber/gherkin" "gherkin"
@@ -867,7 +542,6 @@ fi
 echo "✓ P-15 — neither packed manifest installs effect or vitest for a consumer, both declare effect as a peer, and no catalog:/workspace: protocol survived packing"
 echo "  P-15 note: the LIVE two-package-manager install is a release-time step, performed as step 6 of $RC_BUMP_DOC — it needs a real registry and is deliberately not a per-push gate."
 
-# P-16 duplicates verify-pack.sh's peer-range assertion ON PURPOSE (PROH-11-04).
 # The item names it, so this checklist runs it; delegating to another script
 # would make P-16 a citation, and a citation cannot be run.
 P16_RESULT="$(
@@ -899,15 +573,6 @@ case "$P16_RESULT" in
 esac
 echo "✓ P-16 — the PACKED manifest's peerDependencies.effect is ${P16_RESULT#RANGE:}: a range, not a pin and not an unexpanded catalog reference (Pitfall 20)"
 
-# ===========================================================================
-# P-17 — the README install lines.
-#
-# Three assertions, and the third is the one that is easy to leave out: the
-# gherkin README must name NEITHER dependency. Without it, a well-meaning edit
-# that "made the install docs consistent" would add an `effect@rc` line to a
-# package that declares no such dependency, and the two positive assertions
-# would happily go on passing.
-# ===========================================================================
 p17_install_line() {
   grep -nE '^(pnpm add|npm install|npm i|yarn add) ' "$1" || true
 }
@@ -930,15 +595,8 @@ if grep -qE '(^| )effect@|@effect/vitest' <<<"$GHERKIN_LINES"; then
 fi
 echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect and @effect/vitest, and the gherkin README names neither"
 
-# ===========================================================================
-# P-18 — the rc-bump checklist exists and names the acceptance suite as the gate.
-#
-# Read as normalised prose rather than line by line: a sentence that happens to
-# wrap across two lines is the same sentence, and a line-anchored grep would
-# fail on a reflow, which is the kind of false red that gets a gate deleted.
-# ===========================================================================
 [[ -f "$RC_BUMP_DOC" ]] ||
-  fail "P-18: $RC_BUMP_DOC does not exist. PITFALLS Pitfall 18: an rc changelog's \`### Patch Changes\` heading does not narrow what broke — every entry lands there in pre-mode regardless of severity — so the bump procedure has to be written down."
+ fail "P-18: $RC_BUMP_DOC does not exist. an rc changelog's \`### Patch Changes\` heading does not narrow what broke — every entry lands there in pre-mode regardless of severity — so the bump procedure has to be written down."
 
 P18_RESULT="$(
   DOC="$RC_BUMP_DOC" node -e '
@@ -959,23 +617,9 @@ grep -qF -- "$CHECKLIST_DOC" "$RC_BUMP_DOC" ||
   fail "P-18: $RC_BUMP_DOC does not reference $CHECKLIST_DOC. The two documents point at each other on purpose — this row IS that document's existence, and its step 6 is P-15's full form."
 echo "✓ P-18 — $RC_BUMP_DOC exists, names packages/vitest/test/acceptance/ as the gate for a bump, and references the checklist back"
 
-# ===========================================================================
-# THE COVERAGE CROSS-CHECK.
-#
-# Roadmap success criterion 4 says the checklist "runs in full". Everything
-# above executes ten items; this is what makes "in full" a counted claim rather
-# than a reader's.
-# ===========================================================================
 echo ""
 echo "── coverage cross-check ────────────────────────────────────────────────"
 
-# The program is written to a temporary FILE rather than passed with `node -e`
-# inside a command substitution. That is not a style choice: a command
-# substitution re-interprets both apostrophes and backticks, and this program
-# has to talk about titles, ids and markdown table cells — all three of which
-# want one or the other. Two rounds of quote-dodging produced a program that
-# parsed and a comment that no longer said what it meant; a file says exactly
-# what it says.
 CROSS_CHECK_PROGRAM="$TMP_DIR/cross-check.cjs"
 cat >"$CROSS_CHECK_PROGRAM" <<'CROSS_CHECK_JS'
 const fs = require("node:fs")
@@ -1053,7 +697,7 @@ for (let n = 1; n <= expectedRows; n++) {
 // ---------------------------------------------------------------------------
 // 3. Every row's named executor really CARRIES that id, in the ANCHORED form.
 //
-// Never a bare-substring grep. Plan 11-07 stripped `P-04 — ` out of a test
+// Never a bare-substring grep. An earlier revision stripped `P-04 — ` out of a test
 // title and measured that `grep -c 'P-04'` over that file STILL returned 2,
 // satisfied by the file's own header prose documenting the id — so the obvious
 // cross-check would have been green against exactly the loss it exists to
@@ -1093,7 +737,7 @@ for (const row of rows) {
     fails.push(
       row.id + " is in the checklist, but its executor does not CARRY it: " + row.executor +
         " carries no " + kind + " anchored on " + row.id + ". A bare mention in a comment or a doc " +
-        "block does NOT count, and that is the whole point of the anchored form — plan 11-07 " +
+ "block does NOT count, and that is the whole point of the anchored form — " +
         "measured a bare-id grep green against a test that had lost its id. Either the executor " +
         "lost the id, or this row was pointed at an artifact that never ran the item."
     )

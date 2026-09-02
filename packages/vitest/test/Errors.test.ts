@@ -1,99 +1,23 @@
 /**
- * MATCH-03/04/05's two data shapes plus RUN-05's two collection-time notices, proven to construct
- * under `effect@4.0.0-rc.112`'s real constraints and to carry full, unmodified content.
+ * Tests for `Errors`.
  *
- * `StepMatchError` and `UnusedStepDefinitionWarning` take their `message` from the caller, so their
- * blocks assert that the string SURVIVES. `UndeclaredTagWarning` and `ExcludedScenariosNotice`
- * BUILD theirs, so their blocks assert two further things the first two cannot: that every
- * author-controlled component is `JSON.stringify`'d on the way in (`src/Errors.ts` note (f)), and
- * that `makeExcludedScenariosNotice` DERIVES its `reason` from the two tag arrays rather than
- * accepting one that could disagree with them.
- *
- * Five of the assertions below are written more strictly than they look like they need to be,
- * and each one defends a property that a weaker check would let rot silently.
- *
- * - **The untruncated-message assertion pins `message.length` against a HARD-CODED number, never a
- *   substring.** A `toContain` check passes against a truncated message that happens to keep its
- *   prefix, which is exactly what every truncating formatter produces. The no-truncation policy is
- *   a locked developer decision (`packages/gherkin/src/Errors.ts` note (b), pinned byte for byte in
- *   `packages/gherkin/test/Contracts.test.ts`) and `packages/vitest/src/Errors.ts` note (d) extends
- *   it to this package; the length is the only assertion that actually enforces it.
- *
- * - **The ambiguous-match assertion uses a NON-ALPHABETICAL pattern order.** `matchedPatterns` is
- *   in the order the caller supplied, and the caller's order is the contract: 06-CONTEXT.md D-03
- *   orders the list by each pattern's definition site (`file:line`), and `Plan.ts` owns applying
- *   that sort. If `Errors.ts` ever sorts as well, the two rules can disagree — so the array here is
- *   ordered `I…`, `A…`, `G…`, and an accidental `.sort()` anywhere on the path fails this test
- *   rather than quietly agreeing with it.
- *
- * - **The omitted-key assertion goes through `thrownBy`, never vitest's throw matcher.** That
- *   matcher is unusable here in both of its forms: called with no argument it is rejected outright
- *   by oxlint's error-level `vitest(require-to-throw-message)`, and called WITH one it would pin
- *   this file to `effect`'s own upstream prose, which is free to change inside an rc bump.
- *   `thrownBy` returns the thrown value so the test can assert `instanceof Error` structurally
- *   instead. The helper is reproduced locally rather than imported from
- *   `packages/gherkin/test/expressions-pin.test.ts` — a cross-package test import is not a
- *   dependency this repo has, and the helper is six lines.
- *
- * - **The two BUILT messages are pinned to a hard-coded total length, not to a lower bound.** They
- *   are assembled by their factories rather than supplied, so "did it survive" is not a question that
- *   can be asked of them — the only way note (d)'s no-truncation policy is enforceable on a built
- *   string is an exact character count against a fixture carrying a 1000-character tag. Those two
- *   numbers change whenever the wording changes, and that is the intended cost: a reworded message is
- *   a deliberate edit and a truncated one is not.
- *
- * - **The forging assertions use ONE fixture tag carrying both a `"` and a real newline.** Splitting
- *   them into two tags would let an escaping bug that handles quotes but not newlines pass half the
- *   suite; a single tag carrying both makes the message either fully escaped or visibly wrong.
- *
- * Mutation-tested (each performed, then reverted, each confirmed failing):
- * - A. A `.slice(0, 200)` is introduced at the one construction site `src/Errors.ts` currently has
- *      — `makeUnusedStepDefinitionWarning`'s `message` — → the 4000-character length assertion on
- *      the warning fails. `StepMatchError` has no construction site in src yet (its plain-optionals
- *      factory is `Plan.ts`'s, plan 06-04), which is why the identical length assertion is pinned
- *      on the error here too: it is already waiting for that factory before the factory exists.
- * - B. `makeUnusedStepDefinitionWarning` returns `Option.some(args.definedAt)` unconditionally
- *      instead of `Option.fromUndefinedOr(args.definedAt)` → the omitted-`definedAt` test fails
- *      (`Option.some(undefined)` is not `Option.none()`).
- * - C. `quotedList` drops its `.map(quoted)` and joins the raw tag strings → 6 failures, both
- *      forging tests among them: the escaped form is absent and a raw newline appears in the
- *      message.
- * - D. `quoted` gains a `.slice(0, 200)` → 3 failures, both exact-length assertions among them.
- * - E. `excludedScenariosNoticeReason` returns `"ExcludedByIncludeTags"` whenever `includeTags` is
- *      non-empty (dropping the both-arrays arm) → 4 failures, the `ExcludedByBothTagFilters`
- *      derivation test among them, while the OTHER TWO derivation tests still pass — which is why
- *      all three combinations have their own named test rather than one parameterised sweep.
- *
- * ## Imports
- *
- * `../src/Errors.ts` directly, never `../src/index.ts`: `effect/no-import-from-barrel-package` runs
- * with `checkRelativeIndexImports: true` and fails `pnpm lint` on a relative value-import whose
- * basename is `index.*`. Neither type is in that barrel yet anyway — plan 06-07 owns that edit
- * (`src/Errors.ts`'s closing note).
- *
- * `@effect/vitest` is the one `@effect/*` barrel that same rule exempts; the exemption and its
- * bounds are documented at the rule's config in `.oxlintrc.json`. Every test here is synchronous,
- * so `expect` is called directly inside `it`, where `vitest/no-standalone-expect` is satisfied.
+ * Carries: ADR-EC-022, BEH-EC-013.
  */
 import { describe, expect, it } from "@effect/vitest"
 import * as Option from "effect/Option"
+import { inspect } from "node:util"
 import {
   type ExcludedScenariosNoticeReason,
   makeExcludedScenariosNotice,
   makeUndeclaredTagWarning,
+  makeUnknownContainerWarning,
   makeUnusedStepDefinitionWarning,
   StepMatchError,
   type UndeclaredTagWarningReason,
   type UnusedStepDefinitionWarningReason
 } from "../src/Errors.ts"
 
-/**
- * Runs `action` and returns whatever it threw.
- *
- * Used in place of vitest's throw matcher — see this module's doc comment. Throws rather than
- * returning a sentinel when the action does NOT throw, so a construction that silently starts
- * succeeding fails at the assertion it belongs to instead of reading as a pass.
- */
+// Runs `action` and returns whatever it threw.
 const thrownBy = (action: () => unknown): unknown => {
   try {
     action()
@@ -103,27 +27,18 @@ const thrownBy = (action: () => unknown): unknown => {
   throw new Error("expected the action to throw, but it returned normally")
 }
 
-/**
- * Exactly 4000 characters: a 40-character unit repeated 100 times.
- *
- * The unit carries the two things a truncating formatter eats first — embedded newlines and a
- * quoted step text — so a mutation that keeps the length while eating structure would still be
- * visible to the newline count below.
- */
+// Exactly 4000 characters: a 40-character unit repeated 100 times.
 const UNTRUNCATED_MESSAGE_LENGTH = 4000
 const untruncatedMessage = "Given I have a very long step text \"x\"\n\n".repeat(100)
 
-/**
- * Deliberately NOT in alphabetical order (`I…`, `A…`, `G…`). Sorting this array would produce
- * `A…`, `G…`, `I…`, so any accidental sort on the path fails the order assertion below.
- */
+// Deliberately NOT in alphabetical order (`I…`, `A…`, `G…`).
 const ambiguousPatterns = [
   "I have {int} cucumbers in my basket",
   "A user {string} logs in",
   "Given nothing at all happens"
 ]
 
-/** The constructor's argument type, named once so the omitted-key cast below reads as deliberate. */
+// The constructor's argument type, named once so the omitted-key cast below reads as deliberate.
 type StepMatchErrorArgs = ConstructorParameters<typeof StepMatchError>[0]
 
 const undefinedStepError = () =>
@@ -135,8 +50,7 @@ const undefinedStepError = () =>
     scenarioName: "a shopper fills a basket",
     matchedPatterns: [],
     suggestion: Option.some("Given(\"I have {int} cucumbers in my basket\", function*(count: number) {})"),
-    message: untruncatedMessage,
-    cause: Option.none()
+    message: untruncatedMessage
   })
 
 const ambiguousStepError = () =>
@@ -148,8 +62,7 @@ const ambiguousStepError = () =>
     scenarioName: "a shopper fills a basket",
     matchedPatterns: ambiguousPatterns,
     suggestion: Option.none(),
-    message: untruncatedMessage,
-    cause: Option.none()
+    message: untruncatedMessage
   })
 
 const unusedWarning = (definedAt?: string) =>
@@ -172,15 +85,15 @@ const unusedWarning = (definedAt?: string) =>
       message: untruncatedMessage
     })
 
-describe("StepMatchError, reason UndefinedStep (MATCH-03)", () => {
+describe("StepMatchError, reason UndefinedStep", () => {
   it("is an instance of Error and of StepMatchError", () => {
     expect(undefinedStepError()).toBeInstanceOf(Error)
     expect(undefinedStepError()).toBeInstanceOf(StepMatchError)
   })
 
   it("carries the exact _tag the Plan stage discriminates on", () => {
-    // Destructured rather than read by dotted member access: `no-underscore-dangle` is error-level
-    // in this repo for member expressions, and allows object destructuring.
+    // Destructured rather than read by dotted member access: `no-underscore-dangle` is error-level in this repo for
+    // member expressions, and allows object destructuring.
     const { _tag } = undefinedStepError()
     expect(_tag).toBe("StepMatchError")
   })
@@ -198,7 +111,7 @@ describe("StepMatchError, reason UndefinedStep (MATCH-03)", () => {
     expect(error.scenarioName).toBe("a shopper fills a basket")
   })
 
-  it("round-trips the D-01 suggested snippet as Option.some of the supplied string", () => {
+  it("round-trips the suggested snippet as Option.some of the supplied string", () => {
     expect(undefinedStepError().suggestion).toEqual(
       Option.some("Given(\"I have {int} cucumbers in my basket\", function*(count: number) {})")
     )
@@ -209,16 +122,15 @@ describe("StepMatchError, reason UndefinedStep (MATCH-03)", () => {
   })
 
   it("reports matchedPatterns as an empty ARRAY, not an absent value", () => {
-    // "no patterns matched" is genuinely a zero-length list, which is why the field is
-    // `Schema.Array` and not `Schema.OptionFromUndefinedOr` — src/Errors.ts's field notes.
+    // "no patterns matched" is genuinely a zero-length list, which is why the field is `Schema.Array` and not
+    // `Schema.OptionFromUndefinedOr` — src/Errors.ts's field notes.
     expect(undefinedStepError().matchedPatterns).toEqual([])
   })
 })
 
-describe("StepMatchError, reason AmbiguousStep (MATCH-04)", () => {
+describe("StepMatchError, reason AmbiguousStep", () => {
   it("preserves matchedPatterns in the exact order supplied, applying no sort of its own", () => {
-    // THE load-bearing assertion of this block. `ambiguousPatterns` is non-alphabetical on purpose;
-    // 06-CONTEXT.md D-03's definition-site sort belongs to Plan.ts and must not be duplicated here.
+    // THE load-bearing assertion of this block.
     expect(ambiguousStepError().matchedPatterns).toEqual([
       "I have {int} cucumbers in my basket",
       "A user {string} logs in",
@@ -241,28 +153,35 @@ describe("StepMatchError, reason AmbiguousStep (MATCH-04)", () => {
 
 describe("StepMatchError construction under this rc build's constraints", () => {
   it("fails when an Option-typed key is omitted, rather than defaulting it", () => {
-    // Verified fact 3 of the plan, and `packages/gherkin/src/Errors.ts` note (a): every optional
-    // field is `Schema.OptionFromUndefinedOr`, a TRANSFORMATION, and the constructor validates
-    // against the Type side — so there is no implicit `Option.none()` for an omitted key. The cast
-    // is load-bearing rather than a workaround: the parameter type REQUIRES `cause`, so the
-    // omission is unwriteable without one, and this test is about the runtime behaviour a
-    // JavaScript caller or a Schema-decoded reconstruction would otherwise meet unannounced.
-    const withoutCause = {
+    const withoutSuggestion = {
       reason: "UndefinedStep",
       uri: "features/checkout.feature",
       line: Option.none(),
       stepText: "I omit a required key",
       scenarioName: "omission",
       matchedPatterns: [],
-      suggestion: Option.none(),
-      message: "cause was omitted"
+      message: "suggestion was omitted"
     } as unknown as StepMatchErrorArgs
 
-    const thrown = thrownBy(() => new StepMatchError(withoutCause))
+    const thrown = thrownBy(() => new StepMatchError(withoutSuggestion))
     expect(thrown).toBeInstanceOf(Error)
   })
 
-  it("exposes cause as Option.some of the supplied value, preserving reference equality", () => {
+  it("constructs with cause omitted, and exposes it as undefined", () => {
+    const error = new StepMatchError({
+      reason: "UndefinedStep",
+      uri: "features/checkout.feature",
+      line: Option.none(),
+      stepText: "I omit the cause",
+      scenarioName: "omission",
+      matchedPatterns: [],
+      suggestion: Option.none(),
+      message: "cause was omitted"
+    })
+    expect(error.cause).toBeUndefined()
+  })
+
+  it("exposes cause natively, preserving reference equality and the inspected chain", () => {
     const upstream = new Error("the step body threw")
     const error = new StepMatchError({
       reason: "UndefinedStep",
@@ -273,17 +192,17 @@ describe("StepMatchError construction under this rc build's constraints", () => 
       matchedPatterns: [],
       suggestion: Option.none(),
       message: "wrapping an upstream throw",
-      cause: Option.some(upstream)
+      cause: upstream
     })
-    expect(error.cause).toEqual(Option.some(upstream))
-    expect(Option.getOrThrow(error.cause)).toBe(upstream)
+    expect(error.cause).toBe(upstream)
+    expect(inspect(error)).toContain("the step body threw")
   })
 })
 
 describe("StepMatchError carries full, untruncated message content", () => {
   it("survives a 4000-character message with its length unchanged", () => {
-    // Length, never a substring: a truncated message that keeps its prefix passes every
-    // `toContain` check ever written. Mutation A makes exactly this shape of assertion fail.
+    // Length, never a substring: a truncated message that keeps its prefix passes every `toContain` check ever
+    // written.
     expect(untruncatedMessage.length).toBe(UNTRUNCATED_MESSAGE_LENGTH)
     expect(undefinedStepError().message.length).toBe(UNTRUNCATED_MESSAGE_LENGTH)
   })
@@ -299,7 +218,7 @@ describe("StepMatchError carries full, untruncated message content", () => {
   })
 })
 
-describe("UnusedStepDefinitionWarning (MATCH-05)", () => {
+describe("UnusedStepDefinitionWarning", () => {
   it("carries the exact _tag, distinct from gherkin's parse-time LoadFeatureWarning", () => {
     const { _tag } = unusedWarning()
     expect(_tag).toBe("UnusedStepDefinitionWarning")
@@ -341,34 +260,18 @@ describe("UnusedStepDefinitionWarning (MATCH-05)", () => {
   })
 })
 
-/**
- * A single 1000-character tag, long enough that any plausible truncation cap sits inside it.
- *
- * `@` plus 999 `a`s rather than a random string: the messages below are pinned by exact character
- * count, so the fixture has to be reproducible from its own definition.
- */
+// A single 1000-character tag, long enough that any plausible truncation cap sits inside it.
 const LONG_TAG_LENGTH = 1000
 const longTag = `@${"a".repeat(LONG_TAG_LENGTH - 1)}`
 
-/**
- * ONE tag carrying BOTH of the characters a forged output line needs: a double quote to close this
- * library's own quoting early, and a real newline to start what reads as a second warning line. The
- * `⚠` prefix is `Runner.ts`'s own warning marker, so an unescaped render would be indistinguishable
- * from output this library really produced (threats T-06-06-01 / T-06-07-01).
- *
- * Split across two tags it would let a half-correct escaping bug pass half the suite.
- */
+// ONE tag carrying BOTH of the characters a forged output line needs: a double quote to close this library's own
+// quoting early, and a real newline to start what reads as a second warning line.
 const forgingTag = "@wip\"\n⚠ unused step definition: Then \"forged\""
 
-/**
- * The exact rendered length of `undeclaredWarning()`'s message, hard-coded — see this module's doc
- * comment. Any truncation, cap or ellipsis on the construction path moves it.
- */
+// The exact rendered length of `undeclaredWarning()`'s message, hard-coded — see this module's doc comment.
 const UNDECLARED_MESSAGE_LENGTH = 1396
 
-/**
- * The exact rendered length of `bothFiltersNotice()`'s message, hard-coded for the same reason.
- */
+// The exact rendered length of `bothFiltersNotice()`'s message, hard-coded for the same reason.
 const BOTH_FILTERS_MESSAGE_LENGTH = 1286
 
 const undeclaredWarning = () =>
@@ -421,7 +324,7 @@ const forgingNotice = () =>
     excludeTags: [forgingTag]
   })
 
-describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
+describe("UndeclaredTagWarning", () => {
   it("carries the exact _tag and the one reason member", () => {
     const { _tag } = undeclaredWarning()
     const reason: UndeclaredTagWarningReason = "UndeclaredTag"
@@ -443,7 +346,6 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
 
   it("stores no field carrying the caught framework error's own text", () => {
     // src/Errors.ts note (f), second half: upstream prose never becomes this library's contract.
-    // Asserted structurally, since there is no wording to assert the absence of.
     expect(Object.keys(undeclaredWarning())).toEqual([
       "_tag",
       "reason",
@@ -455,8 +357,7 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
   })
 
   it("renders a message of exactly the expected length, truncating nothing", () => {
-    // Mutation D fails exactly here. Length, never a substring — a truncated message that keeps its
-    // prefix passes every `toContain` check ever written.
+    // Mutation D fails exactly here.
     expect(undeclaredWarning().message.length).toBe(UNDECLARED_MESSAGE_LENGTH)
     expect(undeclaredWarning().message).toContain(longTag)
   })
@@ -470,18 +371,16 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
   })
 
   it("says at least one of the listed tags is undeclared, never that all of them are", () => {
-    // The producer is handed the Scenario's WHOLE tag list and cannot compute the offending subset
-    // without reading the framework's message, which describeFeature.ts's adapter refuses to do by
-    // design. The earlier wording claimed every listed tag was undeclared, which sent a reader off
-    // to declare tags that were already declared. This assertion is what pins the honest claim.
+    // The producer is handed the Scenario's WHOLE tag list and cannot compute the offending subset without reading
+    // the framework's message, which describeFeature.ts's adapter refuses to do by design.
     const { message } = undeclaredWarning()
     expect(message).toContain("at least one of which")
     expect(message).not.toContain("tag(s) this project's vitest config does not declare")
   })
 
   it("says the Scenario still ran and was emitted untagged, and points at the tag docs", () => {
-    // Without both facts the obvious reading is "my Scenario was skipped", which is the one thing
-    // that did not happen.
+    // Without both facts the obvious reading is "my Scenario was skipped", which is the one thing that did not
+    // happen.
     const { message } = undeclaredWarning()
     expect(message).toContain("still ran")
     expect(message).toContain("UNTAGGED")
@@ -503,8 +402,7 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
   })
 
   it("escapes a tag containing a quote and a newline instead of letting it forge a second line", () => {
-    // Mutation C fails exactly here. `JSON.stringify` renders the quote as `\"` and the newline as
-    // the two characters `\` and `n`, so the message stays one line and the forged `⚠` prefix is
+    // Mutation C fails exactly here.
     // visibly inside a quoted span rather than at the start of one.
     const { message } = forgingUndeclaredWarning()
     expect(message).toContain(JSON.stringify(forgingTag))
@@ -513,7 +411,7 @@ describe("UndeclaredTagWarning (RUN-05, D-08)", () => {
   })
 })
 
-describe("ExcludedScenariosNotice derives its reason from the two arrays (RUN-05, D-10)", () => {
+describe("ExcludedScenariosNotice derives its reason from the two arrays", () => {
   it("reports ExcludedByIncludeTags when only includeTags is non-empty", () => {
     const reason: ExcludedScenariosNoticeReason = "ExcludedByIncludeTags"
     expect(includeOnlyNotice().reason).toBe(reason)
@@ -538,7 +436,7 @@ describe("ExcludedScenariosNotice derives its reason from the two arrays (RUN-05
   })
 })
 
-describe("ExcludedScenariosNotice content (RUN-05, D-10)", () => {
+describe("ExcludedScenariosNotice content", () => {
   it("carries the exact _tag", () => {
     const { _tag } = includeOnlyNotice()
     expect(_tag).toBe("ExcludedScenariosNotice")
@@ -588,5 +486,33 @@ describe("ExcludedScenariosNotice content (RUN-05, D-10)", () => {
     expect(message).toContain(JSON.stringify(forgingTag))
     expect(message.includes("\n")).toBe(false)
     expect(message).not.toContain(forgingTag)
+  })
+})
+
+describe("UnknownContainerWarning", () => {
+  it("quotes the file, the name and every known name, and says none when nothing is known", () => {
+    const withKnown = makeUnknownContainerWarning({
+      uri: "features/a \"quoted\".feature",
+      kind: "Scenario",
+      name: "Creating a usr",
+      ruleName: "Limits",
+      known: ["Over the limit", "line\nbreak"]
+    })
+    const { _tag, reason } = withKnown
+    expect(_tag).toBe("UnknownContainerWarning")
+    expect(reason).toBe("UnknownContainer")
+    expect(withKnown).not.toBeInstanceOf(Error)
+    expect(withKnown.message).toContain(
+      "\"features/a \\\"quoted\\\".feature\": UnknownContainer: no Scenario named \"Creating a usr\" exists in this Feature inside Rule \"Limits\" (known: \"Over the limit\", \"line\\nbreak\")"
+    )
+    const withoutKnown = makeUnknownContainerWarning({
+      uri: "f.feature",
+      kind: "Rule",
+      name: "Limts",
+      ruleName: null,
+      known: []
+    })
+    expect(withoutKnown.message).toContain("no Rule named \"Limts\" exists in this Feature (known: none)")
+    expect(withoutKnown.message).toContain("steps, Background and hooks")
   })
 })

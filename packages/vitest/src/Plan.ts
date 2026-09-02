@@ -1,156 +1,16 @@
 /**
- * The Plan stage of ARCHITECTURE.md's Register→Plan→Emit pipeline.
+ * The Plan stage: resolves every Pickle step against the registered definitions, in pure code with
+ * no framework dependency, and reports unused definitions as warnings.
  *
- * `describeFeature` runs three separable passes over in-memory data before a single vitest call
- * happens: REGISTER builds a scope tree by running the define callback once, PLAN — this module —
- * joins that tree against a `ParsedFeature`'s Scenarios and resolves every Pickle step to exactly
- * one step definition, and EMIT walks the result and calls `describe`/`it.effect`. Keeping the
- * middle pass separate is what makes an undefined or ambiguous step a deterministic, per-Scenario
- * discovery made BEFORE any test runs, rather than something found mid-`Effect.gen` on whichever
- * Scenario happened to run first — and it is why this whole module is testable with no vitest
- * machinery at all.
- *
- * This is also the phase's only fan-in point. Per ARCHITECTURE.md's "Internal boundaries" table no
- * matching, no scope lookup and no Layer decision may survive past here: everything downstream
- * consumes fully-resolved value objects and never sees a pattern, a registry or a `ParsedFeature`
- * internal again.
- *
- * Eight things about this module are not visible from the code.
- *
- * (a) **A resolution failure stays IN POSITION in the step list, as a member of the `PlannedStep`
- *     union — it is not hoisted to a `failure` field on the Scenario.** The consequence is the whole
- *     point: a Scenario whose third step is undefined still runs steps one and two and then fails at
- *     step three, which is what cucumber-js does (PITFALLS.md Pitfall 15, "how cucumber-js actually
- *     does it") and what makes INV-EC-001's fail-fast fall out for free under ADR-EC-004's
- *     one-Scenario-one-test rule. Hoisted to the Scenario, an undefined step written at the END of a
- *     Scenario would stop the earlier steps from running at all, and the developer would lose the
- *     one piece of evidence — how far the Scenario got — that says whether the undefined step is the
- *     only problem.
- *
- * (b) **Level precedence: an INNER registration shadows an outer one, and two matches at the same
- *     level is the ambiguity.** A visible match is ranked `0` when its scope is `background` or
- *     `scenario`, `1` when it is `rule` and `2` when it is `feature`; the lowest rank with at least
- *     one match wins and the rest are discarded. That is ARCHITECTURE.md Pattern 5's "walk up the
- *     chain, first match wins", written as a rank rather than as a loop because the matcher already
- *     returned every match at once.
- *
- *     The plausible wrong reading is to treat ANY two matches as ambiguous. It fails on the exact
- *     arrangement Pattern 5 exists to support: a Feature-level default pattern with a Scenario-level
- *     override. Under that reading every Scenario that overrides a default becomes an
- *     `AmbiguousStep` error, so overriding is impossible and the Feature-level default has to be
- *     deleted — which is precisely the code duplication the scope chain removes. Two matches at the
- *     SAME rank is a genuine ambiguity, because nothing in the document says which of them the
- *     author meant.
- *
- * (c) **`ParsedScenario.astName` is the scope-match key and `ParsedScenario.name` never is.** A
- *     Scenario Outline compiles to one `ParsedScenario` per Examples row: each row has a distinct
- *     INTERPOLATED `name` (`adding 1`, `adding 2`) and they all share the one un-interpolated
- *     `astName` (`adding <count>`), which is also the string the author passed to `Scenario(...)`.
- *     Matching on `name` compiles, type-checks and works perfectly on every plain Scenario in the
- *     suite, then resolves NOTHING for any Outline row — every step of every row becomes an
- *     `UndefinedStep`. `name` has exactly one job here: it is the `it.effect` title.
- *
- * (d) **One matcher per `planFeature` call, over the WHOLE definition list — not one per Scenario
- *     and not one per scope level.** The scope filter is applied to the matcher's RESULTS, which is
- *     both cheaper and the only arrangement in which MATCH-04 can see two competing patterns at
- *     once: a per-scope matcher would return one match per level by construction and could never
- *     observe the collision. Cheaper, because `StepMatcher`'s lazy compilation cache is keyed on
- *     `(registry, pattern)`, so building one matcher compiles each pattern once for the whole
- *     Feature instead of once per Scenario.
- *
- *     The registry handed to it is `feature.parameterTypes`, and it must never be a freshly built
- *     one. A `ParsedFeature` carries the registry it was PARSED with, including every custom
- *     parameter type the author had defined at that moment; an expression compiled against any other
- *     registry would resolve different parameter types, and `StepMatcher`'s cache — keyed on the
- *     registry INSTANCE precisely because a fresh registry is a different registry — would then
- *     serve that wrong compilation without complaint.
- *
- * (e) **`rule` is a real scope kind, and Rule membership is decided by a CALLER-RESOLVED id — never
- *     by a Rule NAME.** ARCHITECTURE.md Pattern 5's three-level chain (Scenario → Rule → Feature) is
- *     implemented here in full: `isVisibleTo` has a `"rule"` arm, and `scopeRank` has three levels
- *     with `rule` in the middle.
- *
- *     Every one of those comparisons is plain `===` between `Option.getOrNull(scenario.ruleId)` and
- *     `definition.scope.ruleId`, two `string | null`s. Comparing `ParsedRule.name` instead would be
- *     the plausible mistake and it is a real defect, not a stylistic one: `Validate.ts`'s
- *     `uniquenessKey` is `${ruleId}\0${name}`, and its own
- *     `duplicate-scenario-name-across-rules.feature` fixture is the executable proof that two
- *     DIFFERENT Rules may legally share a name AND each contain a same-named Scenario. Name equality
- *     would let one Rule's registrations resolve inside the other's Scenarios, which is exactly the
- *     leak INV-EC-005 forbids.
- *
- *     `null` is reserved EXCLUSIVELY for "not nested in any Rule" — Registry.ts note (e) states the
- *     invariant on the producing side, and this module is the reason it has to hold. A Rule-scope
- *     registration therefore never carries `null`: it carries either the real `ParsedRule.id` the
- *     author's Rule name resolved to, or a sentinel that can never equal any real scenario's
- *     `ruleId`. That is why the `"rule"` arm needs no `Option.isSome` guard and no
- *     different-Rule branch — one equality decides "same Rule", "different Rule" and "no Rule at
- *     all" correctly.
- *
- *     This module performs NO resolution of its own. The single place a Rule NAME becomes an id, or
- *     falls back to that sentinel, is `describeFeature.ts`'s `Rule(...)` container.
- *
- * (f) **Two `effect@4.0.0-rc.112` constraints govern this module, both already discovered and
- *     recorded at `packages/gherkin/src/Validate.ts`.** They are stated here as constraints, not
- *     rediscovered, and neither is a simplification waiting to be reverted. `Array.filterMap`
- *     silently returns `[]` regardless of input in this build, so the two-call `Arr.map` followed by
- *     `Arr.getSomes` is the shape to reach for where the idiomatic one-call form would be. And
- *     `Order.combineAll` THROWS, so an ordering here is a plain numeric comparator handed to the
- *     non-mutating `toSorted` — never the mutating in-place form, which `unicorn(no-array-sort)`
- *     rejects anyway. Revisit when the rc moves, not before.
- *
- * (g) **A pattern counts as USED when it was VISIBLE to a step and MATCHED it — not when it was
- *     SELECTED to run it.** The two readings differ on exactly one case, and it is the one that
- *     matters: a Feature-level pattern that matched a step and then lost to a Scenario-level
- *     override. Under the "was selected" reading that pattern is reported unused, so the
- *     Feature-level-default-plus-override arrangement note (b) exists to support produces a warning
- *     telling the author to delete the default — advice that is exactly backwards. It is not dead
- *     code; it matched. ADR-EC-019's own wording is "a registered pattern that matches zero steps
- *     across the whole Feature", which is the visible-and-matched reading and not the other one.
- *
- *     The used-set is keyed on the `StepDefinition` OBJECT REFERENCE and never on
- *     `definition.pattern`. Two definitions may legitimately share one pattern string at two
- *     different scopes — a default and its override are frequently worded identically — and a string
- *     key would let either one's use silently mark the other as used, hiding a genuinely dead
- *     registration behind a live one.
- *
- * (h) **A step's DataTable and DocString are APPENDED to the cucumber-expression arguments, and
- *     this module is the only place that join happens.** BEH-EC-016 owns the ORDER the two
- *     arguments arrive in relative to each other; the requirement that they land after the
- *     pattern's own arguments, positionally, is now stated normatively there too, and
- *     `packages/gherkin/src/StepArguments.ts` note (b) is the producing side of the same contract.
- *
- *     The two argument sources are disjoint by construction, which is what makes concatenation
- *     safe rather than merely convenient: a cucumber-expression is matched against a step's TEXT,
- *     and a table or a doc string is everything BELOW that text, so no `{int}` can ever consume a
- *     table cell and no table can shift a pattern argument. The order within `stepArguments` is
- *     already settled upstream by `argumentIndex`, and this module neither re-sorts it nor
- *     inspects it — a step carrying nothing spreads `[]` and the args list is unchanged, which is
- *     precisely why BEH-EC-016 requires an empty array rather than an absent field.
- *
- *     Appending rather than prepending is what keeps `StepArgs<P>` honest. That type resolves a
- *     step body's parameter list from the pattern LITERAL, and a pattern literal cannot express a
- *     table's presence — there is no brace token for it and deliberately so. Prepending would put
- *     an untyped parameter in front of every inferred one, so a step body that takes a table would
- *     silently receive its pattern arguments shifted by one. Appending leaves every inferred
- *     parameter at the index `StepArgs<P>` says it has, and leaves the author to hand-annotate the
- *     trailing table parameter. `packages/gherkin/test/StepArgs.types.ts` pins both halves.
- *
- * Local imports: `./CallSite.ts`, `./Errors.ts` and `./Registry.ts`, plus the
- * `@effect-cucumber/gherkin` barrel. NEVER `./describeFeature.ts` — the dependency runs the other
- * way, because `describeFeature.ts` imports `planFeature` from here, and the reverse edge would be
- * both an `import/no-cycle` violation and a `pnpm circular` failure. That direction is also why
- * `planFeature` takes a Feature and a definition list rather than a `FeatureCollection`: naming that
- * type would require the forbidden import.
- *
- * `StepBody` lives here rather than in `describeFeature.ts` for the same reason — it is the `Fn` the
- * registry is instantiated with AND the type this module's `ResolvedStep` carries, so it belongs on
- * the side of the edge both can reach.
- *
- * This module is NOT exported from the package barrel. A plan is an internal stage of
- * `describeFeature`, exactly as the registry behind it is (`Registry.ts` note (d)) and as
- * `collectFeature` is; publishing it would freeze the plan's shape into the package's contract
- * before the runner that consumes it exists.
+ * Invariants a reader must not tidy away:
+ * - Scope matching uses `astName` (the un-interpolated title); titles use `name`. Swapping them
+ *   compiles and collapses an Outline's rows (`test/Plan.test.ts`, `test/OutlineTitle.test.ts`).
+ * - Zero matches fail the Scenario with `UndefinedStep` and a snippet; more than one at the same
+ *   scope level fail it with `AmbiguousStep` listing every site in call-site order; the innermost
+ *   scope wins (ADR-EC-019, `test/Plan.test.ts`).
+ * - `ErasedLayer` / `ErasedExtraLayer` / `ErasedEffect` are the ONE place the runtime core erases
+ *   type parameters, after the dsl has checked every body (INV-EC-003).
+ * - Pattern arguments come first, then the step's DataTable/DocString (BEH-EC-016).
  */
 import {
   createStepMatcher,
@@ -161,6 +21,7 @@ import {
   type StepOwner
 } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
+import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import { compareCallSites, formatCallSite } from "./CallSite.ts"
 import { makeUnusedStepDefinitionWarning, StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
@@ -168,33 +29,28 @@ import type { RegistryScopeKind, StepDefinition } from "./Registry.ts"
 
 /**
  * A step body after `Step.ts` has normalised it — the `Fn` the registry is instantiated with.
- *
- * The three `any`s are erased detail, not a widening of the public surface: `Dsl.ts`'s
- * `StepRegistrar<ROut>` has already checked every registered body against the ambient Layer's output
- * by the time one reaches here, and this type never appears in a position a caller writes against.
- * Compare PITFALLS Pitfall 6, which is about `any` in a step body's DECLARED type — a different
- * thing, and the one that would actually disable INV-EC-003.
  */
 export type StepBody = (...params: ReadonlyArray<any>) => Effect.Effect<any, any, any>
 
 /**
+ * The ONE place the runtime core erases a Layer's type parameters (INV-EC-003's boundary paragraph
+ * names it): the shared tier, whose input is `never`.
+ */
+export type ErasedLayer = Layer.Layer<any, any, never>
+
+/**
+ * A Layer whose INPUT another tier satisfies at run time — see `ErasedLayer`.
+ */
+export type ErasedExtraLayer = Layer.Layer<any, any, any>
+
+export type ErasedEffect = Effect.Effect<void, unknown, any>
+
+/**
  * One Pickle step joined to the single step definition that will run it.
- *
- * Everything a runner needs and nothing it does not: `text`, `line`, `keyword` and `origin` are
- * carried through for reporting (BEH-EC-005 needs to say a step came from a Background), `pattern`
- * names which definition won, and `body` and `args` are what actually gets called.
- *
- * `args` is `StepMatcher`'s output passed through POSITIONALLY and UNMODIFIED, followed by this
- * step's `stepArguments` — its DataTable and DocString, in the source order BEH-EC-016 settled. A
- * `null` produced by an optional group that did not participate is meaningful and is kept:
- * dropping it would shift every later argument by one, silently handing the step body the wrong
- * values in the right types, and it would additionally move the trailing table parameter to an
- * index the step body's annotation does not expect. Note (h) has the full argument for the order.
  */
 export type ResolvedStep = {
   readonly text: string
   readonly line: number
-  /** The AST keyword, already trimmed by `Correlate.ts` — an `And` stays an `And`. */
   readonly keyword: string
   readonly origin: StepOwner
   readonly pattern: string
@@ -202,7 +58,6 @@ export type ResolvedStep = {
   readonly args: ReadonlyArray<unknown>
 }
 
-/** The `PlannedStep` member for a step that found exactly one definition. */
 export type ResolvedPlannedStep = {
   readonly _tag: "Resolved"
   readonly step: ResolvedStep
@@ -210,9 +65,6 @@ export type ResolvedPlannedStep = {
 
 /**
  * The `PlannedStep` member for a step that found none, or more than one.
- *
- * `text` and `line` are repeated here even though `error` carries both, so a caller walking the list
- * to report progress never has to open the error to know which step it is looking at.
  */
 export type UnresolvedPlannedStep = {
   readonly _tag: "Unresolved"
@@ -224,65 +76,17 @@ export type UnresolvedPlannedStep = {
 /**
  * One Pickle step after resolution: either it found its definition, or it carries the typed failure
  * that says why it did not.
- *
- * A union in the step list rather than a `failure` field on the Scenario — note (a) has the full
- * argument.
- *
- * Both members are exported by name as well as through this union. A consumer narrowing on `_tag`
- * cannot write `planned._tag === "Resolved"` at all: oxlint's `no-underscore-dangle` rejects reading
- * a leading-underscore property through member access while permitting object destructuring, so the
- * spelling that passes is `const { _tag } = planned` behind a type predicate — and a predicate needs
- * a name for the type it narrows to. `packages/vitest/test/Errors.test.ts` already carries the same
- * workaround for the same rule.
  */
 export type PlannedStep = ResolvedPlannedStep | UnresolvedPlannedStep
 
 /**
  * One Scenario, fully planned.
- *
- * `name` is the INTERPOLATED Pickle name and is the `it.effect` title — for a Scenario Outline row
- * it reads `adding 1`, which is what a developer needs to see in the reporter to tell one row from
- * another. `astName` is the UN-INTERPOLATED AST name and is the scope-match key — for the same row
- * it reads `adding <count>`, which is the string the author passed to `Scenario(...)`. Note (c) has
- * the failure mode of confusing the two.
  */
 export type ScenarioPlan = {
   readonly scenarioId: string
   readonly name: string
   readonly astName: string
   readonly ruleId: Option.Option<string>
-  /**
-   * Every tag this Scenario carries, ALREADY FLATTENED and inherited.
-   *
-   * `packages/gherkin/src/Model.ts`'s `ParsedScenario.tags` states the contract this field passes
-   * through unchanged: the names come off `Pickle.tags`, which `compile()` has already stacked in
-   * feature then rule then scenario then examples-block order, and its own comment ends "Do not
-   * recompute inheritance." Nothing in this package recomputes it, re-sorts it or dedupes it. The
-   * literal `@` prefix is RETAINED and is never normalised away: it is the exact byte sequence a
-   * `--tagsFilter '@slow'` invocation matches against, so stripping it here would silently make every
-   * filter on the command line match nothing.
-   *
-   * REQUIRED, never optional. `describeFeature.ts`'s `FeatureCollection.hooks` field comment gives
-   * the general reason — an optional field would let a later consumer forget the value exists — and
-   * the specific one is that there is no "absent" state to model: a Scenario with no tags at all
-   * already arrives as an empty array from `ParsedScenario.tags`, not as `undefined`. An optional
-   * field would let the emission walk see `undefined` and emit nothing, with nothing going red.
-   *
-   * `ReadonlyArray`, and it stays one the whole way down. The test framework's own options type wants
-   * a mutable array; the single spread that widens it lives in `describeFeature.ts`'s adapter, which
-   * is the one module allowed to name that framework at all. Widening the field here to "fix" the
-   * assignment error that appears at that boundary would move a one-line adapter concern into the
-   * plan's public shape.
-   *
-   * `FeaturePlan`'s doc comment immediately below argues against copying — "a plan that copied a
-   * subset would have to grow a field every time the runner learned to read one more" — and this
-   * field does not contradict it. That sentence is about FEATURE-level fields, which is why
-   * `FeaturePlan` carries the whole `ParsedFeature` by reference instead of destructuring it.
-   * `ScenarioPlan` has always taken the other route for SCENARIO-level values, copying three of them
-   * (`name`, `astName`, `ruleId`) because there is no per-Scenario reference to carry. `tags` is the
-   * fourth of exactly that kind, and copying it is what makes the value assertable from
-   * `Plan.test.ts` rather than only observable at emission time.
-   */
   readonly tags: ReadonlyArray<string>
   readonly steps: ReadonlyArray<PlannedStep>
 }
@@ -290,10 +94,6 @@ export type ScenarioPlan = {
 /**
  * A whole Feature, planned: every Scenario resolved, plus the non-fatal findings the resolution
  * turned up along the way.
- *
- * `feature` is carried through by reference rather than destructured into fields, because the
- * emission stage needs the tags, the Rules and the Feature name, and a plan that copied a subset
- * would have to grow a field every time the runner learned to read one more.
  */
 export type FeaturePlan = {
   readonly feature: ParsedFeature
@@ -301,30 +101,12 @@ export type FeaturePlan = {
   readonly warnings: ReadonlyArray<UnusedStepDefinitionWarning>
 }
 
-/**
- * Every message is shaped `uri:line: <reason>: <what happened> <why it is bad> <what to do>`,
- * copying `packages/gherkin/src/Validate.ts`'s own prefix helper.
- *
- * Message quality is not cosmetic. A `StepMatchError` reaches a developer through a failing
- * Scenario's error channel with no surrounding narrative, so it has to stand alone: a reader who has
- * never opened this codebase should be able to fix the problem from the text without opening a
- * source file.
- */
 const at = (uri: string, line: number): string => `${uri}:${line}: `
 
-/**
- * Quote a step text or a pattern for a message.
- *
- * `JSON.stringify` rather than hand-added quotes, copying `Validate.ts`'s `describeBlock`: a step
- * text containing a quote character would otherwise make the message ambiguous about where the
- * quoted span ends (threat T-06-04-03).
- */
 const quoted = (value: string): string => JSON.stringify(value)
 
-/** The five registrar names a test author can actually write. */
 const registrarKeywords: ReadonlySet<string> = new Set(["Given", "When", "Then", "And", "But"])
 
-/** The registrar name to fall back on when a step's literal keyword is not one of the five. */
 const registrarKeywordByKeywordType: Readonly<Record<string, string>> = {
   Context: "Given",
   Action: "When",
@@ -332,44 +114,11 @@ const registrarKeywordByKeywordType: Readonly<Record<string, string>> = {
   Conjunction: "And"
 }
 
-/**
- * The registrar name a test author would write for this step, for the suggested snippet only.
- *
- * The step's own literal keyword is preferred whenever it is one of the five, which covers every
- * English-language Feature. The `keywordType` fallback exists for the two cases where it cannot be:
- * a localized Feature, whose keyword reads `Etant donné` or `Angenommen`, and the `*` keyword, which
- * Gherkin permits anywhere a step keyword goes and which is no registrar's name. `Unknown` — and
- * anything else a future dialect produces — lands on `Given`, because a suggestion has to name some
- * registrar and `Given` is the one that reads least wrong in front of an unclassified step.
- *
- * ARCHITECTURE.md Anti-Pattern 7 forbids inferring the REPORTED keyword from `keywordType`, because
- * `And` and `But` collapse into the preceding step's type, so the mapping is lossy and a step
- * written `And` would be reported as `Given`. This is not that, and the difference is worth being
- * precise about. Nothing here changes what is reported: `ResolvedStep.keyword` and every message
- * carry the literal keyword, always. This is a best-effort SUGGESTION, it is consulted ONLY on the
- * path where the literal keyword provably cannot be a registrar name, and a slightly-wrong registrar
- * in a snippet the developer is about to paste and edit costs one keystroke.
- */
 const registrarKeywordOf = (step: ParsedStep): string =>
   registrarKeywords.has(step.keyword)
     ? step.keyword
     : registrarKeywordByKeywordType[step.keywordType] ?? "Given"
 
-/**
- * MATCH-03. A step whose text matched no definition visible to it.
- *
- * Returns the error rather than throwing it, copying `packages/gherkin/src/DataTable.ts`'s builder
- * form. ADR-EC-019 requires this failure to land in the containing Scenario's Effect error channel;
- * a throw from here would become a vitest COLLECTION error for the whole file, taking every other
- * Scenario down with it, which is the exact regression that ADR exists to prevent.
- *
- * The suggestion is 06-CONTEXT.md D-01, and it is generated against `feature.parameterTypes` so a
- * custom parameter type the author registered is generalised alongside the built-ins. It is embedded
- * in the message WHOLE: no truncation, no elision, no summary. `Errors.ts` note (d) locks that
- * policy for every message in this package, and it is doubly binding here, because a snippet that
- * has been shortened is no longer copy-pasteable and being copy-pasteable is the only property it
- * has.
- */
 const undefinedStep = (args: {
   readonly feature: ParsedFeature
   readonly scenario: ParsedScenario
@@ -397,31 +146,10 @@ const undefinedStep = (args: {
     scenarioName: scenario.name,
     matchedPatterns: [],
     suggestion: Option.some(suggestion),
-    message: `${at(feature.uri, step.line)}UndefinedStep: ${sentences.join(" ")}`,
-    cause: Option.none()
+    message: `${at(feature.uri, step.line)}UndefinedStep: ${sentences.join(" ")}`
   })
 }
 
-/**
- * MATCH-04. A step whose text matched more than one definition at the same scope level.
- *
- * Returns rather than throws, for `undefinedStep`'s reason. No suggestion: the patterns already
- * exist, and suggesting a new one would be actively wrong.
- *
- * The list is ordered by DEFINITION SITE — `compareCallSites` over each definition's `definedAt` —
- * and deliberately not alphabetically by pattern and not by registration order (06-CONTEXT.md D-03).
- * The list's job is to point the reader at the places to go and reconcile, so it is sorted by where
- * those places ARE. Alphabetical order would scatter two neighbouring registrations to opposite ends
- * of the list; registration order would make the message itself change under an unrelated refactor,
- * which is the very defect this error exists to report, and it would make the error's own output
- * depend on which module vitest happened to import first. A definition whose site was not captured
- * sorts last and renders in words rather than as an empty `:` pair.
- *
- * `toSorted` and not the mutating in-place form: `unicorn(no-array-sort)` rejects that one, and
- * `packages/gherkin/src/StepArguments.ts` is the in-repo precedent for the non-mutating spelling.
- * The comparator is `CallSite.ts`'s and not a comparison over `formatCallSite`'s output, which would
- * be the tempting one-liner and which puts line 10 before line 9.
- */
 const ambiguousStep = (args: {
   readonly feature: ParsedFeature
   readonly scenario: ParsedScenario
@@ -453,29 +181,10 @@ const ambiguousStep = (args: {
     scenarioName: scenario.name,
     matchedPatterns: ordered.map((definition) => definition.pattern),
     suggestion: Option.none(),
-    message: `${at(feature.uri, step.line)}AmbiguousStep: ${sentences.join(" ")}`,
-    cause: Option.none()
+    message: `${at(feature.uri, step.line)}AmbiguousStep: ${sentences.join(" ")}`
   })
 }
 
-/**
- * MATCH-05. A registered pattern that matched no step anywhere in the Feature.
- *
- * A WARNING and never a failure (ADR-EC-019): an unused step definition is dead code, not a broken
- * Scenario, and the plan it is attached to is completely usable. This is 06-CONTEXT.md D-02's third
- * surface — the structured, programmatically-inspectable one a test asserts against directly instead
- * of scraping `console.warn` output or parsing a synthetic test node's title.
- *
- * The message prefix omits the line number that `at()` supplies everywhere else, and that is not an
- * oversight: this finding is about the whole Feature, which has no single line where a pattern
- * failing to match happened. The definition SITE is the location a reader needs, and it is in the
- * sentences instead.
- *
- * `definedAt` is handed to the factory already rendered through `formatCallSite`, so the field is
- * always `Option.some` — carrying either a real `file:line:column` or the shared
- * `an unrecorded location` wording. That keeps the field and the message saying the same thing, and
- * keeps every consumer from having to re-decide the absent-site phrasing for itself.
- */
 const unusedStepDefinition = (args: {
   readonly feature: ParsedFeature
   readonly definition: StepDefinition<StepBody>
@@ -500,32 +209,6 @@ const unusedStepDefinition = (args: {
   })
 }
 
-/**
- * Is `definition` on `step`'s scope chain? ARCHITECTURE.md Pattern 5, and ADR-EC-017 for the
- * Background half.
- *
- * - `feature` scope is visible to every step of every Scenario. It is the shared default.
- * - `rule` scope is visible to every step of every Scenario nested in THAT Rule, and to no other —
- *   the middle level of Pattern 5's chain, and the Rule-level analogue of the Feature-level default.
- *   Note (e) is why the comparison is a plain `===` over ids and never over Rule names.
- * - `background` scope is visible ONLY to a step that came from a Background, and only to one from
- *   the SAME Background block. ADR-EC-017 makes a `Background` a step-definition CONTAINER — its
- *   registrations exist to give the Background's own step text something to match, and a Scenario
- *   step reaching into them would resolve against a definition written for a different block. The
- *   two Background origins are now checked separately, which is a deliberate behavior CHANGE from
- *   the pre-Phase-8 code and not a bug fix: before Rule-scoped Backgrounds existed, one arm covering
- *   both origins was correct because there was only one Background container a registration could
- *   have come from. Now that a Rule has its own `Background`, a Feature-level Background definition
- *   blanketing every Rule's Background steps would be the same cross-Rule leak the `"rule"` arm
- *   exists to prevent — so `feature-background` steps see only `ruleId === null` registrations, and
- *   `rule-background` steps see only registrations carrying their own Rule's id (D-04).
- * - `scenario` scope is visible ONLY to a step of THAT Scenario, matched by `astName` AND by
- *   `ruleId`. Note (c) is why the comparison is against `astName` and never `name`. The `ruleId`
- *   half is new and is not redundant: `Validate.ts`'s own
- *   `duplicate-scenario-name-across-rules.feature` fixture proves two DIFFERENT Rules may each
- *   legally contain a Scenario with the same name, so `astName` alone would let a registration
- *   written inside one Rule's Scenario also resolve against the other Rule's same-named one.
- */
 const isVisibleTo = (
   definition: StepDefinition<StepBody>,
   scenario: ParsedScenario,
@@ -548,23 +231,8 @@ const isVisibleTo = (
   }
 }
 
-/**
- * How far up the scope chain a registration sits: `0` for the inner level, `1` for a Rule, `2` for
- * the Feature. Three levels, matching ARCHITECTURE.md Pattern 5's Scenario → Rule → Feature chain.
- *
- * `background` and `scenario` share rank `0` and cannot compete with each other, because
- * `isVisibleTo` already makes them mutually exclusive for any one step — a step's `origin` is either
- * a Background one or a Scenario one, never both. That holds for a Rule's own Background too: its
- * steps carry `origin: "rule-background"`, which no `scenario`-scope registration is visible to.
- */
 const scopeRank = (kind: RegistryScopeKind): number => kind === "feature" ? 2 : kind === "rule" ? 1 : 0
 
-/**
- * Resolve one Pickle step against the whole visible definition set.
- *
- * Three outcomes, and the shape of the function is the rule from note (b): filter the matcher's
- * results to what is visible, keep only the innermost rank that matched anything, then count.
- */
 const planStep = (args: {
   readonly feature: ParsedFeature
   readonly scenario: ParsedScenario
@@ -577,14 +245,7 @@ const planStep = (args: {
 }): PlannedStep => {
   const { feature, matches, scenario, step } = args
 
-  // The LOWEST rank present wins, computed rather than tested against a literal `0`. With two levels
-  // a "rank 0, else everything else" split was equivalent; with three it is not — a `rule` match and
-  // a `feature` match would both survive that split and be reported as an ambiguity, which is the
-  // precise opposite of Pattern 5's "walk up the chain, first match wins" and would make a
-  // Feature-level default impossible to override at Rule level.
-  //
-  // An empty `matches` leaves `innermost` at Infinity, so `winning` is empty and the caller below
-  // produces an `UndefinedStep` — the same outcome the old shape gave for the same input.
+  // The LOWEST rank present wins, computed rather than tested against a literal `0`.
   const innermost = matches.reduce(
     (rank, match) => Math.min(rank, scopeRank(match.definition.scope.kind)),
     Number.POSITIVE_INFINITY
@@ -602,9 +263,8 @@ const planStep = (args: {
         origin: step.origin,
         pattern: only.pattern,
         body: only.definition.body,
-        // The pattern's own coerced arguments FIRST, then the step's table and doc string — note
-        // (h). `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is
-        // the identity for them and the args list is byte-identical to the matcher's output.
+        // `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is the
+        // identity for them and the args list is byte-identical to the matcher's output.
         args: [...only.args, ...step.stepArguments]
       }
     }
@@ -627,14 +287,6 @@ const planStep = (args: {
 
 /**
  * Join a parsed Feature against a registered step tree.
- *
- * Never throws for a resolution outcome. Every zero-match and every many-match becomes an
- * `Unresolved` step carrying a located `StepMatchError`, so a Feature with one broken step still
- * produces a complete, runnable plan for every other Scenario in it (ADR-EC-019).
- *
- * Takes the Feature and the definitions as separate fields rather than a `FeatureCollection`,
- * because naming that type would mean importing `describeFeature.ts` and inverting this module's
- * one hard dependency direction — see the closing paragraph of the module doc comment.
  */
 export const planFeature = (args: {
   readonly feature: ParsedFeature
@@ -642,19 +294,15 @@ export const planFeature = (args: {
 }): FeaturePlan => {
   const { definitions, feature } = args
 
-  // ONE matcher, over EVERY definition, against the Feature's own registry — note (d). The opaque
-  // `D` payload is the WHOLE `StepDefinition`, which is the slot `StepMatcher.ts` designed it for:
-  // the scope, the keyword and the definition site all have to survive the round trip, and only the
-  // caller knows what they are. The type argument is left to inference rather than written out,
-  // because writing it is the one thing that would let it disagree with `entries`.
+  // The opaque `D` payload is the whole `StepDefinition`: scope, keyword and definition site all
+  // survive the match.
   const matcher = createStepMatcher({
     registry: feature.parameterTypes,
     entries: definitions.map((definition) => ({ pattern: definition.pattern, definition }))
   })
 
   // Every definition that was VISIBLE to at least one step AND matched that step's text, recorded
-  // BEFORE level precedence discards the shadowed ones. That ordering is the whole subtlety of
-  // MATCH-05, and the object-reference key is the other half — note (g) has both arguments.
+  // BEFORE level precedence discards the shadowed ones.
   const used = new Set<StepDefinition<StepBody>>()
 
   const scenarios = feature.allScenarios.map((scenario): ScenarioPlan => ({
@@ -673,11 +321,7 @@ export const planFeature = (args: {
   }))
 
   // Sorted for determinism, so a test can assert by position rather than by searching, and so the
-  // list a developer reads does not reorder itself under an unrelated refactor. Same key as the
-  // ambiguous list — definition site — with the pattern as the tie-break for two registrations that
-  // share one site or have none, and `toSorted` is stable, so two findings that tie on both keep the
-  // order they were found in. Copied, reasoning and all, from `packages/gherkin/src/Validate.ts`'s
-  // own closing sort.
+  // list a developer reads does not reorder itself under an unrelated refactor.
   const warnings = definitions
     .filter((definition) => !used.has(definition))
     .toSorted((left, right) => {

@@ -1,9 +1,9 @@
 # ADR-EC-022: `Option<T>` replaces `T | undefined` throughout `@effect-cucumber/gherkin`'s public API
 
-> **Status:** Accepted and implemented
+> **Status:** Accepted and implemented — amended: `cause` is exempt (see the amendment at the end)
 > **Date:** 2026-08-28
 > **Context:** the deep-analysis pass this session ran before touching any code —
-> `.planning/research/effect-feature-adoption-report.md` — recommended `Option` as a real,
+> the Effect-feature-adoption report archived on the `planning-archive` branch — recommended `Option` as a real,
 > verified-applicable candidate; this ADR is the decision and implementation record for
 > extending that recommendation to gherkin's full public API, not just internal locals
 
@@ -48,3 +48,24 @@ Every optional field on gherkin's public surface becomes `Option<T>`, never `T |
 - `Schema.OptionFromUndefinedOr(Schema.Number)` works standalone (`Schema.decodeUnknownSync`) but requires a real `Option` value, not a raw `number | undefined`, when used to construct a `Schema.TaggedError` instance directly — confirmed by reproduction against the installed `effect@4.0.0-rc.112`, including the "omit the key entirely" failure mode.
 - `vitest`'s `toEqual`/`toStrictEqual` compare `Option` values structurally and correctly (`Option.some(12)` equals `Option.some(12)`, not `Option.some(13)`, not `Option.none()`) — confirmed by a standalone reproduction before rewriting any pinned test to rely on it.
 - `Option.fromUndefinedOr`, `Option.getOrElse`, `Option.getOrUndefined`, `Option.getOrThrow`, `Option.match`, `Option.isSome`/`Option.isNone` all behave as documented against this build — used throughout the implementation, none flagged a further incompatibility the way `Schema`'s combinators did earlier this session.
+
+## Amendment — `Error.cause` is exempt
+
+> **Amends the Decision above; the body is left as written, per ADR-EC-014's precedent.**
+> The `cause` field of `LoadFeatureError`, `StepPatternError`, `DataTableError` and
+> `@effect-cucumber/vitest`'s `StepMatchError` is NOT an `Option<unknown>`. It is declared
+> `Schema.optionalKey(Schema.Unknown)` — plain `unknown`, absent when there is nothing to
+> attach — because `Error.cause` is a field the PLATFORM defines the semantics of: Node's
+> `util.inspect`, Effect's `Cause.pretty`, and every error-chain tool read `err.cause`
+> natively and would otherwise print an `{ _tag: "Some", value }` wrapper in place of the
+> upstream error. Wrapping it traded a uniform representation for a broken error chain on
+> every consumer's terminal, which was the wrong side of the trade. Every OTHER optional
+> field on those classes (`line`, `parameterTypeName`, `pattern`, `row`, `column`,
+> `suggestion`) keeps the `Option<T>` shape this ADR decided. Asserted by
+> `packages/gherkin/test/Contracts.test.ts` and `packages/vitest/test/Errors.test.ts`, which
+> check reference equality AND that `util.inspect(err)` contains the upstream message.
+>
+> **`LoadFeatureWarning.line` is a plain, required `number`** for a different reason: every
+> warning the validator emits is located on a line, so the `Option` was a case no call site
+> produced and every consumer still had to unwrap — dead generality, not a representation
+> choice. `makeWarning` requires `line`.

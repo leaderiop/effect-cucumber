@@ -26,7 +26,13 @@ REQUIREMENT: loadFeature MUST reject, with a distinct named error identifying
              case MUST carry its own reason tag on the thrown LoadFeatureError,
              drawn from exactly this set:
 
-               MissingFile                 — the path could not be read
+               MissingFile                 — no file exists at the path
+               PermissionDenied            — the file exists but may not be
+                                             read by this process
+               ReadFailed                  — any other filesystem failure (a
+                                             directory, a busy handle, a bad
+                                             path); the PlatformError is the
+                                             cause
                ParseFailed                 — the source is not valid Gherkin
                UnknownDialect              — the `# language:` header names a
                                              dialect that does not exist
@@ -52,6 +58,17 @@ REQUIREMENT: loadFeature MUST reject, with a distinct named error identifying
              A consumer MUST discriminate on the reason tag. Message text is
              written for a human reading a failed test run and is NOT a stable
              interface — it MUST NOT be pattern-matched.
+
+             Where an upstream failure exists it is attached as the error's
+             plain `Error.cause` (`unknown`, absent otherwise) — never wrapped
+             in an Option — so Node's inspector, `Cause.pretty` and any
+             error-chain tool render the chain natively (ADR-EC-022, as
+             amended). Every other optional field is an `Option<T>`.
+
+             An exception this library did not anticipate — anything that is
+             neither a LoadFeatureError nor a StepPatternError — is a DEFECT
+             (Effect.die), never a typed failure: relabelling it ParseFailed
+             would blame the feature file for a bug that is not in it.
 ```
 
 Four further findings are real defects with verified silent-failure paths, but each
@@ -74,9 +91,14 @@ REQUIREMENT: A heuristically-detected finding MUST be carried as a non-throwing
                                          wins for both
                EmptyRule               — a Rule: containing no scenarios, which
                                          compiles to nothing in silence
-               SuspectedSwallowedStep  — a block carrying a description, which
-                                         is where a step keyword misspelled
-                                         before any valid step is absorbed
+               SuspectedSwallowedStep  — a description LINE whose leading text
+                                         is a near miss of one of the dialect's
+                                         step keywords (wrong case, or within a
+                                         small edit distance), which is what a
+                                         step keyword misspelled before any
+                                         valid step becomes; ordinary prose
+                                         descriptions MUST NOT warn, and only
+                                         the suspect lines are quoted
 
              ParsedFeature.warnings is always an array and is usually empty.
              Warnings are data: loadFeature does not print, log, or throw them.
@@ -162,6 +184,9 @@ const explain = (err: LoadFeatureError): string => {
   const line = Option.getOrElse(err.line, () => 0)
   switch (err.reason) {
     case "MissingFile":
+      return `${err.uri} does not exist.`
+    case "PermissionDenied":
+    case "ReadFailed":
       return `${err.uri} could not be read.`
     case "OutlineWithoutExamples":
     case "EmptyExamples":

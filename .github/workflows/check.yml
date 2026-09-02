@@ -17,14 +17,14 @@ permissions:
 jobs:
   # `pnpm lint` is `oxlint -f unix && dprint check` — this single job covers
   # both the lint gate (including the vendored Effect rules) and the format
-  # gate of Phase 1 success criterion 3.
+  # gate.
   lint:
     name: Lint and format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -40,9 +40,9 @@ jobs:
     name: Types and tsgo gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -64,19 +64,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 24 is Active LTS and the primary target. 22 is kept for compatibility
-        # breadth: a testing library gets installed into whatever runtime the
-        # consumer already has, not one we get to choose.
-        node-version: [22, 24]
+        # 24 is Active LTS and the primary target. 22 and 20 are kept for
+        # compatibility breadth: a testing library gets installed into whatever
+        # runtime the consumer already has, not one we get to choose, and 20 is
+        # the floor both packages declare in engines.node.
+        node-version: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # `pnpm test` exiting 0 does NOT prove the suite is free of declaration-order
+      # coupling: vitest runs a file's suites in order unless told otherwise, and
+      # an observer `describe` that reads what an earlier Feature recorded passes
+      # by that accident. Shuffling suites and tests is what catches it, and it
+      # doubles as the proof that describeFeature's blocks stay in document
+      # order under shuffle (BEH-EC-002). Node 24 only — structural, not per-runtime.
+      - if: matrix.node-version == 24
+        run: pnpm test:shuffle
       # `pnpm test` exiting 0 does NOT prove any tag reached a real runner task.
       # The gap is narrow: Runner.test.ts watches the TestApi seam against a
       # recording fake, and emission.test.ts watches the undeclared-tag warning —
@@ -121,7 +130,7 @@ jobs:
       # `vitest run`, one shot, one collection — it never watches, so it has no
       # opinion about watching. The place a non-watched fixture is discovered is
       # a consumer's dev loop, where they add a Scenario, see stale results and
-      # conclude the library is broken (PITFALLS Pitfall 3). Measured both ways
+      # conclude the library is broken. Measured both ways
       # by the gate itself: the `?raw` import form reruns in ~620ms, and the
       # path-based `loadFeature` form does not rerun at all inside a 60s poll.
       # This is also the ONE gate in the repository that mutates a file, and it
@@ -159,9 +168,9 @@ jobs:
     name: Packaging and structure
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -171,10 +180,10 @@ jobs:
       - run: pnpm circular
       # `pnpm test` exiting 0 does NOT prove @effect-cucumber/gherkin cannot
       # reach a test runner — a green suite is equally consistent with src/
-      # having quietly grown a vitest import. This is PARSE-01's structural
-      # proof (a loadFeature that cannot reach a runner cannot register a test)
-      # and ADR-EC-015's mechanical guard against effect appearing in a
-      # consumer-facing dependency field. See scripts/verify-no-runner-dep.sh.
+      # having quietly grown a vitest import. A loadFeature that cannot reach a
+      # runner cannot register a test; the script is also ADR-EC-015's mechanical
+      # guard against effect appearing in a consumer-facing dependency field.
+      # See scripts/verify-no-runner-dep.sh.
       - run: pnpm verify:no-runner-dep
       # `pnpm test` and `pnpm build` both exiting 0 do NOT prove that
       # packages/vitest/src/Runner.ts and TestApi.ts are free of a test-framework
@@ -191,9 +200,8 @@ jobs:
       # re-runs and `-t`-narrowed selections, so observation cannot tell "has no
       # mutable cross-step state" from "has it and did not trip on it today".
       # `pnpm lint`, `pnpm build` and `pnpm typecheck:test` are all equally
-      # silent, measured as mutation A. This is INV-EC-006's first automated
-      # enforcement anywhere in the repository, and roadmap Phase 11 Success
-      # Criterion 2. See scripts/verify-acceptance-ref-state.sh.
+      # silent, measured as mutation A. This is INV-EC-006's only automated
+      # enforcement. See scripts/verify-acceptance-ref-state.sh.
       - run: pnpm verify:acceptance-ref-state
       # `pnpm build` and `pnpm typecheck:test` exiting 0 do NOT prove the
       # acceptance suite is free of the TypeScript escape-hatch type — the whole
@@ -207,3 +215,12 @@ jobs:
       # scripts/verify-acceptance-no-any.sh.
       - run: pnpm verify:acceptance-no-any
       - run: pnpm verify:spec
+      # `pnpm verify:spec` checks the spec against ITSELF. An export added to
+      # packages/vitest/src/index.ts and never written into spec/overview.md's
+      # API table leaves it, build and test all green. See
+      # scripts/verify-api-surface.sh.
+      - run: pnpm verify:api-surface
+      # Source and test comments must not cite the planning artefacts that live on
+      # the planning-archive branch (or ids that resolve only there): a citation a
+      # reader cannot open rots silently. See scripts/verify-no-planning-refs.sh.
+      - run: pnpm verify:no-planning-refs

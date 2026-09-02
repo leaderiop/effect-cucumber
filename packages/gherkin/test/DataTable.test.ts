@@ -1,23 +1,5 @@
 /**
- * PARSE-04's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
- *
- * **This file parses no feature file.** Every table under test is an inline `PickleTable` literal
- * built by `tableOf`, because the accessors are pure data transformations and the fixture corpus
- * belongs to `upstream-pin.test.ts` and `Correlate.test.ts`. Keeping this file parser-free is what
- * makes a failure here attributable to `DataTable.ts` alone rather than to anything upstream of it.
- *
- * Failure assertions read `err.reason` plus the `row`/`column` locator, never message prose — with
- * three deliberate exceptions where the MESSAGE is itself the requirement: the duplicate header
- * column must quote the whole header row (the executable form of `Errors.ts` note (b)'s
- * no-truncation policy), and the width failure must name both the expected width and the actual
- * one, since "2 columns, got 3" is the entire content of that error.
- *
- * The prototype-pollution guard is the one test here that is not about Gherkin at all — see its own
- * comment. It is the live assertion behind threat T-04-03.
- *
- * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`, and plan
- * 04-04 has not added the Phase 4 barrel exports yet in any case.
+ * BEH-EC-016's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
  */
 import type { PickleTable } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
@@ -141,12 +123,6 @@ describe("hashes", () => {
   })
 
   it("gives a __proto__ header cell an own property rather than mutating a prototype", () => {
-    // This test guards threat T-04-03, and it guards a specific WRONG implementation: building the
-    // record with an assignment loop over a `{}` literal. Verified against Node 22 — assigning to
-    // `record.__proto__` when the value is a string is silently a no-op, so the naive form leaves
-    // NO own property behind and the column disappears from the result with nothing failing
-    // anywhere. `Object.fromEntries` defines it as an ordinary own property instead. If this test
-    // ever passes against the assignment-loop form, it has stopped asserting anything.
     const [record] = succeeds(dataTableOf(["__proto__"], ["polluted"]).hashes())
     if (record === undefined) {
       throw new Error("expected hashes() to produce exactly one record for a single body row")
@@ -254,10 +230,10 @@ describe("decodeHashes", () => {
     // error-level, and this file's `succeeds`/`fails` helpers already establish throwing as how a
     // precondition that did not hold is reported.
     const { cause } = error
-    if (!Option.isSome(cause)) {
+    if (cause === undefined) {
       throw new Error("expected the decode failure to carry the underlying SchemaError as its cause")
     }
-    const { _tag } = cause.value as { readonly _tag: string }
+    const { _tag } = cause as { readonly _tag: string }
     expect(_tag).toBe("SchemaError")
   })
 

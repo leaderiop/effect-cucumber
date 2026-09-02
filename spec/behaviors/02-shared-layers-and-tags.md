@@ -98,7 +98,30 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
              own always-passing warning nodes are routed off the shared emission
              path (ADR-EC-026, plan 10-07). Its resources MUST be released once,
              after every Scenario in the Feature has run — not once per Scenario.
+             The perScenario tier MAY require services the shared tier
+             provides — its input type is bounded by the shared tier's output
+             (perScenario: Layer<RScenario, E2, RShared>), and the runtime
+             establishes the shared tier around every Scenario's own
+             Effect.provide, so a World built from a shared Database is one
+             Layer.effect away. A perScenario input NEITHER tier provides is
+             rejected at the describeFeature call by overload resolution
+             ("No overload matches this call" — TypeScript reports a failed
+             overloaded call against the plain-Layer form, so the by-name
+             effect(missingLayerContext) diagnostic is the plain form's only;
+             test/tsgo-gate/src/per-scenario-missing-rin.ts pins the
+             rejection, test/SharedLayerConstraint.types.ts the acceptance).
+             The shared tier is built on the LIVE clock and console: it is
+             constructed once, before any Scenario's own TestClock exists, so a
+             fiber it forks that sleeps runs on wall-clock time. Only the
+             per-Scenario tier and the step bodies see a simulated clock
+             (ADR-EC-018 note 6).
 ```
+
+> **Correction (2026-09-02, F-24):** the Feature block on the shared path is the library's own
+> `describe(name, { shuffle: false }, …)` with the framework's one-argument `layer(...)` called inside
+> its factory, not the named form; the lifetime guarantee above is unchanged and the adapter holds
+> one memo-map reference for the block so the AfterAllScenarios teardown still reaches the memoised
+> build. ADR-EC-018 note 9 has the measurement.
 
 > **Correction (2026-08-30, Phase 10 implementation, measured against the installed
 > `@effect/vitest@4.0.0-rc.112` rather than reasoned about):** the BUILD half of the
@@ -106,7 +129,7 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > ships in a **weaker form than the wording claims**, and the divergence is recorded here
 > rather than by narrowing the requirement to fit what was built.
 >
-> **What holds.** `packages/vitest/src/describeFeature.ts` calls the framework's
+> **What holds.** `packages/vitest/src/VitestTestApi.ts` calls the framework's
 > `layer(sharedTier, { excludeTestServices: true })` in its one-argument form, which builds
 > the shared Layer exactly once for everything its callback registers. The shared build
 > ordinals every Scenario reaches are asserted as `[1, 1, 1]` in
@@ -187,6 +210,28 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > tier holding a testcontainer or a database connection is no longer started for a Feature the
 > caller explicitly filtered out on the strength of one stray unused pattern.
 
+> **Correction (2026-09-02, F-09, measured against the installed `@effect/vitest@4.0.0-rc.112`):**
+> the RELEASE half now holds AS WRITTEN. The first correction above recorded that the scope
+> closed at the FILE's teardown because the one-argument `layer(...)` form diffed a deferred
+> `describe`'s empty task list. `packages/vitest/src/VitestTestApi.ts`'s shared adapter now
+> opens the Feature's own block through the framework's NAMED form,
+> `layer(sharedTier, { excludeTestServices: true, memoMap })(feature.name, callback)`, which wraps
+> its own `describe(name, …)` and registers `beforeAll(build)` and `afterAll(closeScope)` on THAT
+> block. The tree is unchanged — the named form's `describe` IS the Feature block, so there is no
+> second Feature-named level — and the tier is released when the Feature's block ends, before the
+> next sibling suite in the file starts.
+>
+> Because the named form builds in a `beforeAll`, the composition root routes a Feature with no
+> runnable Scenario (every one filtered out or `@skip`) through the plain adapter instead, which is
+> how "ZERO times when it emits none" keeps holding; the `⚠` warning nodes such a Feature still
+> emits read nothing.
+>
+> **Asserted** by `packages/vitest/test/emission.test.ts`'s "a shared Layer is released when its
+> Feature's block ends, not when the file does (F-09)" block: two Features in one file, each with
+> an `acquireRelease`-built shared tier, where the second Feature's Scenario reads the log
+> `["acquired-A", "scenario-A", "released-A", "acquired-B"]` — a read that fails under the
+> one-argument form. `pnpm verify:shared-layer-once` still passes whole and `-t`-narrowed.
+
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
 > **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
@@ -235,7 +280,8 @@ REQUIREMENT: Every emitted tag MUST be DECLARED in the runner's config — a
              the offenders only in its own message text, which the library
              deliberately does not read. gherkinTags, a config-time helper
              taking a GLOB PATTERN (or an array of patterns) over the
-             consumer's own .feature files, is the supported way to generate
+             consumer's own .feature files and an optional { cwd } the
+             patterns resolve against, is the supported way to generate
              those declarations.
 ```
 
@@ -256,8 +302,10 @@ import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
-    // The glob is resolved against process.cwd(). There is deliberately no default —
-    // the helper never scans a tree its caller did not name.
+    // The glob resolves against process.cwd() unless `{ cwd }` names the base — a config
+    // passes its own directory so the list does not depend on where the runner was invoked.
+    // There is deliberately no default pattern: the helper never scans a tree its caller
+    // did not name.
     tags: [...gherkinTags("features/**/*.feature"), { name: "@skip" }, { name: "@only" }]
   }
 })
@@ -266,11 +314,9 @@ export default defineConfig({
 Then the Feature itself:
 
 ```typescript
-// describeFeature, its optional fourth argument, and the dsl below are real and
-// compile-gated (this phase). The `loadFeature` import is ADR-EC-024's planned
-// ManagedRuntime wrapper, not yet shipped from @effect-cucumber/vitest — see
-// packages/vitest/README.md "## Status". This fence is still not compiled either way;
-// the doc-examples check is not wired yet (spec/roadmap.md).
+// describeFeature, its optional fourth argument, loadFeature and the dsl below are all
+// real exports. This fence is still not compiled; the doc-examples check is not wired
+// yet (spec/roadmap.md).
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
 import { expect } from "vitest"

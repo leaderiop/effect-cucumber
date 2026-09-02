@@ -2,7 +2,7 @@
 
 > **Status:** Accepted and implemented — `effect` is a real peer dependency; `FileSystem`/`Path` are used via core `effect` (not `@effect/platform`, which remains genuinely unavailable for v4 — see both Corrections below for the full, twice-revised story)
 > **Date:** 2026-08-28
-> **Context:** reverses [ADR-EC-015](015-effect-is-a-peer-dependency.md) after a dedicated research pass (`.planning/research/ADR-EC-015-reversal-report.md`); this is a new ADR rather than a correction to ADR-EC-015, per `spec/process/requirement-id-scheme.md`'s rule that a genuinely new design question gets its own ADR
+> **Context:** reverses [ADR-EC-015](015-effect-is-a-peer-dependency.md) after a dedicated research pass (the ADR-EC-015 reversal report archived on the `planning-archive` branch); this is a new ADR rather than a correction to ADR-EC-015, per `spec/process/requirement-id-scheme.md`'s rule that a genuinely new design question gets its own ADR
 
 ## Context
 
@@ -54,7 +54,7 @@ The decision reached is not that ADR-EC-015 was mistaken — it's that this proj
 
 ---
 
-> **Correction (2026-08-28, verified by direct install and a deep Effect-feature-adoption research pass — `.planning/research/effect-feature-adoption-report.md`):** the correction immediately above was checking the wrong package. `@effect/platform` (the aggregate package) genuinely has no v4-compatible release — that much was right. But `effect` v4 moved `FileSystem`/`Path`/`PlatformError`/`Terminal` directly into the **core `effect` package** (`effect/FileSystem`, `effect/Path` — confirmed by import, zero extra dependency), and the **per-runtime implementation packages have their own, independent version lines that kept pace with the v4 rc train even though the aggregate didn't**:
+> **Correction (2026-08-28, verified by direct install and a deep Effect-feature-adoption research pass, archived on the `planning-archive` branch):** the correction immediately above was checking the wrong package. `@effect/platform` (the aggregate package) genuinely has no v4-compatible release — that much was right. But `effect` v4 moved `FileSystem`/`Path`/`PlatformError`/`Terminal` directly into the **core `effect` package** (`effect/FileSystem`, `effect/Path` — confirmed by import, zero extra dependency), and the **per-runtime implementation packages have their own, independent version lines that kept pace with the v4 rc train even though the aggregate didn't**:
 >
 > | Package                        | `latest`                         | `rc` dist-tag                                   |
 > | ------------------------------ | -------------------------------- | ----------------------------------------------- |
@@ -69,4 +69,4 @@ The decision reached is not that ADR-EC-015 was mistaken — it's that this proj
 >
 > **The rewrite anticipated in the Follow-up list is done:** `Source.ts#readFeatureSource` and `loadFeature.ts#loadFeature` now require `FileSystem.FileSystem` and are implemented via `effect/FileSystem`, with `@effect/platform-node`'s `NodeFileSystem.layer` providing it in tests. One real, confirmed-by-reproduction trade-off came with this: `NodeFileSystem.readFileString` suspends internally, so **`Effect.runSync(loadFeature(path))` no longer works** — it throws `AsyncFiberError` — where the earlier `node:fs.readFileSync`-backed interim implementation was `runSync`-safe. `test/loadFeature.test.ts`'s module-top-level proof of PARSE-01/BEH-EC-001 now uses a top-level `await Effect.runPromise(...)` instead of `Effect.runSync`, and pins the `runSync` failure explicitly so a future change to this trade-off is forced to notice. `parseFeature` (no filesystem touched) is unaffected and stays `Effect.runSync`-safe.
 >
-> `Errors.ts`'s `Schema.TaggedError` migration was completed earlier in this same session (see `.planning/research/` history) and is unaffected by this correction.
+> `Errors.ts`'s `Schema.TaggedError` migration was completed earlier in this same session (see the research history archived on the `planning-archive` branch) and is unaffected by this correction.

@@ -1,47 +1,5 @@
 /**
- * MATCH-03's authoring-help half: the suggested step-definition snippet an undefined-step error
- * carries (CONTEXT.md D-01, ADR-EC-019, BEH-EC-013).
- *
- * Two properties keep this file from being vacuous, and both are asserted more strictly than they
- * look like they need to be.
- *
- * (a) **The pattern is asserted as an escaped JavaScript string literal, not as prose.** A snippet
- *     is CODE the reader is invited to paste. An implementation that interpolates the generated
- *     source straight into the template produces a perfectly readable-looking line for every step
- *     text in this repo's fixtures — it only breaks for a step text carrying a `"` or a `\`, which
- *     is exactly the input a `.feature` author writes when quoting something. The quote test
- *     therefore does not merely assert "the text appears": it slices the pattern literal back out
- *     of the snippet and `JSON.parse`s it, so the assertion fails unless the emitted literal is
- *     genuinely well-formed. Mutation A below is that assertion's justification.
- *
- * (b) **The unknown-parameter-type case asserts `unknown` by name, never "some annotation is
- *     present".** `any` would also compile, would also look fine in a terminal, and would silently
- *     hand the step author an unchecked value — the one outcome `StepArgs.ts`'s doc comment (b)
- *     rules out at the type level. Mutation B is the demonstration that this assertion separates
- *     the two.
- *
- * Mutation-tested (both performed, then reverted, both confirmed failing):
- * - A. `generateStepSnippet` renders the pattern with a plain `${source}` interpolation instead of
- *   `JSON.stringify(source)` → "escapes a double quote in the pattern" fails.
- * - B. the unknown-parameter-type fallback is changed from `?? "unknown"` to `?? "any"` → "a custom
- *   parameter type is annotated unknown" fails.
- *
- * ## Registries
- *
- * The built-in cases build a bare `new ParameterTypeRegistry()` — the snippet generator's real
- * input for a Feature with no custom parameter types, and the shape verified fact 3 of the plan was
- * recorded against. The custom cases go through this package's OWN
- * `createParameterTypeStore()` + `buildRegistry()` rather than calling upstream's
- * `defineParameterType` by hand, so they run against the registry shape `loadFeature` really
- * produces (`useForSnippets` unwrapped from an `Option`, the definition replayed into a fresh
- * registry), never a fabricated one.
- *
- * ## Imports
- *
- * `../src/Snippet.ts` and `../src/ParameterTypes.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`. `expect` is
- * used throughout because every test here is synchronous and sits directly inside `it`, where
- * oxlint's `vitest/no-standalone-expect` is satisfied.
+ * BEH-EC-015's authoring-help half: the suggested step-definition snippet an undefined-step error
  */
 import { ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
 import * as Option from "effect/Option"
@@ -146,6 +104,23 @@ describe("generateStepSnippet", () => {
 
     expect(snippet).toContain(`Given("I eat an {ripe-fruit} now", function*(arg1: unknown) {`)
   })
+
+  for (const name of ["eval", "arguments", "yield", "class"]) {
+    it(`substitutes a positional name for {${name}}, which cannot be a strict-mode generator parameter`, () => {
+      const snippet = generateStepSnippet({
+        keyword: "Given",
+        text: "I eat an apple now",
+        registry: registryWithCustomType(name, /apple|pear/)
+      })
+
+      expect(snippet).toContain(`Given("I eat an {${name}} now", function*(arg1: unknown) {`)
+      // The proof that the substitution was needed: with its type annotations stripped, the emitted
+      // body must parse as strict-mode JavaScript — `function*(eval) {}` does not.
+      const body = snippet.slice(snippet.indexOf("function*"), snippet.lastIndexOf(")")).replace(/: \w+/g, "")
+      expect(() => new Function(`"use strict"; return (${body})`)).not.toThrow()
+      expect(() => new Function(`"use strict"; return (function*(${name}) {})`)).toThrow(SyntaxError)
+    })
+  }
 
   it("closes the snippet with a TODO body and a closing paren, and adds no trailing newline", () => {
     const snippet = generateStepSnippet({ keyword: "Given", text: "nothing special", registry: builtInRegistry() })

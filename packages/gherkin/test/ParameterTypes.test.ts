@@ -1,37 +1,27 @@
 /**
- * MATCH-02: a custom parameter type declared once as data is present in every registry built
+ * BEH-EC-015: a custom parameter type declared once as data is present in every registry built
  * afterwards, repeated builds in one process never throw, and each name a registry already
  * provides is rejected by the `define` call itself.
- *
- * **Every test below creates its OWN store with `createParameterTypeStore()`, except the single
- * test dedicated to the module-level default one.** That is not a style preference. The default
- * store is append-only for the life of the process — there is no `remove` and no `clear`, by
- * design — so a test that defined into it would make every later test in the same worker
- * order-dependent, and a second run of the same name would fail with `DuplicateParameterTypeName`
- * for reasons that have nothing to do with what that test was checking. The store-isolation test
- * below is what makes the rest of this file hermetic.
- *
- * Assertions read `err.reason`, never the message text, following `Validate.test.ts`. The two
- * exceptions are the two places where the MESSAGE *is* the requirement: the built-in rejection
- * must name the offending name, and the duplicate rejection must name BOTH definition sites.
- * Those assert on the substring carrying the requirement, not on the prose around it.
- *
- * Imports reach `../src/*.ts` directly, never `../src/index.ts`:
- * `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true`.
  */
+import * as Cause from "effect/Cause"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
-import {
-  buildParameterTypeRegistry,
-  builtInParameterTypeNames,
-  createParameterTypeStore,
-  defaultParameterTypeStore,
-  defineParameterType
-} from "../src/ParameterTypes.ts"
+import { parseFeature } from "../src/loadFeature.ts"
+import { builtInParameterTypeNames, createParameterTypeStore, ParameterTypeStore } from "../src/ParameterTypes.ts"
 
 /** A transform whose result is trivially checkable, reused by most definitions below. */
 const amount = (...match: Array<string>): number => Number(match[0])
+
+/** The store one build of `ParameterTypeStore.Default` provides. */
+const buildStore = (): ReturnType<typeof createParameterTypeStore> =>
+  Effect.runSync(
+    Effect.gen(function*() {
+      return yield* ParameterTypeStore
+    }).pipe(Effect.provide(ParameterTypeStore.Default))
+  )
 
 /**
  * Runs `action`, asserts it threw a `StepPatternError`, and returns it.
@@ -162,9 +152,6 @@ describe("a custom parameter type is data, not a registration", () => {
   })
 
   it("builds twenty registries in a row from one store without throwing", () => {
-    // The core MATCH-02 property, and the one a process-global registry fails on iteration two
-    // with upstream's duplicate-name throw (Pitfall 14, reproduced across three
-    // cypress-cucumber-preprocessor issues).
     const store = createParameterTypeStore()
     store.define({
       name: "money",
@@ -238,9 +225,6 @@ describe("a name the registry already provides is rejected at definition time", 
   }
 
   it("raises the built-in rejection from the define call itself, recording nothing", () => {
-    // Pitfall 14's fourth "how to avoid" bullet: the error must point at the caller's own define
-    // call, not at a replay deep inside loadFeature. Two things prove it here — the store is still
-    // empty afterwards, and no buildRegistry call was needed to surface the failure.
     const store = createParameterTypeStore()
 
     expect(
@@ -284,8 +268,6 @@ describe("a name defined twice in one store is rejected at definition time", () 
     )
 
     expect(error.reason).toBe("DuplicateParameterTypeName")
-    // The message IS the requirement here: a duplicate reported without both sites sends the
-    // caller hunting for the other definition (threat T-03-10).
     expect(error.message).toContain("steps/money.ts:3")
     expect(error.message).toContain("steps/other.ts:9")
   })
@@ -429,6 +411,44 @@ describe("a malformed definition is rejected at definition time", () => {
     })
   }
 
+  it("rejects a malformed string regexp source at definition time, never at step-compile time", () => {
+    const store = createParameterTypeStore()
+
+    const error = rejectedBy(() =>
+      store.define({
+        name: "bad",
+        regexp: "(",
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
+
+    expect(error.reason).toBe("InvalidParameterTypeRegexp")
+    expect(Option.getOrUndefined(error.parameterTypeName)).toBe("bad")
+    expect(error.cause).toBeDefined()
+    expect(store.definitions()).toHaveLength(0)
+  })
+
+  it("rejects a malformed source inside a regexp list too", () => {
+    const store = createParameterTypeStore()
+
+    const error = rejectedBy(() =>
+      store.define({
+        name: "badList",
+        regexp: [/\d+/, "[unclosed"],
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+    )
+
+    expect(error.reason).toBe("InvalidParameterTypeRegexp")
+    expect(store.definitions()).toHaveLength(0)
+  })
+
   it("accepts a flagless RegExp and a plain string regexp source", () => {
     const store = createParameterTypeStore()
     store.define({
@@ -498,22 +518,107 @@ describe("stores share no state", () => {
     expect(second.definitions()).toHaveLength(1)
   })
 
-  it("records into the module-level default store and replays it, sharing nothing with a fresh store", () => {
-    // The ONLY test in this file that touches the default store, and `moneyDefaultStoreProbe` is
-    // deliberately never reused anywhere: the default store is append-only for the life of the
-    // process, so defining this name a second time would fail with DuplicateParameterTypeName.
-    defineParameterType({
-      name: "moneyDefaultStoreProbe",
+  it("ParameterTypeStore.Default builds a FRESH store per Layer build, so two builds share nothing", () => {
+    // mutation: turning `Default` back into a Layer over one module-level store turns this red —
+    // the second build would then see the first build's definition.
+    const first = buildStore()
+    first.define({
+      name: "firstBuildOnly",
       regexp: /\d+/,
       transform: amount,
-      definedAt: Option.some("packages/gherkin/test/ParameterTypes.test.ts"),
+      definedAt: Option.none(),
       useForSnippets: Option.none(),
       preferForRegexpMatch: Option.none()
     })
+    const second = buildStore()
 
-    expect(buildParameterTypeRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeDefined()
-    expect(defaultParameterTypeStore.definitions().some((definition) => definition.name === "moneyDefaultStoreProbe"))
-      .toBe(true)
-    expect(createParameterTypeStore().buildRegistry().lookupByTypeName("moneyDefaultStoreProbe")).toBeUndefined()
+    expect(first.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeDefined()
+    expect(second.definitions()).toHaveLength(0)
+    expect(second.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeUndefined()
+  })
+
+  it("ParameterTypeStore.layer(definitions) provides a store carrying the built-ins plus every definition", () => {
+    const store = Effect.runSync(
+      Effect.gen(function*() {
+        return yield* ParameterTypeStore
+      }).pipe(
+        Effect.provide(ParameterTypeStore.layer([{
+          name: "money",
+          regexp: /\d+/,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        }]))
+      )
+    )
+
+    expect(store.buildRegistry().lookupByTypeName("money")).toBeDefined()
+    expect(store.buildRegistry().lookupByTypeName("int")).toBeDefined()
+  })
+
+  it("ParameterTypeStore.layer(definitions) fails in the Layer's error channel on a rejected definition", () => {
+    const money = {
+      name: "money",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.none()
+    }
+    const exit = Effect.runSyncExit(
+      Effect.gen(function*() {
+        return yield* ParameterTypeStore
+      }).pipe(Effect.provide(ParameterTypeStore.layer([money, money])))
+    )
+
+    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+    expect(failure).toBeInstanceOf(StepPatternError)
+    expect((failure as StepPatternError).reason).toBe("DuplicateParameterTypeName")
+  })
+})
+
+describe("a rejection only knowable at replay time is still a named library error", () => {
+  /**
+   * `{int}` is registered preferentially with the source `\d+`, so a custom preferential type
+   * over the same source collides inside upstream's `defineParameterType` — a check that has no
+   * registry to run against at `define` time. Before this test existed the raw upstream
+   * `CucumberExpressionError` escaped `buildRegistry`, and `parseFeature`'s catch-all relabelled
+   * it as a feature-file `ParseFailed` (audit finding F-04).
+   */
+  const preferentialDigits = (store: ReturnType<typeof createParameterTypeStore>): void =>
+    store.define({
+      name: "digits",
+      regexp: /\d+/,
+      transform: amount,
+      definedAt: Option.none(),
+      useForSnippets: Option.none(),
+      preferForRegexpMatch: Option.some(true)
+    })
+
+  it("a preferential regexp collision is rejected at replay time as InvalidParameterTypeDefinition", () => {
+    const store = createParameterTypeStore()
+    preferentialDigits(store)
+
+    const error = rejectedBy(() => store.buildRegistry())
+
+    expect(error.reason).toBe("InvalidParameterTypeDefinition")
+    expect(Option.getOrUndefined(error.parameterTypeName)).toBe("digits")
+    expect(error.message).toContain("preferForRegexpMatch")
+    expect(error.cause).toBeDefined()
+  })
+
+  it("reaches parseFeature as a StepPatternError, never as a feature-file ParseFailed", () => {
+    const store = createParameterTypeStore()
+    preferentialDigits(store)
+    const source = "Feature: F\n  Scenario: S\n    Given 3 apples\n"
+
+    const exit = Effect.runSyncExit(
+      parseFeature(source, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(store)))
+    )
+    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+
+    expect(failure).toBeInstanceOf(StepPatternError)
+    expect(failure instanceof StepPatternError ? failure.reason : undefined).toBe("InvalidParameterTypeDefinition")
   })
 })

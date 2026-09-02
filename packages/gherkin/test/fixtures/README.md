@@ -1,6 +1,6 @@
 # Gherkin fixture corpus
 
-One `.feature` file per row of `02-RESEARCH.md`'s fixture table, named for the reason it triggers so a failing test
+One `.feature` file per row of the parser fixture table (pinned by `test/upstream-pin.test.ts`), named for the reason it triggers so a failing test
 names the defect. Every behavior recorded below was reproduced against `@cucumber/gherkin@42.0.1` and is pinned by an
 executable assertion in [`../upstream-pin.test.ts`](../upstream-pin.test.ts) — an upstream bump that changes any of it
 fails loudly instead of silently altering this library's semantics.
@@ -48,13 +48,14 @@ Fixture tags use names like `@featuretag`, `@ruletag`, `@scenariotag`, `@example
 Every one of these arrives as a `CompositeParserException`; the concrete class lives on `.errors[0]`, and `.location` on
 the composite itself is `undefined`.
 
-| Fixture                                        | Row | Reason tag       | Verified upstream behavior                                                                  |
-| ---------------------------------------------- | --- | ---------------- | ------------------------------------------------------------------------------------------- |
-| `parse-failed-misplaced-tag.feature`           | F17 | `ParseFailed`    | A `@tag` before `Background:` collects 3 cascading errors for one bad line; first at (4:3)  |
-| `unknown-dialect.feature`                      | F18 | `UnknownDialect` | Wraps exactly one `NoSuchLanguageException` at (1:1): `Language not supported: xx`          |
-| `parse-failed-inconsistent-cells.feature`      | F10 | `ParseFailed`    | Wraps an `AstBuilderException`: `inconsistent cell count within the table` at (8:7)         |
-| `parse-failed-typo-keyword-after-step.feature` | F15 | `ParseFailed`    | `Ginve x` written after a valid `Given y` is a loud error at (5:5) — position-dependent     |
-| `parse-failed-background-after-rule.feature`   | F20 | `ParseFailed`    | Wraps `UnexpectedTokenException` at (8:3); the grammar forbids a Background after a `Rule:` |
+| Fixture                                        | Row | Reason tag       | Verified upstream behavior                                                                                                                |
+| ---------------------------------------------- | --- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `parse-failed-misplaced-tag.feature`           | F17 | `ParseFailed`    | A `@tag` before `Background:` collects 3 cascading errors for one bad line; first at (4:3)                                                |
+| `unknown-dialect.feature`                      | F18 | `UnknownDialect` | Wraps exactly one `NoSuchLanguageException` at (1:1): `Language not supported: xx`                                                        |
+| `unknown-dialect-proto.feature`                | F18 | `UnknownDialect` | `# language: constructor` reads through to `Object.prototype` upstream and dies with a `TypeError`; rejected here before upstream sees it |
+| `parse-failed-inconsistent-cells.feature`      | F10 | `ParseFailed`    | Wraps an `AstBuilderException`: `inconsistent cell count within the table` at (8:7)                                                       |
+| `parse-failed-typo-keyword-after-step.feature` | F15 | `ParseFailed`    | `Ginve x` written after a valid `Given y` is a loud error at (5:5) — position-dependent                                                   |
+| `parse-failed-background-after-rule.feature`   | F20 | `ParseFailed`    | Wraps `UnexpectedTokenException` at (8:3); the grammar forbids a Background after a `Rule:`                                               |
 
 `UnexpectedTokenException` is **not** a member of the `Errors` namespace that `@cucumber/gherkin@42.0.1` exports —
 `Errors` holds only `AstBuilderException`, `CompositeParserException`, `GherkinException`, `NoSuchLanguageException`
@@ -69,6 +70,7 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `warning-duplicate-examples-column.feature` | F11 | Header `\| a \| a \|`: the first column wins for both occurrences, giving `1 twice 1` (cucumber/gherkin#28)                     |
 | `warning-empty-rule.feature`                | F13 | A `Rule:` with no scenarios contributes 0 pickles, in silence                                                                   |
 | `warning-swallowed-step.feature`            | F14 | `Ginve x` written before a valid step is swallowed into `scenario.description`; 1 AST step, 1 pickle step, no error             |
+| `description-plain.feature`                 | F14 | Ordinary prose descriptions on a Background and a Scenario; the swallowed-step heuristic must stay silent                       |
 
 ## Group D — correctness fixtures, no error expected
 
@@ -83,7 +85,7 @@ constructor name, never via `err.name` (which is `"Error"` on every one of these
 | `outline-identical-row-names.feature` | F27 | 3 pickles with identical `name` and distinct `location.line` (8, 9, 10)                                                              |
 | `docstring-and-datatable.feature`     | F25 | One step carries both, with `argumentIndex` 1 (DocString) and 2 (DataTable) recording source order                                   |
 
-## Group E — DataTable and DocString argument shapes (PARSE-04)
+## Group E — DataTable and DocString argument shapes (BEH-EC-016)
 
 | Fixture                              | Row | Reason tag           | Verified upstream behavior                                                                                                                                |
 | ------------------------------------ | --- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
