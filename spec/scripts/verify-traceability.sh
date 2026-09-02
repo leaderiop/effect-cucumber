@@ -183,8 +183,8 @@ ACCEPTANCE_TAG_DIR="packages/vitest/test/acceptance"
 # because those are ignored too — removing the concurrency hazard
 # verify-watch-rerun.sh otherwise mitigates by hand.
 #
-# .planning/ is excluded by pathspec rather than by ignore. It is GSD-internal
-# and partially tracked, and coupling a spec/ gate to its contents is threat
+# .planning/ is excluded by pathspec as well as being gitignored (it lives on the
+# planning-archive branch, F-27). It is GSD-internal, and coupling a spec/ gate to its contents is threat
 # T-11-06-05, which check 5's EXPECTED_REQ_COUNT comment records as knowingly
 # accepted rather than mitigated. Excluding it here keeps that acceptance intact.
 # MEASURED, three arms, each run against this repository and reverted:
@@ -282,7 +282,7 @@ fi
 # The expected count is written ONCE, below, as a named constant. A future
 # phase adding a 23rd requirement changes that one number and gets a loud,
 # named failure here in the meantime rather than a silent pass. It is
-# deliberately NOT derived from .planning/REQUIREMENTS.md: that would couple a
+# deliberately NOT derived from the archived REQUIREMENTS.md: that would couple a
 # spec/ gate to GSD-internal files, which is threat T-11-06-05, accepted
 # knowingly rather than mitigated.
 # ---------------------------------------------------------------------------

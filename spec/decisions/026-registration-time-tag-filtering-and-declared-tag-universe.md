@@ -16,7 +16,7 @@ a `--tagsFilter` pattern is validated against `test.tags` whether or not the
 strict-tags check is enabled, so turning the check off silences the emission
 side and leaves the filter side just as broken. Both facts were verified by
 EXECUTION against the installed `vitest@4.1.11`, not read from documentation
-(`.planning/phases/09-tags/09-RESEARCH.md`, Findings 1 and 2).
+(the Phase 9 tags research archived on the `planning-archive` branch, Findings 1 and 2).
 
 ADR-EC-020's central promise — that running one Scenario locally is a bare
 `vitest --tagsFilter '@only'` choice, requiring nothing of the consumer — did
@@ -29,7 +29,7 @@ two, ADR-EC-020's whole "run just one Scenario locally" story was unavailable.
 filtering to CLI filtering alone. The user chose a library-level registration
 filter instead, symmetric (`includeTags` as well as `excludeTags`), as an
 addition to CLI filtering rather than a replacement for it
-(`.planning/phases/09-tags/09-CONTEXT.md`, D-01 through D-03).
+(the Phase 9 context record archived on the `planning-archive` branch, D-01 through D-03).
 
 ## Decision
 

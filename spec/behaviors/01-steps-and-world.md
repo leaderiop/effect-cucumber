@@ -222,7 +222,7 @@ export interface StepRegistrar<ROut> {
 >
 > **(2) `R` was a free type parameter of `Given`, not the ambient Layer's `ROut`.** It therefore
 > inferred to whatever the body happened to need, per call site, and constrained nothing — the
-> vacuous-generic trap (`.planning/research/PITFALLS.md` Pitfall 3). Binding `R` to the enclosing
+> vacuous-generic trap (the pitfalls research archived on the `planning-archive` branch, Pitfall 3). Binding `R` to the enclosing
 > `describeFeature`'s `ROut` through `StepRegistrar<ROut>` is what makes the check run in the
 > intended direction. `Params extends unknown[]` also became `ReadonlyArray<any>`, which accepts a
 > generator's inferred parameter tuple cleanly.

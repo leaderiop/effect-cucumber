@@ -94,7 +94,7 @@ names a runnable artifact rather than a placeholder. Its enforcement is
 deliberately SCOPED and its row says so — a structural scan over the acceptance
 suite, which is the code in this repository that plays the consumer's part, and
 not over a consumer's own step modules. **LINT-01**, named in `spec/roadmap.md`
-§ Planned and in `.planning/REQUIREMENTS.md` § v2, is the deferred mechanism for
+§ Planned and in the v2 backlog archived on the `planning-archive` branch, is the deferred mechanism for
 that remaining half; until it ships, a consumer's own step modules are governed
 by convention and this table claims nothing else.
 
@@ -264,8 +264,8 @@ corpus explicitly. `spec/scripts/verify-traceability.sh` check 4 enforces both
 halves: it greps every `.feature` file in the repository for the tag pattern and
 fails `pnpm verify:spec` naming any tag that has no row here.
 
-The ids are allocated 1:1 against `.planning/REQUIREMENTS.md`'s 22 v1
-requirements, in the order written there, per
+The ids are allocated 1:1 against the 22 v1 requirements of the
+`REQUIREMENTS.md` archived on the `planning-archive` branch, in the order written there, per
 `spec/process/requirement-id-scheme.md`'s "allocated contiguously, in the order
 written" rule. They are permanent: never renumbered and never reused
 (AGENTS.md §6).

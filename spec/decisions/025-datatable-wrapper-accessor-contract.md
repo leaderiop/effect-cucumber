@@ -2,7 +2,7 @@
 
 > **Status:** Accepted and implemented
 > **Date:** 2026-08-28
-> **Context:** Phase 4 of `.planning/ROADMAP.md` built the wrapper
+> **Context:** Phase 4 of the build order (archived on the `planning-archive` branch) built the wrapper
 > [ADR-EC-008](008-data-tables-and-doc-strings-decode-through-schema.md)'s correction said this
 > package would have to write for itself. This ADR is the shape that wrapper took, and it
 > **implements** ADR-EC-008 rather than superseding it — that decision, "data tables and doc strings

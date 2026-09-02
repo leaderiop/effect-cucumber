@@ -23,7 +23,7 @@ in prose satisfies; check 5 matches the §5 TABLE and nothing else. Check 5 also
 one-Scenario-per-id rule. See that script's own comment above check 5 for the three failures check 4 is structurally
 unable to see.
 
-The ids are permanent. They are allocated contiguously, in the order `.planning/REQUIREMENTS.md` writes the
+The ids are permanent. They are allocated contiguously, in the order the `REQUIREMENTS.md` archived on the `planning-archive` branch writes the
 requirements, and are never renumbered and never reused (AGENTS.md §6,
 `spec/process/requirement-id-scheme.md`).
 

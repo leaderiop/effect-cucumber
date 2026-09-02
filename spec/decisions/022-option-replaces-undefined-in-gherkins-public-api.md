@@ -3,7 +3,7 @@
 > **Status:** Accepted and implemented — amended: `cause` is exempt (see the amendment at the end)
 > **Date:** 2026-08-28
 > **Context:** the deep-analysis pass this session ran before touching any code —
-> `.planning/research/effect-feature-adoption-report.md` — recommended `Option` as a real,
+> the Effect-feature-adoption report archived on the `planning-archive` branch — recommended `Option` as a real,
 > verified-applicable candidate; this ADR is the decision and implementation record for
 > extending that recommendation to gherkin's full public API, not just internal locals
 

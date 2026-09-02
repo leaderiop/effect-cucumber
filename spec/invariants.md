@@ -151,7 +151,7 @@ would otherwise declare is erased before the check has anything to check. No
 DSL signature can prevent that, because the erasure happens in the author's own
 body, not at the boundary this invariant guards. Stated here rather than left
 implicit so the invariant claims only what a type system can actually deliver
-(`.planning/research/PITFALLS.md` Pitfall 6). The practical rule: an `any`
+(the pitfalls research archived on the `planning-archive` branch, Pitfall 6). The practical rule: an `any`
 reaching a step body's declared type is a defect in that step, not a permitted
 escape hatch — the compile-gate fixtures under
 `packages/vitest/test/tsgo-gate/` are asserted to contain none. As of Phase 11
@@ -313,7 +313,7 @@ the invariant remains a reviewed convention, and nothing this package ships can
 change that. **LINT-01** — a lint rule flagging a `let`/`var` declared inside a
 DSL callback that a step function closes over — is the mechanism that would
 close that half, and it is deferred to a later milestone: see
-`spec/roadmap.md` § Planned and `.planning/REQUIREMENTS.md` § v2.
+`spec/roadmap.md` § Planned and the v2 backlog archived on the `planning-archive` branch.
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare

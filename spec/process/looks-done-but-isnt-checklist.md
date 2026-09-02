@@ -1,7 +1,7 @@
 # "Looks Done But Isn't" Checklist
 
 The normative in-repo copy of the twenty-four-item checklist first written in this project's pitfalls
-research. That research file is a `.planning/` artifact — unversioned as a contract, readable by no
+research. That research file lives on the `planning-archive` branch — unversioned as a contract, readable by no
 gate under `scripts/`, and free to be edited without anything going red. This document is the
 versioned form: the item text is transcribed from it rather than paraphrased, and the ids below are
 what a gate cites.
