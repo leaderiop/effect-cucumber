@@ -70,7 +70,14 @@ tier's output, so a per-Scenario `World` over a shared `Database` is one `Layer.
 tier provides is a compile error at the `describeFeature` call. The two tiers are never merged into one, so where both name the same service the
 `perScenario` implementation is the one a step resolves. Every Scenario keeps its **own** simulated clock and its own
 console on both scopes — one Scenario's `TestClock.adjust` is never observable by another, whichever form the Feature
-used. One constraint comes with `shared`, and it is a type error rather than advice: its error channel must be `never`.
+used. **A step should read this ambient `TestClock` directly** — `yield* TestClock.adjust(...)` from
+`effect/testing/TestClock`, not wrap its own work in a second `.pipe(Effect.provide(TestClock.layer()))`. Code ported
+from `cucumber-js` is the likely place to carry that over by habit, since there is no ambient `TestClock` there and one
+has to be built by hand. It is not merely redundant: nested underneath real concurrent dispatch and an `Effect.timeout`
+(a `Promise.all`-style fan-out racing a deadline, say), the second, nested clock can lose to the real one, and a
+retry-with-backoff genuinely waits in wall-clock time instead of resolving against simulated time — the failure mode is
+an indefinite hang, not a wrong answer, which makes it slow to trace back to the extra `provide`. One constraint comes
+with `shared`, and it is a type error rather than advice: its error channel must be `never`.
 `@effect/vitest` builds a shared Layer with `Effect.orDie`, so a typed failure there — a testcontainer that will not
 start, the realistic case — becomes an unrecoverable defect raised out of a setup hook, attributed to no Scenario, no
 step and no `.feature` file. Handle it where the types can see the choice instead: `Layer.catchAll` to substitute a

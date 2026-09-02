@@ -189,3 +189,24 @@ decision shipped as written.]**
 > the implementation added on top of this decision: a `shared` Layer's error channel must
 > be `never`, because the framework builds it through `Effect.orDie` and would raise a
 > typed failure as a defect out of a setup hook, attributed to no Scenario.
+>
+> **10. A step re-providing its own `TestClock.layer()` on top of the ambient one is a field-reported
+> footgun, not merely redundant (2026-09-02).** A consumer migrating a step body from `cucumber-js` (where
+> no ambient `TestClock` exists and one has to be built by hand) carried
+> `someEffect.pipe(Effect.provide(TestClock.layer()))` over unchanged into a step under this library's
+> shared-Layer path, which already supplies one per Scenario. Two isolated repros against the installed
+> `effect@4.0.0-rc.112` — `fork`/`TestClock.adjust`/`join` alone, and `Effect.retry` with
+> `Schedule.exponential(...).pipe(Schedule.jittered)` alone, both with and without the extra nested
+> `Effect.provide(TestClock.layer())` — passed in every combination and did **not** reproduce a problem.
+> But on the consumer's actual code — a real concurrent handler dispatch wrapped in `Effect.timeout`, itself
+> wrapping a retry-with-backoff — the nested clock measurably lost: the retry fell back to wall-clock time
+> and the Scenario hung indefinitely (confirmed genuine, not merely slow, against a 30s real-time budget).
+> Deleting the redundant `.pipe(Effect.provide(TestClock.layer()))` and reading the ambient clock directly
+> fixed it immediately, with no other change. The precise mechanism inside that three-way interaction
+> (nested `TestClock` + `Effect.timeout` + concurrent fan-out) was not pinned down — a minimal in-process
+> case that reproduces it here was not found, so unlike notes 1–9 this is **not** covered by
+> `emission.test.ts` or any other test in this suite. Recorded here as a known-real, unenforced hazard:
+> `packages/vitest/README.md`'s per-Scenario-clock paragraph now tells a step author to read the ambient
+> `TestClock` directly rather than re-provide one, which is the whole fix on the consumer's side. Anyone who
+> narrows the actual mechanism down to a reproducible case should add it as note 11 and wire it into
+> `emission.test.ts` the way notes 1–9 are.
