@@ -6,7 +6,13 @@ import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
 import { createParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import type { StepArgs } from "../src/StepArgs.ts"
-import { compileExpression, createStepMatcher, type StepMatch, type StepPatternEntry } from "../src/StepMatcher.ts"
+import {
+  compileExpression,
+  createStepMatcher,
+  type StepMatch,
+  type StepPatternEntry,
+  undefinedParameterTypeNameOf
+} from "../src/StepMatcher.ts"
 
 /** A registry carrying nothing but the eleven built-ins, sharing no state with any other test. */
 const builtInRegistry = () => createParameterTypeStore().buildRegistry()
@@ -366,5 +372,18 @@ describe("StepMatcher positive control", () => {
     expect(matches).toHaveLength(1)
     expect(matches[0]?.definition).toBe("ready")
     expect(matches[0]?.args).toEqual([])
+  })
+})
+
+describe("undefinedParameterTypeNameOf", () => {
+  // Every real throw site in the installed @cucumber/cucumber-expressions raises a genuine Error
+  // object (verified by reading its source), so neither case below is reachable through
+  // `constructExpression`'s own catch — driven directly against the two `typeof`/`null` guards.
+  it("returns undefined for a thrown primitive", () => {
+    expect(undefinedParameterTypeNameOf("boom")).toBeUndefined()
+  })
+
+  it("returns undefined for a thrown null", () => {
+    expect(undefinedParameterTypeNameOf(null)).toBeUndefined()
   })
 })

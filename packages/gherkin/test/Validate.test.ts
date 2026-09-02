@@ -162,6 +162,15 @@ describe("validateFeature enforces per-scope Scenario name uniqueness (F22)", ()
     const name = "duplicate-scenario-name-across-rules.feature"
     expect(() => validate(readFixture(name), name)).not.toThrow()
   })
+
+  it("names the enclosing Rule when both duplicates share one named Rule scope", () => {
+    // Every other duplicate-name test in this file has both scenarios at Feature scope, so
+    // `scopeLabel` never sees a defined `ruleId` — this is the one fixture where it does.
+    const error = errorFromFixture("duplicate-scenario-name-in-rule.feature")
+
+    expect(error.reason).toBe("DuplicateScenarioName")
+    expect(error.message).toContain("Rule: \"checkout\"")
+  })
 })
 
 describe("validateFeature accepts a correct feature", () => {

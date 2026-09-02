@@ -1,12 +1,18 @@
 /**
  * BEH-EC-014, asserted row by row on the F21 fixture.
  */
-import { IdGenerator } from "@cucumber/messages"
+import { type GherkinDocument, IdGenerator, type Pickle, StepKeywordType } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
-import { correlateFeature, type CorrelationResult, isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
+import {
+  correlateFeature,
+  type CorrelationResult,
+  isOutlineKeyword,
+  isScenarioKeyword,
+  stepKeywords
+} from "../src/Correlate.ts"
 import type { DataTable } from "../src/DataTable.ts"
 import type { ParsedScenario, ParsedStep, PickleStepArgument } from "../src/Model.ts"
 import { parseDocument } from "../src/Parser.ts"
@@ -220,6 +226,17 @@ describe("dialect-aware keyword helpers", () => {
   it("answers false for a language the dialects record does not carry", () => {
     expect(isOutlineKeyword("xx", "Scenario Outline")).toBe(false)
     expect(isScenarioKeyword("xx", "Scenario")).toBe(false)
+  })
+
+  it("returns every English step keyword, trimmed, without the '*' wildcard", () => {
+    const keywords = stepKeywords("en")
+
+    expect(keywords).toEqual(expect.arrayContaining(["Given", "When", "Then", "And", "But"]))
+    expect(keywords).not.toContain("*")
+  })
+
+  it("returns an empty array for a language the dialects record does not carry", () => {
+    expect(stepKeywords("xx")).toEqual([])
   })
 })
 
@@ -501,5 +518,118 @@ describe("stepArguments across the remaining argument shapes (F33, F29)", () => 
     const step = stepAt(scenarioAt(correlateFixture("correlation-full.feature").feature.allScenarios, 0), 0)
     expect(step.stepArguments).toEqual([])
     expect(step.argument).toEqual(Option.none())
+  })
+})
+
+describe("defensive guards against a document/pickles pair that disagree with each other", () => {
+  // These three guards exist because `parseDocument` and `compilePickles` are two independent
+  // upstream calls sharing only a caller-supplied id generator (Correlate.ts's own header
+  // comment) — nothing in the type system stops a caller passing a document and a pickles array
+  // that were never actually paired. Reaching them requires deliberately corrupting a real,
+  // well-formed pair, since `loadFeature`/`parseFeature` always hand `correlateFeature` a
+  // matched pair.
+  const realPair = (): { document: GherkinDocument; pickles: ReadonlyArray<Pickle>; uri: string } => {
+    const newId = IdGenerator.uuid()
+    const uri = "correlation-full.feature"
+    const document = parseDocument(readFixture(uri), uri, newId)
+    return { document, pickles: compilePickles(document, uri, newId), uri }
+  }
+
+  it("throws a plain (non-LoadFeatureError) defect if document.feature is undefined", () => {
+    const { document, pickles, uri } = realPair()
+    const { feature: _feature, ...rest } = document
+    const featurelessDocument = rest as GherkinDocument
+
+    expect(() => correlateFeature(featurelessDocument, pickles, uri)).toThrowError(
+      /reached correlation without a Feature:, which Parser\.ts rejects — this is a library defect/
+    )
+  })
+
+  it("silently drops a pickle whose astNodeIds is empty, rather than crashing", () => {
+    const { document, pickles, uri } = realPair()
+    const [first, ...rest] = pickles
+    if (first === undefined) throw new Error("expected correlation-full.feature to compile at least one pickle")
+    const corrupted: ReadonlyArray<Pickle> = [{ ...first, astNodeIds: [] }, ...rest]
+
+    // The one Scenario in this fixture now maps to no pickle at all — it drops out of
+    // allScenarios rather than the library throwing or fabricating a scenario with no steps.
+    expect(correlateFeature(document, corrupted, uri).feature.allScenarios).toHaveLength(0)
+  })
+
+  it("throws a ParseFailed LoadFeatureError if a pickle step references an AST node the document does not declare", () => {
+    const { document, pickles, uri } = realPair()
+    const [firstPickle, ...restPickles] = pickles
+    if (firstPickle === undefined) throw new Error("expected correlation-full.feature to compile at least one pickle")
+    const [firstStep, ...restSteps] = firstPickle.steps
+    if (firstStep === undefined) throw new Error("expected the first pickle to carry at least one step")
+    const corruptedStep = { ...firstStep, astNodeIds: ["not-a-real-ast-node-id"] }
+    const corruptedPickle = { ...firstPickle, steps: [corruptedStep, ...restSteps] }
+    const corrupted: ReadonlyArray<Pickle> = [corruptedPickle, ...restPickles]
+
+    expect(() => correlateFeature(document, corrupted, uri)).toThrowError(
+      expect.objectContaining({
+        reason: "ParseFailed",
+        message: expect.stringContaining("references AST node")
+      })
+    )
+  })
+
+  it("names the step '<none>' when its astNodeIds is empty rather than merely wrong", () => {
+    // Distinct from the corrupted-id case above: `resolveStep`'s `sourceId === undefined` branch,
+    // reached only when a pickle step carries NO ast node id at all.
+    const { document, pickles, uri } = realPair()
+    const [firstPickle, ...restPickles] = pickles
+    if (firstPickle === undefined) throw new Error("expected correlation-full.feature to compile at least one pickle")
+    const [firstStep, ...restSteps] = firstPickle.steps
+    if (firstStep === undefined) throw new Error("expected the first pickle to carry at least one step")
+    const corruptedStep = { ...firstStep, astNodeIds: [] }
+    const corruptedPickle = { ...firstPickle, steps: [corruptedStep, ...restSteps] }
+    const corrupted: ReadonlyArray<Pickle> = [corruptedPickle, ...restPickles]
+
+    expect(() => correlateFeature(document, corrupted, uri)).toThrowError(
+      expect.objectContaining({
+        reason: "ParseFailed",
+        message: expect.stringContaining("references AST node <none>")
+      })
+    )
+  })
+
+  it("falls back to StepKeywordType.UNKNOWN when the AST step carries no keywordType", () => {
+    // `@cucumber/gherkin` sets `keywordType` on every step it parses (verified above by inline
+    // inspection), so this is corrupted on the DOCUMENT, not the pickles: `AstStepInfo.step` is
+    // the real document Step object by reference (`buildAstIndex`'s `recordSteps`), so mutating a
+    // JSON-cloned document's step reaches `resolveStep`'s fallback without touching the pickles at
+    // all — the astNodeIds still line up, so this is the one guard reachable by corrupting the
+    // document instead of the pickles.
+    const newId = IdGenerator.uuid()
+    const uri = "inline.feature"
+    const source = "Feature: F\n  Scenario: plain\n    Given a step\n"
+    const document = parseDocument(source, uri, newId)
+    const pickles = compilePickles(document, uri, newId)
+
+    const corruptedDocument: GherkinDocument = structuredClone(document)
+    const step = corruptedDocument.feature?.children[0]?.scenario?.steps[0]
+    if (step === undefined) throw new Error("expected the inline feature to parse one scenario with one step")
+    delete (step as { keywordType?: unknown }).keywordType
+
+    const scenario = scenarioAt(correlateFeature(corruptedDocument, pickles, uri).feature.allScenarios, 0)
+    expect(stepAt(scenario, 0).keywordType).toBe(StepKeywordType.UNKNOWN)
+  })
+
+  it("falls back to the AST node's location when the pickle carries none", () => {
+    // Symmetric with the keywordType case above: `Pickle.location` is corrupted directly, since
+    // (per this file's own comment above `location: pickle.location ?? node.location`) it is
+    // "optional upstream though always set" — never actually missing from a real compile.
+    const { document, pickles, uri } = realPair()
+    const [firstPickle, ...restPickles] = pickles
+    if (firstPickle === undefined) throw new Error("expected correlation-full.feature to compile at least one pickle")
+    const { location: _location, ...pickleWithoutLocation } = firstPickle
+    const corruptedPickle = pickleWithoutLocation
+    const corrupted: ReadonlyArray<Pickle> = [corruptedPickle, ...restPickles]
+
+    const scenario = scenarioAt(correlateFeature(document, corrupted, uri).feature.allScenarios, 0)
+    const astScenarioLine = document.feature?.children.flatMap((c) => c.rule === undefined ? [c] : c.rule.children)
+      .find((c) => c.scenario !== undefined)?.scenario?.location.line
+    expect(scenario.location.line).toBe(astScenarioLine)
   })
 })

@@ -5,8 +5,9 @@ import type { PickleTable } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
+import * as SchemaIssue from "effect/SchemaIssue"
 import { describe, expect, it } from "vitest"
-import { decodeHashes, makeDataTable } from "../src/DataTable.ts"
+import { decodeHashes, firstIssuePath, makeDataTable, rowDecodeFailed } from "../src/DataTable.ts"
 import { DataTableError } from "../src/Errors.ts"
 
 /** The uri and line every table below is located at, so the locator assertions have a target. */
@@ -133,6 +134,45 @@ describe("hashes", () => {
     expect(Object.getPrototypeOf(record) === Object.prototype).toBe(true)
     // Nothing else in the process was touched: a fresh object knows nothing about "polluted".
     expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined()
+  })
+
+  it("fills a missing trailing cell with the empty string, for a row shorter than the header", () => {
+    // A real .feature file can never produce this: `test/upstream-pin.test.ts` pins the parser's own
+    // rectangular-row guarantee, and `recordOf`'s `?? ""` exists only because `noUncheckedIndexedAccess`
+    // requires SOME value at a type level (DataTable.ts's own module header says so). Reaching it means
+    // building the `PickleTable` by hand rather than through a real parse, deliberately bypassing that
+    // guarantee to pin what `recordOf` actually does if it were ever violated.
+    const raggedTable: PickleTable = {
+      rows: [
+        { cells: [{ value: "name" }, { value: "age" }] },
+        { cells: [{ value: "alice" }] }
+      ]
+    }
+    const [record] = succeeds(makeDataTable(raggedTable, uri, line).hashes())
+
+    expect(record).toEqual({ name: "alice", age: "" })
+  })
+})
+
+describe("firstIssuePath", () => {
+  it("skips a path-less first child of a Composite to find the second child's path", () => {
+    // No schema this library builds today produces a Composite whose first child carries no
+    // Pointer path (`test/schema-issue-pin.test.ts`'s own case notes), so the tree is built by
+    // hand from the real `SchemaIssue` classes rather than from an actual decode failure.
+    const pathlessLeaf = new SchemaIssue.InvalidType(Schema.String.ast)
+    const locatedLeaf = new SchemaIssue.Pointer(["age"], new SchemaIssue.InvalidType(Schema.String.ast))
+    const composite = new SchemaIssue.Composite(Schema.String.ast, [pathlessLeaf, locatedLeaf])
+
+    expect(firstIssuePath(composite, [])).toEqual(["age"])
+  })
+
+  it("returns [] when every child of a Composite is itself path-less", () => {
+    const composite = new SchemaIssue.Composite(Schema.String.ast, [
+      new SchemaIssue.InvalidType(Schema.String.ast),
+      new SchemaIssue.InvalidType(Schema.String.ast)
+    ])
+
+    expect(firstIssuePath(composite, [])).toEqual([])
   })
 })
 
@@ -270,6 +310,23 @@ describe("decodeHashes", () => {
     expect(error.column).toEqual(Option.none())
     expect(error.message).not.toContain("column ")
     expect(error.message).toContain("{\"name\":\"alice\",\"age\":\"30\"}")
+  })
+
+  it("reports both row and column as absent for a genuinely unlocatable failure", () => {
+    // The both-absent case the test above's comment documents as unreachable through
+    // `decodeHashes` today — driven here by calling `rowDecodeFailed` directly with a hand-built
+    // `SchemaError` whose issue is a bare leaf (no `Pointer` at all), rather than through a real
+    // decode.
+    const table = dataTableOf(["name", "age"], ["alice", "30"])
+    const schemaError = new Schema.SchemaError(new SchemaIssue.InvalidType(Schema.String.ast))
+
+    const error = rowDecodeFailed(table, [], schemaError)
+
+    expect(error.row).toEqual(Option.none())
+    expect(error.column).toEqual(Option.none())
+    expect(error.message).not.toContain("Row ")
+    expect(error.message).not.toContain("column ")
+    expect(error.message).toContain("The rows were [].")
   })
 
   it("propagates DuplicateHeaderColumn unchanged rather than reporting a decode failure", () => {

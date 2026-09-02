@@ -36,5 +36,9 @@
   // The tsgo-gate fixtures are DELIBERATELY non-compiling — they are the inputs to
   // scripts/verify-tsgo-gate.sh, which asserts that they fail. Type-checking them here would
   // make `pnpm typecheck:test` fail permanently on files whose whole purpose is to fail.
-  "exclude": ["test/tsgo-gate"]
+  // test/doc-examples/generated is scripts/verify-doc-examples.sh's own scratch output — gitignored,
+  // regenerated every run, including one deliberately-broken positive-control fixture. Same reason
+  // as tsgo-gate: checking it here would fail `pnpm typecheck:test` on a file whose job is to fail,
+  // whenever a stale copy happens to be sitting on disk.
+  "exclude": ["test/tsgo-gate", "test/doc-examples/generated"]
 }

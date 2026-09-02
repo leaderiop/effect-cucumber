@@ -23,8 +23,12 @@ const expressionCache = new WeakMap<ParameterTypeRegistry, Map<string, CucumberE
 
 /** The parameter type an upstream construction failure names, read STRUCTURALLY off the published
  * `undefinedParameterTypeName` property (`test/expressions-pin.test.ts`); the class is not exported and its
- * `name` is `"Error"`. */
-const undefinedParameterTypeNameOf = (thrown: unknown): string | undefined => {
+ * `name` is `"Error"`. The `typeof thrown !== "object"` guard is not reachable against the installed
+ * `@cucumber/cucumber-expressions`: every throw site in its `CucumberExpression` construction path raises a
+ * real `Error` subclass, never a primitive — kept because `thrown` is `unknown` at the call site and nothing
+ * in the upstream contract promises that stays true across a version. Exported (not re-exported
+ * from `index.ts`) so `test/StepMatcher.test.ts` can drive that unreachable-today guard directly. */
+export const undefinedParameterTypeNameOf = (thrown: unknown): string | undefined => {
   if (typeof thrown !== "object" || thrown === null) {
     return undefined
   }

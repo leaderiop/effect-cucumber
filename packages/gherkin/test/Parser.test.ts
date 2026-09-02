@@ -18,6 +18,14 @@ import { readFeatureSource } from "../src/Source.ts"
 
 const fixturePath = (name: string): string => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
 
+/**
+ * An `IdGenerator.NewId` that throws `value` on every call — `AstBuilder` and `compile()` both call `newId()`
+ * while building nodes, so this is a controlled way to make either one fail with a chosen `thrown` value.
+ */
+const newIdThatThrows = (value: unknown): IdGenerator.NewId => () => {
+  throw value
+}
+
 /** `readFeatureSource` provided its concrete FileSystem, run to a Promise. */
 const readSource = (path: string) =>
   Effect.runPromise(readFeatureSource(path).pipe(Effect.provide(NodeFileSystem.layer)))
@@ -152,6 +160,17 @@ describe("parseDocument", () => {
     expect(error.cause).toBeUndefined()
   })
 
+  it("F12 reports an all-blank-lines source as NoFeature, never scanning for a language header", async () => {
+    // findPrototypeKeyLanguageHeader's line-scan `continue`s past every blank line looking for the
+    // first non-blank one to test as a `# language:` header; a source with NO non-blank line at
+    // all falls off the end of that loop, distinct from `no-feature.feature`'s comment line (which
+    // IS non-blank, so it exits the loop one statement earlier).
+    const error = await captureError(() => parseDocument("   \n  \n", "blank.feature", IdGenerator.uuid()))
+
+    expect(error.reason).toBe("NoFeature")
+    expect(error.line).toEqual(Option.none())
+  })
+
   it("no raw gherkin or Node exception escapes for any Group B fixture", async () => {
     const fixtures = [
       "parse-failed-misplaced-tag.feature",
@@ -187,6 +206,55 @@ describe("parseDocument", () => {
     const pickles = compilePickles(document, uri, newId)
     expect(pickles.length).toBeGreaterThan(0)
     expect(pickles[0]?.steps.length).toBeGreaterThan(0)
+  })
+
+  it("wraps a compile()-time Error as ParseFailed, message taken from .message", async () => {
+    // `compile()` calls `newId()` once per pickle; a `newId` that throws is a controlled way to
+    // exercise compilePickles's catch without malforming the document upstream produced.
+    const uri = "correlation-full.feature"
+    const document = parseDocument(await readSource(fixturePath(uri)), uri, IdGenerator.uuid())
+
+    expect(() => compilePickles(document, uri, newIdThatThrows(new Error("boom")))).toThrowError(
+      expect.objectContaining({ reason: "ParseFailed", message: expect.stringContaining("boom") })
+    )
+  })
+
+  it("wraps a compile()-time non-Error throw as ParseFailed, message taken from String(thrown)", async () => {
+    const uri = "correlation-full.feature"
+    const document = parseDocument(await readSource(fixturePath(uri)), uri, IdGenerator.uuid())
+
+    expect(() => compilePickles(document, uri, newIdThatThrows("not an Error instance"))).toThrowError(
+      expect.objectContaining({ reason: "ParseFailed", message: expect.stringContaining("not an Error instance") })
+    )
+  })
+
+  it("wraps a thrown non-Error, non-GherkinException value with no line and no collected errors", async () => {
+    // `AstBuilder` calls `this.newId()` while building nodes, DURING `parser.parse()`, and upstream's
+    // own `handleExternalError` re-throws anything it does not recognise verbatim (checked against
+    // the installed @cucumber/gherkin source) — so a `newId` that throws a bare string is a
+    // controlled way to reach `collectErrors`/`lineOf` with a `thrown` that is neither an `Error`
+    // nor a `GherkinException`, without depending on upstream ever doing this itself.
+    const source = await readSource(fixturePath("correlation-full.feature"))
+    const throwingNewId = newIdThatThrows("not an Error, not a GherkinException")
+
+    const error = await captureError(() => parseDocument(source, "correlation-full.feature", throwingNewId))
+
+    expect(error.reason).toBe("ParseFailed")
+    expect(error.line).toEqual(Option.none())
+    expect(error.message).toContain("the parser threw without collecting any error")
+  })
+
+  it("wraps a thrown plain Error that is not a GherkinException, collecting it as the sole error", async () => {
+    // Same mechanism as above, but the thrown value IS an `Error` — the other half of
+    // collectErrors's `thrown instanceof Error ? [thrown] : []` ternary.
+    const source = await readSource(fixturePath("correlation-full.feature"))
+    const throwingNewId = newIdThatThrows(new Error("a plain Error, not a GherkinException"))
+
+    const error = await captureError(() => parseDocument(source, "correlation-full.feature", throwingNewId))
+
+    expect(error.reason).toBe("ParseFailed")
+    expect(error.line).toEqual(Option.none())
+    expect(error.message).toContain("a plain Error, not a GherkinException")
   })
 
   it("tolerates a bare parse exception that carries no errors array (Pitfall P5)", async () => {

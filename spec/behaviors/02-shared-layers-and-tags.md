@@ -315,10 +315,14 @@ Then the Feature itself:
 
 ```typescript
 // describeFeature, its optional fourth argument, loadFeature and the dsl below are all
-// real exports. This fence is still not compiled; the doc-examples check is not wired
-// yet (spec/roadmap.md).
+// real exports, compiled by pnpm verify:doc-examples.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { Context, Effect, Layer, Option, Ref, Schema } from "effect"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Ref from "effect/Ref"
+import * as Schema from "effect/Schema"
 import { expect } from "vitest"
 
 // @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already wired to a
@@ -381,7 +385,7 @@ class World extends Context.Service<World, {
   static readonly layer = Layer.effect(
     this,
     Effect.gen(function*() {
-      return World.of({ lastError: yield* Ref.make(Option.none()) })
+      return World.of({ lastError: yield* Ref.make(Option.none<DatabaseError>()) })
     })
   )
 }

@@ -98,7 +98,12 @@ const isUsableParameterName = (name: string): boolean => identifierShape.test(na
 /**
  * A suggested step definition for `text`: three lines, no trailing newline. `registry` is the Feature's own
  * (`ParsedFeature.parameterTypes`) so custom types generalise too. Only upstream's FIRST candidate is used
- * (most specific first: `{int}` over `{float}`); an empty result falls back to the literal text.
+ * (most specific first: `{int}` over `{float}`); an empty result falls back to the literal text. That fallback
+ * is not reachable through the installed `@cucumber/cucumber-expressions`:
+ * `CombinatorialGeneratedExpressionFactory.generatePermutations` always pushes at least one `GeneratedExpression`,
+ * even for zero parameter-type combinations (`depth === 0 === combinations.length` on the first call) — kept
+ * as a defensive fallback rather than an unchecked `[0]!`, the same judgment `DataTable.ts`'s `firstIssuePath`
+ * makes for its own not-reachable-today branch.
  */
 export const generateStepSnippet = (args: {
   readonly keyword: string

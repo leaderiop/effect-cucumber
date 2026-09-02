@@ -241,7 +241,9 @@ describes; see [BEH-EC-001](./01-steps-and-world.md)'s worked example for that o
 ```typescript
 import { createStepMatcher, loadFeature, ParameterTypeStore, type StepMatch } from "@effect-cucumber/gherkin"
 import { NodeFileSystem } from "@effect/platform-node"
-import { Effect, Layer, Option } from "effect"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 
 // A custom parameter type is data handed to a Layer: ParameterTypeStore.layer builds a fresh
 // store carrying the built-ins plus these definitions, and every loadFeature call the Layer is
@@ -292,6 +294,7 @@ const resolve = (text: string): StepMatch<string> => {
       throw new Error(`${matches.length} patterns match: ${text}`)
   }
 }
+void resolve
 ```
 
 ---

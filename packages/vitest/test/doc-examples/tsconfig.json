@@ -1,0 +1,26 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    // Widened to the repo root for the same reason packages/vitest/test/tsgo-gate/tsconfig.json
+    // widens it: every generated file imports `@effect-cucumber/vitest` (and some import
+    // `@effect-cucumber/gherkin` directly) the way a real consumer writes it, which resolves
+    // through this package's own `exports["."]` to packages/vitest/src/ — outside this directory —
+    // so the inherited rootDir would reject the whole program with TS6059 before a single spec-fence
+    // diagnostic is reached. `noEmit: true` above makes this inert: nothing here emits.
+    "rootDir": "${configDir}/../../../..",
+    // Same reason as packages/vitest/tsconfig.json and packages/vitest/test/tsgo-gate/tsconfig.json:
+    // every generated file transitively imports packages/vitest/src/describeFeature.ts, which calls
+    // `console.warn`. The base sets `types: []`, so without this every generated file fails TS2584
+    // on an import it never wrote itself.
+    "types": ["node"]
+  },
+  // scripts/verify-doc-examples.sh regenerates generated/tsconfig.generated.json on every run,
+  // listing the current fence-extraction output under `files`. This file only holds the shared
+  // compiler options; it has nothing of its own to compile.
+  "include": []
+}

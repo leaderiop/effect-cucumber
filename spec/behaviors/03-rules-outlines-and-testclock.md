@@ -119,15 +119,19 @@ what still does not resolve, so the `TestClock` guarantee it sits above is no lo
 association.
 
 ```typescript
-// Two lines below are still pre-implementation; everything else in this example corresponds to a
-// real export and to behaviour that ships.
-//   1. `expect` is used in two step bodies and imported nowhere.
-//   2. The two `effect` imports are barrel imports; AGENTS.md §3 requires submodule namespace
-//      imports, and `effect/testing` has no barrel at all — `TestClock` lives at
-//      `effect/testing/TestClock`.
+// describeFeature, loadFeature and the dsl below are all real exports, compiled by
+// pnpm verify:doc-examples.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { Clock, Context, Duration, Effect, Layer, Option, Ref, Schema } from "effect"
-import { TestClock } from "effect/testing"
+import * as Clock from "effect/Clock"
+import * as Context from "effect/Context"
+import * as Duration from "effect/Duration"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Ref from "effect/Ref"
+import * as Schema from "effect/Schema"
+import * as TestClock from "effect/testing/TestClock"
+import { expect } from "vitest"
 
 // @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already wired to a
 // shared NodeFileSystem.layer and defaulting ParameterTypeStore — distinct from
@@ -172,7 +176,7 @@ class World extends Context.Service<World, {
       return World.of({
         subtotal: yield* Ref.make(0),
         total: yield* Ref.make(0),
-        rejection: yield* Ref.make(Option.none())
+        rejection: yield* Ref.make(Option.none<DiscountError>())
       })
     })
   )
@@ -192,7 +196,9 @@ class DiscountRegistry extends Context.Service<DiscountRegistry, {
         register: (code, percent, expiresIn) =>
           Effect.gen(function*() {
             const now = yield* Clock.currentTimeMillis
-            const expiresAt = now + Duration.toMillis(Duration.decode(expiresIn))
+            // expiresIn is a step's runtime string, not statically known to match
+            // Duration.Input's template-literal shape — the cast is the step author's job.
+            const expiresAt = now + Duration.toMillis(Duration.fromInputUnsafe(expiresIn as Duration.Input))
             yield* Ref.update(codes, (m) => new Map(m).set(code, { percent, expiresAt }))
           }),
         apply: (code, subtotal) =>
@@ -214,13 +220,16 @@ describeFeature(feature, World.layer, ({ Background, Rule }) => {
   // discounts.feature's literal Background text.
   Background(({ Given }) => {
     Given("the cart contains:", function*(table) {
-      const rows = yield* Schema.decodeUnknown(Schema.Array(CartRow))(table.hashes())
+      const rows = yield* Schema.decodeUnknownEffect(Schema.Array(CartRow))(table.hashes())
       yield* Ref.set((yield* World).subtotal, rows.reduce((sum, r) => sum + r.price, 0))
     })
   })
 
-  Rule("Percentage discounts expire at midnight", DiscountRegistry.layer, ({ ScenarioOutline, Scenario }) => {
-    ScenarioOutline("Applying a valid discount code", ({ Given, When, Then }) => {
+  Rule("Percentage discounts expire at midnight", DiscountRegistry.layer, ({ Scenario }) => {
+    // Outline registration has no separate DSL member: a `Scenario Outline` in the .feature file
+    // is registered through the same `Scenario` call, which titles one test per Examples row
+    // (BEH-EC-010) — the Gherkin structure alone decides whether a Scenario has an Examples table.
+    Scenario("Applying a valid discount code", ({ Given, When, Then }) => {
       Given(
         "a discount code {string} worth {int}% expiring in {string}",
         function*(code: string, percent: number, expiresIn: string) {
@@ -256,8 +265,8 @@ describeFeature(feature, World.layer, ({ Background, Rule }) => {
 
       When("I apply the discount code {string}", function*(code: string) {
         const subtotal = yield* Ref.get((yield* World).subtotal)
-        const outcome = yield* Effect.either((yield* DiscountRegistry).apply(code, subtotal))
-        if (outcome._tag === "Left") yield* Ref.set((yield* World).rejection, Option.some(outcome.left))
+        const outcome = yield* Effect.result((yield* DiscountRegistry).apply(code, subtotal))
+        if (outcome._tag === "Failure") yield* Ref.set((yield* World).rejection, Option.some(outcome.failure))
       })
 
       Then("the discount is rejected with {string}", function*(message: string) {
