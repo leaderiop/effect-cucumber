@@ -2819,3 +2819,94 @@ describeFeature(
     })
   }
 )
+
+/**
+ * F-09 — a `shared` Layer's lifetime is the FEATURE's block, not the file's.
+ *
+ * Two Features in one file, each with its own `shared` tier built from `Effect.acquireRelease`, and a
+ * module-scope log both tiers and both Scenarios append to. Feature B's Scenario asserts the WHOLE
+ * log so far, which can only read `released-A` before `acquired-B` if Feature A's tier was closed
+ * when Feature A's block ended — the named `layer(...)` form's `afterAll`, on the Feature's own
+ * `describe`. Under the one-argument form this file used before, the close ran at the FILE's teardown
+ * and this assertion read `["acquired-A", "scenario-A", "acquired-B"]` instead.
+ *
+ * mutation: routing the shared path back through the one-argument `layer(tier, opts)(callback)` form
+ * turns Feature B's Scenario red on the log's third entry.
+ */
+const sharedLifecycleLog: Array<string> = []
+
+class LifecycleA extends Context.Service<LifecycleA, { readonly name: string }>()("LifecycleA") {}
+class LifecycleB extends Context.Service<LifecycleB, { readonly name: string }>()("LifecycleB") {}
+
+const lifecycleLayerA = Layer.effect(
+  LifecycleA,
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      sharedLifecycleLog.push("acquired-A")
+      return LifecycleA.of({ name: "A" })
+    }),
+    () => Effect.sync(() => void sharedLifecycleLog.push("released-A"))
+  )
+)
+
+const lifecycleLayerB = Layer.effect(
+  LifecycleB,
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      sharedLifecycleLog.push("acquired-B")
+      return LifecycleB.of({ name: "B" })
+    }),
+    () => Effect.sync(() => void sharedLifecycleLog.push("released-B"))
+  )
+)
+
+const lifecycleFeatureA = Effect.runSync(
+  parseFeature(
+    `Feature: Shared lifecycle A
+
+  Scenario: the first lifecycle feature reads its own shared tier
+    When the lifecycle A step reads its shared service
+`,
+    "test/shared-lifecycle-a.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+const lifecycleFeatureB = Effect.runSync(
+  parseFeature(
+    `Feature: Shared lifecycle B
+
+  Scenario: the second lifecycle feature starts after the first one released
+    When the lifecycle B step reads its shared service and the log so far
+`,
+    "test/shared-lifecycle-b.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+describeFeature(lifecycleFeatureA, { shared: lifecycleLayerA, perScenario: Layer.empty }, ({ When }) => {
+  When("the lifecycle A step reads its shared service", function*() {
+    const a = yield* LifecycleA
+    sharedLifecycleLog.push(`scenario-${a.name}`)
+  })
+})
+
+describeFeature(lifecycleFeatureB, { shared: lifecycleLayerB, perScenario: Layer.empty }, ({ When }) => {
+  When("the lifecycle B step reads its shared service and the log so far", function*() {
+    const b = yield* LifecycleB
+    // THE claim: A was released before B was acquired — i.e. at Feature A's block end.
+    assert.deepStrictEqual(sharedLifecycleLog, ["acquired-A", "scenario-A", "released-A", "acquired-B"])
+    sharedLifecycleLog.push(`scenario-${b.name}`)
+  })
+})
+
+describe("a shared Layer is released when its Feature's block ends, not when the file does (F-09)", () => {
+  it("closed each Feature's shared tier before the next Feature's opened, and B's at its own end", () => {
+    expect(sharedLifecycleLog).toEqual([
+      "acquired-A",
+      "scenario-A",
+      "released-A",
+      "acquired-B",
+      "scenario-B",
+      "released-B"
+    ])
+  })
+})

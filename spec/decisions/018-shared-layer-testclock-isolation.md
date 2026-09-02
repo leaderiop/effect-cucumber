@@ -150,6 +150,20 @@ decision shipped as written.]**
 > per Scenario, which the `never` pin had forced. A `perScenario` input neither tier provides
 > is still rejected — by overload resolution rather than by name, and BEH-EC-007 says so.
 >
+> **8. Note 2 is reversed (2026-09-02, F-09): the NAMED call form is now the mechanism.**
+> `describeFeature.ts`'s shared adapter opens the Feature's own block through
+> `layer(sharedTier, options)(feature.name, callback)`. Note 2's objection — a second
+> Feature-named block — does not arise, because the adapter hands `Runner.ts`'s single
+> top-level `describe` call to the named form instead of to vitest's `describe`: the
+> block the named form opens IS the Feature block. What the named form buys, and the
+> one-argument form could not: `beforeAll(build)` and `afterAll(closeScope)` land on the
+> Feature's block, so the tier is released when the Feature ends rather than when the
+> file does (BEH-EC-007's first correction recorded that divergence; its latest
+> correction records the fix), and a `memoMap` made by the composition root is passed
+> in so a hook registered on the same block can reach the identical memoised build.
+> Measured against the installed build: `Feature > Rule > Scenario`, one Feature-named
+> level, release before the next sibling suite.
+>
 > **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
 > claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
 > hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted

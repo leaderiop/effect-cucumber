@@ -68,17 +68,18 @@ declared `shared`" — is built too, as of Phase 10 (RUN-03/RUN-04, ADR-EC-018).
 
 **Mechanism.** On the `shared` path the two tiers are provided in two different
 places and never merged. The shared tier is provided by `@effect/vitest`'s
-`layer(...)` at the BLOCK level, around every node whose BODY needs it — not
-around every test node the Feature emits. The library's own always-passing
-unused-step-definition nodes are deliberately routed off that path: the framework's
-shared-block test constructor builds the memoised Layer before running ANY body,
-including one that does nothing at all, so a node whose body needs neither tier is
-instead routed through the module-level, Layer-free constructor the default path
-already uses — the choice is made per node by a routing field on the library's own
-emission options, read only at the composition root. The consequence a caller can
-rely on: a Feature whose Scenarios are all removed by a registration-time tag
-filter never builds its shared tier, so the tier stays as deferred as asking for it
-implies.
+`layer(...)` in its NAMED form, which opens the Feature's own `describe` block and
+builds the tier in that block's `beforeAll`, releasing it in that block's
+`afterAll` — so the tier lives exactly as long as the Feature's block (F-09), and
+is ambient on every node emitted inside it whose BODY needs it. The library's own
+always-passing unused-step-definition nodes are deliberately routed off that path
+through the module-level, Layer-free constructor the default path already uses —
+the choice is made per node by a routing field on the library's own emission
+options, read only at the composition root — and a Feature with no runnable
+Scenario at all is routed through the plain adapter before any block opens. The
+consequence a caller can rely on: a Feature whose Scenarios are all removed by a
+registration-time tag filter never builds its shared tier, so the tier stays as
+deferred as asking for it implies.
 
 Wherever a node's body DOES need the shared tier — every Scenario, and the
 Feature's own teardown node — the tier is NOT re-provided inside any Scenario

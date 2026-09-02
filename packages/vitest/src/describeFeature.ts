@@ -179,7 +179,7 @@ import { emitFeature, type EmitOutcome } from "./Runner.ts"
 // one encoding instead of two that compile while disagreeing.
 import { scenarioKey } from "./ScenarioKey.ts"
 import { register } from "./Step.ts"
-import { makeTagFilter } from "./Tags.ts"
+import { isSkipped, makeTagFilter, shouldEmit } from "./Tags.ts"
 import type { TestApi } from "./TestApi.ts"
 
 /**
@@ -538,73 +538,77 @@ const vitestTestApi = (featureUri: string): TestApi => ({
  * The SHARED path's concrete `TestApi` — the second one, and the reason note (e) says the seam is a
  * PARAMETER rather than an import.
  *
- * TWO emission routes, chosen per node by `EmitOptions.contextFree` (plan 10-07, closing the gap
- * `10-VERIFICATION.md` found). Both routes register through the same underlying framework `it` — the
- * module-level constructor and the `layer(...)`-provided one are `@effect/vitest`'s own `it.effect` and
- * the `MethodsNonLive.effect` it hands `layer(...)`'s callback, and neither opens a `describe` of its
- * own — so the emitted node ORDER and the describe/test tree are identical either way; this fact was
- * VERIFIED by this task's own `<verify>` run, not assumed, and is recorded here so the next reader does
- * not have to re-derive it.
+ * **The Feature block IS `layer(...)`'s own `describe`.** `Runner.ts` emits exactly one top-level
+ * `describe` per Feature, first, before any test node (`emitFeature`'s walk opens it before either
+ * Scenario loop). This adapter's `describe` therefore opens the FIRST block it is asked for through
+ * the framework's NAMED `layer(sharedTier, options)(name, callback)` form, which wraps its own
+ * `describe(name, …)` and registers `beforeAll(build)` and `afterAll(closeScope)` on THAT block —
+ * so the shared tier is built when the Feature's block starts and released when it ends, not when
+ * the whole file does (ADR-EC-018 implementation note 2, as amended; BEH-EC-007). Every later
+ * `describe` — a Rule's — is the module-level one, nested inside. Measured against the installed
+ * build: the tree renders `Feature > Rule > Scenario`, with no second Feature-named block, because
+ * the named form's `describe` is the only Feature block there is. `emission.test.ts`'s
+ * "two shared Features in one file" block observes the release point from the second Feature.
  *
- * **The context-free route:** `vitestTestApi(featureUri).effect`, reused as a VALUE rather than a
- * second hand-written closure around the module-level test constructor. Reusing it is what keeps
- * `makeDegradingEffect` at ONE implementation — the property that function's own doc comment says it
- * exists for ("duplicating it is how the shared path silently loses the degradation") — and it makes
- * the two paths' D-08 catch-and-degrade behaviour identical by construction rather than by inspection.
- * `vitestTestApi` is declared above this factory in this file, so the reference resolves without
- * reordering anything.
+ * The one-argument form this adapter previously used registered its `afterAll` on the FILE suite:
+ * vitest defers a `describe` factory, so at the instant that form diffed the current suite's task
+ * list nothing had been registered yet, and it fell through to the file-level close. That is the
+ * "released at file end, not Feature end" divergence BEH-EC-007's first correction records.
  *
- * This is NOT the failure `.planning/research/ARCHITECTURE.md`'s Anti-Pattern 3 forbids, though the two
- * look identical from a distance. Anti-Pattern 3 is about a SCENARIO body reaching the module-level
- * constructor, where the Scenario provides its own Layers and the shared resource is silently rebuilt
- * per Scenario. A node routed here is `contextFree: true` by construction — its body is `Effect.void`
- * (`Runner.ts`'s `⚠` warning nodes, the only kind this route is used for today) — and a body that
- * builds nothing on either route cannot be "silently rebuilt" by being on this one; routing it away
- * from the shared route is in fact the ONLY way to leave the shared tier unbuilt for it, which is the
- * whole claim this plan closes.
+ * **`memoMap` is passed in, never made here**, so the composition root and any hook that must reach
+ * the SAME memoised build (`afterAll` below) share one map: `Layer.buildWithMemoMap` against the map
+ * the framework built through is a memo HIT, refcounted, never a rebuild.
  *
- * **The shared route:** the existing closure, unchanged — `sharedIt.effect` with `Effect.provide(testEnv)`
- * wrapped around the thunk. Every Scenario node and the `⚙ AfterAllScenarios` node travel this one,
- * both `contextFree: false`.
+ * **Two emission routes**, chosen per node by `EmitOptions.contextFree`: the library's own `⚠` nodes,
+ * whose body is `Effect.void`, go through the module-level constructor (`vitestTestApi`'s `effect`,
+ * reused as a value so `makeDegradingEffect` stays ONE implementation); every Scenario goes through
+ * the `it` the named form handed back, which carries the shared tier's services.
  *
- * Its `describe` is the MODULE-LEVEL one, unchanged, and that is not the same mistake. `describe`
- * carries no Layer services — it opens a block and nothing else — so there is nothing for it to
- * silently rebuild. It is also the only way to nest a Rule block at all: the object `layer(...)`
- * hands back is a `MethodsNonLive`, which has no `describe` member (`TestApi.ts` note (a)).
+ * **`Effect.provide(testEnv)` at the EMISSION boundary** is ADR-EC-018's per-Scenario clock/console
+ * isolation, and `excludeTestServices: true` at the `layer(...)` call is its other half; the two guard
+ * DIFFERENT services (ADR-EC-018 note 4) and neither is redundant. `ScenarioEffect.ts` stays ignorant
+ * of the two paths (its note (b)).
  *
- * Every emitted Effect on the SHARED route is wrapped in `Effect.provide(testEnv)`, at the EMISSION
- * boundary. That is ADR-EC-018's per-Scenario `TestClock`/`TestConsole` isolation, and the placement is
- * deliberate: doing it inside `ScenarioEffect.ts` would make that module know there are two paths, which
- * is exactly what its own note (b) says it must not. `excludeTestServices: true` at the `layer(...)` call
- * site is the other half — and the two halves guard DIFFERENT services rather than being one change
- * spelled twice. This provide is what delivers the per-Scenario CLOCK; without it the clock leaks and
- * the console does not. `excludeTestServices: true` is what delivers the per-Scenario CONSOLE;
- * without it the console leaks and the clock does not. Both directions were measured by mutation in
- * plan 10-04, and the ADR's own implementation note carries the memo-map identity argument for why.
- * Neither half is redundant; deleting either one leaves a real leak with the other still in place. A
- * `contextFree: true` node needs neither, because it reads nothing — it is routed off this path
- * entirely rather than paying for isolation it has no use for.
- *
- * Pitfall 29, recorded where the two paths differ: `MethodsNonLive` has no `live` member, so a
- * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. The two paths do
- * not have identical capability surfaces. Documented limitation, not a defect.
+ * Pitfall 29: the `it` the named form hands back is a `MethodsNonLive` with no `live` member, so a
+ * Feature using a `shared` Layer cannot opt one Scenario out of the simulated clock. Documented
+ * limitation, not a defect.
  *
  * @param featureUri - the `.feature` file every warning from this adapter is located against
- * @param sharedIt - the object `layer(...)` hands its callback, carrying the shared Layer's services
+ * @param sharedTier - the Feature's shared Layer, built once for the Feature's block
+ * @param memoMap - the memo map the framework builds `sharedTier` through
  */
-const sharedLayerTestApi = (featureUri: string, sharedIt: Vitest.MethodsNonLive<any>): TestApi => {
-  // The context-free route, built ONCE per Feature exactly like the default path's own adapter — this
-  // IS that adapter, reused as a value rather than rebuilt.
+const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, memoMap: Layer.MemoMap): TestApi => {
   const contextFreeEffect = vitestTestApi(featureUri).effect
-  // The shared route: the existing closure, unchanged — `sharedIt.effect` with
-  // `Effect.provide(testEnv)` wrapped around the thunk. Built once, same as before this task, and
-  // still the ONLY reference to `sharedIt.effect` in this file (`pnpm verify:testapi-seam`-adjacent
-  // grep in the plan's own `<done>` counts it).
+  // Set by the FIRST `describe` — the Feature block — and read by every emission inside it. `null`
+  // before that block opens: an emission arriving earlier has no shared tier to run against, and
+  // silently routing it to the module-level constructor would be Anti-Pattern 3 (the shared resource
+  // rebuilt per Scenario), so it throws instead.
+  let sharedIt: Vitest.MethodsNonLive<any> | null = null
+  const requireSharedIt = (member: string): Vitest.MethodsNonLive<any> => {
+    if (sharedIt === null) {
+      throw new Error(
+        `describeFeature: the shared-path TestApi's ${member} was called before its first describe — Runner.ts must open the Feature block before emitting anything into it.`
+      )
+    }
+    return sharedIt
+  }
   const sharedRouteEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
-    sharedIt.effect(name, () => self().pipe(Effect.provide(testEnv)), emitOptions)
+    requireSharedIt("effect").effect(name, () => self().pipe(Effect.provide(testEnv)), emitOptions)
   })
+  // The module-level `describe`, under a name oxlint's vitest rules do not recognise as a test-file
+  // call: this is a library adapter forwarding a block, not a test declaring one.
+  const nestedBlock: TestApi["describe"] = describe
   return {
-    describe,
+    describe: (name, define) => {
+      if (sharedIt !== null) {
+        nestedBlock(name, define)
+        return
+      }
+      layer(sharedTier, { excludeTestServices: true, memoMap })(name, (methods) => {
+        sharedIt = methods
+        define()
+      })
+    },
     effect: (name, self, emitOptions) =>
       emitOptions.contextFree
         // Nothing here can force the shared Layer to build.
@@ -1345,74 +1349,44 @@ export function describeFeature(
     }
   }
 
-  // THE ONE BRANCH between the two provision strategies (ARCHITECTURE.md Pattern 4), and it is an
-  // EXPLICIT read of an explicit field rather than a re-inspection of the caller's argument shape.
-  // `null` means "this Feature never asked for a shared scope" and nothing else can mean it — the
-  // `sharedLayer` field's own comment is why it is not `Layer.empty`.
-  //
-  // Bound to a local first, so the `else` arm has a narrowed, non-null value to pass rather than a
-  // property access the reader has to re-check.
+  // THE ONE BRANCH between the two provision strategies, and it is an EXPLICIT read of an explicit
+  // field rather than a re-inspection of the caller's argument shape. `null` means "this Feature never
+  // asked for a shared scope" and nothing else can mean it — the `sharedLayer` field's own comment is
+  // why it is not `Layer.empty`.
   const sharedTier = collection.sharedLayer
 
-  if (sharedTier === null) {
-    // THE DEFAULT PATH, unchanged. Every field below is what it was before the shared path existed,
-    // and it must stay that way: a Feature that passes a plain Layer must emit byte-identically to
-    // how it emitted in Phase 9, which is what `pnpm verify:tags-filter` measures from outside.
-    emitFeature({
-      // ONE adapter per `describeFeature` call, built here rather than at module scope, because
-      // D-08's warning has to name the `.feature` file and a uri does not exist until a Feature does.
-      // Two Features in one file get two adapters, each located against its own uri.
-      api: vitestTestApi(collection.plan.feature.uri),
-      plan: collection.plan,
-      layer: collection.layer,
-      hooks: collection.hooks,
-      ruleHooks: collection.ruleHooks,
-      ruleLayers: collection.ruleLayers,
-      scenarioLayers: collection.scenarioLayers,
-      tagFilter,
-      onEmitted
-    })
-  } else {
-    // THE SHARED PATH. `layer(...)` builds `sharedTier` EXACTLY ONCE for everything its callback
-    // registers, and hands back the `it` carrying that Layer's services.
-    //
-    // THE ONE-ARGUMENT CALL FORM, and the two-argument form is FORBIDDEN here. The two-argument form
-    // opens a `describe` of its own named by its first argument, which would wrap a SECOND
-    // Feature-named block around `Runner.ts`'s own `describe(feature.name, …)` and render as
-    // `Feature > Feature > Scenario`. Measured during this phase's planning, both forms, against the
-    // installed build: the one-argument form opens no block at all, runs its callback synchronously
-    // in the CURRENT suite, and still builds the shared Layer exactly once even when every emission
-    // happens inside a `describe` factory vitest defers — two Scenarios nested two `describe` levels
-    // deep, one build.
-    //
-    // `excludeTestServices: true` is the half of ADR-EC-018 that lives here. Without it the framework
-    // composes its own test services INTO the memoised shared Layer, and what actually leaks is the
-    // CONSOLE ALONE — not the clock. That asymmetry is measured (plan 10-04, mutation iv) and it is
-    // the opposite of what this comment used to claim: `TestConsole.layer` is a module-level constant,
-    // so `sharedLayerTestApi`'s provide finds the framework's already-built console in the forked
-    // memo map and hits it, while `TestClock.layer` is a FUNCTION, so each call is a distinct object
-    // and misses. The clock therefore stays isolated even with this option removed — by accident of
-    // how the two are declared upstream, not by design. Should `effect` ever make `TestClock.layer` a
-    // constant to match, removing this option would silently reintroduce the exact clock leak
-    // ADR-EC-018 exists to prevent, and `emission.test.ts`'s `TestConsole` Scenario is the only
-    // assertion in the repo that notices this option going missing today.
-    layer(sharedTier, { excludeTestServices: true })((sharedIt) => {
-      // Every other field is the SAME value the default arm passes, `layer` included — which is now
-      // the per-Scenario tier, and is exactly what Pattern 4 asks the Scenario's own Effect to
-      // provide. The shared tier is NOT among them: it is already ambient on `sharedIt`, and passing
-      // it here as well would rebuild it once per Scenario, which is the entire defect this branch
-      // exists to remove.
-      emitFeature({
-        api: sharedLayerTestApi(collection.plan.feature.uri, sharedIt),
-        plan: collection.plan,
-        layer: collection.layer,
-        hooks: collection.hooks,
-        ruleHooks: collection.ruleHooks,
-        ruleLayers: collection.ruleLayers,
-        scenarioLayers: collection.scenarioLayers,
-        tagFilter,
-        onEmitted
-      })
-    })
-  }
+  // The named `layer(...)` form builds the shared tier EAGERLY, in a `beforeAll` on the Feature's
+  // block, so the block has to be opened through it only when something inside will run. A Feature
+  // whose every Scenario the filter removed or `@skip` retired has nothing that could need the tier —
+  // its remaining nodes are the library's own `⚠` warnings, which read nothing — and routing it through
+  // the plain adapter is what keeps BEH-EC-007's "ZERO times when it emits none" true. The predicate
+  // is the same pair `Runner.ts`'s walk applies per Scenario (`shouldEmit`, then `isSkipped`), and the
+  // "stays unbuilt (10-07)" block in `emission.test.ts` is what notices if the two drift apart.
+  const anyRunnable = collection.plan.scenarios.some((scenarioPlan) =>
+    shouldEmit(tagFilter, scenarioPlan.tags) && !isSkipped(scenarioPlan.tags)
+  )
+
+  // ONE adapter per `describeFeature` call, built here rather than at module scope, because D-08's
+  // warning has to name the `.feature` file and a uri does not exist until a Feature does. On the
+  // shared path the memo map is made HERE and handed in, so the adapter's hooks can reach the very
+  // build the framework made.
+  const api = sharedTier === null || !anyRunnable
+    ? vitestTestApi(collection.plan.feature.uri)
+    : sharedLayerTestApi(collection.plan.feature.uri, sharedTier, Layer.makeMemoMapUnsafe())
+
+  // Every other field is the SAME value on both paths, `layer` included — the per-Scenario tier, which
+  // is what the Scenario's own Effect provides. The shared tier is NOT among them: on the shared path it
+  // is ambient on the `it` the adapter emits through, and passing it here as well would rebuild it once
+  // per Scenario, which is the entire defect the shared path exists to remove.
+  emitFeature({
+    api,
+    plan: collection.plan,
+    layer: collection.layer,
+    hooks: collection.hooks,
+    ruleHooks: collection.ruleHooks,
+    ruleLayers: collection.ruleLayers,
+    scenarioLayers: collection.scenarioLayers,
+    tagFilter,
+    onEmitted
+  })
 }

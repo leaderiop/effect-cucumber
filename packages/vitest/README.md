@@ -47,7 +47,8 @@ Scenario individually.
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
-through `@effect/vitest`'s own `layer(...)` helper while `perScenario` beside it is still rebuilt every Scenario.
+through `@effect/vitest`'s own `layer(...)` helper and released when the Feature's block ends (before the next Feature
+in the same file starts), while `perScenario` beside it is still rebuilt every Scenario.
 `perScenario` is a **required** key even for a Feature with no per-Scenario-fresh state at all: write
 `perScenario: Layer.empty`. `perScenario` may be built **from** `shared` — its input type is bounded by the shared
 tier's output, so a per-Scenario `World` over a shared `Database` is one `Layer.effect` away, while an input neither

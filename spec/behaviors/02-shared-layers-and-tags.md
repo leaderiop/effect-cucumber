@@ -204,6 +204,28 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 > tier holding a testcontainer or a database connection is no longer started for a Feature the
 > caller explicitly filtered out on the strength of one stray unused pattern.
 
+> **Correction (2026-09-02, F-09, measured against the installed `@effect/vitest@4.0.0-rc.112`):**
+> the RELEASE half now holds AS WRITTEN. The first correction above recorded that the scope
+> closed at the FILE's teardown because the one-argument `layer(...)` form diffed a deferred
+> `describe`'s empty task list. `packages/vitest/src/describeFeature.ts`'s shared adapter now
+> opens the Feature's own block through the framework's NAMED form,
+> `layer(sharedTier, { excludeTestServices: true, memoMap })(feature.name, callback)`, which wraps
+> its own `describe(name, …)` and registers `beforeAll(build)` and `afterAll(closeScope)` on THAT
+> block. The tree is unchanged — the named form's `describe` IS the Feature block, so there is no
+> second Feature-named level — and the tier is released when the Feature's block ends, before the
+> next sibling suite in the file starts.
+>
+> Because the named form builds in a `beforeAll`, the composition root routes a Feature with no
+> runnable Scenario (every one filtered out or `@skip`) through the plain adapter instead, which is
+> how "ZERO times when it emits none" keeps holding; the `⚠` warning nodes such a Feature still
+> emits read nothing.
+>
+> **Asserted** by `packages/vitest/test/emission.test.ts`'s "a shared Layer is released when its
+> Feature's block ends, not when the file does (F-09)" block: two Features in one file, each with
+> an `acquireRelease`-built shared tier, where the second Feature's Scenario reads the log
+> `["acquired-A", "scenario-A", "released-A", "acquired-B"]` — a read that fails under the
+> one-argument form. `pnpm verify:shared-layer-once` still passes whole and `-t`-narrowed.
+
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
 > **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
