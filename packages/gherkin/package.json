@@ -1,6 +1,6 @@
 {
   "name": "@effect-cucumber/gherkin",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Gherkin feature-file parsing for effect-cucumber. Effect-native; effect is a peer dependency only (ADR-EC-021), never bundled. Uses core effect's FileSystem service interface; depends on no concrete platform implementation.",
   "keywords": [
     "gherkin",
