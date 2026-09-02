@@ -329,10 +329,14 @@ REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
 ### Worked example
 
 ```typescript
-// describeFeature, loadFeature and the dsl below are all real exports. This fence is
-// still not compiled; the doc-examples check is not wired yet (spec/roadmap.md).
+// describeFeature, loadFeature and the dsl below are all real exports, compiled by
+// pnpm verify:doc-examples.
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { Context, Effect, Layer, Ref } from "effect"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Ref from "effect/Ref"
+import { expect } from "vitest"
 
 // @effect-cucumber/vitest's loadFeature (ADR-EC-024) returns a Promise, already
 // wired to a shared NodeFileSystem.layer and defaulting ParameterTypeStore —

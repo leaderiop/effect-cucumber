@@ -18,6 +18,19 @@ export default defineConfig({
     // `pnpm -r test` from a package directory declare the same list. `./vitest.tags.ts` holds the
     // one hand-written half and the one derivation; `packages/vitest/vitest.config.ts` reuses both.
     tags: declaredTags(fileURLToPath(new URL(".", import.meta.url))),
-    allowOnly: false
+    allowOnly: false,
+    // spec/traceability.md §6's 90%/90% target, per package rather than blended — a change that
+    // hollows out one package's tests while padding the other's must not average out clean.
+    // `pnpm coverage` runs this from the root, covering both packages in the one process that
+    // `pnpm test` already does; `packages/*/vitest.config.ts` carry the same target for a
+    // per-package `-- --coverage` run.
+    coverage: {
+      provider: "v8",
+      include: ["packages/*/src/**/*.ts"],
+      thresholds: {
+        "packages/gherkin/src/**": { statements: 90, branches: 90 },
+        "packages/vitest/src/**": { statements: 90, branches: 90 }
+      }
+    }
   }
 })

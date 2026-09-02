@@ -9,6 +9,7 @@
     "build": "tsc -b",
     "test": "vitest run",
     "test:shuffle": "vitest run --sequence.shuffle",
+    "coverage": "vitest run --coverage",
     "format": "dprint fmt",
     "format:check": "dprint check",
     "lint": "oxlint -f unix && dprint check",
@@ -29,6 +30,7 @@
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
     "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
     "verify:api-surface": "bash scripts/verify-api-surface.sh",
+    "verify:doc-examples": "bash scripts/verify-doc-examples.sh",
     "verify:no-planning-refs": "bash scripts/verify-no-planning-refs.sh",
     "changeset": "changeset",
     "release": "pnpm build && changeset publish"
@@ -37,6 +39,7 @@
     "@changesets/cli": "^3.0.1",
     "@effect/tsgo": "0.38.0",
     "@oxlint/plugins": "1.80.0",
+    "@vitest/coverage-v8": "catalog:",
     "dprint": "0.56.1",
     "madge": "8.0.0",
     "oxlint": "1.80.0",

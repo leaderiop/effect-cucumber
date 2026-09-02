@@ -187,8 +187,12 @@ const isCompositeIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Compos
 /**
  * The first locatable leaf's accumulated `Pointer` path, or `[]`. Relies on the issue-tree shape
  * `test/schema-issue-pin.test.ts` pins against the installed `effect`; keep the two walks in step.
+ * Exported (not re-exported from `index.ts`, so not part of the public surface) only so
+ * `test/DataTable.test.ts` can drive its `Composite`-with-multiple-children loop directly: no schema
+ * this library builds today produces a `Composite` whose first child is itself path-less, so that
+ * branch is otherwise dead against the schemas `decodeHashes` actually compiles.
  */
-const firstIssuePath = (
+export const firstIssuePath = (
   issue: SchemaIssue.Issue,
   prefix: ReadonlyArray<PropertyKey>
 ): ReadonlyArray<PropertyKey> => {
@@ -211,8 +215,10 @@ const firstIssuePath = (
  * Convert a `SchemaError` from decoding one table's `hashes()` into a LOCATED `DataTableError`: the path's first
  * element is the body-row index (because `decodeHashes` introduced the array level), its second the column.
  * Both `typeof` checks are load-bearing: a reshaped path must yield an ABSENT locator, never a wrong "Row 1".
+ * Exported (not re-exported from `index.ts`) for the same reason as `firstIssuePath`: the both-absent case
+ * (row AND column none) is not reachable through `decodeHashes`'s own schema shape, per `test/DataTable.test.ts`.
  */
-const rowDecodeFailed = (
+export const rowDecodeFailed = (
   table: DataTable,
   rows: ReadonlyArray<Readonly<Record<string, string>>>,
   schemaError: Schema.SchemaError

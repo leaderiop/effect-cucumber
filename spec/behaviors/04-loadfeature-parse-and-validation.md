@@ -178,7 +178,15 @@ every optional field on the error/warning types is `Option<T>`, never `T | undef
 ```typescript
 import { loadFeature, LoadFeatureError, ParameterTypeStore, type ParsedFeature } from "@effect-cucumber/gherkin"
 import { NodeFileSystem } from "@effect/platform-node"
-import { Effect, Layer, Option } from "effect"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Schema from "effect/Schema"
+
+class UnreadableFeatureError extends Schema.TaggedError<UnreadableFeatureError>()("UnreadableFeatureError", {
+  message: Schema.String,
+  cause: Schema.Unknown
+}) {}
 
 const explain = (err: LoadFeatureError): string => {
   const line = Option.getOrElse(err.line, () => 0)
@@ -206,7 +214,10 @@ const explain = (err: LoadFeatureError): string => {
 // `loadFeature` itself).
 const load = Effect.fn("load")(function*(path: string) {
   const feature = yield* loadFeature(path).pipe(
-    Effect.catchTag("LoadFeatureError", (error) => Effect.fail(new Error(explain(error), { cause: error })))
+    Effect.catchTag(
+      "LoadFeatureError",
+      (error) => Effect.fail(new UnreadableFeatureError({ message: explain(error), cause: error }))
+    )
   )
   yield* Effect.forEach(feature.warnings, (warning) => Effect.logWarning(`${warning.reason}: ${warning.message}`))
   return feature
@@ -216,9 +227,10 @@ const load = Effect.fn("load")(function*(path: string) {
 // with a top-level `await`, providing both requirements as one merged Layer — chained
 // `.pipe(Effect.provide(a), Effect.provide(b))` calls fail the build under @effect/tsgo's
 // multipleEffectProvide diagnostic (ADR-EC-016), so Layer.mergeAll is required here, not optional:
-const feature = await Effect.runPromise(
+const feature: ParsedFeature = await Effect.runPromise(
   load("x.feature").pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
 )
+void feature
 ```
 
 ---

@@ -18,6 +18,9 @@ catalog:
   # (enforced by scripts/verify-no-runner-dep.sh).
   "@effect/platform-node": 4.0.0-rc.112
   vitest: ^4.1.0
+  # Coverage tooling, never a consumer-facing dependency — kept on the same range as `vitest`
+  # above so pnpm always resolves a matching provider/runner pair.
+  "@vitest/coverage-v8": ^4.1.0
   typescript: ^7.0.2
   "@types/node": ^20.0.0
 

@@ -78,6 +78,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # `pnpm test` exiting 0 says nothing about how MUCH of packages/*/src it exercised —
+      # spec/traceability.md §6's 90%/90% statement/branch target per package, checked here rather
+      # than blended so one package's tests cannot pad over the other's gaps. Node 24 ONLY: coverage
+      # is a property of the source, not of which Node version ran it, and the v8 provider's
+      # instrumentation cost is not worth paying three times over to re-prove the same numbers.
+      - if: matrix.node-version == 24
+        run: pnpm coverage
       # `pnpm test` exiting 0 does NOT prove the suite is free of declaration-order
       # coupling: vitest runs a file's suites in order unless told otherwise, and
       # an observer `describe` that reads what an earlier Feature recorded passes
@@ -220,6 +227,12 @@ jobs:
       # API table leaves it, build and test all green. See
       # scripts/verify-api-surface.sh.
       - run: pnpm verify:api-surface
+      # `verify:api-surface` checks the spec's TABLES against the code; this checks the
+      # spec's WORKED-EXAMPLE CODE FENCES against the code. Neither `pnpm build` nor
+      # `pnpm typecheck:test` compiles a single line inside a spec/*.md fence, so a
+      # signature change can leave every gate above green while a reader who copies the
+      # example gets a type error. See scripts/verify-doc-examples.sh.
+      - run: pnpm verify:doc-examples
       # Source and test comments must not cite the planning artefacts that live on
       # the planning-archive branch (or ids that resolve only there): a citation a
       # reader cannot open rots silently. See scripts/verify-no-planning-refs.sh.

@@ -71,6 +71,10 @@ The acceptance pair `packages/vitest/test/acceptance/step-modules.feature` +
 `Rule`.
 
 ```typescript
+// doc-examples:skip — illustrative shorthand for two files, not a standalone program (`./world.ts`,
+// `limitSteps` and `feature` are never defined here); the real, compiled, executed proof of this
+// shape is packages/vitest/test/acceptance/step-modules.feature + step-modules.steps.test.ts,
+// which pnpm test already runs.
 // steps/apples.ts — shared across Feature files
 import { defineSteps } from "@effect-cucumber/vitest"
 import * as Ref from "effect/Ref"

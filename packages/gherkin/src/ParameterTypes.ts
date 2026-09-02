@@ -197,6 +197,10 @@ export const createParameterTypeStore = () => {
 
     // Catch-all: anything the checks above did not name is upstream rejecting the definition for a reason this
     // library did not anticipate; it still reaches the caller as a named error carrying the original as `cause`.
+    // Not reachable today: the two checks above (`isValidParameterTypeName`, `rejectedRegexpFlags`) already
+    // duplicate the only two rejection reasons the installed `ParameterType` constructor has — verified by
+    // reading its source. Kept for the same reason as `buildRegistry`'s two catches below: an upstream minor
+    // could add a third check this library has not learned yet.
     try {
       toUpstreamParameterType(record)
     } catch (cause) {

@@ -39,3 +39,6 @@ packages/vitest/test/acceptance/pitfalls-gate-*.feature
 packages/vitest/test/acceptance/watch-rerun-gate.feature
 packages/vitest/test/tsgo-gate/src/pitfalls-gate-*.ts
 packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-*.json
+
+# Fences extracted from spec/ by scripts/verify-doc-examples.sh, regenerated every run.
+packages/vitest/test/doc-examples/generated/

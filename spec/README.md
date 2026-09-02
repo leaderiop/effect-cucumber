@@ -10,9 +10,8 @@ it verifies that the registries (`index.yaml`) match the files on disk, that
 every invariant and decision is traced in `traceability.md`, that every
 `@REQ-EC-NNN` tag in the repository has a §5 row, and that no relative link is
 broken. A doc-examples compile check (extracting every `` ```typescript `` fence
-and type-checking it against the real API) is still **not wired** — `packages/*`
-exists now, so the thing it was waiting on is no longer what blocks it. See
-`spec/roadmap.md`, which stays the single authority on build status.
+and type-checking it against the real API) runs as `pnpm verify:doc-examples`.
+See `spec/roadmap.md`, which stays the single authority on build status.
 
 ## Contents
 

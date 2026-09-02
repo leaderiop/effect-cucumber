@@ -26,8 +26,12 @@ fail() {
 
 scan() {
   # $1: a path list (space separated) relative to ROOT_DIR. Prints file:line:text hits.
+  # --exclude-dir=generated: scripts/verify-doc-examples.sh copies spec/*.md fence content
+  # (including this project's OWN DSL-NN/RUN-NN-style ids, which are fine in spec/ prose but match
+  # FORBIDDEN_RE) verbatim into packages/vitest/test/doc-examples/generated/ — gitignored,
+  # regenerated every run, and not an authored packages/ comment.
   # shellcheck disable=SC2086
-  (cd "$ROOT_DIR" && grep -rnE --include='*.ts' --include='*.sh' --include='*.feature' --include='*.yml' --include='*.yaml' --include='*.json' "$FORBIDDEN_RE" $1 2>/dev/null | grep -v "^$SELF:" || true)
+  (cd "$ROOT_DIR" && grep -rnE --include='*.ts' --include='*.sh' --include='*.feature' --include='*.yml' --include='*.yaml' --include='*.json' --exclude-dir=generated "$FORBIDDEN_RE" $1 2>/dev/null | grep -v "^$SELF:" || true)
 }
 
 # Positive control: the scan must catch a planted token, or every clean result below is vacuous.
