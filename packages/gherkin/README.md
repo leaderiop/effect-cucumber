@@ -14,7 +14,7 @@ package.
 
 ## Status
 
-**Nothing is published to npm yet.** The parse pipeline has shipped. `loadFeature(path)` returns
+Published on npm as `0.1.0` (pre-1.0: the API can still move). The parse pipeline has shipped. `loadFeature(path)` returns
 `Effect<ParsedFeature, LoadFeatureError | StepPatternError, FileSystem.FileSystem | ParameterTypeStore>` and
 `parseFeature(source, uri)` returns `Effect<ParsedFeature, LoadFeatureError | StepPatternError, ParameterTypeStore>` —
 `Effect`-returning since [ADR-EC-021](../../spec/decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md),

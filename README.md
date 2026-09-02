@@ -12,8 +12,8 @@ error channel rather than from bookkeeping.
 
 ## Status
 
-Pre-release: **nothing is published to npm yet**, but both packages have working implementations and a `.feature` file
-runs as vitest tests today. `@effect-cucumber/gherkin` parses and validates `.feature` files, matches step text through
+`@effect-cucumber/gherkin` and `@effect-cucumber/vitest` are published on npm as `0.1.0`; both are pre-1.0, so the
+API can still move. `@effect-cucumber/gherkin` parses and validates `.feature` files, matches step text through
 cucumber-expressions, and wraps data tables and doc strings. `@effect-cucumber/vitest` emits one `describe` per Feature
 and one `it.effect` per Scenario, runs each Scenario's Background steps first inside the same `Effect.gen`, and fails
 loudly on a step that matches no registered pattern or more than one. A `Rule` can extend the ambient Layer for the
@@ -31,7 +31,6 @@ Still ahead, and stated so nobody discovers it the hard way: the doc-examples co
 editing a `.feature` file under a watching runner does not trigger a rerun when the file was loaded by path.
 
 [`spec/roadmap.md`](./spec/roadmap.md) is the single source of truth for what is built versus what is only specified.
-The install instructions below describe the intended shape; they will not work until the first release.
 
 ## Install
 

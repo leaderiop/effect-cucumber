@@ -10,7 +10,7 @@ awaits at module top level (ADR-EC-024).
 
 ## Status
 
-**Nothing is published to npm yet.** The registration surface and the runner have both shipped.
+Published on npm as `0.1.0` (pre-1.0: the API can still move). The registration surface and the runner have both shipped.
 
 `describeFeature(feature, layer, define)` is real. It takes either a plain `Layer` or
 `{ shared, perScenario }` (`perScenario` is a required key — write `perScenario: Layer.empty` for a Feature with no
