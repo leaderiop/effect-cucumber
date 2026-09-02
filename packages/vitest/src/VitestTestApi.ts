@@ -30,9 +30,10 @@ import type { TestApi } from "./TestApi.ts"
  *
  * The test framework has an equivalent of its own and does NOT export it — writing
  * `import { TestEnv } from "@effect/vitest"` does not compile. So it is reconstructed, and this
- * definition is byte-equivalent to the framework's own: it was read out of the installed
- * `@effect/vitest@4.0.0-rc.112`'s `dist/internal/internal.js`, line 34, rather than guessed. Both
- * halves come from `effect` itself, so nothing here depends on a private export staying where it is.
+ * definition is equivalent to the framework's own, and `test/upstream-pin.test.ts` asserts that
+ * equivalence against the installed build (a `TestClock` and a `TestConsole` are present under
+ * `it.effect` and under `Effect.provide(testEnv)` alike). Both halves come from `effect` itself, so
+ * nothing here depends on a private export staying where it is.
  *
  * The clock half is CALLED, with parens. `TestClock.layer` without them is the constructor function,
  * not a Layer, and dropping the parens is the single most plausible tidy-up on this line. It would

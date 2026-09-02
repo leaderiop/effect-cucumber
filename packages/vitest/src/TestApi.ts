@@ -86,8 +86,8 @@
  *     Scenario Effect reaches `effect`, `ScenarioEffect.ts` has already provided the Feature's
  *     Layer, so `Scope` is all that is left — and `@effect/vitest`'s module-level `effect` export
  *     is typed `Vitest.Tester<Scope.Scope>`, whose `self` position accepts exactly a
- *     `() => Effect.Effect<A, E, Scope.Scope>`. That assignability was verified against the
- *     installed `@effect/vitest@4.0.0-rc.112`'s own `dist/index.d.ts`, not assumed.
+ *     `() => Effect.Effect<A, E, Scope.Scope>`. That assignability is pinned by
+ *     `test/upstream-pin.test.ts`, not assumed.
  *
  * This module contains types only: no `const`, no function, no runtime value at all. Both imports
  * are `import type`, so the emitted `dist/TestApi.js` carries zero statements beyond the bare

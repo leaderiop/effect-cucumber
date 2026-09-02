@@ -113,11 +113,9 @@
  * (f) **`shared`'s error channel is pinned to `never`, and `perScenario`'s deliberately is not.**
  *     The object form's `shared` field is `Layer.Layer<RShared, never, never>` on BOTH overloads
  *     below, so a `Layer<Db, DbConnectError>` — the realistic case, a testcontainer that fails to
- *     start — does not compile in that position. The reason is upstream and verified by reading it
- *     rather than assumed: the installed `@effect/vitest@4.0.0-rc.112`'s
- *     `dist/internal/internal.js` line 147 builds the Layer with
- *     `Layer.buildWithMemoMap(withTestEnv, memoMap, scope).pipe(Effect.orDie, Effect.cached,
- *     Effect.runSync)`. `Effect.orDie` turns a typed Layer failure into an unrecoverable DEFECT,
+ *     start — does not compile in that position. The reason is upstream and pinned by
+ *     `test/upstream-pin.test.ts` rather than assumed: the framework builds a shared Layer through
+ *     `Effect.orDie`, which turns a typed Layer failure into an unrecoverable DEFECT,
  *     and that defect is raised out of a `beforeAll`/`beforeEach` hook — detached from every
  *     Scenario. The report names no Scenario, no step and no `.feature` file, which is a failure
  *     nothing can be attributed to. The constraint does not remove that failure mode; it moves the
