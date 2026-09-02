@@ -747,7 +747,7 @@ const resolveRuleId = (feature: ParsedFeature, name: string): string => {
 const collect = (
   feature: ParsedFeature,
   layerArgument: LayerArgument,
-  define: (dsl: FeatureDsl<any>) => void
+  define: (dsl: FeatureDsl<any, any>) => void
 ): FeatureCollection => {
   // ONE fresh registry per invocation, built here and never hoisted to module scope or memoised.
   // Registry.ts note (a) has the full argument; the short version is that a shared registry makes
@@ -924,7 +924,7 @@ const collect = (
     }
   }
 
-  const dsl: FeatureDsl<any> = {
+  const dsl: FeatureDsl<any, any> = {
     ...scenarioDsl,
     Background: (defineBackground) => {
       // `name: null` and not the feature's name: a Background genuinely has none (Registry.ts's
@@ -1154,7 +1154,7 @@ export function collectFeature<RShared, RScenario, E2>(
     readonly shared: Layer.Layer<RShared, never, never>
     readonly perScenario: Layer.Layer<RScenario, E2, RShared>
   },
-  define: (dsl: FeatureDsl<RShared | RScenario>) => void
+  define: (dsl: FeatureDsl<RShared | RScenario, RShared>) => void
 ): FeatureCollection
 export function collectFeature<ROut, E>(
   feature: ParsedFeature,
@@ -1169,7 +1169,7 @@ export function collectFeature<ROut, E>(
 export function collectFeature(
   feature: ParsedFeature,
   layerArgument: LayerArgument,
-  define: (dsl: FeatureDsl<any>) => void
+  define: (dsl: FeatureDsl<any, any>) => void
 ): FeatureCollection {
   return collect(feature, layerArgument, define)
 }
@@ -1234,7 +1234,7 @@ export function describeFeature<RShared, RScenario, E2>(
     // rejected — `test/tsgo-gate/src/per-scenario-missing-rin.ts`.
     readonly perScenario: Layer.Layer<RScenario, E2, RShared>
   },
-  define: (dsl: FeatureDsl<RShared | RScenario>) => void,
+  define: (dsl: FeatureDsl<RShared | RScenario, RShared>) => void,
   options?: DescribeFeatureOptions
 ): void
 // The plain-Layer overload is LAST, and must stay last — note (a). This is the one TypeScript
@@ -1257,7 +1257,7 @@ export function describeFeature<ROut, E>(
 export function describeFeature(
   feature: ParsedFeature,
   layerArgument: LayerArgument,
-  define: (dsl: FeatureDsl<any>) => void,
+  define: (dsl: FeatureDsl<any, any>) => void,
   options?: DescribeFeatureOptions
 ): void {
   // REGISTER, then PLAN — both inside `collect`, which `collectFeature` shares verbatim.

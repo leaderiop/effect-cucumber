@@ -421,6 +421,16 @@ const unfiltered = { tagFilter: noTagFilter }
 class Recorder extends Context.Service<Recorder, { readonly log: Ref.Ref<ReadonlyArray<string>> }>()("Recorder") {}
 
 /** A fresh `Recorder` Layer over a fresh, single, shared `Ref` — one per test, per the house factory convention. */
+/**
+ * A `Recorder` service every hook and step body in this file writes to, delivered as a Layer.
+ *
+ * Tests that run a once-per-Feature hook (`BeforeAllScenarios`/`AfterAllScenarios`) provide this Layer
+ * AROUND the thunk they run, in addition to passing it as the per-Scenario `layer`: since F-10 the
+ * runner hands those two hooks no per-Scenario build — in a real run the SHARED tier is ambient on the
+ * Feature's block — so the outer provide is this file's stand-in for that ambient tier. The
+ * per-Scenario provide inside the thunk still wins for steps and per-Scenario hooks, and both reach
+ * the same `log` Ref, so the recorded order is the real one.
+ */
 const makeRecorderLayer = (): {
   readonly layer: Layer.Layer<Recorder>
   readonly log: Ref.Ref<ReadonlyArray<string>>
@@ -1140,8 +1150,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      yield* thunkAt(records, 1)()
-      yield* thunkAt(records, 2)()
+      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
+      yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
 
       // ONE whole-log assertion carrying both halves at once: the hook's `:start`/`:end` pair appears
       // exactly ONCE, ahead of both Scenarios' step entries — mutation K's target.
@@ -1170,8 +1180,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      yield* thunkAt(records, 2)()
-      yield* thunkAt(records, 1)()
+      yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
+      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
 
       // Proves the cell is order-independent rather than "the first emitted node happens to run
       // first": the hook still runs once, ahead of whichever Scenario the test ran first.
@@ -1201,8 +1211,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      const exit1 = yield* Effect.exit(thunkAt(records, 1)())
-      const exit2 = yield* Effect.exit(thunkAt(records, 2)())
+      const exit1 = yield* Effect.exit(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer)))
+      const exit2 = yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
 
       assert.isTrue(Exit.isFailure(exit1))
       assert.isTrue(Exit.isFailure(exit2))
@@ -1233,7 +1243,7 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      yield* thunkAt(records, 1)()
+      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
 
       assert.deepStrictEqual(yield* Ref.get(log), [
         "beforeAll:start",
@@ -1306,11 +1316,11 @@ describe("AfterAllScenarios is registered as one teardown hook after every Scena
       })
 
       // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
-      yield* Effect.exit(thunkAt(records, 1)())
-      yield* Effect.exit(thunkAt(records, 2)())
+      yield* Effect.exit(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer)))
+      yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
 
       // Records: describe(0), paying(1), refunding(2), AfterAllScenarios(3) — no warnings here.
-      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)())
+      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)().pipe(Effect.provide(recorderLayer)))
 
       // Mutation N's target: composing the node's body to await the BeforeAllScenarios cell first
       // would turn this into a failure.
@@ -1334,9 +1344,9 @@ describe("AfterAllScenarios is registered as one teardown hook after every Scena
         ...unfiltered
       })
 
-      const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)())
-      const scenario2Exit = yield* Effect.exit(thunkAt(records, 2)())
-      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)())
+      const scenario1Exit = yield* Effect.exit(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer)))
+      const scenario2Exit = yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
+      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)().pipe(Effect.provide(recorderLayer)))
 
       assert.isTrue(Exit.isSuccess(scenario1Exit))
       assert.isTrue(Exit.isSuccess(scenario2Exit))
@@ -1529,9 +1539,9 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
 
         // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the
         // `⚙ AfterAllScenarios` node — run them in that same order.
-        yield* thunkAt(records, 1)()
-        yield* thunkAt(records, 2)()
-        yield* thunkAt(records, 3)()
+        yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
+        yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
+        yield* thunkAt(records, 3)().pipe(Effect.provide(recorderLayer))
 
         // THE headline assertion. Written out in full, grouped by line so the sequence reads directly:
         // one `BeforeAllScenarios` pair; then, per Scenario, `Before` gates two `BeforeStep`/step/
@@ -2102,12 +2112,12 @@ describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, 
       assert.deepStrictEqual(titlesOf(records), ["skipped one", "only one", "plain one"])
 
       // Before anything ran: the teardown does nothing.
-      yield* teardownAt(records)()
+      yield* teardownAt(records)().pipe(Effect.provide(recorderLayer))
       assert.deepStrictEqual(yield* Ref.get(log), [])
 
       // One Scenario attempted — `only one`, records index 2 — and the SAME teardown now runs the hook.
-      yield* Effect.exit(thunkAt(records, 2)())
-      yield* teardownAt(records)()
+      yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
+      yield* teardownAt(records)().pipe(Effect.provide(recorderLayer))
       assert.deepStrictEqual(yield* Ref.get(log), ["afterAll:start", "afterAll:end"])
     }))
 

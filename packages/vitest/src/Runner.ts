@@ -492,8 +492,13 @@ export const emitFeature = (
   // Built once per Feature, before anything is emitted — note (e). `null` when the Feature registers
   // no `BeforeAllScenarios` hook, so a hookless Feature's Scenario thunks stay byte-for-byte what
   // plan 07-04 left them as.
+  //
+  // NOTHING is provided to the batch here (F-10). A once-per-Feature hook is typed by the shared tier
+  // alone (`FeatureDsl<ROut, RShared>`), which is ambient on the shared path and empty on the plain
+  // one; providing the per-Scenario tier as well would hand the hook a private build no Scenario
+  // ever reads, which is exactly the trap the typing removes.
   const beforeAllScenariosCell: Effect.Effect<void, unknown, Scope.Scope> | null = hooks.BeforeAllScenarios.length > 0
-    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios).pipe(Effect.provide(layer)))
+    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios))
     : null
 
   api.describe(plan.feature.name, () => {
@@ -615,9 +620,10 @@ export const emitFeature = (
         if (!attempted) {
           return Effect.void
         }
+        // Same as the once-cell above: no per-Scenario tier is provided to a once-per-Feature hook.
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
           hooks.AfterAllScenarios
-        ).pipe(Effect.provide(layer))
+        )
         return afterAllScenariosEffect
       })
     }

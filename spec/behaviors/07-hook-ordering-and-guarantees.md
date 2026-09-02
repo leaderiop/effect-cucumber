@@ -123,6 +123,15 @@ REQUIREMENT: BeforeAllScenarios runs AT MOST ONCE per Feature, shared across
              BeforeAllScenarios fails, that SAME failure is reported by EVERY
              Scenario in the Feature individually, not by a single
              Feature-level failure with zero Scenario results.
+
+             BeforeAllScenarios and AfterAllScenarios see the SHARED tier and
+             nothing else (F-10). They are typed HookRegistrar<RShared> —
+             `RShared` being the `shared` field's output, and `never` on the
+             plain-Layer form of describeFeature — so a once-per-Feature hook
+             that reaches for a per-Scenario service is a compile error by
+             name (effect(missingEffectContext)), and the runner provides no
+             per-Scenario build to either hook. A hook that must seed state
+             every Scenario reads puts that state in `shared`.
 ```
 
 ```
@@ -168,37 +177,43 @@ class Log extends Context.Service<Log, { readonly entries: Ref.Ref<ReadonlyArray
 
 const feature = await loadFeature("./checkout.feature")
 
-describeFeature(feature, Log.layer, ({ After, AfterAllScenarios, Before, BeforeAllScenarios, Scenario }) => {
-  // Runs once for the whole Feature, ahead of every Scenario's own Before.
-  BeforeAllScenarios(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "beforeAll"])
-  })
-
-  // Gates this Scenario's steps: if this fails, no step below runs, but After still does.
-  Before(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "before"])
-  })
-
-  // Guaranteed regardless of whether this Scenario's steps succeeded or failed.
-  After(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "after"])
-  })
-
-  // Runs once, after every Scenario in the Feature, even if BeforeAllScenarios or a Scenario failed.
-  AfterAllScenarios(function*() {
-    yield* Ref.update((yield* Log).entries, (log) => [...log, "afterAll"])
-  })
-
-  Scenario("Adding an item", ({ Then, When }) => {
-    When("I add an item", function*() {
-      yield* Ref.update((yield* Log).entries, (log) => [...log, "when"])
+// `Log` lives in the SHARED tier: the two once-per-Feature hooks below see that tier and nothing
+// else, so a Log in a plain (per-Scenario) Layer would be a compile error at `BeforeAllScenarios`.
+describeFeature(
+  feature,
+  { shared: Log.layer, perScenario: Layer.empty },
+  ({ After, AfterAllScenarios, Before, BeforeAllScenarios, Scenario }) => {
+    // Runs once for the whole Feature, ahead of every Scenario's own Before.
+    BeforeAllScenarios(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "beforeAll"])
     })
 
-    Then("the cart has 1 item", function*() {
-      // ...assertion against Log's accumulated entries
+    // Gates this Scenario's steps: if this fails, no step below runs, but After still does.
+    Before(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "before"])
     })
-  })
-})
+
+    // Guaranteed regardless of whether this Scenario's steps succeeded or failed.
+    After(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "after"])
+    })
+
+    // Runs once, after every Scenario in the Feature, even if BeforeAllScenarios or a Scenario failed.
+    AfterAllScenarios(function*() {
+      yield* Ref.update((yield* Log).entries, (log) => [...log, "afterAll"])
+    })
+
+    Scenario("Adding an item", ({ Then, When }) => {
+      When("I add an item", function*() {
+        yield* Ref.update((yield* Log).entries, (log) => [...log, "when"])
+      })
+
+      Then("the cart has 1 item", function*() {
+        // ...assertion against Log's accumulated entries
+      })
+    })
+  }
+)
 ```
 
 ---

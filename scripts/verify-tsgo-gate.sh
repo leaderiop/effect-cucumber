@@ -44,6 +44,7 @@ STEP_EXPECT_ERROR_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-expect-er
 STEP_TABLE_ANNOTATION_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-table-annotation.json"
 HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
 HOOK_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-missing.json"
+HOOK_ONCE_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-once.json"
 RULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-ok.json"
 RULE_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-missing.json"
 
@@ -378,6 +379,28 @@ if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_NEG_OUTPUT"; then
   fail "the hook was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the hook DSL. CI stays green on a rejection that no longer proves anything about context. Most likely cause: the HookRegistrar step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST, after which TypeScript reports the generator as a plain shape mismatch that the plugin has no reason to read as a context problem. See Dsl.ts note (a)."
 fi
 echo "✓ a hook requiring an unprovided service is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertion 11b: a ONCE-PER-FEATURE hook reaching for a PER-SCENARIO service is rejected BY NAME.
+#
+# F-10: `BeforeAllScenarios`/`AfterAllScenarios` are typed by the shared tier alone
+# (`FeatureDsl<ROut, RShared>`). The fixture puts `World` in `perScenario` and `Db` in `shared` —
+# the same arrangement hook-satisfied.ts's object-form call compiles clean with — and reaches for
+# `World` from `BeforeAllScenarios`. Widening the two once-hooks back to `HookRegistrar<ROut>` keeps
+# every other assertion in this script green and makes this one the only thing that goes red.
+# ---------------------------------------------------------------------------
+HOOK_ONCE_OUTPUT="$($TSC -p "$HOOK_ONCE_CONFIG" 2>&1)" && HOOK_ONCE_EXIT=0 || HOOK_ONCE_EXIT=$?
+
+if [[ "$HOOK_ONCE_EXIT" -eq 0 ]]; then
+  echo "$HOOK_ONCE_OUTPUT"
+  fail "a BeforeAllScenarios hook reaching for a per-Scenario service COMPILED — the once-per-Feature hooks are no longer typed by the shared tier alone (F-10). A hook that seeds a per-Scenario World would seed a build no Scenario ever reads, and nothing at run time would say so."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_ONCE_OUTPUT"; then
+  echo "$HOOK_ONCE_OUTPUT"
+  fail "the once-per-Feature hook was rejected, but NOT by effect(missingEffectContext) — the rejection no longer proves anything about the hook's required context. Check that FeatureDsl's BeforeAllScenarios/AfterAllScenarios are HookRegistrar<RShared> and that the fixture still reaches for the per-Scenario service."
+fi
+echo "✓ a once-per-Feature hook reaching for a per-Scenario service is rejected by name: effect(missingEffectContext)"
 
 # ---------------------------------------------------------------------------
 # Assertions 12 and 13: THE RULE SATISFIED/STARVED FLIP PAIR.

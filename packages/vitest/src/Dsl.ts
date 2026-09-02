@@ -343,13 +343,21 @@ export interface RuleDsl<ROut> extends ScenarioDsl<ROut> {
  * The dsl `describeFeature` hands its define callback: `ScenarioDsl`'s five registrars for steps
  * declared at Feature level, plus the containers.
  *
+ * `RShared` is the SHARED tier's output — what `describeFeature`'s `{ shared, perScenario }` form
+ * declares in `shared`, and `never` on the plain-Layer form. The two once-per-Feature hooks are typed
+ * by it and by nothing else (F-10): they run once for the whole Feature, outside every Scenario, so
+ * there is no per-Scenario build for them to see. A `BeforeAllScenarios` that seeds a per-Scenario
+ * `World` would seed a build no Scenario ever reads; making that a compile error, by name, is what
+ * keeps the per-Scenario tier meaning "fresh every Scenario" (INV-EC-002). Everything else on this
+ * interface is typed by `ROut`, the union of both tiers.
+ *
  * Every container callback must be synchronous: an async one returns before registering anything
  * after its first `await`, and the Feature would emit fewer tests than were written while passing.
  * The `void` return type does NOT forbid a Promise-returning function (and `undefined` would also
  * reject a named callback annotated `: void`), so `describeFeature.ts`'s `invokeDefine` rejects a
  * Promise result at collection time instead.
  */
-export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
+export interface FeatureDsl<ROut, RShared = never> extends ScenarioDsl<ROut> {
   /**
    * Declare the Feature's `Background` step definitions.
    *
@@ -383,8 +391,18 @@ export interface FeatureDsl<ROut> extends ScenarioDsl<ROut> {
   readonly BeforeStep: HookRegistrar<ROut>
   /** Register a hook that runs after each step, even when the step failed. */
   readonly AfterStep: HookRegistrar<ROut>
-  /** Register a hook that runs once, before any Scenario in this Feature. */
-  readonly BeforeAllScenarios: HookRegistrar<ROut>
-  /** Register a hook that runs once, after every Scenario in this Feature, always. */
-  readonly AfterAllScenarios: HookRegistrar<ROut>
+  /**
+   * Register a hook that runs once, before any Scenario in this Feature.
+   *
+   * Typed by the SHARED tier only — see the interface doc. On the plain-Layer form nothing is in
+   * scope but `Scope`; a service the hook needs has to live in `shared`.
+   */
+  readonly BeforeAllScenarios: HookRegistrar<RShared>
+  /**
+   * Register a hook that runs once, after every Scenario in this Feature, always — as the Feature
+   * block's teardown hook, so a run narrowed to one Scenario still runs it (BEH-EC-017).
+   *
+   * Typed by the SHARED tier only, like `BeforeAllScenarios`.
+   */
+  readonly AfterAllScenarios: HookRegistrar<RShared>
 }

@@ -164,6 +164,16 @@ decision shipped as written.]**
 > Measured against the installed build: `Feature > Rule > Scenario`, one Feature-named
 > level, release before the next sibling suite.
 >
+> **8. Once-per-Feature hooks are typed by the shared tier alone (2026-09-02, F-10).**
+> `BeforeAllScenarios` and `AfterAllScenarios` used to be `HookRegistrar<ROut>` — the union of
+> both tiers — while the runner provided them the per-Scenario tier: a private build no
+> Scenario ever read, so a hook seeding a `World` there silently seeded nothing. They are now
+> `HookRegistrar<RShared>` (`never` on the plain-Layer form) and are provided nothing by the
+> runner: on the shared path the tier is ambient, on the plain path there is nothing to see.
+> A once-hook reaching for a per-Scenario service is rejected by name
+> (`scripts/verify-tsgo-gate.sh` assertion 11b). This is the typed statement of note 5's
+> spirit: a resource shared by every Scenario cannot be driven by something fresh per Scenario.
+>
 > **What enforces it.** `packages/vitest/test/emission.test.ts` carries the runtime
 > claims: four Scenarios under one `shared` Layer, one of which advances the clock by an
 > hour, all four reading 0 at their own start; a per-Scenario `TestConsole` asserted

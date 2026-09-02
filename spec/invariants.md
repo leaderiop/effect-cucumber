@@ -124,7 +124,10 @@ structurally cannot show.
 
 "Fresh every Scenario" therefore remains true of the per-Scenario tier on BOTH
 scopes, and is deliberately FALSE of the shared tier, which is the entire point of
-asking for one. What a `shared` Layer never costs a Scenario is its own simulated
+asking for one. The two once-per-Feature hooks are typed by the shared tier alone
+(`FeatureDsl<ROut, RShared>`, F-10) and are handed no per-Scenario build, so
+nothing that runs once per Feature can touch a tier that is fresh every Scenario
+— asserted by `scripts/verify-tsgo-gate.sh`'s once-per-Feature fixture. What a `shared` Layer never costs a Scenario is its own simulated
 clock and its own console: those stay per-Scenario on both paths (BEH-EC-012,
 ADR-EC-018), so opting into shared state is a choice about the caller's own
 services and never silently about the test environment.

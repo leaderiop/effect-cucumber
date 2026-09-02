@@ -51,11 +51,15 @@ describeFeature(
     AfterStep(function*() {
       yield* World
     })
+    // The two once-per-Feature hooks are typed by the SHARED tier (F-10), which the plain-Layer form
+    // does not have — so here they may need nothing. The object-form call below is where they reach
+    // a service, and src/hook-once-per-scenario-service.ts is the fixture that proves a per-Scenario
+    // service is NOT reachable from them.
     BeforeAllScenarios(function*() {
-      yield* World
+      yield* Effect.void
     })
     AfterAllScenarios(function*() {
-      yield* World
+      yield* Effect.void
     })
 
     // ADR-EC-005: an already-wrapped function returning an Effect is accepted unchanged, never
@@ -86,11 +90,19 @@ describeFeature(
 
 // Object Layer form. Both scopes' services must be reachable from a hook body, mirroring
 // step-satisfied.ts's regression guard for steps.
-describeFeature(feature, { shared: Db.layer, perScenario: World.layer }, ({ Before, BeforeAllScenarios }) => {
-  BeforeAllScenarios(function*() {
-    yield* (yield* Db).clear
-  })
-  Before(function*() {
-    yield* Ref.set((yield* World).apples, 1)
-  })
-})
+describeFeature(
+  feature,
+  { shared: Db.layer, perScenario: World.layer },
+  ({ AfterAllScenarios, Before, BeforeAllScenarios }) => {
+    // Both once-per-Feature hooks reach the SHARED tier's service — the one tier they are typed by.
+    BeforeAllScenarios(function*() {
+      yield* (yield* Db).clear
+    })
+    AfterAllScenarios(function*() {
+      yield* (yield* Db).clear
+    })
+    Before(function*() {
+      yield* Ref.set((yield* World).apples, 1)
+    })
+  }
+)
