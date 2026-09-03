@@ -34,3 +34,7 @@ entries:
     file: "08-step-modules.md"
     title: "Step modules"
     id_range: "019"
+  - id: "BEH-EC-020"
+    file: "09-testing-helpers.md"
+    title: "Testing helpers"
+    id_range: "020-021"
