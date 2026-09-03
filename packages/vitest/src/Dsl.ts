@@ -9,7 +9,9 @@
  * - `Scope.Scope` appears only in a body's required context, never on the dsl or Layer types.
  * - A step body's parameters are `StepParams<P>`: pattern holes typed by `StepArgs`, custom holes
  *   `any`, an unchecked tail for the DataTable/DocString (BEH-EC-003/016,
- *   `test/StepRegistrar.types.ts`).
+ *   `test/StepRegistrar.types.ts`) and, for a step inside an Outline row, an `ExamplesRow` appended
+ *   after those (BEH-EC-024, `Plan.ts`'s `planStep`) — all three share the one unchecked tail slot,
+ *   never inferred from the pattern literal.
  * - `use`'s parameter is an anonymous structural type whose FIRST property is the `requires`
  *   witness; naming `StepModule<ROut>` there loses the diagnostic (tsgo-gate step-module fixtures).
  * - `BackgroundDsl` is `Given`/`And` only (ADR-EC-017); once-per-Feature hooks are typed by the

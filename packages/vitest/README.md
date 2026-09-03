@@ -214,6 +214,27 @@ name plus every Examples column and that row's value for it —
 already referenced a placeholder, so `-t` can filter on any column value. Two rows of one Outline share no mutable
 state: each is its own test against its own Layer build, and observes only its own row's values.
 
+**An Examples column no step's pattern references still reaches every step of that row, typed through `Schema`.**
+`ParsedScenario.exampleRow` (`Option.none()` for a plain Scenario) carries the raw row — `header`, `values` and a
+`raw` record zipping the two — and `Plan.ts` appends it to `StepParams<P>`'s existing trailing tail (the same tail
+DataTable/DocString already use, BEH-EC-016) for EVERY step of that row, whether or not that step's own author
+declared a trailing parameter for it. A step body that wants a typed view of it calls `decodeExamplesRow`, the same
+`Schema`-decode mechanism `decodeHashes` already gives a DataTable (ADR-EC-008), applied one level up to a whole row —
+no Schema is declared anywhere ahead of time, not on `describeFeature`, not on `loadFeature` (ADR-EC-032):
+
+```ts
+import { decodeExamplesRow, type ExamplesRow } from "@effect-cucumber/vitest"
+import * as Schema from "effect/Schema"
+
+// `priority` is never mentioned in any step's text — only in the Examples header.
+const ShipmentRow = Schema.Struct({ sku: Schema.String, priority: Schema.NumberFromString })
+
+When("the shipment is decoded", function*(row: ExamplesRow) {
+  const { priority, sku } = yield* decodeExamplesRow(ShipmentRow)(row)
+  // ...
+})
+```
+
 **Tags reach the runner, and `@skip`/`@only` behave as specified.** Every tag on a Scenario becomes a native runner tag
 on the emitted test, inherited `Feature`, `Rule` and `Examples` tags included, each keeping the literal `@` prefix it
 carries in the `.feature` file. `@skip` additionally emits the test as skipped, so neither its steps nor any of its
@@ -283,6 +304,22 @@ ADR-EC-027), so there is no mapping this plugin could rely on in general. Instea
 glob matches reruns your WHOLE `test.include` set — conservative rather than surgical, and stated as a real
 trade-off rather than hidden (ADR-EC-030's "Negative" section has the full reasoning and the alternatives it
 rejected).
+
+**A failing step's own pattern and its `.feature` file:line reach the failure panel, always on, no config.** A
+failing step's own failure (or a thrown exception, which is the common shape — `assert.strictEqual` throws) gains a
+`.cause` before it can propagate, and vitest's own DEFAULT reporter prints that recursively as a nested "Caused by:"
+block directly under the assertion — no custom `Reporter`, no config to opt in (ADR-EC-033, BEH-EC-025):
+
+```
+FAIL apples.steps.test.ts > Adding apples > Adding apples the wrong way
+AssertionError: expected 5 to equal 6
+    ...
+Caused by: StepFailureLocation: features/apples.feature:6: step "I should have {int} apples"
+```
+
+This is a different reach than `Effect.fn(stepText)`'s own tracing span below — that span exists whether the step
+passes or fails and reaches a stack trace/OpenTelemetry export; this reaches the SAME block a reader of `vitest run`'s
+own terminal output sees first, only on a failure.
 
 ## Observability recipe
 

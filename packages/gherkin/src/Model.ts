@@ -19,6 +19,7 @@ import type {
 } from "@cucumber/messages"
 import type * as Option from "effect/Option"
 import type { LoadFeatureWarning } from "./Errors.ts"
+import type { ExamplesRow } from "./ExamplesRow.ts"
 import type { StepArgument } from "./StepArguments.ts"
 
 /** Which container a step was written in, from the AST walk — never inferred from `astNodeIds.length`, which
@@ -72,6 +73,14 @@ export interface ParsedScenario {
   readonly ruleId: Option.Option<string>
   /** The raw pickle, kept as an escape hatch. */
   readonly pickle: Pickle
+  /**
+   * This Scenario's own Examples row (column name -> string), wrapped for `decodeExamplesRow`
+   * (ADR-EC-032). `Option.some` only for a Pickle that correlates to a real `tableBody` row — i.e.
+   * only for an Outline row; `Option.none()` for a plain Scenario, which has no Examples block at
+   * all. Built once in `Correlate.ts` and reused for every step of this Scenario in `Plan.ts`, so two
+   * steps of the same row share one `ExamplesRow` object rather than each getting their own copy.
+   */
+  readonly exampleRow: Option.Option<ExamplesRow>
 }
 
 /** A `Rule:` block and the Scenarios inside it. */

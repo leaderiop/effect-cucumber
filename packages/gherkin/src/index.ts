@@ -5,7 +5,9 @@
  * parameter types are DATA declared through `ParameterTypeStore.layer([...])` and replayed per call into the fresh
  * registry on `ParsedFeature.parameterTypes`, which `createStepMatcher` takes; there is no process-wide store.
  * `ParsedStep.stepArguments` carries a step's DocString and DataTable wrapped and in source order, and
- * `decodeHashes` decodes table rows through `Schema` (ADR-EC-008).
+ * `decodeHashes` decodes table rows through `Schema` (ADR-EC-008). `ParsedScenario.exampleRow` carries an
+ * Outline row's raw Examples data (`Option.none()` for a plain Scenario), and `decodeExamplesRow` decodes it
+ * through `Schema` the same way (ADR-EC-032).
  *
  * A single barrel, no subpath export. `Parser`, `Pickles`, `Correlate`, `Source` and `Validate` are pipeline
  * stages and are not exported. The third-party types below are re-exported because `document`, `pickles` and
@@ -41,12 +43,21 @@ export type { DataTable } from "./DataTable.ts"
 export { stepArgumentsOf } from "./StepArguments.ts"
 export type { DocString, StepArgument } from "./StepArguments.ts"
 
+/** An Outline row's raw Examples data, and `decodeExamplesRow` (ADR-EC-032) — one column not referenced
+ * by any step pattern reaching a step body typed, decoded through `Schema` the same way a DataTable
+ * already does. */
+export { decodeExamplesRow, makeExamplesRow } from "./ExamplesRow.ts"
+export type { ExamplesRow } from "./ExamplesRow.ts"
+
 /** The failure channels for a rejected parameter type or step pattern, and for a data table. */
 export { StepPatternError } from "./Errors.ts"
 export type { StepPatternErrorReason } from "./Errors.ts"
 
 export { DataTableError } from "./Errors.ts"
 export type { DataTableErrorReason } from "./Errors.ts"
+
+export { ExamplesRowError } from "./Errors.ts"
+export type { ExamplesRowErrorReason } from "./Errors.ts"
 
 export type {
   GherkinDocument,

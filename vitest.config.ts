@@ -13,7 +13,10 @@ import { declaredTags } from "./vitest.tags.ts"
 
 export default defineConfig({
   test: {
-    exclude: [...configDefaults.exclude, "**/.claude/**"],
+    // `failure-panel-fixture` fails ON PURPOSE (ADR-EC-033's real-vitest-output proof) — excluded
+    // here for the same reason `.claude` is, and reached only by its own standalone
+    // `vitest.config.ts` via `scripts/verify-failure-panel.sh`.
+    exclude: [...configDefaults.exclude, "**/.claude/**", "**/test/failure-panel-fixture/**"],
     // The universe is computed from THIS file's directory, so `pnpm test` from the root and
     // `pnpm -r test` from a package directory declare the same list. `./vitest.tags.ts` holds the
     // one hand-written half and the one derivation; `packages/vitest/vitest.config.ts` reuses both.

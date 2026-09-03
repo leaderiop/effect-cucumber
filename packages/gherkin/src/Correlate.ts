@@ -2,9 +2,10 @@
  * Correlating a parsed `GherkinDocument` with `compile()`'s pickles (ADR-EC-014, BEH-EC-014).
  *
  * The AST walk exists ONLY to recover what a pickle cannot carry: step keyword, `keywordType`, origin and line,
- * Rule membership, the un-interpolated Scenario name, and the Examples column names. Everything a pickle DOES
- * carry — placeholder substitution, tag inheritance, Background stacking — is read off the pickle; re-deriving any
- * of it here drifts from Cucumber semantics silently.
+ * Rule membership, the un-interpolated Scenario name, the Examples column names, and (ADR-EC-032) each Examples
+ * row's own header/values, indexed by `rowById` and turned into `ParsedScenario.exampleRow`. Everything a pickle
+ * DOES carry — placeholder substitution, tag inheritance, Background stacking — is read off the pickle;
+ * re-deriving any of it here drifts from Cucumber semantics silently.
  *
  * Step origin comes from the `byStepId` index, never from `astNodeIds.length` (which carries no signal inside a
  * plain Scenario). Outline detection goes through `@cucumber/gherkin`'s `dialects` table, exact in every
@@ -25,6 +26,7 @@ import {
 } from "@cucumber/messages"
 import * as Option from "effect/Option"
 import { LoadFeatureError } from "./Errors.ts"
+import { makeExamplesRow } from "./ExamplesRow.ts"
 import type { ParsedFeatureCore, ParsedRule, ParsedScenario, ParsedStep, StepOwner } from "./Model.ts"
 import { stepArgumentsOf } from "./StepArguments.ts"
 
@@ -72,6 +74,13 @@ export interface AstRuleInfo {
   readonly scenarioIds: ReadonlyArray<string>
 }
 
+/** One `Examples:` tableBody row's header and values — the ONE place both are recovered from the AST,
+ * reused by `correlateFeature` to build `ParsedScenario.exampleRow` (ADR-EC-032). */
+export interface AstExamplesRowInfo {
+  readonly header: ReadonlyArray<string>
+  readonly values: ReadonlyArray<string>
+}
+
 /** Everything one AST walk plus one pass over the pickles produces. */
 export interface AstIndex {
   /** AST step id to its recovered keyword, origin and enclosing Rule. */
@@ -81,6 +90,14 @@ export interface AstIndex {
   readonly byScenarioId: ReadonlyMap<string, ReadonlyArray<Pickle>>
   /** AST scenario id to its Examples column names — what makes the leftover-placeholder scan exact. */
   readonly exampleColumns: ReadonlyMap<string, ReadonlySet<string>>
+  /**
+   * Every `Examples:` tableBody row, by the AST `TableRow.id` a Pickle's `astNodeIds.at(-1)`
+   * resolves to for an Outline row (never for a plain Scenario, whose sole `astNodeIds` entry is its
+   * own scenario id). ADR-EC-032's raw source: `OutlineTitle.ts`'s title suffix and
+   * `ParsedScenario.exampleRow` both key off this same map rather than each walking the document a
+   * second time.
+   */
+  readonly rowById: ReadonlyMap<string, AstExamplesRowInfo>
   /** Every AST Scenario node, flat, in document order, Rule members included in place. */
   readonly astScenarios: ReadonlyArray<AstScenarioInfo>
   readonly astRules: ReadonlyArray<AstRuleInfo>
@@ -160,6 +177,7 @@ const recordSteps = (
 interface AstAccumulator {
   readonly byStepId: Map<string, AstStepInfo>
   readonly exampleColumns: Map<string, ReadonlySet<string>>
+  readonly rowById: Map<string, AstExamplesRowInfo>
   readonly astScenarios: Array<AstScenarioInfo>
   readonly astRules: Array<AstRuleInfo>
 }
@@ -175,6 +193,16 @@ const recordScenario = (acc: AstAccumulator, scenario: Scenario, ruleId: string 
     }
   }
   acc.exampleColumns.set(scenario.id, columns)
+
+  // Every tableBody row of every Examples block this Scenario Outline declares, keyed by the row's
+  // OWN AST node id — the id a row's Pickle's `astNodeIds.at(-1)` resolves to. A headerless block
+  // (F1/F2's signature) contributes no rows here; `Validate.ts` is what rejects that shape.
+  for (const block of scenario.examples) {
+    const header = block.tableHeader === undefined ? [] : block.tableHeader.cells.map((cell) => cell.value)
+    for (const row of block.tableBody) {
+      acc.rowById.set(row.id, { header, values: row.cells.map((cell) => cell.value) })
+    }
+  }
 
   acc.astScenarios.push({
     id: scenario.id,
@@ -219,6 +247,7 @@ export const buildAstIndex = (
   const acc: AstAccumulator = {
     byStepId: new Map(),
     exampleColumns: new Map(),
+    rowById: new Map(),
     astScenarios: [],
     astRules: []
   }
@@ -258,6 +287,7 @@ export const buildAstIndex = (
     byStepId: acc.byStepId,
     byScenarioId: indexPicklesByScenario(pickles),
     exampleColumns: acc.exampleColumns,
+    rowById: acc.rowById,
     astScenarios: acc.astScenarios,
     astRules: acc.astRules,
     language: feature.language
@@ -320,6 +350,13 @@ export const correlateFeature = (
 
   for (const node of index.astScenarios) {
     for (const pickle of index.byScenarioId.get(node.id) ?? []) {
+      const location = pickle.location ?? node.location
+      // The row id an Outline row's Pickle resolves to — always the LAST `astNodeIds` entry, never
+      // `[0]` (that one is the Outline's own AST id, shared by every row). A plain Scenario's sole
+      // `astNodeIds` entry IS its own scenario id, which `rowById` never contains, so the lookup
+      // below is naturally `undefined` for it — the same discriminator `OutlineTitle.ts` already
+      // relied on before this field existed.
+      const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1) ?? "")
       const scenario: ParsedScenario = {
         id: pickle.id,
         astId: node.id,
@@ -329,9 +366,12 @@ export const correlateFeature = (
         tags: tagNames(pickle.tags),
         steps: pickle.steps.map((pickleStep) => resolveStep(pickleStep, index.byStepId, uri)),
         // `Pickle.location` is optional upstream though always set; for an Outline it is the Examples row.
-        location: pickle.location ?? node.location,
+        location,
         ruleId: Option.fromUndefinedOr(node.ruleId),
-        pickle
+        pickle,
+        exampleRow: rowInfo === undefined
+          ? Option.none()
+          : Option.some(makeExamplesRow(rowInfo.header, rowInfo.values, uri, location.line))
       }
       allScenarios.push(scenario)
 

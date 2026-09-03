@@ -131,6 +131,31 @@ export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTa
 }) {}
 
 /**
+ * Why an `ExamplesRowError` was raised — closed at one, unlike `DataTableError`'s four: an
+ * `ExamplesRow` has no header/width shape of its own to get wrong (its header/values come straight
+ * off `Correlate.ts`'s AST walk, never author-supplied cells with a row count to validate), so
+ * `RowDecodeFailed` is the only failure `decodeExamplesRow` can produce (ADR-EC-032).
+ */
+export type ExamplesRowErrorReason = "RowDecodeFailed"
+
+/**
+ * A Scenario Outline row's `raw` record failed to decode through a caller-supplied `Schema`
+ * (ADR-EC-032, `ExamplesRow.ts`). `line` is the row's own — `Pickle.location`, always present for an
+ * Outline row's Pickle (`Model.ts`) — unlike `DataTableError.line`, which falls back to the STEP's
+ * because a `PickleTableRow` carries no location at all; an `ExamplesRow` is not a table row and
+ * carries its own location directly, so this field is never absent in practice, but stays `Option`
+ * for the same reason every other located field in this module does (ADR-EC-022).
+ */
+export class ExamplesRowError extends Schema.TaggedError<ExamplesRowError>()("ExamplesRowError", {
+  reason: Schema.Literals(["RowDecodeFailed"]),
+  uri: Schema.String,
+  line: Schema.OptionFromUndefinedOr(Schema.Number),
+  column: Schema.OptionFromUndefinedOr(Schema.String),
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Unknown)
+}) {}
+
+/**
  * Why a `LoadFeatureWarning` was emitted — heuristic findings: `UnknownPlaceholder` (a dropped Examples column's
  * signature), `DuplicateExamplesColumn` (the first wins), `EmptyRule` (zero pickles), `SuspectedSwallowedStep`
  * (a typo'd keyword absorbed into a description).

@@ -28,6 +28,7 @@
     "verify:acceptance-ref-state": "bash scripts/verify-acceptance-ref-state.sh",
     "verify:acceptance-no-any": "bash scripts/verify-acceptance-no-any.sh",
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
+    "verify:failure-panel": "bash scripts/verify-failure-panel.sh",
     "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
     "verify:api-surface": "bash scripts/verify-api-surface.sh",
     "verify:doc-examples": "bash scripts/verify-doc-examples.sh",

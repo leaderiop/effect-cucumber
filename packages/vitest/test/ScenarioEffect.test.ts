@@ -1,8 +1,10 @@
 /**
  * INV-EC-001's runtime proof: a Scenario is one Effect, its steps run in list order, the first failure stops every
- * step after it, and the Feature's Layer is built fresh on every execution.
+ * step after it, and the Feature's Layer is built fresh on every execution. Also carries the failure-panel fix's in-process half (ADR-EC-033):
+ * a step's own failure or defect gains a `StepFailureLocation` `.cause` before it can propagate (ADR-EC-033); the
+ * real-vitest-output half lives in `scripts/verify-failure-panel.sh`.
  *
- * Carries: ADR-EC-004, ADR-EC-019, INV-EC-001, INV-EC-002, INV-EC-004.
+ * Carries: ADR-EC-004, ADR-EC-019, ADR-EC-033, BEH-EC-025, INV-EC-001, INV-EC-002, INV-EC-004.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -12,7 +14,7 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
-import { StepMatchError } from "../src/Errors.ts"
+import { StepFailureLocation, StepMatchError } from "../src/Errors.ts"
 import type { HookBody, HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
 import { buildScenarioEffect } from "../src/ScenarioEffect.ts"
@@ -55,6 +57,16 @@ const failingStep = (name: string, error: unknown): StepBody => () =>
     return yield* Effect.fail(error)
   })
 
+// A step body that THROWS rather than `yield* Effect.fail`s — a DEFECT (`Cause.Die`), not a typed failure. The
+// common real-world shape of a failing step: `assert.strictEqual` and friends throw, they do not `Effect.fail`.
+const throwingStep = (name: string, error: unknown): StepBody => () =>
+  Effect.gen(function*() {
+    const recorder = yield* Recorder
+    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+    yield* Effect.yieldNow
+    throw error
+  })
+
 const recordingHook = (name: string): HookBody => () =>
   Effect.gen(function*() {
     const recorder = yield* Recorder
@@ -86,7 +98,8 @@ const resolved = (
     origin,
     pattern: name,
     body,
-    args: []
+    args: [],
+    uri: "test/scenario-effect.feature"
   }
 })
 
@@ -209,7 +222,7 @@ describe("a failing step stops the Scenario", () => {
       assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "one:end", "two:start"])
     }))
 
-  it.effect("surfaces the step's own error value, unmodified", () =>
+  it.effect("surfaces the step's own error value BY REFERENCE, with a StepFailureLocation .cause attached (ADR-EC-033)", () =>
     Effect.gen(function*() {
       const { layer } = makeRecording()
       // An object, so identity is distinguishable from an equal-looking reconstruction.
@@ -221,7 +234,9 @@ describe("a failing step stops the Scenario", () => {
 
       const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
 
-      // Through Exit, never a try/catch on a promise: a step that unexpectedly SUCCEEDS is reported as the wrong
+      // `boom` itself gained a `.cause` (ADR-EC-033's own describe block below covers this in full) — this
+      // test's own claim is narrower and older: the value reported IS `boom`, by reference, not a reconstruction of
+      // it. Through Exit, never a try/catch on a promise: a step that unexpectedly SUCCEEDS is reported as the wrong
       // value rather than silently passing an absent-throw check (Step.test.ts).
       assert.strictEqual(
         Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the Scenario unexpectedly succeeded",
@@ -615,5 +630,143 @@ describe("BeforeStep/AfterStep bracket every step, including Background, and Aft
       // The unconditional-wrap regression guard: threading BeforeStep/AfterStep through every step changes nothing
       // about a Scenario that registers neither.
       assert.deepStrictEqual(yield* Ref.get(builds[0]!), ["one:start", "one:end", "two:start", "two:end"])
+    }))
+})
+
+// A `Resolved` planned step at a specific pattern/uri/line, for the ADR-EC-033 tests below, where the exact located
+// values matter and `resolved()`'s hardcoded `line: 1, uri: "test/scenario-effect.feature"` would hide a
+// pattern/text mismatch bug rather than catch one.
+const resolvedAt = (
+  args: { readonly pattern: string; readonly uri: string; readonly line: number; readonly body: StepBody }
+): PlannedStep => ({
+  _tag: "Resolved",
+  step: {
+    text: args.pattern,
+    line: args.line,
+    keyword: "When",
+    origin: "scenario",
+    pattern: args.pattern,
+    body: args.body,
+    args: [],
+    uri: args.uri
+  }
+})
+
+describe("a step's own failure gains a StepFailureLocation .cause before it can propagate (ADR-EC-033)", () => {
+  it.effect("attaches step/file/line to a step's TYPED failure (Effect.fail)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const boom = new Error("assertion boom")
+      const plan = planOf([
+        resolvedAt({
+          pattern: "I have {int} apples",
+          uri: "features/apples.feature",
+          line: 12,
+          body: failingStep("one", boom)
+        })
+      ])
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      const reported = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      // BY REFERENCE: the reported failure is still `boom` itself, not a wrapper replacing it.
+      assert.strictEqual(reported, boom)
+      assert.instanceOf(boom.cause, StepFailureLocation)
+      const location = boom.cause as StepFailureLocation
+      assert.strictEqual(location.step, "I have {int} apples")
+      assert.strictEqual(location.file, "features/apples.feature")
+      assert.strictEqual(location.line, 12)
+      // `.name` is what makes vitest's own reporter recurse into `.cause` and print it as "Caused
+      // by:" (`scripts/verify-failure-panel.sh` proves this against a real `vitest run`) — a plain
+      // `{ step, file, line }` object without one would be silently invisible to that mechanism.
+      assert.strictEqual(location.name, "StepFailureLocation")
+    }))
+
+  it.effect("attaches step/file/line to a step's DEFECT (a thrown exception, not Effect.fail)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const boom = new Error("thrown, not failed")
+      const plan = planOf([
+        resolvedAt({
+          pattern: "I throw",
+          uri: "features/throwing.feature",
+          line: 3,
+          body: throwingStep("one", boom)
+        })
+      ])
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      // The DEFECT lane specifically: `Cause.Die`, not `Cause.Fail` — this is what proves the
+      // `Effect.catchDefect` half of `withStepFailureLocation` actually ran, and not only its
+      // `Effect.mapError` half.
+      assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause) && !Cause.hasFails(exit.cause))
+      const reported = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      assert.strictEqual(reported, boom)
+      assert.instanceOf(boom.cause, StepFailureLocation)
+      const location = boom.cause as StepFailureLocation
+      assert.strictEqual(location.step, "I throw")
+      assert.strictEqual(location.file, "features/throwing.feature")
+      assert.strictEqual(location.line, 3)
+    }))
+
+  it.effect("preserves a failure's PRE-EXISTING .cause as the new StepFailureLocation's own .cause", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const original = { why: "the real root cause" }
+      const boom = new Error("outer failure", { cause: original })
+      const plan = planOf([
+        resolvedAt({
+          pattern: "I fail with a cause",
+          uri: "features/cause.feature",
+          line: 9,
+          body: failingStep("one", boom)
+        })
+      ])
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      assert.instanceOf(boom.cause, StepFailureLocation)
+      const location = boom.cause as StepFailureLocation
+      // Nothing already attached was silently dropped: it survives one level deeper.
+      assert.strictEqual(location.cause, original)
+    }))
+
+  it.effect("does NOT attach a location to a Before hook's own failure (out of scope for ADR-EC-033)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const boom = { why: "the Before hook's own error" }
+      const plan = planOf([resolved("one", recordingStep("one"))])
+      const hooks = hooksWith({ Before: [failingHook("before", boom)] })
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      const reported = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      assert.strictEqual(reported, boom)
+      // A hook is not a step: `withStepFailureLocation` never wraps `runHookBatch`, so `boom` never
+      // gains a `.cause` at all.
+      assert.strictEqual((boom as { cause?: unknown }).cause, undefined)
+    }))
+
+  it.effect("does NOT attach a location to an Unresolved step's StepMatchError (it already self-locates)", () =>
+    Effect.gen(function*() {
+      const { layer } = makeRecording()
+      const plan = planOf([unresolved("I am not registered anywhere", undefinedStepError)])
+
+      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks: emptyHooks }))
+
+      assert.isTrue(Exit.isFailure(exit))
+      assert.strictEqual(
+        Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the Scenario unexpectedly succeeded",
+        undefinedStepError
+      )
+      // `StepMatchError.cause` is `Schema.optionalKey` and was never set by `Plan.ts`'s `undefinedStep` builder —
+      // still absent, because the `Unresolved` branch returns via a plain `Effect.fail` OUTSIDE
+      // `withStepFailureLocation`'s reach.
+      assert.strictEqual(undefinedStepError.cause, undefined)
     }))
 })

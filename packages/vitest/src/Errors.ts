@@ -2,10 +2,68 @@
  * The runner's failure (`StepMatchError`, a `Schema.TaggedError`) and its plain-data notices:
  * `UnusedStepDefinitionWarning`, `UndeclaredTagWarning`, `UnknownContainerWarning`,
  * `ExcludedScenariosNotice`. Every author-controlled string in a message is `JSON.stringify`'d so
- * it cannot forge a second line (`test/Errors.test.ts`).
+ * it cannot forge a second line (`test/Errors.test.ts`). `StepFailureLocation`/
+ * `attachStepFailureLocation` are the failure-panel fix (ADR-EC-033) — a different shape from
+ * everything else here, and documented separately below rather than folded into this header.
  */
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
+
+/**
+ * A failing step's own location — its cucumber-expression pattern, the `.feature` file it lives
+ * in, and its line within that file — attached as `.cause` on the step's own failure value before
+ * it reaches vitest's reporter (ADR-EC-033).
+ *
+ * A real `Error` subclass, deliberately NOT a `Schema.TaggedError` like `StepMatchError` above:
+ * nothing here is ever decoded or compared by `reason` tag, it exists purely to be PRINTED, and
+ * vitest's own default reporter (`BaseReporter.printErrorInner`, confirmed against the installed
+ * `vitest@4.1.11` — see ADR-EC-033) only recurses into an error's `.cause` and renders it as a
+ * nested "Caused by:" block when that value is an object carrying a `.name` — a real `Error`
+ * instance satisfies that for free, by being one, rather than by carrying a `reason` field nothing
+ * reads.
+ */
+export class StepFailureLocation extends Error {
+  readonly step: string
+  readonly file: string
+  readonly line: number
+
+  constructor(
+    args: { readonly step: string; readonly file: string; readonly line: number; readonly cause?: unknown }
+  ) {
+    super(`${args.file}:${args.line}: step ${JSON.stringify(args.step)}`, { cause: args.cause })
+    this.name = "StepFailureLocation"
+    this.step = args.step
+    this.file = args.file
+    this.line = args.line
+  }
+}
+
+/**
+ * Attach a `StepFailureLocation` to `value` as `.cause`, and return the result to re-fail/re-die
+ * with. `value` is mutated IN PLACE when it is an object — the common case, since a step failure is
+ * almost always a real `Error` (a thrown `AssertionError`, a domain `Schema.TaggedError`) — so its
+ * reference identity survives for anything else already holding it (INV-EC-006's `cause.reasons`
+ * walk, `test/acceptance/negative/after-on-failure.feature`'s own reference-identity assertion,
+ * neither of which this function's call site touches, but both of which a REPLACING implementation
+ * would have broken). Any `.cause` `value` already carried is preserved as the NEW
+ * `StepFailureLocation`'s own `.cause`, so attaching a location never silently drops one.
+ *
+ * The rare non-object failure (a step failing with a bare string or number, which nothing in this
+ * codebase's own step bodies does, but `Effect`'s `E` channel does not forbid) has nowhere to hang
+ * a `.cause`, so it is wrapped in a new `Error` instead — the only branch here that changes
+ * identity rather than preserving it.
+ */
+export const attachStepFailureLocation = (
+  value: unknown,
+  location: { readonly step: string; readonly file: string; readonly line: number }
+): unknown => {
+  if (typeof value === "object" && value !== null) {
+    const existingCause = "cause" in value ? (value as { cause?: unknown }).cause : undefined
+    ;(value as { cause?: unknown }).cause = new StepFailureLocation({ ...location, cause: existingCause })
+    return value
+  }
+  return new Error(String(value), { cause: new StepFailureLocation(location) })
+}
 
 /**
  * Why a `StepMatchError` was raised.

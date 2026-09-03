@@ -10,7 +10,9 @@
  *   scope wins (ADR-EC-019, `test/Plan.test.ts`).
  * - `ErasedLayer` / `ErasedExtraLayer` / `ErasedEffect` are the ONE place the runtime core erases
  *   type parameters, after the dsl has checked every body (INV-EC-003).
- * - Pattern arguments come first, then the step's DataTable/DocString (BEH-EC-016).
+ * - Pattern arguments come first, then the step's DataTable/DocString (BEH-EC-016), then — LAST —
+ *   the Scenario's own `exampleRow` when it is an Outline row, `[]` for a plain Scenario
+ *   (ADR-EC-032, BEH-EC-024).
  */
 import {
   createStepMatcher,
@@ -56,6 +58,9 @@ export type ResolvedStep = {
   readonly pattern: string
   readonly body: StepBody
   readonly args: ReadonlyArray<unknown>
+  /** The `.feature` file this step lives in (`ParsedFeature.uri`) — carried so `ScenarioEffect.ts`
+   * can locate a step's own failure without reaching back into `Plan.ts`'s closure (ADR-EC-033). */
+  readonly uri: string
 }
 
 export type ResolvedPlannedStep = {
@@ -263,9 +268,14 @@ const planStep = (args: {
         origin: step.origin,
         pattern: only.pattern,
         body: only.definition.body,
+        uri: feature.uri,
         // `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is the
         // identity for them and the args list is byte-identical to the matcher's output.
-        args: [...only.args, ...step.stepArguments]
+        // `scenario.exampleRow` is appended LAST — after the step's own DataTable/DocString, never
+        // before — because it is SCENARIO-level data (every step of an Outline row shares the one
+        // row), coarser than a step's own arguments, and `[]` for a plain Scenario's `Option.none()`
+        // (ADR-EC-032, BEH-EC-024).
+        args: [...only.args, ...step.stepArguments, ...Option.toArray(scenario.exampleRow)]
       }
     }
   }
