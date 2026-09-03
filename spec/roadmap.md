@@ -102,8 +102,9 @@ with a located message if it never settles. Both are exported from a new
 [ADR-EC-029](decisions/029-settlethroughclock-parameterized-fork-adjust-join.md)).
 The cross-step-state convention is enforced structurally for the first time —
 `scripts/verify-acceptance-ref-state.sh` gives INV-EC-006 its first real mechanism, over
-this repository's own acceptance suite (a consumer's step modules remain a convention;
-see § Planned). INV-EC-003's boundary condition gained a gate of its own,
+this repository's own acceptance suite; a consumer's own step modules remain a convention
+unless they adopt `scripts/templates/verify-consumer-ref-state.sh` (LINT-01, shipped —
+see below). INV-EC-003's boundary condition gained a gate of its own,
 `scripts/verify-acceptance-no-any.sh`, and a consumer-facing configuration recommendation
 in [`packages/vitest/README.md`](../packages/vitest/README.md). And the "Looks Done But
 Isn't" checklist is now a normative document at
@@ -131,6 +132,57 @@ corrections, ADR-EC-017's Background/Scenario fix) in addition to verifying
 assumptions against the actually-installed dependencies. The 11-phase,
 bottom-up build order both Architecture and Pitfalls research converged on is
 complete; its per-phase record is archived with the research.
+
+Three items move from § Planned to shipped in the same push. **LINT-01**
+ships as the script route it was locked to: `scripts/verify-acceptance-ref-state.sh`
+generalized into [`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh) — the
+step-modules directory/glob and the carve-out count become arguments instead
+of this repository's own hardcoded constants, and the positive control that
+proves the regex still matches a real declaration is a synthetic fixture
+generated on the fly rather than a path into this repository's own source, so
+the copy needs nothing about a consumer's module layout to run. Documented in
+`packages/vitest/README.md`'s "Recommended lint and compiler configuration"
+section, beside the existing `any`-boundary recommendation it is structurally
+identical to. No new ADR: same category as `scripts/verify-acceptance-ref-state.sh`
+itself, an enforcement mechanism for ADR-EC-009/INV-EC-006 rather than a new
+design decision.
+**A watch-mode rerun trigger** ships as `gherkinWatchTriggers`
+([ADR-EC-030](decisions/030-gherkinwatchtriggers-plugin-reruns-the-whole-test-include-set.md),
+[BEH-EC-022](behaviors/10-watch-mode.md)), a Vite plugin exported beside
+`gherkinTags` that appends a `.feature`-file trigger to Vitest's own
+`test.watchTriggerPatterns`, grounded in the REAL `WatcherTriggerPattern`
+shape (`pattern: RegExp`, `testsToRun: (file, match) => string[] | ...`) —
+materially more than "append the glob," which is what made this an ADR and
+not only an implementation. Since no static `.feature`-to-test-file mapping
+exists in general, a tracked `.feature` file changing reruns the consumer's
+whole `test.include` set — conservative rather than surgical, and the ADR
+records the naming-convention and live-`Vitest`-instance alternatives it
+rejected. Covered by `packages/vitest/test/GherkinWatchTriggers.test.ts`,
+calling the plugin's `config()` hook and the `testsToRun` it returns directly
+rather than through a live watcher — the same category as `gherkinTags`
+itself, config-time and barrel-exported, no acceptance pair.
+**Per-Scenario/Example deterministic `Random` seeding** ships as a
+`Random.withSeed` wrap around every emitted Scenario's composed Effect in
+`Runner.ts`
+([ADR-EC-031](decisions/031-random-withseed-wraps-the-scenario-effect-not-a-layer.md),
+[BEH-EC-023](behaviors/11-scenario-seeding.md),
+[INV-EC-007](invariants.md#inv-ec-007-a-scenarios-ambient-random-is-seeded-deterministic-and-distinct-per-outline-row)) —
+**not** a `Layer` joined into `testEnv`'s `Layer.mergeAll`, correcting this
+section's own original framing: `Random.withSeed` is a combinator over an
+already-built `Effect`, read directly out of the installed `effect@4.0.0-rc.112`,
+with no `Layer` form to join. The seed is the Feature's own `uri` plus the
+Scenario's fully emitted title — already disambiguated per Outline row and
+per byte-identical-title occurrence by `OutlineTitle.ts`, so no separate row
+index needs threading through the plan — and composes OUTSIDE the
+per-Scenario Layer `buildScenarioEffect` already provides, so a consumer's
+own `Random` implementation still wins where one is provided. Proven against
+the real running framework, not a synthetic value:
+`packages/vitest/test/acceptance/random-seeding.feature` +
+`.steps.test.ts` (`REQ-EC-024`, `spec/traceability.md` §5) has two Outline
+rows each independently recomputing what its own seed should produce, and a
+trailing Scenario proving the two rows' captured values differ from each
+other; `packages/vitest/test/ScenarioSeed.test.ts` covers the pure
+derivation function alone.
 
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -261,26 +313,6 @@ built to de-risk the decision before it locks.
   that `TestApi.ts`'s deliberately framework-agnostic seam currently erases,
   a real architectural cost `.cause` avoids entirely.
   ([#18](https://github.com/leaderiop/effect-cucumber/issues/18))
-- **A rerun trigger for a `.feature` file loaded via `loadFeature(path)`
-  under a watching runner — design locked.** Watching was never the actual
-  gap — Vite already watches the whole project root by default. The real
-  mechanism is Vitest's own `test.watchTriggerPatterns` config option
-  (3.2.0+), checked before the module-graph fallback that a path read always
-  misses. Ships as a Vite plugin, exported from `@effect-cucumber/vitest`,
-  appending the same glob `gherkinTags(...)` already consumes to
-  `test.watchTriggerPatterns` via the `config()` hook (`mergeConfig`
-  concatenates arrays, so it composes additively). One line still needed in
-  the consumer's ROOT vitest config — `watchTriggerPatterns` isn't
-  per-workspace-project — the same cost `gherkinTags(...)` already asks for.
-  ([#20](https://github.com/leaderiop/effect-cucumber/issues/20))
-- **Per-Scenario/Example deterministic seeding via `Random.withSeed` —
-  design locked.** v4's replacement for v3's removed `TestRandom`. Every
-  Scenario gets a deterministic-but-unique seed automatically (derived from
-  a stable hash of the Scenario's title, plus the Outline row index when one
-  exists, so two rows never collide) — added to `testEnv`'s
-  `Layer.mergeAll` in `VitestTestApi.ts` alongside `TestConsole.layer`/
-  `TestClock.layer()`, ambient with zero consumer wiring, the same
-  treatment those two already get. ([#29](https://github.com/leaderiop/effect-cucumber/issues/29))
 - **Global (suite-wide) `BeforeAll`/`AfterAll` hooks — design locked: docs
   only, no new DSL surface.** vitest's own `globalSetup`/`globalTeardown`
   already covers the suite-wide case today; every framework surveyed that
@@ -381,7 +413,9 @@ built to de-risk the decision before it locks.
 ## Under consideration
 
 - **An oxlint plugin for LINT-01** — deferred behind the shipped shell-script
-  route (§ Planned, LINT-01) until oxlint's JS/TS plugin API graduates out of
+  route ([`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh),
+  documented in `packages/vitest/README.md`'s "Recommended lint and compiler
+  configuration" section) until oxlint's JS/TS plugin API graduates out of
   alpha; this repo's own `tools/oxlint/effect/` proves the API works today,
   the concern is upstream stability, not feasibility.
 - **Which package owns `ManagedRuntime` construction** — `@effect-cucumber/vitest` itself, or a separate thin

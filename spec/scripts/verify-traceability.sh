@@ -173,7 +173,7 @@ fi
 # ---------------------------------------------------------------------------
 # Check 4 above is necessary and it is not sufficient. It asks one question —
 # ---------------------------------------------------------------------------
-EXPECTED_REQ_COUNT=23
+EXPECTED_REQ_COUNT=24
 
 if [[ "$GIT_SCAN_AVAILABLE" -eq 0 ]]; then
   : # already reported above
