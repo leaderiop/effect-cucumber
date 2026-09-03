@@ -25,6 +25,9 @@ import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.
 import { buildScenarioTitles } from "./OutlineTitle.ts"
 import type { ErasedExtraLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
+// SPIKE for issue #26 (branch `spike/metric-wiring`) — see `ScenarioMetrics.ts`'s own header for the
+// composition-order finding this wiring embodies. Not shipped code.
+import { withScenarioMetrics } from "./ScenarioMetrics.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
 import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
 import type { EmitOptions, TestApi } from "./TestApi.ts"
@@ -140,13 +143,16 @@ export const emitFeature = (
         beforeAllScenariosCell === null
           ? () => {
             attempted = true
-            return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
+            // SPIKE (issue #26): `withScenarioMetrics` wraps buildScenarioEffect's OUTPUT.
+            return withScenarioMetrics(buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks }))
           }
           : () => {
             attempted = true
             return Effect.flatMap(
               beforeAllScenariosCell,
-              () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
+              // SPIKE (issue #26): same placement — outside the once-cell's flatMap, wrapping only
+              // this Scenario's own composed Effect, never the shared BeforeAllScenarios cell.
+              () => withScenarioMetrics(buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks }))
             )
           },
         // The Scenario's own tags, passed by reference: `ScenarioPlan.tags` is already the flattened,
@@ -178,13 +184,19 @@ export const emitFeature = (
             beforeAllScenariosCell === null
               ? () => {
                 attempted = true
-                return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                // SPIKE (issue #26): same wrapping as the Feature-level loop above.
+                return withScenarioMetrics(
+                  buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                )
               }
               : () => {
                 attempted = true
                 return Effect.flatMap(
                   beforeAllScenariosCell,
-                  () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                  () =>
+                    withScenarioMetrics(
+                      buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                    )
                 )
               },
             // `contextFree: false`, for the same reason as the Feature-level loop's identical field
