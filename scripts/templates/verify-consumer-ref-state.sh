@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# LINT-01 — a COPYABLE template, not a gate this repository runs on itself. This is a generalized
-# copy of scripts/verify-acceptance-ref-state.sh (which enforces INV-EC-006 over THIS repository's
-# own acceptance suite — read it first if you have not) with the two repo-specific pieces the
-# roadmap identified turned into arguments instead of constants: the directory/file-name pattern
-# selecting your own step modules, and the number of GATE-ALLOW-MUTATION carve-outs your tree
-# currently has. Everything else — the two regexes, the comment-stripping, the carve-out marker
-# protocol — is directory-agnostic and travels verbatim (spec/roadmap.md § LINT-01).
+# A COPYABLE template, not a gate this repository runs on itself. This is a generalized copy of
+# scripts/verify-acceptance-ref-state.sh (which enforces INV-EC-006 over THIS repository's own
+# acceptance suite — read it first if you have not) with the two repo-specific pieces spec/roadmap.md's
+# consumer-facing-enforcement entry (§ Planned) identified turned into arguments instead of constants:
+# the directory/file-name pattern selecting your own step modules, and the number of
+# GATE-ALLOW-MUTATION carve-outs your tree currently has. Everything else — the two regexes, the
+# comment-stripping, the carve-out marker protocol — is directory-agnostic and travels verbatim.
 #
 # Copy this file into YOUR repository (e.g. scripts/verify-ref-state.sh) and wire it into YOUR CI;
 # nothing in @effect-cucumber/vitest runs it against your tree automatically. See
