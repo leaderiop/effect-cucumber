@@ -44,9 +44,15 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.11(vitest@4.1.11)
+      '@vitest/runner':
+        specifier: ^4.1.0
+        version: 4.1.11
       dprint:
         specifier: 0.56.1
         version: 0.56.1
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.112
       madge:
         specifier: 8.0.0
         version: 8.0.0(typescript@7.0.2)
