@@ -59,6 +59,14 @@ Scenario reports; it is never retried, so a Scenario-level `retry` cannot make a
 sequentially: a Feature emitted under `sequence.concurrent: true` or inside your own `describe.concurrent` is unsupported,
 because two Scenarios could enter the once-cell together.
 
+**Both once-per-Feature hooks are scoped to one Feature — for a hook that should run once per SUITE, reach for vitest's
+own `globalSetup`/`globalTeardown` instead.** `BeforeAllScenarios`/`AfterAllScenarios` deliberately don't reach across
+Features (each Feature's once-cell is its own), so a suite-wide "provision this once for every Feature in the run"
+concern belongs in `globalSetup` (an array of module paths in `vitest.config.ts`, each exporting a `setup`/`teardown`
+pair, run once per worker before/after the whole run) rather than a new construct here — this package intentionally adds
+no typed wrapper around it, since every comparable Cucumber implementation that supports a suite-wide hook hits the same
+worker-isolation caveat this library's Feature-scoped once-cell already documents above.
+
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
