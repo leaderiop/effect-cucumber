@@ -377,6 +377,33 @@ add `any` to a fixture to make it pass. Both exist because `pnpm build`, `pnpm t
 enabled in this repository objects to the escape-hatch type, which is exactly why the rules above are worth turning on
 in yours. See [`test/acceptance/README.md`](./test/acceptance/README.md) § "Zero `any`".
 
+**A second, unrelated escape hatch has the same shape: a closure variable standing in for the `Ref` INV-EC-006
+requires.** [`spec/decisions/009-cross-step-state-lives-in-a-ref.md`](../../spec/decisions/009-cross-step-state-lives-in-a-ref.md)
+requires every value one step hands a later step in the same Scenario to live in a `Ref` obtained from a
+Layer-provided service — never a `let`/`var` closed over by the `Scenario`/`Rule`/`Background` callback, and never a
+module-scope array or object a step mutates in place as a stand-in for one. Nothing in the type system rejects a
+closure variable — a step body threading state through one type-checks and, worse, PASSES on a clean single run; it
+only leaks across a retry, a re-run, or a `-t`-narrowed selection, which is exactly the failure mode `pnpm test`
+alone cannot catch (the same "absence of a diagnostic" shape as the `any` boundary above). This library's own
+acceptance suite is scanned for it by
+[`scripts/verify-acceptance-ref-state.sh`](../../scripts/verify-acceptance-ref-state.sh) — hardcoded to this
+repository's own paths and carve-out count, so it does not travel — and
+[`scripts/templates/verify-consumer-ref-state.sh`](../../scripts/templates/verify-consumer-ref-state.sh) is the same
+script generalized into a template you copy into your own repository: the glob selecting your step modules and the
+number of `GATE-ALLOW-MUTATION` carve-outs your tree currently has are arguments instead of constants, and the
+positive control proving the regex still matches a real declaration is a synthetic fixture generated on the fly
+rather than a path into this repository's own source, so the copy needs nothing about your module layout to run:
+
+```sh
+# Wire this into your own CI. features/steps and the pattern below are examples — point them at
+# wherever your own *.steps.test.ts (or equivalent) files live; 0 is the carve-out count to start
+# with if you have none yet.
+scripts/verify-ref-state.sh features/steps '*.steps.test.ts' 0
+```
+
+There is deliberately no DSL-level enforcement of this one either, for the identical reason the `any` boundary above
+has none: the failure mode is a closure the type system accepts, not a value the runtime can observe and reject.
+
 ## Testing helpers
 
 Two small, standalone helpers, exported as the `Testing` namespace — called directly inside a

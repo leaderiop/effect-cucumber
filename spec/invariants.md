@@ -15,12 +15,17 @@ INV-EC-006 is enforced WITHIN THIS REPOSITORY and the difference is not
 cosmetic, so the count above is stated with it attached rather than left to be
 discovered in the entry: `scripts/verify-acceptance-ref-state.sh` scans this
 repository's own acceptance suite, which is the code here that plays a
-consumer's part, and nothing scans a consumer's step modules. For a consumer the
-invariant remains a reviewed convention, and LINT-01 — deferred to a later
-milestone, see `spec/roadmap.md` § Planned — is the mechanism that would close
-that half. Stated per `AGENTS.md` §4 ("say only what is true"), which cuts both
-ways: an enforced invariant must not be described as unenforced either.
-`spec/roadmap.md` is the single source of truth for what's actually built.
+consumer's part, and nothing scans a consumer's step modules automatically. For
+a CONSUMER the invariant remains a reviewed convention unless they wire it in
+themselves: `scripts/templates/verify-consumer-ref-state.sh` (LINT-01,
+`spec/roadmap.md` § shipped) is the same scan, generalized into a template a
+consumer copies into their own repository and runs in their own CI — this
+package does not run it against a consumer's tree automatically, and shipping
+the template does not by itself make the invariant enforced for a consumer who
+has not adopted it. Stated per `AGENTS.md` §4 ("say only what is true"), which
+cuts both ways: an enforced invariant must not be described as unenforced
+either. `spec/roadmap.md` is the single source of truth for what's actually
+built.
 
 ---
 
@@ -314,11 +319,16 @@ a `const` array that a step `push`es to — is caught only in its common
 in-place-mutator form (assertion 4), not in general. Second and more
 importantly, it covers the ACCEPTANCE SUITE only: the suite whose whole purpose
 is to run the library the way a consumer does. For a CONSUMER's own step modules
-the invariant remains a reviewed convention, and nothing this package ships can
-change that. **LINT-01** — a lint rule flagging a `let`/`var` declared inside a
-DSL callback that a step function closes over — is the mechanism that would
-close that half, and it is deferred to a later milestone: see
-`spec/roadmap.md` § Planned and the v2 backlog archived on the `planning-archive` branch.
+the invariant remains a reviewed convention unless they adopt it themselves.
+**LINT-01** — `scripts/templates/verify-consumer-ref-state.sh`, the same scan
+generalized into a copyable template (glob and carve-out count as arguments
+instead of this repository's own hardcoded paths) — is the mechanism a consumer
+wires into their own CI to close that half; this package ships the template but
+does not run it against a consumer's tree itself. See
+`packages/vitest/README.md`'s "Recommended lint and compiler configuration"
+section and the v2 backlog archived on the `planning-archive` branch (an
+oxlint-plugin version, still deferred — `spec/roadmap.md` § Under
+consideration).
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare
