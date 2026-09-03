@@ -262,7 +262,7 @@ const TracingLive = NodeSdk.layer({
   spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter())
 })
 
-describeFeature(feature, Layer.merge(World.layer, TracingLive), ({ Then }) => { /* ... */ })
+describeFeature(feature, Layer.merge(World.layer, TracingLive), ({ Then }) => {/* ... */})
 ```
 
 — and every `Effect.fn(stepText)` span this package already produces exports for real. `NodeSdk.layer`'s
