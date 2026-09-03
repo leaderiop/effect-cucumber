@@ -3,9 +3,10 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-All six are enforced by code today, and each entry names the mechanism and the
+All seven are enforced by code today, and each entry names the mechanism and the
 assertions that back it. No entry on this page describes a **planned** mechanism
-any more; INV-EC-006 was the last one that did, and Phase 11 built it.
+any more; INV-EC-006 was the last one that did, and Phase 11 built it. INV-EC-007
+joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap.
 INV-EC-002 holds on BOTH Layer scopes: the per-Scenario scope was built first,
 and Phase 10 built the `shared` clause of its own wording, so its entry names two
 mechanisms rather than one. INV-EC-005 has been enforced on both sides at once —
@@ -15,12 +16,17 @@ INV-EC-006 is enforced WITHIN THIS REPOSITORY and the difference is not
 cosmetic, so the count above is stated with it attached rather than left to be
 discovered in the entry: `scripts/verify-acceptance-ref-state.sh` scans this
 repository's own acceptance suite, which is the code here that plays a
-consumer's part, and nothing scans a consumer's step modules. For a consumer the
-invariant remains a reviewed convention, and LINT-01 — deferred to a later
-milestone, see `spec/roadmap.md` § Planned — is the mechanism that would close
-that half. Stated per `AGENTS.md` §4 ("say only what is true"), which cuts both
-ways: an enforced invariant must not be described as unenforced either.
-`spec/roadmap.md` is the single source of truth for what's actually built.
+consumer's part, and nothing scans a consumer's step modules automatically. For
+a CONSUMER the invariant remains a reviewed convention unless they wire it in
+themselves: `scripts/templates/verify-consumer-ref-state.sh` (LINT-01,
+`spec/roadmap.md` § shipped) is the same scan, generalized into a template a
+consumer copies into their own repository and runs in their own CI — this
+package does not run it against a consumer's tree automatically, and shipping
+the template does not by itself make the invariant enforced for a consumer who
+has not adopted it. Stated per `AGENTS.md` §4 ("say only what is true"), which
+cuts both ways: an enforced invariant must not be described as unenforced
+either. `spec/roadmap.md` is the single source of truth for what's actually
+built.
 
 ---
 
@@ -314,11 +320,16 @@ a `const` array that a step `push`es to — is caught only in its common
 in-place-mutator form (assertion 4), not in general. Second and more
 importantly, it covers the ACCEPTANCE SUITE only: the suite whose whole purpose
 is to run the library the way a consumer does. For a CONSUMER's own step modules
-the invariant remains a reviewed convention, and nothing this package ships can
-change that. **LINT-01** — a lint rule flagging a `let`/`var` declared inside a
-DSL callback that a step function closes over — is the mechanism that would
-close that half, and it is deferred to a later milestone: see
-`spec/roadmap.md` § Planned and the v2 backlog archived on the `planning-archive` branch.
+the invariant remains a reviewed convention unless they adopt it themselves.
+**LINT-01** — `scripts/templates/verify-consumer-ref-state.sh`, the same scan
+generalized into a copyable template (glob and carve-out count as arguments
+instead of this repository's own hardcoded paths) — is the mechanism a consumer
+wires into their own CI to close that half; this package ships the template but
+does not run it against a consumer's tree itself. See
+`packages/vitest/README.md`'s "Recommended lint and compiler configuration"
+section and the v2 backlog archived on the `planning-archive` branch (an
+oxlint-plugin version, still deferred — `spec/roadmap.md` § Under
+consideration).
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare
@@ -326,3 +337,39 @@ callback runs once, at registration time, not once per test execution. A bare
 silently leaking state between them.
 
 **Related**: [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md).
+
+---
+
+## INV-EC-007: A Scenario's ambient `Random` is seeded, deterministic, and distinct per Outline row
+
+Every emitted Scenario's composed Effect runs with `effect/Random` seeded from
+its own Feature's `uri` and its own fully emitted title (Outline-row and
+duplicate-occurrence disambiguation already applied by `OutlineTitle.ts`) — a
+step reading `Random.next`/`Random.nextIntBetween`/etc. observes a value that
+is reproducible across runs and distinct from any other Scenario or Outline row
+whose emitted title differs.
+
+**Source**: `packages/vitest/src/Runner.ts`'s `buildSeededScenarioEffect`,
+wrapping `buildScenarioEffect`'s result in `Random.withSeed(effect,
+scenarioSeed(featureUri, emittedTitle))` (`packages/vitest/src/ScenarioSeed.ts`)
+before it reaches the test framework — applied uniformly on both the plain and
+`shared` Layer paths, since `Runner.ts` is the one composition point both paths
+share (see [ADR-EC-031](decisions/031-random-withseed-wraps-the-scenario-effect-not-a-layer.md)
+for why this is a combinator wrap rather than a `Layer` joining `testEnv`, and
+for why it does not collide with INV-EC-002/ADR-EC-018's `TestClock`/
+`TestConsole` isolation — a different service, wrapped independently, around
+the same per-Scenario Effect).
+
+**Enforced by**: `packages/vitest/test/acceptance/random-seeding.feature` +
+`.steps.test.ts` (`@REQ-EC-024`) against the real runner, and
+`packages/vitest/test/ScenarioSeed.test.ts` for the pure derivation function.
+
+**Implication**: a step that generates test data via `effect/Random` gets
+reproducible-but-varied fixtures with zero setup — the same value on every CI
+run and every local re-run, while two Outline rows exercising the "same" step
+pattern against different Examples still draw independent sequences, so neither
+row's randomness can accidentally mask the other's.
+
+**Related**: [ADR-EC-018](decisions/018-shared-layer-testclock-isolation.md)
+(the sibling per-Scenario isolation guarantee for `TestClock`/`TestConsole`,
+which this invariant deliberately does not touch or depend on).

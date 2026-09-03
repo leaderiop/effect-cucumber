@@ -19,6 +19,7 @@ import type { ParsedScenario } from "@effect-cucumber/gherkin"
 import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import * as Random from "effect/Random"
 import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
 import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.ts"
@@ -26,6 +27,7 @@ import { buildScenarioTitles } from "./OutlineTitle.ts"
 import type { ErasedExtraLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
+import { scenarioSeed } from "./ScenarioSeed.ts"
 import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
 import type { EmitOptions, TestApi } from "./TestApi.ts"
 
@@ -102,6 +104,24 @@ export const emitFeature = (
 
   const titleFor = (scenarioPlan: ScenarioPlan): string => titles.get(scenarioPlan.scenarioId) ?? scenarioPlan.name
 
+  // Every Scenario's ambient `Random`, seeded deterministically from its own emitted title — which
+  // `OutlineTitle.ts` already disambiguates by Outline row and by byte-identical-title occurrence,
+  // so no separate row index is threaded in beside it — plus the Feature's own uri, so two
+  // byte-identical titles in two different Features still draw independent sequences
+  // (ADR-EC-031, BEH-EC-023). Wraps OUTSIDE `buildScenarioEffect`'s own `Effect.provide(layer)`, so
+  // a per-Scenario Layer that provides its own `Random` still wins for any step that reads it —
+  // the same "ambient default, consumer Layer overrides" shape `testEnv` already has relative to a
+  // step's own Layer.
+  const buildSeededScenarioEffect = (
+    scenarioPlan: ScenarioPlan,
+    effectiveLayer: ErasedExtraLayer,
+    hookSet: HookSet
+  ): Effect.Effect<void, unknown, Scope.Scope> =>
+    Random.withSeed(
+      buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: hookSet }),
+      scenarioSeed(plan.feature.uri, titleFor(scenarioPlan))
+    )
+
   const planFor = (scenario: ParsedScenario): ScenarioPlan => {
     const found = planById.get(scenario.id)
     if (found === undefined) {
@@ -140,13 +160,13 @@ export const emitFeature = (
         beforeAllScenariosCell === null
           ? () => {
             attempted = true
-            return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
+            return buildSeededScenarioEffect(scenarioPlan, effectiveLayer, hooks)
           }
           : () => {
             attempted = true
             return Effect.flatMap(
               beforeAllScenariosCell,
-              () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks })
+              () => buildSeededScenarioEffect(scenarioPlan, effectiveLayer, hooks)
             )
           },
         // The Scenario's own tags, passed by reference: `ScenarioPlan.tags` is already the flattened,
@@ -178,13 +198,13 @@ export const emitFeature = (
             beforeAllScenariosCell === null
               ? () => {
                 attempted = true
-                return buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                return buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet)
               }
               : () => {
                 attempted = true
                 return Effect.flatMap(
                   beforeAllScenariosCell,
-                  () => buildScenarioEffect({ plan: scenarioPlan, layer: effectiveLayer, hooks: ruleHookSet })
+                  () => buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet)
                 )
               },
             // `contextFree: false`, for the same reason as the Feature-level loop's identical field

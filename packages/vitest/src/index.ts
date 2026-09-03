@@ -34,6 +34,12 @@ export { gherkinTags } from "./GherkinTags.ts"
 export type { GherkinTagDefinition, GherkinTagsOptions } from "./GherkinTags.ts"
 
 /**
+ * A `.feature` file rerun trigger for watch mode (ADR-EC-030, BEH-EC-022).
+ */
+export { gherkinWatchTriggers } from "./GherkinWatchTriggers.ts"
+export type { GherkinWatchTriggersOptions } from "./GherkinWatchTriggers.ts"
+
+/**
  * The compile-time surface `define` receives, exported for annotation.
  */
 export type {
