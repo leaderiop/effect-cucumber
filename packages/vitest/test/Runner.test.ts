@@ -23,7 +23,7 @@ import type { EmitOptions, TestApi } from "../src/TestApi.ts"
 
 // One call the fake received, with enough context to reconstruct the emitted tree.
 type EmissionRecord = {
-  readonly kind: "describe" | "effect" | "afterAll"
+  readonly kind: "describe" | "effect" | "beforeAll" | "afterAll"
   readonly name: string
   readonly depth: number
   readonly self: (() => Effect.Effect<void, unknown, Scope.Scope>) | null
@@ -49,6 +49,13 @@ const makeRecordingApi = (): {
     },
     effect: (name, self, options) => {
       records.push({ kind: "effect", name, depth, self, options })
+    },
+    // SPIKE (issue #37/#36): `TestApi.beforeAll` addition, recorded exactly like `afterAll` below —
+    // the fake does NOT auto-invoke it (it isn't real vitest), so every test that registers a
+    // BeforeAllScenarios hook must invoke this thunk itself, in the position real vitest would:
+    // before any Scenario thunk in the same block.
+    beforeAll: (name, self) => {
+      records.push({ kind: "beforeAll", name, depth, self, options: null })
     },
     afterAll: (name, self) => {
       records.push({ kind: "afterAll", name, depth, self, options: null })
@@ -100,6 +107,19 @@ const teardownAt = (records: ReadonlyArray<EmissionRecord>): () => Effect.Effect
   const found = records.find(({ kind }) => kind === "afterAll")
   if (found === undefined || found.self === null) {
     throw new Error("no afterAll was registered")
+  }
+  return found.self
+}
+
+// SPIKE (issue #37/#36): the BeforeAllScenarios `beforeAll` thunk, found by KIND rather than a
+// positional index — every test below must run this FIRST, exactly as real vitest scheduling would,
+// before invoking any Scenario thunk in the same block.
+const beforeAllScenariosThunk = (
+  records: ReadonlyArray<EmissionRecord>
+): () => Effect.Effect<void, unknown, Scope.Scope> => {
+  const found = records.find(({ kind }) => kind === "beforeAll")
+  if (found === undefined || found.self === null) {
+    throw new Error("no beforeAll was registered")
   }
   return found.self
 }
@@ -685,7 +705,13 @@ describe("the recording fake itself", () => {
 })
 
 describe("BeforeAllScenarios runs exactly once across every Scenario in the Feature", () => {
-  it.effect("runs ahead of both Scenarios' steps, exactly once, when run in document order (1 then 2)", () =>
+  // SPIKE (issue #37/#36): BeforeAllScenarios is now a real `beforeAll`, registered ahead of both
+  // Scenarios (`records[1]`, before `records[2]`/`records[3]`'s Scenario effects) rather than
+  // triggered from inside whichever Scenario's own body attempts it first. Every test below runs
+  // `beforeAllScenariosThunk` FIRST, exactly as real vitest scheduling would — see
+  // `research/concurrent-execution-spike.md` for why this ordering is now a scheduling GUARANTEE
+  // rather than a race the once-cell merely survived.
+  it.effect("runs ahead of both Scenarios' steps, exactly once, when the Scenarios then run in document order (1 then 2)", () =>
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
       const { layer: recorderLayer, log } = makeRecorderLayer()
@@ -700,8 +726,9 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
+      yield* beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer))
       yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
+      yield* thunkAt(records, 3)().pipe(Effect.provide(recorderLayer))
 
       // ONE whole-log assertion carrying both halves at once: the hook's `:start`/`:end` pair appears exactly ONCE,
       // ahead of both Scenarios' step entries — mutation K's target.
@@ -715,7 +742,7 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
       ])
     }))
 
-  it.effect("runs exactly once and still ahead of whichever Scenario runs first, in reverse order (2 then 1)", () =>
+  it.effect("runs exactly once and is reused regardless of which Scenario reads it first, in reverse order (2 then 1)", () =>
     Effect.gen(function*() {
       const { api, records } = makeRecordingApi()
       const { layer: recorderLayer, log } = makeRecorderLayer()
@@ -730,11 +757,15 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
+      // The real `beforeAll` still runs first (vitest guarantees this unconditionally now — it is no
+      // longer contingent on which Scenario "attempts" it), but which SCENARIO reads the captured
+      // result afterward is order-independent — proved by running Scenario 2 before Scenario 1.
+      yield* beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer))
+      yield* thunkAt(records, 3)().pipe(Effect.provide(recorderLayer))
       yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
-      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
 
-      // Proves the cell is order-independent rather than "the first emitted node happens to run first": the hook
-      // still runs once, ahead of whichever Scenario the test ran first.
+      // The hook still ran exactly once (one `:start`/`:end` pair, not two), ahead of whichever
+      // Scenario the test ran first.
       assert.deepStrictEqual(yield* Ref.get(log), [
         "beforeAll:start",
         "beforeAll:end",
@@ -761,15 +792,23 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      const exit1 = yield* Effect.exit(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer)))
-      const exit2 = yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
+      // The `beforeAll` thunk itself ALWAYS succeeds from the framework's point of view — it catches
+      // its own body's failure and stores the Exit — which is exactly what lets EVERY Scenario below
+      // still report the SAME failure individually, rather than vitest reporting one suite-level
+      // failure with every Scenario skipped (see this file's header comment and the spike writeup).
+      const beforeAllExit = yield* Effect.exit(beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer)))
+      assert.isTrue(Exit.isSuccess(beforeAllExit))
+
+      const exit1 = yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
+      const exit2 = yield* Effect.exit(thunkAt(records, 3)().pipe(Effect.provide(recorderLayer)))
 
       assert.isTrue(Exit.isFailure(exit1))
       assert.isTrue(Exit.isFailure(exit2))
       assert.strictEqual(Exit.isFailure(exit1) ? Cause.squash(exit1.cause) : undefined, boom)
       assert.strictEqual(Exit.isFailure(exit2) ? Cause.squash(exit2.cause) : undefined, boom)
       // The hook body ran ONCE: one `:start`, no `:end` (it failed), and no Scenario step ran at all —
-      // `Effect.flatMap` short-circuits before `buildScenarioEffect`'s body is ever reached.
+      // both Scenario thunks short-circuit on the captured Exit before `buildScenarioEffect`'s body is
+      // ever reached.
       assert.deepStrictEqual(yield* Ref.get(log), ["beforeAll:start"])
     }))
 
@@ -791,7 +830,8 @@ describe("BeforeAllScenarios runs exactly once across every Scenario in the Feat
         ...unfiltered
       })
 
-      yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
+      yield* beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer))
+      yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
 
       assert.deepStrictEqual(yield* Ref.get(log), [
         "beforeAll:start",
@@ -858,12 +898,15 @@ describe("AfterAllScenarios is registered as one teardown hook after every Scena
         ...unfiltered
       })
 
-      // Run the failing thunks FIRST: both Scenario nodes fail because BeforeAllScenarios failed.
-      yield* Effect.exit(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer)))
+      // SPIKE (issue #37/#36): run the real `beforeAll` first (as vitest would) — it succeeds from the
+      // framework's own point of view, capturing `boom` internally — then run both Scenario nodes,
+      // each of which fails because the CAPTURED Exit is a failure.
+      yield* Effect.exit(beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer)))
       yield* Effect.exit(thunkAt(records, 2)().pipe(Effect.provide(recorderLayer)))
+      yield* Effect.exit(thunkAt(records, 3)().pipe(Effect.provide(recorderLayer)))
 
-      // Records: describe(0), paying(1), refunding(2), AfterAllScenarios(3) — no warnings here.
-      const afterAllExit = yield* Effect.exit(thunkAt(records, 3)().pipe(Effect.provide(recorderLayer)))
+      // Records: describe(0), beforeAll(1), paying(2), refunding(3), AfterAllScenarios(4) — no warnings here.
+      const afterAllExit = yield* Effect.exit(thunkAt(records, 4)().pipe(Effect.provide(recorderLayer)))
 
       // Mutation N's target: composing the node's body to await the BeforeAllScenarios cell first would turn this
       // into a failure.
@@ -1027,11 +1070,14 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
 
         emitFeature({ api, plan, layer: recorderLayer, hooks, ...noRuleScope, ...unfiltered })
 
-        // Emitted order: the Feature's `describe` block (index 0), Scenario 1, Scenario 2, then the `⚙
-        // AfterAllScenarios` node — run them in that same order.
-        yield* thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))
+        // SPIKE (issue #37/#36): emitted order is now the Feature's `describe` block (index 0), the
+        // real `⚙ BeforeAllScenarios` beforeAll (index 1), Scenario 1, Scenario 2, then the `⚙
+        // AfterAllScenarios` node — run them in that same order, exactly as real vitest scheduling
+        // would.
+        yield* beforeAllScenariosThunk(records)().pipe(Effect.provide(recorderLayer))
         yield* thunkAt(records, 2)().pipe(Effect.provide(recorderLayer))
         yield* thunkAt(records, 3)().pipe(Effect.provide(recorderLayer))
+        yield* thunkAt(records, 4)().pipe(Effect.provide(recorderLayer))
 
         // THE headline assertion.
         assert.deepStrictEqual(yield* Ref.get(log), [

@@ -68,6 +68,13 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     it.effect(name, self, emitOptions)
   }),
+  // SPIKE (issue #37/#36): the framework's own block-level SETUP hook, run to a Promise the same
+  // way `afterAll` below runs the teardown — scoped, against a fresh simulated clock and console,
+  // and with its OWN timeout (vitest's hook-timeout default, or `timeout` if given), never a
+  // Scenario's `testTimeout`.
+  beforeAll: (_name, self, timeout) => {
+    beforeAll(() => Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv))), timeout)
+  },
   // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
   // constructor would run a body: scoped, against a fresh simulated clock and console.
   afterAll: (_name, self) => {
@@ -120,6 +127,25 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
         // Nothing here can force the shared Layer to build.
         ? contextFreeEffect(name, self, emitOptions)
         : sharedRouteEffect(name, self, emitOptions),
+    // SPIKE (issue #37/#36): registered inside the Feature block, AFTER the framework's own
+    // `beforeAll(build hold)` (registered by the `describe` factory above, earlier in this same
+    // block) — `beforeAll`s run in REGISTRATION order, so `hold`'s build has already run by the
+    // time this fires, and re-running `Layer.buildWithMemoMap` against the SAME `memoMap` here
+    // reuses that memoized build rather than re-building (the same technique `afterAll` below
+    // already uses for AfterAllScenarios). Mirrors `afterAll`'s own shape exactly, just on setup.
+    beforeAll: (_name, self, timeout) => {
+      requireSharedIt("beforeAll")
+      beforeAll(() =>
+        Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function*() {
+              const scope = yield* Effect.scope
+              const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
+              yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
+            })
+          )
+        ), timeout)
+    },
     // Registered inside the Feature block after the framework's scope-closing `afterAll`, so under
     // `sequence.hooks: "stack"` it runs before that close.
     afterAll: (_name, self) => {

@@ -113,7 +113,7 @@ const tagsOf = (steps: ReadonlyArray<PlannedStep>): ReadonlyArray<string> => ste
 
 // One call a recording `TestApi` received.
 interface EmissionRecord {
-  readonly kind: "describe" | "effect" | "afterAll"
+  readonly kind: "describe" | "effect" | "beforeAll" | "afterAll"
   readonly name: string
   readonly self: (() => Effect.Effect<void, unknown, Scope.Scope>) | null
   readonly options: EmitOptions | null
@@ -131,6 +131,11 @@ const makeRecordingApi = (): {
     },
     effect: (name, self, options) => {
       records.push({ kind: "effect", name, self, options }) // GATE-ALLOW-MUTATION: same function-local array as above; a TestApi callback is synchronous and cannot yield a Ref update.
+    },
+    // SPIKE (issue #37/#36): `TestApi.beforeAll` addition — recorded like every other call, but this
+    // suite's fixtures never register a `BeforeAllScenarios` hook, so nothing here ever reads it.
+    beforeAll: (name, self) => {
+      records.push({ kind: "beforeAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
     },
     afterAll: (name, self) => {
       records.push({ kind: "afterAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
