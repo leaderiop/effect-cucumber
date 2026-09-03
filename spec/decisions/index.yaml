@@ -101,3 +101,6 @@ entries:
   - id: "ADR-EC-033"
     file: "033-stepfailurelocation-attached-as-cause-not-a-rewritten-message.md"
     title: "A failing step's pattern and .feature location are attached as .cause (a real Error, .name included), not folded into a rewritten top-level .message"
+  - id: "ADR-EC-034"
+    file: "034-retry-tag-wraps-flakytest-at-the-testapi-seam.md"
+    title: "A @retry Gherkin tag wraps flakyTest at the TestApi seam — Runner.ts only decides, VitestTestApi.ts alone applies"

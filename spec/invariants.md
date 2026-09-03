@@ -144,7 +144,21 @@ opts into a `shared` Layer — in which case decision
 [ADR-EC-006](decisions/006-two-layer-scopes-only.md) makes the author
 responsible for resetting shared state themselves (e.g. in `Background`).
 
-**Related**: [BEH-EC-004](behaviors/01-steps-and-world.md), [ADR-EC-006](decisions/006-two-layer-scopes-only.md).
+> **Correction (2026-09-03, `@retry`, [ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md)):**
+> "fresh every Scenario" now reads more precisely as "fresh every ATTEMPT" — a Scenario tagged `@retry` is wrapped
+> in `flakyTest`, whose `Effect.retry` re-interprets the WHOLE composed Scenario Effect from scratch on each
+> attempt, `Effect.provide(effectiveLayer)` included, so a retried Scenario rebuilds its per-Scenario Layer once
+> per attempt rather than once total. This is not a narrowing of the invariant — for an untagged Scenario "every
+> Scenario" and "every attempt" are the same single event, so nothing here changes for the common case — it is a
+> more precise restatement now that a Scenario can genuinely have more than one attempt. The `shared` half is
+> UNAFFECTED: a `shared` Layer beside a `@retry` Scenario still builds exactly once, because its own `Effect.provide`
+> is composed outside the retried region by construction (`ADR-EC-034` design question 1). Measured by
+> `packages/vitest/test/emission.test.ts`'s retry block (`[1, 2]` per-Scenario ordinals against `[1, 1]` shared
+> ordinals, same retried Scenario) and `packages/vitest/test/acceptance/retry.feature`/`.steps.test.ts`
+> (`REQ-EC-026`).
+
+**Related**: [BEH-EC-004](behaviors/01-steps-and-world.md), [ADR-EC-006](decisions/006-two-layer-scopes-only.md),
+[BEH-EC-026](behaviors/14-scenario-retries.md), [ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md).
 
 ---
 

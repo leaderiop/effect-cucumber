@@ -4,7 +4,7 @@
  * Carries: ADR-EC-019, INV-EC-002, INV-EC-005.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, it } from "@effect/vitest"
+import { assert, describe, flakyTest, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -18,7 +18,7 @@ import type { HookBody, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
-import { makeTagFilter, noTagFilter, onlyTag, skipTag } from "../src/Tags.ts"
+import { makeTagFilter, noTagFilter, onlyTag, retryTag, skipTag } from "../src/Tags.ts"
 import type { EmitOptions, TestApi } from "../src/TestApi.ts"
 
 // One call the fake received, with enough context to reconstruct the emitted tree.
@@ -280,6 +280,33 @@ const reserved = parse(
   "test/runner-reserved.feature"
 )
 
+// A dedicated fixture for `@retry` (ADR-EC-034, BEH-EC-026), separate from `reserved` above so this file's
+// existing `records.length`/fixed-index assertions over `reserved` stay untouched.
+const retryTagged = parse(
+  `Feature: Retry tag
+
+  @retry
+  Scenario: retried one
+    When I browse
+
+  Scenario: plain one
+    When I browse
+`,
+  "test/runner-retry-tagged.feature"
+)
+
+// A single `@retry` Scenario behind a `BeforeAllScenarios` hook that always fails — design question 2 from
+// ADR-EC-034: does a Scenario-level retry rescue a failed once-per-Feature setup?
+const retryAfterFailedBeforeAll = parse(
+  `Feature: Retry cannot rescue a failed BeforeAllScenarios
+
+  @retry
+  Scenario: a retried scenario after a failed BeforeAllScenarios
+    Given a step that never runs
+`,
+  "test/runner-retry-beforeall.feature"
+)
+
 // Five Scenarios across BOTH of `emitFeature`'s loops, tagged so every filter case has a hit and a miss at each
 // nesting level — the SC4 fixture.
 const filtering = parse(
@@ -389,6 +416,16 @@ const recorderCheckoutDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
   define({ pattern: "the cart is empty", scope: featureScope("Checkout"), body: recordingStep("the cart is empty") }),
   define({ pattern: "I pay", scope: featureScope("Checkout"), keyword: "When", body: recordingStep("I pay") }),
   define({ pattern: "I refund", scope: featureScope("Checkout"), keyword: "When", body: recordingStep("I refund") })
+]
+
+// `retryAfterFailedBeforeAll`'s one step — never resolved to a running body in the test that uses this fixture,
+// since its whole point is that `BeforeAllScenarios` fails before any Scenario step is reached.
+const retryAfterFailedBeforeAllDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
+  define({
+    pattern: "a step that never runs",
+    scope: featureScope("Retry cannot rescue a failed BeforeAllScenarios"),
+    body: recordingStep("a step that never runs")
+  })
 ]
 
 const shopRecorderDefinitions: ReadonlyArray<StepDefinition<StepBody>> = [
@@ -673,7 +710,7 @@ describe("the recording fake itself", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
     // The one place in this file that drives the fake directly rather than through `emitFeature`.
-    api.effect("after", () => Effect.void, { tags: [], skip: false, contextFree: true })
+    api.effect("after", () => Effect.void, { tags: [], skip: false, retry: false, contextFree: true })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every assertion that followed —
     // the failure would surface in an unrelated test.
@@ -1369,6 +1406,70 @@ describe("@skip routes to a real skip and @only routes to nothing at all", () =>
       1
     )
   })
+})
+
+describe("@retry reaches EmitOptions.retry, and composes independently of @skip/@only (ADR-EC-034, BEH-EC-026)", () => {
+  it("emits a @retry Scenario with retry true, its tags still present, and an untagged one with retry false", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: retryTagged, definitions: browseIn("Retry tag") }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    assert.deepStrictEqual(
+      records.map(({ kind, name, options }) => ({
+        kind,
+        name,
+        tags: options === null ? null : options.tags,
+        retry: options === null ? null : options.retry
+      })),
+      [
+        { kind: "describe", name: "Retry tag", tags: null, retry: null },
+        { kind: "effect", name: "retried one", tags: [retryTag], retry: true },
+        { kind: "effect", name: "plain one", tags: [], retry: false }
+      ]
+    )
+  })
+})
+
+describe("`@retry` cannot rescue a Scenario whose BeforeAllScenarios already failed (ADR-EC-034 design question 2, BEH-EC-026)", () => {
+  it.effect(
+    "keeps failing across every retry attempt, and the hook body's own log entry appears only once",
+    () =>
+      Effect.gen(function*() {
+        const { api, records } = makeRecordingApi()
+        const { layer: recorderLayer, log } = makeRecorderLayer()
+        const boom = { why: "the BeforeAllScenarios hook's own error" }
+        const hooks = hooksWith({ BeforeAllScenarios: [failingHook("beforeAll", boom)] })
+
+        emitFeature({
+          api,
+          plan: planFeature({ feature: retryAfterFailedBeforeAll, definitions: retryAfterFailedBeforeAllDefinitions }),
+          layer: recorderLayer,
+          hooks,
+          ...noRuleScope,
+          ...unfiltered
+        })
+
+        // Mirrors `VitestTestApi.ts`'s `withRetry` exactly: the recorded thunk is CALLED first — so its
+        // `Effect.flatMap(beforeAllScenariosCell, ...)` is already a built value, `Effect.provide` innermost
+        // where one is needed — and only THEN is the RESULT wrapped in `flakyTest` (ADR-EC-034).
+        const exit = yield* Effect.exit(flakyTest(thunkAt(records, 1)().pipe(Effect.provide(recorderLayer))))
+
+        assert.isTrue(Exit.isFailure(exit))
+        // The hook's own body ran exactly once — a single "beforeAll:start", never a "beforeAll:end" (it fails),
+        // and no second "beforeAll:start" from a later attempt — proving every one of flakyTest's (up to 10)
+        // retry attempts re-awaited the SAME already-failed `Deferred` inside `Runner.ts`'s once-cell rather than
+        // re-running `BeforeAllScenarios` itself. `packages/vitest/README.md`'s "never retried, so a
+        // Scenario-level retry cannot make a failed setup pass" statement holds for exactly this reason.
+        assert.deepStrictEqual(yield* Ref.get(log), ["beforeAll:start"])
+      })
+  )
 })
 
 // Roadmap success criterion 4: a Scenario the filter removes produces NO emission record — it is absent, not skipped.

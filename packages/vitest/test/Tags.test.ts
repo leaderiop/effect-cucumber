@@ -6,7 +6,16 @@
  * Carries: BEH-EC-008.
  */
 import { describe, expect, it } from "@effect/vitest"
-import { isSkipped, makeTagFilter, noTagFilter, onlyTag, shouldEmit, skipTag } from "../src/Tags.ts"
+import {
+  isRetried,
+  isSkipped,
+  makeTagFilter,
+  noTagFilter,
+  onlyTag,
+  retryTag,
+  shouldEmit,
+  skipTag
+} from "../src/Tags.ts"
 
 // A Scenario carrying nothing — the case an over-eager include half silently deletes.
 const noTags: ReadonlyArray<string> = []
@@ -24,6 +33,15 @@ describe("the reserved tag constants keep their literal @ prefix", () => {
 
   it("the two reserved tags are distinct strings", () => {
     expect(skipTag).not.toBe(onlyTag)
+  })
+
+  it("retryTag is exactly \"@retry\", prefix included", () => {
+    expect(retryTag).toBe("@retry")
+  })
+
+  it("all three reserved tags are pairwise distinct strings", () => {
+    expect(retryTag).not.toBe(skipTag)
+    expect(retryTag).not.toBe(onlyTag)
   })
 })
 
@@ -169,5 +187,32 @@ describe("isSkipped recognises exactly the reserved @skip tag", () => {
 
   it("is false for @only — the other reserved tag is deliberately inert", () => {
     expect(isSkipped([onlyTag])).toBe(false)
+  })
+})
+
+describe("isRetried recognises exactly the reserved @retry tag (ADR-EC-034, BEH-EC-026)", () => {
+  it("is true for a Scenario tagged @retry", () => {
+    expect(isRetried([retryTag])).toBe(true)
+  })
+
+  it("is true when @retry sits among other tags", () => {
+    expect(isRetried(["@slow", retryTag, "@wip"])).toBe(true)
+  })
+
+  it("is false for @retried — not a prefix match", () => {
+    expect(isRetried(["@retried"])).toBe(false)
+  })
+
+  it("is false for @RETRY — not a case-insensitive match", () => {
+    expect(isRetried(["@RETRY"])).toBe(false)
+  })
+
+  it("is false for a Scenario with no tags at all", () => {
+    expect(isRetried(noTags)).toBe(false)
+  })
+
+  it("is false for @skip or @only — the other two reserved tags are independent of this one", () => {
+    expect(isRetried([skipTag])).toBe(false)
+    expect(isRetried([onlyTag])).toBe(false)
   })
 })

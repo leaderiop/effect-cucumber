@@ -227,6 +227,36 @@ REAL `vitest run`'s printed stdout (`scripts/verify-failure-panel.sh`,
 `packages/vitest/test/failure-panel-fixture/failing.steps.test.ts` — a deliberately failing pair,
 excluded from every normal run, collected only by that script's own standalone
 `vitest.config.ts`).
+**Scenario-level retries** ship as a `@retry` Gherkin tag wrapping `@effect/vitest`'s own `flakyTest`
+([ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md),
+[BEH-EC-026](behaviors/14-scenario-retries.md)) — fixed at `flakyTest`'s own defaults
+(`Schedule.recurs(10)`, a 30-second wall-clock cap), no numeric parameter, the same convention
+`@skip`/`@only` already carry. **Not** wrapped inside `Runner.ts`, correcting this section's own
+original framing ("wraps `buildScenarioEffect` in `flakyTest` before it reaches `it.effect`"):
+`scripts/verify-testapi-seam.sh` forbids `Runner.ts` from importing `@effect/vitest` in any form, so
+`Runner.ts` only DECIDES `@retry` (`isRetried(tags)`, mirroring how it already decides `@skip`) and
+carries the decision across the `TestApi` seam as one more `EmitOptions` boolean; `VitestTestApi.ts`
+alone applies `flakyTest`, calling the Scenario's own thunk FIRST so `ScenarioEffect.ts`'s
+`Effect.provide(layer)` is already the innermost step of the value `flakyTest` wraps — the same "call
+first, wrap the result" shape `Random.withSeed` already uses one module over. Three things the design
+ticket asked to be settled empirically, not assumed, all measured against the real running framework:
+a `shared` Layer beside a `@retry` Scenario stays built exactly once, for the same architectural
+reason (composed outside the retried region by `@effect/vitest`'s own `layer(...)` machinery) that
+needed no special-casing; `BeforeAllScenarios`'s once-cell is not rescued by a retry — every attempt
+re-observes the SAME already-settled `Deferred` rather than re-running a failed setup, so
+`packages/vitest/README.md`'s existing statement to that effect remains accurate; and every
+`Before`/`After`/`BeforeStep`/`AfterStep` hook re-runs on EVERY attempt, since `flakyTest`'s
+`Effect.retry` re-interprets the whole composed Scenario Effect from scratch each time, not only the
+failing step. A fourth finding surfaced along the way: the ambient simulated `TestClock`/`TestConsole`
+is NOT reset between retry attempts, for the identical architectural reason the shared tier stays
+build-once — documented as a caveat beside the `BeforeAllScenarios` one. Proven against the real
+running framework: `packages/vitest/test/acceptance/retry.feature` + `.steps.test.ts` (`REQ-EC-026`,
+`spec/traceability.md` §5) has a Scenario tagged `@retry` whose step fails once then passes, reported
+PASSING overall, with a per-Scenario Layer build-ordinal counter reading `[1, 2]`;
+`packages/vitest/test/emission.test.ts`'s retry block carries the hook-re-run counts, the
+shared-vs-per-Scenario split, and the TestClock-persistence reading in one retried Scenario; and
+`packages/vitest/test/Runner.test.ts` carries the `BeforeAllScenarios`-not-rescued claim in process,
+composing `flakyTest` manually the identical order `VitestTestApi.ts` does.
 
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -310,17 +340,6 @@ own testing ecosystem). **Design locked** means the shape below is decided
 and ready to build; **spike in progress** means a working prototype is being
 built to de-risk the decision before it locks.
 
-- **Retries / `it.flakyTest` at the Scenario level — design locked.**
-  `@effect/vitest@4.0.0-rc.112` ships `it.flakyTest`/`flakyTest`
-  (`scoped → sandbox → retry(recurs(10), 30s cap) → orDie`), and this
-  repository's own `ScenarioEffect.ts` already provides the per-Scenario
-  Layer innermost — the composition-order requirement
-  [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md) exists to
-  protect is preserved for free. Exposed via a `@retry` Gherkin tag (fixed at
-  `flakyTest`'s own defaults for v1, consistent with `@skip`/`@only` carrying
-  no parameter) rather than a code-level option; wraps `buildScenarioEffect`
-  in `flakyTest` before it reaches `it.effect`.
-  ([#13](https://github.com/leaderiop/effect-cucumber/issues/13))
 - **A Rule that can narrow or replace the ambient World's `Context.Service`,
   not only extend it — design locked, spike-proven.** A working `.types.ts`
   spike compiled a third `RuleRegistrar` overload —
@@ -404,12 +423,23 @@ built to de-risk the decision before it locks.
   matching). Always-on, no opt-out, consistent with `Effect.fn` tracing
   spans already being always-on (ADR-EC-005). Composes with the
   `@effect/opentelemetry` exporter recipe already shipped in
-  `packages/vitest/README.md`. Two things this locks in for #13 (retries)
-  to honor: the metrics wrapper must sit OUTSIDE any retry combinator, or a
-  Scenario that fails then eventually passes double/triple-counts terminal
-  outcomes; and every Scenario runs under the ambient simulated `TestClock`
-  (ADR-EC-018), so `scenario.duration` reads ~0ms unless a step itself
-  advances the clock — worth a documented caveat beside the metric.
+  `packages/vitest/README.md`. **Correction, now that `@retry` has shipped
+  ([ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md)):**
+  the spike's own call site is no longer where this wrapper belongs.
+  `flakyTest` could not live in `Runner.ts` at all — `scripts/verify-testapi-seam.sh`
+  forbids that module from importing `@effect/vitest` — so the retry wrap
+  moved one module over, to `VitestTestApi.ts`. A metrics wrapper placed at
+  the spike's literal `Runner.ts` call site would land INSIDE `flakyTest`'s
+  retried region, counting once per ATTEMPT rather than once per Scenario —
+  exactly the double/triple-counting this bullet already warned against, for
+  a different reason than originally stated. The correct future call site is
+  the SAME `VitestTestApi.ts` seam point `withRetry` wraps at, OUTSIDE it
+  (`effect/Metric` is not a forbidden import there — only a TEST FRAMEWORK
+  is). The other caveat still holds unchanged: every Scenario runs under the
+  ambient simulated `TestClock` (ADR-EC-018), so `scenario.duration` reads
+  ~0ms unless a step itself advances the clock, and — per ADR-EC-034's own
+  finding — that clock is not reset between a `@retry` Scenario's own
+  attempts either.
   ([#26](https://github.com/leaderiop/effect-cucumber/issues/26))
 - **Concurrent Scenario execution — design locked, spike-proven, ships with
   a new per-Scenario timeout knob.** A working spike reproduced the exact

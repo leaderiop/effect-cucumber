@@ -54,3 +54,7 @@ entries:
     file: "13-failure-panel-location.md"
     title: "Failure panel: step text and .feature file:line"
     id_range: "025"
+  - id: "BEH-EC-026"
+    file: "14-scenario-retries.md"
+    title: "Scenario-level retries via @retry"
+    id_range: "026"

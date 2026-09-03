@@ -10,11 +10,16 @@ import type * as Scope from "effect/Scope"
 /**
  * How ONE emitted test node differs from a bare, untagged, running one — the library's own plain
  * data, carried across the seam and translated into whatever the real test framework wants by the
- * adapters in `VitestTestApi.ts`.
+ * adapters in `VitestTestApi.ts`. `retry` (ADR-EC-034, BEH-EC-026) is data, not a call: `Runner.ts`
+ * computes it from the `@retry` tag the same way it computes `skip` from `@skip`, and only
+ * `VitestTestApi.ts` — the one module allowed to import `@effect/vitest` — turns it into a real
+ * `flakyTest` wrap, because this module and `Runner.ts` may never import a test framework
+ * (`scripts/verify-testapi-seam.sh`).
  */
 export interface EmitOptions {
   readonly tags: ReadonlyArray<string>
   readonly skip: boolean
+  readonly retry: boolean
   readonly contextFree: boolean
 }
 

@@ -13,8 +13,16 @@
  *   `afterAll`, so without the hold the teardown would rebuild the tier (`emission.test.ts`
  *   "not a rebuild"; `scripts/verify-shared-layer-once.sh`). Relies on `sequence.hooks: "stack"`.
  * - `makeDegradingEffect` re-emits untagged BEFORE warning (BEH-EC-008).
+ * - `withRetry` (ADR-EC-034, BEH-EC-026) wraps a `@retry` Scenario's thunk as `() =>
+ *   flakyTest(self())`, never `flakyTest(self())` hoisted out of a thunk: `self()` must be CALLED
+ *   first, so `buildScenarioEffect`'s own `Effect.provide(layer)` is already composed inside the
+ *   value `flakyTest`'s `Effect.retry` then wraps — the same "call first, wrap the result" shape
+ *   `buildSeededScenarioEffect` already relies on in `Runner.ts`. Applied BEFORE `makeDegradingEffect`
+ *   ever sees `self`, so it wraps once and is reused unchanged across a possible tags-degradation
+ *   retry of the EMISSION itself (a different kind of retry, decided at registration time, not to be
+ *   confused with the runtime one this adds).
  */
-import { afterAll, beforeAll, describe, it, layer, type Vitest } from "@effect/vitest"
+import { afterAll, beforeAll, describe, flakyTest, it, layer, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
@@ -32,6 +40,21 @@ import type { TestApi } from "./TestApi.ts"
  * The per-Scenario simulated clock and console, rebuilt here from the two PUBLIC `effect` modules.
  */
 export const testEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())
+
+/**
+ * When `retry` is true (the Scenario carried `@retry`), hand back a NEW thunk that calls the
+ * original `self` first — so `buildScenarioEffect`'s `Effect.provide(layer)` is already the
+ * innermost step of the value it returns (INV-EC-002) — and only THEN wraps that whole value in
+ * `flakyTest`, putting `Effect.retry` OUTSIDE the Layer build so it rebuilds fresh on every attempt,
+ * not merely on the first (ADR-EC-034). `flakyTest(self())`, never a hoisted `flakyTest(self())`
+ * shared across calls: the thunk itself must stay lazy, since `self` runs at TEST time, not at
+ * registration time.
+ */
+const withRetry = (
+  retry: boolean,
+  self: Parameters<TestApi["effect"]>[1]
+): Parameters<TestApi["effect"]>[1] => retry ? () => flakyTest(self()) : self
+
 const makeDegradingEffect = (
   featureUri: string,
   emit: (
@@ -41,12 +64,15 @@ const makeDegradingEffect = (
   ) => void
 ): TestApi["effect"] =>
 (name, self, options) => {
+  // Computed once, before either registration attempt below, so a possible tags-degradation retry
+  // of the EMISSION reuses the identical retry-aware thunk rather than re-deriving it.
+  const retryAwareSelf = withRetry(options.retry, self)
   try {
-    emit(name, self, { tags: [...options.tags], skip: options.skip })
+    emit(name, retryAwareSelf, { tags: [...options.tags], skip: options.skip })
   } catch (cause) {
     try {
       // The same name and the same thunk, with `skip` preserved: only the tags are dropped.
-      emit(name, self, { skip: options.skip })
+      emit(name, retryAwareSelf, { skip: options.skip })
     } catch {
       // Structural discrimination, and the only branch that reaches it: an emission with no tags
       // cannot fail `strictTags`, so whatever is wrong here was never about tags.

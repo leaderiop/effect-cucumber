@@ -14,6 +14,10 @@
  * - Once-per-Feature hooks are provided nothing: the shared tier is ambient (BEH-EC-006).
  * - Warning nodes are emitted LAST and are `contextFree`, so a Feature whose Scenarios are all
  *   excluded never builds its shared tier (`emission.test.ts` "stays unbuilt").
+ * - `@retry` is DECIDED here (`isRetried(scenarioPlan.tags)`) and carried across the `TestApi` seam
+ *   as `EmitOptions.retry`, never APPLIED here: this module may not import a test framework
+ *   (`scripts/verify-testapi-seam.sh`), so the real `flakyTest` wrap happens one module over, in
+ *   `VitestTestApi.ts` (ADR-EC-034, BEH-EC-026).
  */
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
 import * as Deferred from "effect/Deferred"
@@ -28,7 +32,7 @@ import type { ErasedExtraLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
 import { scenarioSeed } from "./ScenarioSeed.ts"
-import { isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
+import { isRetried, isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
 import type { EmitOptions, TestApi } from "./TestApi.ts"
 
 export interface EmitOutcome {
@@ -42,7 +46,7 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
 
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
-const warningEmitOptions: EmitOptions = { tags: [], skip: false, contextFree: true }
+const warningEmitOptions: EmitOptions = { tags: [], skip: false, retry: false, contextFree: true }
 
 const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
   scenarioKey(Option.getOrNull(scenarioPlan.ruleId), scenarioPlan.astName)
@@ -154,6 +158,11 @@ export const emitFeature = (
       // `@only` reaches the node as one more entry of `tags` and changes nothing else about the
       // emission.
       const skip = isSkipped(scenarioPlan.tags)
+      // `@retry` reaches the node the identical way `@skip` does — a boolean computed here from the
+      // Scenario's own tags, carried as plain data across the `TestApi` seam. `Runner.ts` never wraps
+      // `flakyTest` itself: only `VitestTestApi.ts` may import a test framework
+      // (`scripts/verify-testapi-seam.sh`), so this walk only ever DECIDES, never APPLIES (ADR-EC-034).
+      const retry = isRetried(scenarioPlan.tags)
       const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? layer
       api.effect(
         titleFor(scenarioPlan),
@@ -171,7 +180,7 @@ export const emitFeature = (
           },
         // The Scenario's own tags, passed by reference: `ScenarioPlan.tags` is already the flattened,
         // de-duplicated inheritance chain.
-        { tags: scenarioPlan.tags, skip, contextFree: false }
+        { tags: scenarioPlan.tags, skip, retry, contextFree: false }
       )
     }
 
@@ -192,6 +201,8 @@ export const emitFeature = (
             continue
           }
           const skip = isSkipped(scenarioPlan.tags)
+          // Same computation as the Feature-level loop above, for the same reason.
+          const retry = isRetried(scenarioPlan.tags)
           const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? ruleLayer
           api.effect(
             titleFor(scenarioPlan),
@@ -209,7 +220,7 @@ export const emitFeature = (
               },
             // `contextFree: false`, for the same reason as the Feature-level loop's identical field
             // above.
-            { tags: scenarioPlan.tags, skip, contextFree: false }
+            { tags: scenarioPlan.tags, skip, retry, contextFree: false }
           )
         }
       })
