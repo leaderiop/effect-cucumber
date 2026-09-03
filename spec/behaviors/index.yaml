@@ -42,3 +42,7 @@ entries:
     file: "10-watch-mode.md"
     title: "Watch-mode .feature rerun triggers"
     id_range: "022"
+  - id: "BEH-EC-023"
+    file: "11-scenario-seeding.md"
+    title: "Per-Scenario deterministic Random seeding"
+    id_range: "023"

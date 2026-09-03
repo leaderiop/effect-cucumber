@@ -92,3 +92,6 @@ entries:
   - id: "ADR-EC-030"
     file: "030-gherkinwatchtriggers-plugin-reruns-the-whole-test-include-set.md"
     title: "gherkinWatchTriggers is a Vite plugin over test.watchTriggerPatterns, and reruns the whole test.include set rather than guessing a per-file mapping"
+  - id: "ADR-EC-031"
+    file: "031-random-withseed-wraps-the-scenario-effect-not-a-layer.md"
+    title: "Per-Scenario Random seeding wraps the composed Scenario Effect with Random.withSeed, not a Layer joining testEnv"
