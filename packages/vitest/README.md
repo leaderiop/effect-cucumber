@@ -251,6 +251,39 @@ not change with the directory the runner was invoked from. It is why this packag
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
 
+**Editing a `.feature` file under `vitest --watch` needs one more line, and `gherkinWatchTriggers` is it.**
+`loadFeature(path)` — the pattern every acceptance pair in this repository and this README use — reads a `.feature`
+file with a plain `fs` call, which is invisible to Vite's module graph: without this plugin, editing one triggers no
+rerun at all under a watching runner. `gherkinWatchTriggers` is a Vite plugin, exported alongside `gherkinTags`, that
+appends a `.feature`-file trigger to Vitest's own `test.watchTriggerPatterns` config option so the edit is picked up
+(ADR-EC-030, BEH-EC-022):
+
+```ts
+import { gherkinTags, gherkinWatchTriggers } from "@effect-cucumber/vitest"
+import { fileURLToPath } from "node:url"
+import { defineConfig } from "vitest/config"
+
+const cwd = fileURLToPath(new URL(".", import.meta.url))
+const featureGlob = "features/**/*.feature"
+
+export default defineConfig({
+  test: { tags: gherkinTags(featureGlob, { cwd }) },
+  // The SAME glob gherkinTags already consumes — pass it again here rather than deriving one from
+  // the other, so each call stays independently readable.
+  plugins: [gherkinWatchTriggers(featureGlob, { cwd })]
+})
+```
+
+Take the same argument `gherkinTags` does — a glob or an array of them, plus an optional `{ cwd }` — and has the same
+no-default, throws-on-empty stance. **It must go in your ROOT `vitest.config.ts`, not a workspace project's own
+config** — `watchTriggerPatterns` is not a per-workspace-project option, the same cost `gherkinTags`'s `test.tags`
+already asks for. There is no per-file correlation to a specific `.steps.test.ts`: a `.feature` file can be loaded
+from any test module under any name, and step definitions can be reused across Features (`defineSteps`,
+ADR-EC-027), so there is no mapping this plugin could rely on in general. Instead, editing any `.feature` file your
+glob matches reruns your WHOLE `test.include` set — conservative rather than surgical, and stated as a real
+trade-off rather than hidden (ADR-EC-030's "Negative" section has the full reasoning and the alternatives it
+rejected).
+
 ## Observability recipe
 
 Every step and hook already runs inside an `Effect.fn(stepText)` span (ADR-EC-005), and Gherkin parameter values are

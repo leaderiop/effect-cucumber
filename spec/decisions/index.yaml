@@ -89,3 +89,6 @@ entries:
   - id: "ADR-EC-029"
     file: "029-settlethroughclock-parameterized-fork-adjust-join.md"
     title: "Testing.settleThroughClock parameterizes step/maxSteps and dies rather than hangs past the bound"
+  - id: "ADR-EC-030"
+    file: "030-gherkinwatchtriggers-plugin-reruns-the-whole-test-include-set.md"
+    title: "gherkinWatchTriggers is a Vite plugin over test.watchTriggerPatterns, and reruns the whole test.include set rather than guessing a per-file mapping"

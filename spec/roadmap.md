@@ -113,7 +113,10 @@ cross-check that reads the document's own table so "runs in full" is counted rat
 claimed. Two of the twenty-four measured FALSE as originally worded and say so in writing
 rather than having been narrowed quietly: an acceptance `.feature` edit does not trigger a
 watch-mode rerun for the path-based `loadFeature` form every committed pair uses (only the
-`?raw` form reruns, and that is a product gap, not a test gap), and a failing step's
+`?raw` form reruns, and that WAS a product gap, not a test gap — `gherkinWatchTriggers`
+(below) is the shipped fix; this checklist item's own fixture still uses the `?raw` form
+deliberately, since it is what the item measures, not what a consumer is told to write), and
+a failing step's
 entry in the runner's failure panel names the Scenario and the assertion but neither the
 step text nor the `.feature` file and line — the step PATTERN does reach a separate stdout
 block, through ADR-EC-005's `Effect.fn(pattern)` span, which is not the same thing and is
@@ -232,14 +235,6 @@ built to de-risk the decision before it locks.
   no parameter) rather than a code-level option; wraps `buildScenarioEffect`
   in `flakyTest` before it reaches `it.effect`.
   ([#13](https://github.com/leaderiop/effect-cucumber/issues/13))
-- **LINT-01 — design locked: ship the script route first.** oxlint's JS/TS
-  plugin API is real and already used in this repo (`tools/oxlint/effect/`),
-  but upstream calls it alpha. A generalized, parameterized copy of
-  `scripts/verify-acceptance-ref-state.sh` (glob + carve-out count as CLI
-  args) needs no bet on an unstable API and ships first, documented in the
-  README as a copyable template. An oxlint-plugin version moves to
-  § Under consideration, revisited once oxlint's plugin API stabilizes.
-  ([#16](https://github.com/leaderiop/effect-cucumber/issues/16))
 - **A Rule that can narrow or replace the ambient World's `Context.Service`,
   not only extend it — design locked, spike-proven.** A working `.types.ts`
   spike compiled a third `RuleRegistrar` overload —

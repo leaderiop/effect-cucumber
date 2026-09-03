@@ -38,3 +38,7 @@ entries:
     file: "09-testing-helpers.md"
     title: "Testing helpers"
     id_range: "020-021"
+  - id: "BEH-EC-022"
+    file: "10-watch-mode.md"
+    title: "Watch-mode .feature rerun triggers"
+    id_range: "022"
