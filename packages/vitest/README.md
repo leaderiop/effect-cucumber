@@ -76,7 +76,20 @@ from `cucumber-js` is the likely place to carry that over by habit, since there 
 has to be built by hand. It is not merely redundant: nested underneath real concurrent dispatch and an `Effect.timeout`
 (a `Promise.all`-style fan-out racing a deadline, say), the second, nested clock can lose to the real one, and a
 retry-with-backoff genuinely waits in wall-clock time instead of resolving against simulated time — the failure mode is
-an indefinite hang, not a wrong answer, which makes it slow to trace back to the extra `provide`. One constraint comes
+an indefinite hang, not a wrong answer, which makes it slow to trace back to the extra `provide`. **The step that
+genuinely needs real time** — asserting a real HTTP call's actual latency, say — is not "just don't": `effect/testing/TestClock`'s
+own `TestClock.withLive(effect)` runs one Effect against the real system clock, scoped to just that Effect, while
+leaving the ambient simulated `TestClock` in place for everything around it. It never re-provides a second `TestClock`
+service, so it sidesteps the whole footgun above rather than being another way to trigger it — reach for it instead of
+a nested `Effect.provide(TestClock.layer())` whenever a step's own real-time need is genuine, not habit carried over
+from `cucumber-js`.
+
+**Captured console output is already assertable, with zero setup.** Because `TestConsole.layer` is already part of the
+ambient `testEnv` every Scenario gets, a step can `yield* TestConsole.logLines` (or `TestConsole.errorLines`) today to
+read back what earlier steps in the same Scenario logged — e.g. `Then("the following was logged:", function*(doc) { const lines = yield* TestConsole.logLines; assert.deepStrictEqual(lines, [doc.content]) })`.
+Nothing to import beyond `effect/testing/TestConsole`; no library change makes this work, it already does.
+
+One constraint comes
 with `shared`, and it is a type error rather than advice: its error channel must be `never`.
 `@effect/vitest` builds a shared Layer with `Effect.orDie`, so a typed failure there — a testcontainer that will not
 start, the realistic case — becomes an unrecoverable defect raised out of a setup hook, attributed to no Scenario, no
@@ -229,6 +242,34 @@ patterns resolve against `process.cwd()` unless you pass `{ cwd }`; a config fil
 not change with the directory the runner was invoked from. It is why this package carries one non-workspace runtime dependency, `tinyglobby`: expanding a
 glob synchronously at config-load time needs a library, since `fs.globSync` requires Node 22 and this package supports
 Node 20.
+
+## Observability recipe
+
+Every step and hook already runs inside an `Effect.fn(stepText)` span (ADR-EC-005), and Gherkin parameter values are
+reachable from inside a step body via `yield* Effect.annotateCurrentSpan("key", value)` — the current span at that
+point is exactly the one `Effect.fn` created for that step, so no library change is needed to enrich it. Getting those
+spans to a real backend is one Layer, not new code from this package: install `@effect/opentelemetry` (pinned to the
+same rc line as `effect`) plus whichever OTel-JS exporter you want, and provide `NodeSdk.layer({ ... })` (or
+`WebSdk.layer` in a browser target) alongside your own ambient Layer —
+
+```ts
+import { NodeSdk } from "@effect/opentelemetry"
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
+
+const TracingLive = NodeSdk.layer({
+  resource: { serviceName: "my-suite" },
+  spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter())
+})
+
+describeFeature(feature, Layer.merge(World.layer, TracingLive), ({ Then }) => { /* ... */ })
+```
+
+— and every `Effect.fn(stepText)` span this package already produces exports for real. `NodeSdk.layer`'s
+`Configuration` also takes a `metricReader` and a `logRecordProcessor`, built only when supplied, so a metrics-only or
+logs-only setup is the same one-Layer shape. Trace-context propagation into a step's own outbound calls
+(`effect/Tracer`'s `externalSpan`) is a property of what that step's Effect does, not something this package wires —
+it composes unassisted once the exporter Layer above is in place.
 
 **This package now runs its own spec.** The dogfooded acceptance suite is built: real `.feature` files under
 [`test/acceptance/`](./test/acceptance), paired with `.steps.test.ts` modules, driven by the real `describeFeature`
