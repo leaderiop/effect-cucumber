@@ -130,19 +130,21 @@ complete; its per-phase record is archived with the research.
 | Coverage thresholds                               | Wired — `pnpm coverage`, 90%/90% statements/branches per package (`spec/traceability.md` §6), Node 24 CI leg only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | GSD project planning                              | Complete and archived on the `planning-archive` branch; `.planning/` is no longer tracked on `main` (F-27)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-## Blocking first release
+## Blocking first release (resolved — kept for history)
 
-The dependency-graph-verified 11-phase build order (Phase 0 tooling policy →
-Phase 1 `loadFeature` → Phase 2 parameter types → ... → Phase 9 shared Layer →
-Phase 10 composition root + dogfooded acceptance suite) came out of the
+Both packages are published on npm as `0.1.0` (see the README's "## Status"), so nothing below is still blocking;
+this section is the record of what the first release required, not a live punch list. The
+dependency-graph-verified 11-phase build order (Phase 0 tooling policy → Phase 1 `loadFeature` → Phase 2 parameter
+types → ... → Phase 9 shared Layer → Phase 10 composition root + dogfooded acceptance suite) came out of the
 research archived on the `planning-archive` branch. High-level shape:
 
-1. Finish Phase 0 tooling/dependency policy (partially done: peer deps
-   fixed via ADR-EC-015, extended to `@effect-cucumber/gherkin` via
-   ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; still open:
-   `publishConfig.exports` swap, pnpm catalogs, CI, and ADR-EC-021's
-   Follow-up items — the actual `Source.ts`/`loadFeature.ts`/`Errors.ts`
-   rewrite, `BEH-EC-001` update, and `ParameterTypeStore`-as-Layer decision).
+1. Finish Phase 0 tooling/dependency policy — **done.** Peer deps fixed via ADR-EC-015, extended to
+   `@effect-cucumber/gherkin` via ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; `publishConfig.exports`, pnpm
+   catalogs and CI (`.github/workflows/`) are all in place, and ADR-EC-021's Follow-up items that gated this —
+   the `Source.ts`/`loadFeature.ts`/`Errors.ts` rewrite, the `BEH-EC-001` update, and the `ParameterTypeStore`-as-Layer
+   migration (`Context.Service` in `packages/gherkin/src/ParameterTypes.ts`) — are all shipped. One follow-up from
+   that ADR is still genuinely undecided and tracked under "Under consideration" below: which package owns
+   `ManagedRuntime` construction.
 2. Implement `@effect-cucumber/gherkin`'s parse→compile→correlate pipeline
    (the riskiest phase — several silent-failure edge cases in
    `@cucumber/gherkin`'s `compile()` must become loud errors here).
@@ -190,39 +192,205 @@ research archived on the `planning-archive` branch. High-level shape:
 
 ## Planned
 
-- **An Examples column not referenced by any step's pattern** — the rare case
-  where a Scenario Outline needs a raw example value that never appears
-  inside a `Given`/`When`/`Then` string, so cucumber-expressions never gets a
-  chance to coerce it. Needs a fallback — likely an optional typed `example`
-  argument decoded via `Schema`, passed alongside the DSL object to
-  `ScenarioOutline`'s callback.
-- **Retries / `it.flakyTest` at the Scenario level** — GSD Pitfalls research
-  closed part of this: a retried Scenario **does** rebuild its per-Scenario
-  Layer fresh per attempt, but only when `Effect.provide` sits _inside_ the
-  retried Effect — composition order is load-bearing, and getting it
-  backwards silently reintroduces the leak [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)
-  exists to prevent. Still deferred to a later milestone; this note exists so
-  the composition-order requirement isn't rediscovered from scratch when it's
-  picked up.
-- **LINT-01 — a lint rule enforcing [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md)
-  in a CONSUMER's step modules** — flagging a `let`/`var` declared inside a
-  `Scenario`/`Rule`/`Background` callback that a step function closes over.
-  Half of this is now built and half is not, and the split is the whole reason
-  the item is still here. **Built:** `scripts/verify-acceptance-ref-state.sh`
-  gives [INV-EC-006](invariants.md#inv-ec-006-cross-step-scenario-data-survives-only-via-a-layer-provided-ref)
-  a real mechanism over THIS repository's acceptance suite — a structural scan
-  that forbids a `let` or `var` at any scope in an acceptance step module, plus
-  the common in-place-mutator form of the module-scope holder that would
-  otherwise satisfy the letter of that rule. It is mutation-proven: with one
-  mutable binding added to an acceptance step module, `pnpm test`,
-  `pnpm build`, `pnpm lint` and `pnpm typecheck:test` all stayed green and only
-  that gate went red. **Not built:** anything covering a consumer. A shell
-  script over this repository's own directory cannot travel, so for a consumer
-  the invariant is still a reviewed convention. LINT-01 is what would close it,
-  and it is deferred to a later milestone (the v2 backlog archived on the `planning-archive` branch).
+Every item below traces to a resolved wayfinder ticket on
+[effect-cucumber gap decisions](https://github.com/leaderiop/effect-cucumber/issues/11)
+(a downstream "BDD Quality Ceiling" audit, this repo's own gaps, and a
+completeness survey against comparable Cucumber implementations and Effect's
+own testing ecosystem). **Design locked** means the shape below is decided
+and ready to build; **spike in progress** means a working prototype is being
+built to de-risk the decision before it locks.
+
+- **An Examples column not referenced by any step's pattern — design locked.**
+  No `ScenarioOutline` callback exists in the DSL today — an Outline row goes
+  through the ordinary `Scenario` registrar, distinguished only by title
+  (`OutlineTitle.ts`) — so the fix reuses the existing "data a step needs but
+  no pattern hole captures" precedent instead of inventing a new construct:
+  extend `StepParams<P>`'s trailing tail (already used for DataTable/DocString,
+  BEH-EC-003/016) to optionally carry the raw Examples row (column name →
+  string) when the Feature declares a per-column `Schema`, decoded through
+  `Schema` the same way DataTable already is (ADR-EC-008).
+  ([#14](https://github.com/leaderiop/effect-cucumber/issues/14))
+- **Retries / `it.flakyTest` at the Scenario level — design locked.**
+  `@effect/vitest@4.0.0-rc.112` ships `it.flakyTest`/`flakyTest`
+  (`scoped → sandbox → retry(recurs(10), 30s cap) → orDie`), and this
+  repository's own `ScenarioEffect.ts` already provides the per-Scenario
+  Layer innermost — the composition-order requirement
+  [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md) exists to
+  protect is preserved for free. Exposed via a `@retry` Gherkin tag (fixed at
+  `flakyTest`'s own defaults for v1, consistent with `@skip`/`@only` carrying
+  no parameter) rather than a code-level option; wraps `buildScenarioEffect`
+  in `flakyTest` before it reaches `it.effect`.
+  ([#13](https://github.com/leaderiop/effect-cucumber/issues/13))
+- **LINT-01 — design locked: ship the script route first.** oxlint's JS/TS
+  plugin API is real and already used in this repo (`tools/oxlint/effect/`),
+  but upstream calls it alpha. A generalized, parameterized copy of
+  `scripts/verify-acceptance-ref-state.sh` (glob + carve-out count as CLI
+  args) needs no bet on an unstable API and ships first, documented in the
+  README as a copyable template. An oxlint-plugin version moves to
+  § Under consideration, revisited once oxlint's plugin API stabilizes.
+  ([#16](https://github.com/leaderiop/effect-cucumber/issues/16))
+- **A bundled helper for asserting a Scenario's expected failure by tag —
+  design locked.** `Testing.failureTag(exit: Exit<A, E>): string` — returns
+  the tag on a typed failure, and fails the assertion itself (via
+  `@effect/vitest`'s own `assert`, serializing the actual value) on anything
+  else — a defect, a non-tagged error, a success — never a silent
+  `"Unknown"` string. Lives beside `@effect/vitest`'s own narrowing
+  assertions stylistically, as a peer helper rather than folded into this
+  package's own export surface. (BDD Quality Ceiling Gap #2;
+  [#21](https://github.com/leaderiop/effect-cucumber/issues/21))
+- **A Rule that can narrow or replace the ambient World's `Context.Service`,
+  not only extend it — design locked, spike-proven.** A working `.types.ts`
+  spike compiled a third `RuleRegistrar` overload —
+  `<R2,E2,RNarrowed>(name, extraLayer, narrow: (dsl: RuleDsl<ROut|R2>) => RuleDsl<RNarrowed>, define: (dsl: RuleDsl<RNarrowed>) => void)`,
+  backed by real `Effect.updateContext` calls — with BOTH compiler directions
+  proven, not just designed: the narrowed World type-checks and runs
+  correctly (real service values reached only through the reshaped Tags),
+  and a step reaching for the now-hidden Feature-level ambient service is
+  rejected by name (`effect(missingEffectContext)`) — the exact case the
+  current `RuleDsl<ROut | R2>` union cannot reject today. One real,
+  documented cost: the context-reshaping function is hand-written per Rule,
+  not auto-derived, stated as a tradeoff rather than hidden (the same way
+  INV-EC-003's `any`-boundary cost is documented, not hidden). Does not
+  reopen [ADR-EC-006](decisions/006-two-layer-scopes-only.md)'s "no third
+  Layer scope" decision — this narrows the RESULT type a Rule's Scenarios
+  see, not a new build-once tier. (BDD Quality Ceiling Gap #3;
+  [#23](https://github.com/leaderiop/effect-cucumber/issues/23))
+- **Citing the failing step's text and `.feature` file:line in the runner's
+  failure panel — design locked.** No custom `Reporter` needed — vitest's
+  default reporter already prints `error.cause` recursively as "Caused by:".
+  `ScenarioEffect.ts` wraps a step failure so `.cause` carries
+  `{ step: pattern, file, line }` before it reaches the reporter. Rejected
+  the `context.annotate()` alternative: it needs the vitest `TestContext`
+  that `TestApi.ts`'s deliberately framework-agnostic seam currently erases,
+  a real architectural cost `.cause` avoids entirely.
+  ([#18](https://github.com/leaderiop/effect-cucumber/issues/18))
+- **A rerun trigger for a `.feature` file loaded via `loadFeature(path)`
+  under a watching runner — design locked.** Watching was never the actual
+  gap — Vite already watches the whole project root by default. The real
+  mechanism is Vitest's own `test.watchTriggerPatterns` config option
+  (3.2.0+), checked before the module-graph fallback that a path read always
+  misses. Ships as a Vite plugin, exported from `@effect-cucumber/vitest`,
+  appending the same glob `gherkinTags(...)` already consumes to
+  `test.watchTriggerPatterns` via the `config()` hook (`mergeConfig`
+  concatenates arrays, so it composes additively). One line still needed in
+  the consumer's ROOT vitest config — `watchTriggerPatterns` isn't
+  per-workspace-project — the same cost `gherkinTags(...)` already asks for.
+  ([#20](https://github.com/leaderiop/effect-cucumber/issues/20))
+- **Per-Scenario/Example deterministic seeding via `Random.withSeed` —
+  design locked.** v4's replacement for v3's removed `TestRandom`. Every
+  Scenario gets a deterministic-but-unique seed automatically (derived from
+  a stable hash of the Scenario's title, plus the Outline row index when one
+  exists, so two rows never collide) — added to `testEnv`'s
+  `Layer.mergeAll` in `VitestTestApi.ts` alongside `TestConsole.layer`/
+  `TestClock.layer()`, ambient with zero consumer wiring, the same
+  treatment those two already get. ([#29](https://github.com/leaderiop/effect-cucumber/issues/29))
+- **Global (suite-wide) `BeforeAll`/`AfterAll` hooks — design locked: docs
+  only, no new DSL surface.** vitest's own `globalSetup`/`globalTeardown`
+  already covers the suite-wide case today; every framework surveyed that
+  supports this hits the same worker-isolation caveat this library's
+  Feature-scoped once-cell already documents. Closes with a README section
+  showing `globalSetup`/`globalTeardown` as the sanctioned path — revisit a
+  typed wrapper only if the concurrent-execution work below ends up
+  touching this same hook-lifecycle code anyway.
+  ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
+- **Tagged/conditional hooks — design locked, spike-proven.** A working
+  spike ran a real `Before("@db and not @slow", fn)`-style overload against
+  a real tagged `.feature` fixture — 4/4 passing, confirmed running only for
+  matching Scenarios. Correction to the original research: the parser isn't
+  `@cucumber/tag-expressions` (not in this repo's dependency tree at all) —
+  it's `@vitest/runner`'s own exported `createTagsFilter`, the same function
+  backing vitest's `--tagsFilter`, so no new dependency is needed.
+  `BeforeAllScenarios`/`AfterAllScenarios` are excluded from the overload —
+  no coherent single-Scenario tag set exists to check there, consistent with
+  their existing Rule-dsl restriction. Composes additively with existing
+  Rule/Feature scoping; the existing "independent batch, combined failure"
+  guarantee survives (a filtered-out hook is excluded before the batch is
+  assembled, proven with a dedicated test). One recurring cost carried over
+  from ADR-EC-026: this needs the same pre-declared "tag universe" CLI
+  filtering already requires. ([#32](https://github.com/leaderiop/effect-cucumber/issues/32))
+- **Attachments — a `World.attach()` equivalent — design locked,
+  spike-proven.** A working spike attached data from inside a step and saw
+  it rendered directly under a real failure panel via `context.annotate()`
+  — end to end, not simulated. `VitestTestApi.ts` (already permitted to name
+  vitest) captures the per-test `TestContext` from `@effect/vitest`'s
+  `it.effect` callback and provides a live `Attachments` service built from
+  it, mirroring `testEnv`'s existing crossing mechanism. Needs `TestApi.ts`
+  widened to `Scope.Scope | Attachments` — a small, type-only,
+  seam-compliant change (`scripts/verify-testapi-seam.sh` still passes
+  against it). `AfterAllScenarios` never receives a live `TestContext`, so
+  `Attachments` is a **compile-time-rejected** capability there, not a
+  silent runtime no-op — consistent with how per-Scenario-only services are
+  already rejected by name at that hook elsewhere in this DSL.
+  ([#33](https://github.com/leaderiop/effect-cucumber/issues/33))
+- **Rerun-failed-only support — design locked, spike-proven.** A working
+  spike ran the full write→read cycle for real: a 3-Scenario Feature with
+  one deliberate failure, run once (all 3 ran), a script converted vitest's
+  own `--reporter=json` output into a manifest, run again with
+  `rerunFailedOnly` — exactly 1 of 3 registered. Key finding:
+  `ScenarioKey.ts`'s existing `(ruleId, astName)` key is NOT reusable across
+  runs — `ruleId`/`ParsedScenario.id` come from a fresh `IdGenerator.uuid()`
+  on every `loadFeature()` call, random per parse. The real stable key is
+  `(featureName, ruleName, emittedTitle)`, reusing `OutlineTitle.ts`'s
+  existing per-row disambiguation. Write side is a standalone script over
+  `--reporter=json`, not a custom `Reporter` — `task.meta` is
+  JSON-reporter-only ([#17](https://github.com/leaderiop/effect-cucumber/issues/17)'s
+  finding already settled this). Two rough edges found by actually running
+  it, both must land before this ships (not optional polish): a Feature
+  whose every key is stale collapses to vitest's own "No test found in
+  suite" crash — needs a synthetic skip node — and the key needs the
+  Feature's file `uri` added, since same-named Features in different files
+  would otherwise collide. ([#34](https://github.com/leaderiop/effect-cucumber/issues/34))
+- **`Effect.Metric` at the Scenario emission boundary — design locked,
+  spike-proven, ships always-on.** A working spike wired `Metric.timer`
+  (duration) and `Metric.counter` (pass/fail, tagged by outcome) into the
+  REAL `Runner.ts` at both its `buildScenarioEffect` call sites (+16/−4
+  lines, zero `TestApi.ts` changes) — full 899-test suite green, and the
+  metrics themselves observed correct when actually run
+  (`scenario.result: {pass:1, fail:1}`, `scenario.duration` histogram
+  matching). Always-on, no opt-out, consistent with `Effect.fn` tracing
+  spans already being always-on (ADR-EC-005). Composes with the
+  `@effect/opentelemetry` exporter recipe already shipped in
+  `packages/vitest/README.md`. Two things this locks in for #13 (retries)
+  to honor: the metrics wrapper must sit OUTSIDE any retry combinator, or a
+  Scenario that fails then eventually passes double/triple-counts terminal
+  outcomes; and every Scenario runs under the ambient simulated `TestClock`
+  (ADR-EC-018), so `scenario.duration` reads ~0ms unless a step itself
+  advances the clock — worth a documented caveat beside the metric.
+  ([#26](https://github.com/leaderiop/effect-cucumber/issues/26))
+- **Concurrent Scenario execution — design locked, spike-proven, ships with
+  a new per-Scenario timeout knob.** A working spike reproduced the exact
+  bug for real first (a 400ms `BeforeAllScenarios`, a 100ms-timeout Scenario
+  and a 2000ms-timeout Scenario under `describe.concurrent`: the long one
+  failed too, killed by the short one's interrupt cascade) and then
+  confirmed the fix resolves it (both pass in ~2ms) by moving
+  `BeforeAllScenarios`/`AfterAllScenarios` onto a real vitest `beforeAll`
+  with its own timeout budget, registered once at the Feature block level,
+  every Scenario reading a captured `Exit` rather than racing the batch.
+  Caught and fixed a real regression risk along the way: a naive "let
+  `beforeAll` throw" version breaks BEH-EC-017's "same failure reported by
+  every Scenario individually" guarantee (a real vitest `beforeAll` failure
+  marks siblings _skipped_, not failed) — fixed by capturing the `Exit`
+  instead. The "nothing attempted" carve-out needed no new tracking — vitest
+  already withholds a block's `beforeAll`/`afterAll` when nothing inside it
+  will run (verified against `.skip`, `-t`, and `--tagsFilter`, including
+  nested Rules). Full monorepo suite (900 tests) unchanged under sequential
+  execution. Ships together with a per-Scenario `testTimeout` configuration
+  knob — surfaced by the spike as a real gap, and the actual thing that
+  makes concurrent execution useful (without it, every Scenario still
+  shares the Feature's one timeout, undercutting the point of running them
+  concurrently). ([#37](https://github.com/leaderiop/effect-cucumber/issues/37);
+  feasibility research: [#36](https://github.com/leaderiop/effect-cucumber/issues/36))
 
 ## Under consideration
 
+- **An oxlint plugin for LINT-01** — deferred behind the shipped shell-script
+  route (§ Planned, LINT-01) until oxlint's JS/TS plugin API graduates out of
+  alpha; this repo's own `tools/oxlint/effect/` proves the API works today,
+  the concern is upstream stability, not feasibility.
+- **Which package owns `ManagedRuntime` construction** — `@effect-cucumber/vitest` itself, or a separate thin
+  adapter shared with a future non-vitest runner package. Raised as a Follow-up item in
+  [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md) during the `Source.ts`/
+  `loadFeature.ts`/`Errors.ts` rewrite; not decided by that ADR and still open.
 - **Vendored `@effect/oxc` rules** (`tools/oxlint/effect/`, from GSD Stack
   research) — 4 of Effect's own 5 unpublished oxlint rules, MIT-licensed,
   with `no-unused-internal` deliberately excluded (its one rule requiring
@@ -239,11 +407,12 @@ research archived on the `planning-archive` branch. High-level shape:
 
 ## Explicitly not planned
 
-| Item                                               | Why                                                                                                                                                                          |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A bespoke Gherkin parser                           | [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md) — depend on official `@cucumber/gherkin` instead                                                            |
-| A bespoke step-matching syntax                     | [ADR-EC-007](decisions/007-cucumber-expressions-for-step-matching.md) — cucumber-expressions is reused verbatim                                                              |
-| A third "shared within a Rule" Layer scope         | [ADR-EC-006](decisions/006-two-layer-scopes-only.md), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md) — promote to the Feature's `shared` Layer instead |
-| A custom cucumber HTML/report format               | Not a goal for v1 — defer to vitest's own reporters                                                                                                                          |
-| A vitest plugin or custom test discovery mechanism | Not needed — a `.feature` file is plain data; the `.steps.ts` module is what vitest discovers, unmodified (see `spec/overview.md`)                                           |
-| GxP/regulatory compliance tooling                  | Out of scope — this is a testing library, not a regulated domain, unlike some sibling projects that adopted this same spec-driven method                                     |
+| Item                                                                        | Why                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A bespoke Gherkin parser                                                    | [ADR-EC-011](decisions/011-official-cucumber-parser-packages.md) — depend on official `@cucumber/gherkin` instead                                                                                                                                                                                                                                                                                                 |
+| A bespoke step-matching syntax                                              | [ADR-EC-007](decisions/007-cucumber-expressions-for-step-matching.md) — cucumber-expressions is reused verbatim                                                                                                                                                                                                                                                                                                   |
+| A third "shared within a Rule" Layer scope                                  | [ADR-EC-006](decisions/006-two-layer-scopes-only.md), [ADR-EC-010](decisions/010-rule-and-scenario-scoped-extra-layers.md) — promote to the Feature's `shared` Layer instead                                                                                                                                                                                                                                      |
+| A custom cucumber HTML/report format                                        | Not a goal for v1 — defer to vitest's own reporters                                                                                                                                                                                                                                                                                                                                                               |
+| A vitest plugin or custom test DISCOVERY mechanism                          | Not needed — a `.feature` file is plain data; the `.steps.ts` module is what vitest discovers, unmodified (see `spec/overview.md`). Narrower than it sounds: a Vite plugin appending to `test.watchTriggerPatterns` (§ Planned, watch-mode rerun) is a watch-trigger config helper, not a discovery mechanism — it doesn't change what vitest treats as a test file, only when an already-discovered test reruns. |
+| GxP/regulatory compliance tooling                                           | Out of scope — this is a testing library, not a regulated domain, unlike some sibling projects that adopted this same spec-driven method                                                                                                                                                                                                                                                                          |
+| An `it.live`/`@live` tag to opt a Scenario out of the simulated `TestClock` | Considered and rejected for now — narrow value, and `TestClock.withLive` (§ Planned, once its doc lands) already gives a code-level answer to the same need without new DSL surface. Revisit only if real demand surfaces.                                                                                                                                                                                        |
