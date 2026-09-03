@@ -183,6 +183,30 @@ rows each independently recomputing what its own seed should produce, and a
 trailing Scenario proving the two rows' captured values differ from each
 other; `packages/vitest/test/ScenarioSeed.test.ts` covers the pure
 derivation function alone.
+**An Examples column not referenced by any step's pattern** ships as
+`ExamplesRow`/`decodeExamplesRow`
+([ADR-EC-032](decisions/032-outline-examplesrow-carries-the-raw-row-decoded-on-demand-not-a-per-feature-schema.md),
+[BEH-EC-024](behaviors/12-outline-typed-example-column.md)) — the raw Examples row (column name →
+string) an Outline row's Pickle correlates to, appended to `StepParams<P>`'s existing trailing tail
+(already used for DataTable/DocString, BEH-EC-003/016) for EVERY step of that row, decoded on demand
+by a step body through `decodeExamplesRow(rowSchema)(row)`, the same `Schema`-decode mechanism
+`decodeHashes` already gives a DataTable (ADR-EC-008). **Not** a per-Feature `Schema` declaration —
+correcting this section's own original framing: `describeFeature`'s real signature has no
+Feature-scoped surface to attach one to, and one Feature can carry more than one Examples header (a
+single Outline can even have two, across two `Examples:` blocks with different columns), so no
+single per-Feature `Schema` could be correct in general. `ParsedScenario.exampleRow` is the new field
+(`Option.none()` for a plain Scenario), built once per Scenario in `Correlate.ts` alongside the AST
+walk it already performs for Examples-column validation; `OutlineTitle.ts` was rewritten in the same
+change to read that field instead of independently re-walking the AST a second time for its own
+`(col=value, ...)` title suffix, removing a latent duplication rather than adding a third copy of it.
+Proven against the real running framework:
+`packages/vitest/test/acceptance/outline-typed-column.feature` +
+`.steps.test.ts` (`REQ-EC-025`, `spec/traceability.md` §5) has an Outline row whose `note`/`priority`
+columns are referenced by NO step's pattern text anywhere in the Feature, reaching a step body only
+through the trailing `ExamplesRow`, decoded against an independently hand-copied expectation, while
+the pattern-referenced `sku` column is cross-checked equal from a DIFFERENT step than the one that
+decodes the row; `packages/gherkin/test/ExamplesRow.test.ts` covers `makeExamplesRow`/
+`decodeExamplesRow`'s own unit semantics and `correlateFeature`'s population of `exampleRow` directly.
 
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -266,16 +290,6 @@ own testing ecosystem). **Design locked** means the shape below is decided
 and ready to build; **spike in progress** means a working prototype is being
 built to de-risk the decision before it locks.
 
-- **An Examples column not referenced by any step's pattern — design locked.**
-  No `ScenarioOutline` callback exists in the DSL today — an Outline row goes
-  through the ordinary `Scenario` registrar, distinguished only by title
-  (`OutlineTitle.ts`) — so the fix reuses the existing "data a step needs but
-  no pattern hole captures" precedent instead of inventing a new construct:
-  extend `StepParams<P>`'s trailing tail (already used for DataTable/DocString,
-  BEH-EC-003/016) to optionally carry the raw Examples row (column name →
-  string) when the Feature declares a per-column `Schema`, decoded through
-  `Schema` the same way DataTable already is (ADR-EC-008).
-  ([#14](https://github.com/leaderiop/effect-cucumber/issues/14))
 - **Retries / `it.flakyTest` at the Scenario level — design locked.**
   `@effect/vitest@4.0.0-rc.112` ships `it.flakyTest`/`flakyTest`
   (`scoped → sandbox → retry(recurs(10), 30s cap) → orDie`), and this

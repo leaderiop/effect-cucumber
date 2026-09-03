@@ -17,12 +17,22 @@ export { describeFeature } from "./describeFeature.ts"
 export {
   createParameterTypeStore,
   DataTableError,
+  decodeExamplesRow,
   decodeHashes,
+  ExamplesRowError,
   LoadFeatureError,
   ParameterTypeStore,
   StepPatternError
 } from "@effect-cucumber/gherkin"
-export type { DataTable, DocString, ParameterTypeDefinition, ParsedFeature, StepArgs } from "@effect-cucumber/gherkin"
+export type {
+  DataTable,
+  DocString,
+  ExamplesRow,
+  ExamplesRowErrorReason,
+  ParameterTypeDefinition,
+  ParsedFeature,
+  StepArgs
+} from "@effect-cucumber/gherkin"
 export { loadFeature } from "./loadFeature.ts"
 
 /**

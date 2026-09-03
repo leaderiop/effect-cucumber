@@ -46,3 +46,7 @@ entries:
     file: "11-scenario-seeding.md"
     title: "Per-Scenario deterministic Random seeding"
     id_range: "023"
+  - id: "BEH-EC-024"
+    file: "12-outline-typed-example-column.md"
+    title: "An Outline column no step pattern references"
+    id_range: "024"

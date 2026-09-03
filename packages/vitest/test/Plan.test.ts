@@ -391,8 +391,26 @@ describe("planFeature — resolution and the scope chain", () => {
     expect(tagsOf(plan.scenarios[0]?.steps ?? [])).toEqual(["Resolved"])
     expect(tagsOf(plan.scenarios[1]?.steps ?? [])).toEqual(["Resolved"])
 
-    expect(resolvedOf(plan.scenarios[0]?.steps[0])?.args).toEqual([1])
-    expect(resolvedOf(plan.scenarios[1]?.steps[0])?.args).toEqual([2])
+    // ADR-EC-032/BEH-EC-024: an Outline row's own `ExamplesRow` is appended LAST, after the pattern's
+    // own coerced argument — every step of an Outline row carries it, whether or not that step's own
+    // pattern references any column.
+    const firstArgs = resolvedOf(plan.scenarios[0]?.steps[0])?.args
+    const secondArgs = resolvedOf(plan.scenarios[1]?.steps[0])?.args
+    expect(firstArgs).toHaveLength(2)
+    expect(secondArgs).toHaveLength(2)
+    expect(firstArgs?.[0]).toBe(1)
+    expect(secondArgs?.[0]).toBe(2)
+    expect(firstArgs?.[1]).toMatchObject({ _tag: "ExamplesRow", header: ["count"], values: ["1"], raw: { count: "1" } })
+    expect(secondArgs?.[1]).toMatchObject({
+      _tag: "ExamplesRow",
+      header: ["count"],
+      values: ["2"],
+      raw: { count: "2" }
+    })
+
+    // A plain Scenario's steps gain no trailing item at all (ADR-EC-032): `checkout`'s Background
+    // step, resolved by the FIRST test in this file, still carries `args: []` — proof that
+    // `exampleRow`'s `Option.none()` contributes nothing, rather than merely being unobserved here.
   })
 })
 

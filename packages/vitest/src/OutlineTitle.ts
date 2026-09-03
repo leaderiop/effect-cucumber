@@ -1,76 +1,30 @@
 /**
  * Emitted test titles: a plain Scenario's `name`, an Outline row's `name` plus `(col=value, ...)`,
- * and ` #2`, ` #3` for byte-identical titles (BEH-EC-010). The row is found through
- * `pickle.astNodeIds.at(-1)`, never `[0]` (`test/OutlineTitle.test.ts`).
+ * and ` #2`, ` #3` for byte-identical titles (BEH-EC-010). Reads `ParsedScenario.exampleRow`
+ * (ADR-EC-032) rather than walking the raw `GherkinDocument` itself — `Correlate.ts`'s `rowById`
+ * index is the one place a Pickle's row id (`pickle.astNodeIds.at(-1)`, never `[0]`) is resolved
+ * against the AST now, and this module reuses that result instead of resolving it a second time
+ * (`test/OutlineTitle.test.ts`).
  */
-import type { GherkinDocument, ParsedFeature } from "@effect-cucumber/gherkin"
-
-type Feature = NonNullable<GherkinDocument["feature"]>
-type FeatureChild = Feature["children"][number]
-type Rule = NonNullable<FeatureChild["rule"]>
-type RuleChild = Rule["children"][number]
-type Scenario = NonNullable<FeatureChild["scenario"]>
-type Examples = Scenario["examples"][number]
-type TableRow = NonNullable<Examples["tableHeader"]>
-
-const cellValuesOf = (row: TableRow): ReadonlyArray<string> => row.cells.map((cell) => cell.value)
-
-interface RowInfo {
-  readonly header: ReadonlyArray<string>
-  readonly values: ReadonlyArray<string>
-}
-
-const astScenariosOf = (document: GherkinDocument): ReadonlyArray<Scenario> => {
-  const feature = document.feature
-  if (feature === undefined) {
-    // Unreachable through `loadFeature` (`Parser.ts` rejects a document without a Feature); handled
-    // rather than thrown because the type allows it.
-    return []
-  }
-  const children: ReadonlyArray<FeatureChild | RuleChild> = feature.children.flatMap(
-    (child) => child.rule === undefined ? [child] : child.rule.children
-  )
-  const scenarios: Array<Scenario> = []
-  for (const child of children) {
-    const scenario = child.scenario
-    if (scenario !== undefined) {
-      scenarios.push(scenario)
-    }
-  }
-  return scenarios
-}
-
-const rowsOf = (document: GherkinDocument): ReadonlyMap<string, RowInfo> => {
-  const rows = new Map<string, RowInfo>()
-  for (const scenario of astScenariosOf(document)) {
-    for (const block of scenario.examples) {
-      const header: ReadonlyArray<string> = block.tableHeader === undefined
-        ? []
-        : cellValuesOf(block.tableHeader)
-      for (const row of block.tableBody) {
-        rows.set(row.id, { header, values: cellValuesOf(row) })
-      }
-    }
-  }
-  return rows
-}
+import type { ParsedFeature } from "@effect-cucumber/gherkin"
+import * as Option from "effect/Option"
 
 /**
  * Every Scenario's emitted test title, keyed by `ParsedScenario.id` (the `Pickle.id`, which is also
  * `ScenarioPlan.scenarioId`).
  */
 export const buildScenarioTitles = (feature: ParsedFeature): ReadonlyMap<string, string> => {
-  const rows = rowsOf(feature.document)
   const titles = new Map<string, string>()
   const occurrences = new Map<string, number>()
   for (const scenario of feature.allScenarios) {
-    // `undefined` here is a plain Scenario, whose only `astNodeId` is its own and is legitimately
-    // absent from a map of row ids.
-    const rowId = scenario.pickle.astNodeIds.at(-1)
-    const rowInfo = rowId === undefined ? undefined : rows.get(rowId)
-    const base = rowInfo === undefined
-      ? scenario.name
-      : `${scenario.name} (${rowInfo.header.map((name, index) => `${name}=${rowInfo.values[index] ?? ""}`).join(", ")})`
+    // `Option.none()` here is a plain Scenario, whose title carries no row suffix at all.
+    const base = Option.isNone(scenario.exampleRow) ? scenario.name : (() => {
+      const row = scenario.exampleRow.value
+      // Positional, not `row.raw[name]`: a duplicate column name (Validate.ts's own tolerated,
+      // first-wins case) must still show EVERY occurrence's own value in the title, which a
+      // deduplicated record lookup could not.
+      return `${scenario.name} (${row.header.map((name, index) => `${name}=${row.values[index] ?? ""}`).join(", ")})`
+    })()
     const seen = (occurrences.get(base) ?? 0) + 1
     occurrences.set(base, seen)
     titles.set(scenario.id, seen === 1 ? base : `${base} #${seen}`)
