@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [],
+  "files": ["src/spike-rule-narrowing-starved.ts"]
+}
