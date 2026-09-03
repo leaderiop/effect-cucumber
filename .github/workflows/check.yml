@@ -151,6 +151,25 @@ jobs:
       # both matrix legs would double its cost to re-prove the identical fact.
       - if: matrix.node-version == 24
         run: pnpm verify:watch-rerun
+      # `pnpm test` exiting 0 does NOT prove that a failing step's own pattern
+      # and its `.feature` file:line reach the reporter's own failure panel —
+      # only that `ScenarioEffect.test.ts`'s in-process `Exit` inspection
+      # observed a `.cause` attached to the failure value. The claim is about
+      # what a real `vitest run`'s DEFAULT reporter actually PRINTS: `.cause`
+      # is followed and rendered as "Caused by:" only when it carries a
+      # `.name`, which is exactly the primary-source finding
+      # `research/vitest-failure-reporter-surface.md` made and this gate
+      # re-proves against real stdout, not the types alone. See
+      # scripts/verify-failure-panel.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before this
+      # narrower gate's output. Node 24 ONLY: this is a structural claim about
+      # what the reporter prints, which does not vary by Node version, and the
+      # gate invokes vitest once against a dedicated standalone config —
+      # running it on both matrix legs would double its cost to re-prove the
+      # identical fact.
+      - if: matrix.node-version == 24
+        run: pnpm verify:failure-panel
       # `pnpm test` exiting 0 does NOT prove that the 24-item checklist in
       # spec/process/looks-done-but-isnt-checklist.md still runs in full, and it
       # proves nothing at all about ten of its items: a packed tarball's

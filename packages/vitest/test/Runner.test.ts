@@ -987,7 +987,8 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
               origin: "scenario",
               pattern: `${prefix}-step1`,
               body: bracketedStep(`${prefix}-step1`),
-              args: []
+              args: [],
+              uri: "test/runner-hook-ordering.feature"
             }
           },
           {
@@ -999,7 +1000,8 @@ describe("the phase's headline assertion: the full six-hook ordering across a tw
               origin: "scenario",
               pattern: `${prefix}-step2`,
               body: bracketedStep(`${prefix}-step2`),
-              args: []
+              args: [],
+              uri: "test/runner-hook-ordering.feature"
             }
           }
         ]

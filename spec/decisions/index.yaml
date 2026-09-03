@@ -98,3 +98,6 @@ entries:
   - id: "ADR-EC-032"
     file: "032-outline-examplesrow-carries-the-raw-row-decoded-on-demand-not-a-per-feature-schema.md"
     title: "An Outline column no step pattern references reaches a step body as a raw ExamplesRow in StepParams's trailing tail, decoded on demand — not a per-Feature Schema declaration"
+  - id: "ADR-EC-033"
+    file: "033-stepfailurelocation-attached-as-cause-not-a-rewritten-message.md"
+    title: "A failing step's pattern and .feature location are attached as .cause (a real Error, .name included), not folded into a rewritten top-level .message"

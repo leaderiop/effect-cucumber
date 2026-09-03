@@ -207,6 +207,26 @@ through the trailing `ExamplesRow`, decoded against an independently hand-copied
 the pattern-referenced `sku` column is cross-checked equal from a DIFFERENT step than the one that
 decodes the row; `packages/gherkin/test/ExamplesRow.test.ts` covers `makeExamplesRow`/
 `decodeExamplesRow`'s own unit semantics and `correlateFeature`'s population of `exampleRow` directly.
+**Citing the failing step's text and `.feature` file:line in the runner's failure panel** ships as
+`StepFailureLocation`/`attachStepFailureLocation`
+([ADR-EC-033](decisions/033-stepfailurelocation-attached-as-cause-not-a-rewritten-message.md),
+[BEH-EC-025](behaviors/13-failure-panel-location.md)) — `ScenarioEffect.ts` wraps a step's own body
+call (both failure lanes: a typed `Effect.fail` AND the more common thrown-exception defect) so its
+`.cause` carries a real `StepFailureLocation` `Error` before the failure can propagate, exactly as
+the roadmap locked, with one correction the real installed `vitest@4.1.11` forced: a bare
+`{ step, file, line }` object has no `.name`, and vitest's own default reporter only recurses into
+`.cause` and prints it as "Caused by:" when the cause carries one — so `StepFailureLocation` is a
+real `Error` subclass, not a plain object, which is what makes the roadmap's own named mechanism
+actually fire. No custom `Reporter`, and no `TestApi.ts` seam change — the rejected
+`context.annotate()` alternative's real cost (the `TestContext` `VitestTestApi.ts` currently
+discards) stays avoided exactly as planned. Closes
+[`spec/process/looks-done-but-isnt-checklist.md`](process/looks-done-but-isnt-checklist.md)'s P-24
+row, which had measured this claim FALSE. Proven at two levels: in-process, against `Exit`/`Cause`
+inspection (`packages/vitest/test/ScenarioEffect.test.ts`'s own RUN-06 describe block), and against a
+REAL `vitest run`'s printed stdout (`scripts/verify-failure-panel.sh`,
+`packages/vitest/test/failure-panel-fixture/failing.steps.test.ts` — a deliberately failing pair,
+excluded from every normal run, collected only by that script's own standalone
+`vitest.config.ts`).
 
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -318,15 +338,6 @@ built to de-risk the decision before it locks.
   Layer scope" decision — this narrows the RESULT type a Rule's Scenarios
   see, not a new build-once tier. (BDD Quality Ceiling Gap #3;
   [#23](https://github.com/leaderiop/effect-cucumber/issues/23))
-- **Citing the failing step's text and `.feature` file:line in the runner's
-  failure panel — design locked.** No custom `Reporter` needed — vitest's
-  default reporter already prints `error.cause` recursively as "Caused by:".
-  `ScenarioEffect.ts` wraps a step failure so `.cause` carries
-  `{ step: pattern, file, line }` before it reaches the reporter. Rejected
-  the `context.annotate()` alternative: it needs the vitest `TestContext`
-  that `TestApi.ts`'s deliberately framework-agnostic seam currently erases,
-  a real architectural cost `.cause` avoids entirely.
-  ([#18](https://github.com/leaderiop/effect-cucumber/issues/18))
 - **Global (suite-wide) `BeforeAll`/`AfterAll` hooks — design locked: docs
   only, no new DSL surface.** vitest's own `globalSetup`/`globalTeardown`
   already covers the suite-wide case today; every framework surveyed that

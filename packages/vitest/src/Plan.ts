@@ -58,6 +58,9 @@ export type ResolvedStep = {
   readonly pattern: string
   readonly body: StepBody
   readonly args: ReadonlyArray<unknown>
+  /** The `.feature` file this step lives in (`ParsedFeature.uri`) — carried so `ScenarioEffect.ts`
+   * can locate a step's own failure without reaching back into `Plan.ts`'s closure (ADR-EC-033). */
+  readonly uri: string
 }
 
 export type ResolvedPlannedStep = {
@@ -265,6 +268,7 @@ const planStep = (args: {
         origin: step.origin,
         pattern: only.pattern,
         body: only.definition.body,
+        uri: feature.uri,
         // `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is the
         // identity for them and the args list is byte-identical to the matcher's output.
         // `scenario.exampleRow` is appended LAST — after the step's own DataTable/DocString, never

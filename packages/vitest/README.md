@@ -305,6 +305,22 @@ glob matches reruns your WHOLE `test.include` set — conservative rather than s
 trade-off rather than hidden (ADR-EC-030's "Negative" section has the full reasoning and the alternatives it
 rejected).
 
+**A failing step's own pattern and its `.feature` file:line reach the failure panel, always on, no config.** A
+failing step's own failure (or a thrown exception, which is the common shape — `assert.strictEqual` throws) gains a
+`.cause` before it can propagate, and vitest's own DEFAULT reporter prints that recursively as a nested "Caused by:"
+block directly under the assertion — no custom `Reporter`, no config to opt in (ADR-EC-033, BEH-EC-025):
+
+```
+FAIL apples.steps.test.ts > Adding apples > Adding apples the wrong way
+AssertionError: expected 5 to equal 6
+    ...
+Caused by: StepFailureLocation: features/apples.feature:6: step "I should have {int} apples"
+```
+
+This is a different reach than `Effect.fn(stepText)`'s own tracing span below — that span exists whether the step
+passes or fails and reaches a stack trace/OpenTelemetry export; this reaches the SAME block a reader of `vitest run`'s
+own terminal output sees first, only on a failure.
+
 ## Observability recipe
 
 Every step and hook already runs inside an `Effect.fn(stepText)` span (ADR-EC-005), and Gherkin parameter values are
