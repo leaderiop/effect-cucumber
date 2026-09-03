@@ -2,7 +2,7 @@
  * The end-to-end proof: a real `.feature` source, a real `describeFeature` call, and real vitest tests that this
  * suite runs and reports.
  *
- * Carries: ADR-EC-006, ADR-EC-009, ADR-EC-010, ADR-EC-018, ADR-EC-019, ADR-EC-023, BEH-EC-007, BEH-EC-012, INV-EC-001, INV-EC-002, INV-EC-005.
+ * Carries: ADR-EC-006, ADR-EC-009, ADR-EC-010, ADR-EC-018, ADR-EC-019, ADR-EC-023, ADR-EC-034, BEH-EC-007, BEH-EC-012, BEH-EC-026, INV-EC-001, INV-EC-002, INV-EC-005.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
 import { assert, beforeAll, describe, expect, it } from "@effect/vitest"
@@ -1647,6 +1647,148 @@ orderedBlock(() => {
         "scenario-B",
         "released-B"
       ])
+    })
+  })
+})
+
+// -----------------------------------------------------------------------------------------------------------------
+// @retry (ADR-EC-034, BEH-EC-026): a Scenario that fails once then passes on a later attempt is reported PASSING —
+// not failing, not flaky-and-red — its per-Scenario Layer rebuilds fresh for EACH attempt while a shared tier beside
+// it in the SAME Feature stays built exactly once, its Before/After/BeforeStep/AfterStep hooks re-run on every
+// attempt (not only the first), and its ambient simulated TestClock is NOT reset between attempts. All four measured
+// against the real running framework, none of them assumed.
+// -----------------------------------------------------------------------------------------------------------------
+
+class RetryScopedProbe extends Context.Service<RetryScopedProbe, { readonly buildOrdinal: number }>()(
+  "RetryScopedProbe"
+) {}
+class RetrySharedProbe extends Context.Service<RetrySharedProbe, { readonly buildOrdinal: number }>()(
+  "RetrySharedProbe"
+) {}
+
+// How many times each tier below has been BUILT.
+let retryScopedBuilds = 0
+let retrySharedBuilds = 0
+
+// The per-Scenario tier — INV-EC-002's claim, extended by ADR-EC-034 to "fresh every ATTEMPT" under `@retry`.
+const retryScopedLayer = Layer.effect(
+  RetryScopedProbe,
+  Effect.sync(() => {
+    retryScopedBuilds += 1
+    return RetryScopedProbe.of({ buildOrdinal: retryScopedBuilds })
+  })
+)
+
+// The shared tier beside it — must stay built ONCE even though the Scenario next to it retries.
+const retrySharedLayer = Layer.effect(
+  RetrySharedProbe,
+  Effect.sync(() => {
+    retrySharedBuilds += 1
+    return RetrySharedProbe.of({ buildOrdinal: retrySharedBuilds })
+  })
+)
+
+let retryBeforeHookRuns = 0
+let retryAfterHookRuns = 0
+let retryBeforeStepRuns = 0
+let retryAfterStepRuns = 0
+let retryStepAttempts = 0
+const retryObservedScopedOrdinals: Array<number> = []
+const retryObservedSharedOrdinals: Array<number> = []
+const retryObservedClockMillis: Array<number> = []
+
+const retryFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Retry rebuild
+
+  @retry
+  Scenario: a flaky scenario retries until it passes
+    Given the retry scenario observes its own builds and clock
+    When the flaky retry step is attempted
+    Then the retry scenario is done
+`,
+    "test/retry-rebuild.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+// DECLARED AFTER the block that registered the Feature, for the declaration-order reason every other reader in this
+// file uses.
+orderedBlock(() => {
+  describeFeature(
+    retryFeature,
+    { shared: retrySharedLayer, perScenario: retryScopedLayer },
+    ({ After, Before, AfterStep, BeforeStep, Given, Then, When }) => {
+      Before(function*() {
+        retryBeforeHookRuns += 1
+        yield* Effect.void
+      })
+      After(function*() {
+        retryAfterHookRuns += 1
+        yield* Effect.void
+      })
+      BeforeStep(function*() {
+        retryBeforeStepRuns += 1
+        yield* Effect.void
+      })
+      AfterStep(function*() {
+        retryAfterStepRuns += 1
+        yield* Effect.void
+      })
+
+      Given("the retry scenario observes its own builds and clock", function*() {
+        const scoped = yield* RetryScopedProbe
+        const shared = yield* RetrySharedProbe
+        retryObservedScopedOrdinals.push(scoped.buildOrdinal)
+        retryObservedSharedOrdinals.push(shared.buildOrdinal)
+        retryObservedClockMillis.push(yield* Clock.currentTimeMillis)
+      })
+
+      When("the flaky retry step is attempted", function*() {
+        retryStepAttempts += 1
+        if (retryStepAttempts === 1) {
+          // Advances the simulated clock, THEN fails — so the SECOND attempt's own Given-step clock
+          // reading (captured above) tells a reader whether the clock reset or persisted across attempts.
+          yield* TestClock.adjust("1 hour")
+          assert.fail("deliberate failure on the first attempt, to prove @retry recovers")
+        }
+      })
+
+      Then("the retry scenario is done", function*() {
+        yield* Effect.void
+      })
+    }
+  )
+
+  describe("a Scenario tagged @retry (ADR-EC-034, BEH-EC-026)", () => {
+    it("is reported PASSING after failing its first attempt, having been attempted exactly twice", () => {
+      expect(retryStepAttempts).toBe(2)
+    })
+
+    it("rebuilds the per-Scenario Layer fresh for EACH attempt, while the shared Layer beside it builds only once", () => {
+      // The `[1, 2]` half is INV-EC-002 extended to "every attempt"; the `[1, 1]` half is design question 1 from
+      // ADR-EC-034 — the shared tier's own `Effect.provide` sits OUTSIDE `flakyTest`'s retried region by
+      // construction, so it never needed special-casing to stay build-once under retry.
+      expect(retryObservedScopedOrdinals).toEqual([1, 2])
+      expect(retryObservedSharedOrdinals).toEqual([1, 1])
+    })
+
+    it("re-runs Before/After/BeforeStep/AfterStep hooks on every attempt, not only the first", () => {
+      // Before/After: one Scenario-level gate/guarantee per ATTEMPT — twice.
+      expect(retryBeforeHookRuns).toBe(2)
+      expect(retryAfterHookRuns).toBe(2)
+      // BeforeStep/AfterStep: attempt 1 reaches Given+When (2 steps) before failing; attempt 2 reaches
+      // Given+When+Then (3 steps) and passes — 2 + 3 = 5 of each. `Effect.retry` re-interprets the WHOLE
+      // composed Scenario Effect from scratch each attempt, hooks included, not only the failing step.
+      expect(retryBeforeStepRuns).toBe(5)
+      expect(retryAfterStepRuns).toBe(5)
+    })
+
+    it("does NOT reset the ambient simulated TestClock between attempts — attempt 2 sees attempt 1's advanced time", () => {
+      // A real, documented consequence of exactly where `flakyTest` wraps (ADR-EC-034): the per-Scenario
+      // `TestClock`/`TestConsole` (`VitestTestApi.ts`'s `testEnv`, or `@effect/vitest`'s own default on the
+      // plain path) is provided OUTSIDE `flakyTest`'s own `Effect.retry`, exactly like the shared tier above —
+      // built once for the whole retried run, unlike the author-declared `perScenario` Layer.
+      expect(retryObservedClockMillis).toEqual([0, 3_600_000])
     })
   })
 })

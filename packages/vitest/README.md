@@ -55,7 +55,9 @@ Feature was attempted; a failure in it reports against the Feature's block. It r
 Two preconditions come with the once-per-Feature hooks and are stated rather than left to be discovered.
 `BeforeAllScenarios` is a once-cell: it runs inside the **first attempted Scenario's** timeout budget (raise
 `testTimeout` for slow setup), and its first exit — success, failure, or the timeout interrupting it — is what every later
-Scenario reports; it is never retried, so a Scenario-level `retry` cannot make a failed setup pass. And Scenarios must run
+Scenario reports; it is never retried, so a Scenario tagged `@retry` (below) cannot make a failed setup pass — every
+retry attempt re-observes the SAME already-settled once-cell rather than re-running `BeforeAllScenarios` itself
+(measured, not assumed: `packages/vitest/test/Runner.test.ts`, ADR-EC-034 design question 2). And Scenarios must run
 sequentially: a Feature emitted under `sequence.concurrent: true` or inside your own `describe.concurrent` is unsupported,
 because two Scenarios could enter the once-cell together.
 
@@ -246,6 +248,51 @@ and is absent from the report entirely rather than listed in it as skipped, and 
 Feature and the option that removed them prints whenever the filter removed anything. Both take a plain array of tag
 strings — never the runner's boolean tag-expression grammar — and `undefined` and `[]` both mean no filter. The
 runner's own `--tagsFilter` still works independently on whatever was registered; the two compose.
+
+**`@retry` wraps a Scenario in `@effect/vitest`'s own `flakyTest`, fixed at its own defaults.** Up to 10 attempts
+(`Schedule.recurs(10)`), bounded by a 30-second wall-clock cap — no numeric parameter, the same convention `@skip`/
+`@only` already carry:
+
+```ts
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
+// A `.feature` file with:
+//   @retry
+//   Scenario: A call that occasionally times out still gets asserted on
+//     When I call the flaky endpoint
+//     Then the response is recorded
+const feature = await loadFeature("./flaky.feature")
+
+class World extends Context.Service<World, { readonly name: string }>()("World") {
+  static readonly layer = Layer.succeed(this, World.of({ name: "world" }))
+}
+
+describeFeature(feature, World.layer, ({ Scenario }) => {
+  Scenario("A call that occasionally times out still gets asserted on", ({ Then, When }) => {
+    When("I call the flaky endpoint", function*() {
+      // A real call would go here — this step may fail; @retry gives it up to 10 attempts.
+      yield* Effect.void
+    })
+    Then("the response is recorded", function*() {
+      yield* Effect.void
+    })
+  })
+})
+```
+
+A Scenario that fails on an early attempt and passes on a later one is reported PASSING, not flaky-and-red. The
+per-Scenario Layer rebuilds fresh for EVERY attempt — the same "fresh every Scenario" guarantee `perScenario`
+already has, extended to "fresh every attempt" — and a `shared` Layer beside it in the same Feature still builds
+exactly once, unaffected by any Scenario next to it retrying. Two things `@retry` does NOT reset between attempts,
+worth knowing before reaching for it: `BeforeAllScenarios`'s once-cell (above — a retry cannot rescue a failed
+setup), and the ambient simulated `TestClock`/`TestConsole` — a step that advances the simulated clock on a failed
+attempt leaves that state in place for the next one. Every `Before`/`After`/`BeforeStep`/`AfterStep` hook on a
+`@retry` Scenario re-runs on every attempt, not only the first. See
+[ADR-EC-034](../../spec/decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md) and
+[BEH-EC-026](../../spec/behaviors/14-scenario-retries.md) for the full detail and the measurements behind each claim.
 
 **One prerequisite comes with tags, and it is not optional.** A tag must be DECLARED in your `vitest.config.ts`'s
 `test.tags`, or the runner rejects the emission — and a `--tagsFilter` pattern is validated against that same list
