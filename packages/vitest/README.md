@@ -542,6 +542,270 @@ describeFeature(feature, Layer.empty, ({ When }) => {
 })
 ```
 
+## Migrating from cucumber-js
+
+This section is about the TRANSLATION from cucumber-js's shapes to this library's — the DSL
+mechanics themselves (`Rule`, `Background`, the six hooks, `perScenario`/`shared`) are documented
+above and not repeated here. Grounded in a real migration feasibility assessment of a downstream
+consumer's own cucumber-js suite (dozens of `.feature` files, hundreds of step definitions, no
+`Scenario Outline`, no `Rule:`, no custom parameter types, data tables in a couple of files): the
+Gherkin surface itself almost always ports cleanly, because both tools parse the same `.feature`
+grammar through the same family of official Cucumber packages. **The real cost lives in one place —
+how cross-step state is modeled — plus a smaller, structural cost in how tag-scoped hooks are
+registered.** Both are covered below, in that order, followed by data tables (a non-issue) and an
+honest inventory of what does and doesn't have a mechanical 1:1 mapping.
+
+### 1. The `World` class → a Layer
+
+cucumber-js hands every Scenario a fresh instance of your `World` subclass and binds it to `this` in
+every step and hook; a step reads and writes plain mutable fields on it directly. Nothing about that
+instance is an `Effect` — so a step whose own logic needs to run as one has no ambient Effect context
+to compose into. It bridges out and back in by hand: build (or reuse) a `Layer`/runtime, run the
+Effect synchronously, and unpack the `Exit` into more mutable fields. That bridge is rebuilt, and paid
+for, on every step that needs it, because nothing carries an Effect fiber across step boundaries.
+
+In this library, a Scenario's steps are already `yield*`s inside one `Effect.gen` (this repository's
+own "Fail-fast is structural, not bookkept" design philosophy — see
+[`spec/overview.md`](../../spec/overview.md)). There is no `World` the framework constructs and binds
+to `this` — "the World" is an ordinary `Context.Service` your own Layer provides, exactly like any
+other dependency, and a step reads it with `yield* World`. A step's own Effect-shaped logic (a
+discount calculation, an API call, anything) is just another Effect the SAME `Effect.gen` composes
+directly — nothing to bridge, because the step and the logic are already running in the same place.
+
+BEFORE — a small, realistic cucumber-js `World` subclass, its manual `reset()` invoked from a
+tag-free `Before` hook, and a step that bridges into Effect-land per call:
+
+```ts
+import { Before, Given, setWorldConstructor, Then, When, World } from "@cucumber/cucumber"
+import * as Effect from "effect/Effect"
+import * as Schema from "effect/Schema"
+import assert from "node:assert"
+
+class DiscountError extends Schema.TaggedError<DiscountError>()("DiscountError", {
+  code: Schema.String
+}) {}
+
+const applyDiscount = (code: string, subtotal: number): Effect.Effect<number, DiscountError> =>
+  code === "SAVE10" ? Effect.succeed(subtotal * 0.9) : Effect.fail(new DiscountError({ code }))
+
+class CheckoutWorld extends World {
+  cartTotal = 0
+  lastError: string | undefined = undefined
+
+  reset(): void {
+    this.cartTotal = 0
+    this.lastError = undefined
+  }
+}
+
+setWorldConstructor(CheckoutWorld)
+
+Before(function(this: CheckoutWorld) {
+  this.reset()
+})
+
+Given("an empty cart", function(this: CheckoutWorld) {
+  this.cartTotal = 0
+})
+
+When("I add an item priced at {float}", function(this: CheckoutWorld, price: number) {
+  this.cartTotal += price
+})
+
+When("I apply the discount code {string}", function(this: CheckoutWorld, code: string) {
+  // The bridge into Effect-land, rebuilt on every step: nothing here is `yield*`-composable with
+  // the step before or after it, so every step that needs Effect pays this synchronous round trip.
+  const exit = Effect.runSyncExit(applyDiscount(code, this.cartTotal))
+  if (exit._tag === "Success") {
+    this.cartTotal = exit.value
+  } else {
+    this.lastError = code
+  }
+})
+
+Then("the cart total is {float}", function(this: CheckoutWorld, expected: number) {
+  assert.strictEqual(this.cartTotal, expected)
+})
+```
+
+AFTER — the same state as a `Context.Service`, provided as this library's default (per-Scenario)
+Layer through `describeFeature`'s second argument, with no bridge and no manual reset:
+
+```ts
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { assert } from "@effect/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Ref from "effect/Ref"
+import * as Schema from "effect/Schema"
+import { fileURLToPath } from "node:url"
+
+const feature = await loadFeature(fileURLToPath(new URL("./checkout.feature", import.meta.url)))
+
+class DiscountError extends Schema.TaggedError<DiscountError>()("DiscountError", {
+  code: Schema.String
+}) {}
+
+const applyDiscount = (code: string, subtotal: number): Effect.Effect<number, DiscountError> =>
+  code === "SAVE10" ? Effect.succeed(subtotal * 0.9) : Effect.fail(new DiscountError({ code }))
+
+// Every mutable `World` field becomes a `Ref` field on a `Context.Service`, per
+// spec/decisions/009-cross-step-state-lives-in-a-ref.md — never a closure variable.
+class World extends Context.Service<World, {
+  readonly cartTotal: Ref.Ref<number>
+  readonly lastError: Ref.Ref<string | undefined>
+}>()("World") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return World.of({
+        cartTotal: yield* Ref.make(0),
+        lastError: yield* Ref.make<string | undefined>(undefined)
+      })
+    })
+  )
+}
+
+// `World.layer` passed directly as the plain-Layer (per-Scenario) form: rebuilt fresh for every
+// Scenario, which is what cucumber-js's own per-Scenario `World` instance already gave you — so
+// there is no hook left to write just to reset it. A hand-rolled `reset()` invoked from `Before`
+// has no equivalent to port because there is nothing left for it to do.
+describeFeature(feature, World.layer, ({ Given, Then, When }) => {
+  Given("an empty cart", function*() {
+    yield* Ref.set((yield* World).cartTotal, 0)
+  })
+
+  When("I add an item priced at {float}", function*(price: number) {
+    yield* Ref.update((yield* World).cartTotal, (total) => total + price)
+  })
+
+  When("I apply the discount code {string}", function*(code: string) {
+    // The SAME `applyDiscount` Effect as the "before" side — but `yield*`'d directly into this
+    // step's own `Effect.gen`, not run synchronously and unpacked. No `Exit`, no bridge.
+    const { cartTotal, lastError } = yield* World
+    const subtotal = yield* Ref.get(cartTotal)
+    yield* applyDiscount(code, subtotal).pipe(
+      Effect.tap((discounted) => Ref.set(cartTotal, discounted)),
+      Effect.catchTag("DiscountError", (error) => Ref.set(lastError, error.code))
+    )
+  })
+
+  Then("the cart total is {float}", function*(expected: number) {
+    assert.strictEqual(yield* Ref.get((yield* World).cartTotal), expected)
+  })
+})
+```
+
+Two mechanical translations worth naming directly: a mutable field becomes a `Ref` field (never a
+bare `let`/`var`, [ADR-EC-009](../../spec/decisions/009-cross-step-state-lives-in-a-ref.md)), and a
+`World` method that built a Layer and called `Effect.runSync`/`Effect.runSyncExit` becomes an
+ordinary Effect the step `yield*`s — the "build a Layer per call" part disappears entirely, since the
+ambient Layer is already built once per Scenario by `describeFeature` itself. If your `World` has
+state that must genuinely survive across every Scenario in one Feature (not the common case — most
+`World` fields are reset every Scenario, matching this library's per-Scenario default), that state
+moves into the `shared` half of `{ shared, perScenario }` instead of `perScenario`, per the Layer
+scopes documented above — not into a bigger `World`.
+
+### 2. Tag-scoped `Before` hooks → per-Feature (or per-Rule) `Before`
+
+cucumber-js's `Before({ tags: "@admin" }, fn)` registers `fn` once, globally, and the framework
+decides at RUN time — per Scenario, by evaluating the tag expression — whether to run it. This
+library has no equivalent registration, because it has no global hook registry to filter: `Before` is
+always called from inside one `describeFeature` (or `Rule`) call, which already scopes it to that
+Feature's (or Rule's) Scenarios syntactically. The filtering a tag did at run time becomes a placement
+decision at registration time.
+
+**When a tag corresponds 1:1 to one Feature file** — the common case — move the hook body into that
+Feature's own `Before`:
+
+```ts
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Ref from "effect/Ref"
+import { fileURLToPath } from "node:url"
+
+const feature = await loadFeature(fileURLToPath(new URL("./admin-panel.feature", import.meta.url)))
+
+class Session extends Context.Service<Session, { readonly loggedInAs: Ref.Ref<string | undefined> }>()("Session") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return Session.of({ loggedInAs: yield* Ref.make<string | undefined>(undefined) })
+    })
+  )
+}
+
+describeFeature(feature, Session.layer, ({ Before, Given }) => {
+  // Replaces cucumber-js's globally registered `Before({ tags: "@admin" }, ...)`: this Feature file
+  // IS the `@admin` tag's scope, so the hook is registered here instead of filtered at runtime.
+  Before(function*() {
+    yield* Ref.set((yield* Session).loggedInAs, "admin@example.com")
+  })
+
+  Given("I am on the admin dashboard", function*() {
+    yield* Effect.void
+  })
+})
+```
+
+**When a tag scopes only a subset of one Feature's Scenarios**, and that subset is already grouped
+under a Gherkin `Rule:`, put the hook in that `Rule`'s own `Before` instead — a Rule-scoped `Before`
+runs only for its Rule's Scenarios and composes with the Feature's own (outer setup before inner, per
+the ordering already documented above), which is exactly the partial scoping a tag gave you.
+
+**When neither applies** — the tag cuts across Scenarios in more than one Feature file, or across a
+subset of one Feature's Scenarios that isn't `Rule:`-shaped — there is no structural equivalent to
+reach for. The honest options are to regroup those Scenarios under a `Rule:` (turning the tag boundary
+into a real Gherkin boundary), or to fold the conditional logic the hook was doing into the step
+bodies that need it. There is no tag-filtered hook registry in this library to lean on instead.
+
+### 3. Data tables
+
+This is not a real migration cost. A Gherkin data table under a step is the same table either way —
+cucumber-js hands it to your step as a raw array-of-arrays your own code decodes by hand; this
+library's `decodeHashes(schema)(table)` does the same decode through `Schema`, typed, with the
+`DataTable` type already carrying `raw`/`hashes` for the untyped case. See the `Background`'s cart
+table in [`worked-example-03-discounts.steps.test.ts`](./test/acceptance/worked-example-03-discounts.steps.test.ts)
+or [BEH-EC-016](../../spec/behaviors/06-datatable-and-docstring-arguments.md) — nothing about the
+`.feature` file itself changes.
+
+### 4. What does and doesn't have a mechanical 1:1 mapping
+
+**Clean port, mechanical:**
+
+- A `.feature` file's Gherkin text, unchanged — both tools parse the same grammar through the same
+  family of official `@cucumber/*` packages.
+- Simple `Given`/`When`/`Then` steps with no custom parameter type: the step's PATTERN copies over
+  verbatim (`{int}`, `{string}`, `{float}` come from the identical `@cucumber/cucumber-expressions`
+  engine); only the body's signature changes, from a callback/promise taking `this` to a generator
+  function returning an `Effect`.
+- Data tables (§3 above) and `DocString` arguments — decode mechanism changes, the `.feature` file
+  does not.
+
+**Real rework, not mechanical:**
+
+- The `World` class → Layer/`Context.Service` migration (§1). This is a state-management rewrite —
+  deciding what's per-Scenario versus Feature-shared state, moving every field into a `Ref`, and
+  removing the per-step Effect bridge — not a syntax swap. It is the highest-leverage piece of a
+  migration precisely because it is the only piece with real cost.
+- Tag-scoped global hooks whose tag doesn't align with a Feature or a `Rule:` boundary (§2's third
+  case) — there is no registration this library offers that reproduces run-time, cross-file tag
+  filtering; the Gherkin structure has to change to make the scope structural.
+
+**New capability cucumber-js never had, not merely a port:** compile-time Layer-completeness checking
+— [INV-EC-003](../../spec/invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides),
+this package's whole reason to exist per [`spec/overview.md`](../../spec/overview.md#design-philosophy).
+A step whose Effect requires a service the ambient Layer doesn't provide is a compile error where the
+step is written, by name — not a `World` field that's `undefined` at run time because some other
+Feature's setup never ran, discovered only when that Scenario executes. A migrated `World` that
+becomes a fully-typed `Context.Service` gets this guarantee for every step that reads it, which is not
+something the cucumber-js suite being migrated away from could offer at any point in its life. The
+simulated `TestClock` and captured `TestConsole` every Scenario already gets for free (documented
+above) are the same kind of gain: capability the migration adds, not merely preserves.
+
 ## Install
 
 ```sh
