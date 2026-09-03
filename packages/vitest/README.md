@@ -59,6 +59,14 @@ Scenario reports; it is never retried, so a Scenario-level `retry` cannot make a
 sequentially: a Feature emitted under `sequence.concurrent: true` or inside your own `describe.concurrent` is unsupported,
 because two Scenarios could enter the once-cell together.
 
+**Both once-per-Feature hooks are scoped to one Feature — for a hook that should run once per SUITE, reach for vitest's
+own `globalSetup`/`globalTeardown` instead.** `BeforeAllScenarios`/`AfterAllScenarios` deliberately don't reach across
+Features (each Feature's once-cell is its own), so a suite-wide "provision this once for every Feature in the run"
+concern belongs in `globalSetup` (an array of module paths in `vitest.config.ts`, each exporting a `setup`/`teardown`
+pair, run once per worker before/after the whole run) rather than a new construct here — this package intentionally adds
+no typed wrapper around it, since every comparable Cucumber implementation that supports a suite-wide hook hits the same
+worker-isolation caveat this library's Feature-scoped once-cell already documents above.
+
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
@@ -368,6 +376,74 @@ add `any` to a fixture to make it pass. Both exist because `pnpm build`, `pnpm t
 `pnpm lint` were all measured GREEN against an acceptance step body with one `any` substituted into it — no oxlint rule
 enabled in this repository objects to the escape-hatch type, which is exactly why the rules above are worth turning on
 in yours. See [`test/acceptance/README.md`](./test/acceptance/README.md) § "Zero `any`".
+
+## Testing helpers
+
+Two small, standalone helpers, exported as the `Testing` namespace — called directly inside a
+step's `Effect.gen` body, never through the DSL. Both are grounded in real duplication found in a
+downstream consumer's own acceptance suite; see
+[ADR-EC-028](../../spec/decisions/028-testing-failuretag-fails-the-assertion.md) and
+[ADR-EC-029](../../spec/decisions/029-settlethroughclock-parameterized-fork-adjust-join.md) for the
+full evidence and the rejected alternatives.
+
+**`Testing.failureTag(exit)` narrows a failed `Exit`'s typed tag, or fails the assertion itself.**
+It replaces the hand-rolled `fault instanceof Error && "_tag" in fault ? String(fault._tag) :
+"Unknown"` ternary a consumer otherwise writes against `Cause.squash(exit.cause)` — a pattern that
+silently degrades a defect, an interruption, an untagged error, or an unexpected success to the same
+opaque `"Unknown"` string. `Testing.failureTag` is a plain synchronous function — call it directly,
+the same way `@effect/vitest`'s own `assert.*` is already called inside a step body, never
+`yield*`'d — and it fails loudly, naming the actual value, on anything that isn't a failed `Exit`
+whose squashed value carries a string `_tag`:
+
+```ts
+import { Testing } from "@effect-cucumber/vitest"
+import { assert } from "@effect/vitest"
+import * as Effect from "effect/Effect"
+
+// Inside a step body (a bare generator, or one already wrapped with Effect.fn):
+function*() {
+  const exit = yield* Effect.exit(someEffectThatMightFail)
+  const tag = Testing.failureTag(exit) // "RateLimited", or the assertion fails naming the actual value
+  assert.strictEqual(tag, "RateLimited")
+}
+```
+
+**`Testing.settleThroughClock(effect, options?)` forks an Effect, advances the ambient `TestClock`
+until it settles, and joins it.** It replaces a fork/`TestClock.adjust`/poll/join helper found
+duplicated byte-for-byte across three files in the same downstream consumer, differing only in the
+adjust interval — which is exactly why `step` stays a caller parameter here rather than a hardcoded
+constant. `options.step` defaults to `"1 second"`, `options.maxSteps` to `12` (both grounded in the
+real call sites — see ADR-EC-029). If the forked Effect has not settled after `maxSteps` advances,
+`settleThroughClock` interrupts it and dies naming the bound tried, instead of hanging on `Fiber.join`
+indefinitely the way the duplicated helper it replaces would have:
+
+```ts
+import { describeFeature, loadFeature, Testing } from "@effect-cucumber/vitest"
+import { assert } from "@effect/vitest"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import { fileURLToPath } from "node:url"
+
+const feature = await loadFeature(fileURLToPath(new URL("./retries.feature", import.meta.url)))
+
+// A retry-with-backoff that needs real simulated time to resolve — three sleeps, in this example.
+const flakyCallWithBackoff = Effect.gen(function*() {
+  yield* Effect.sleep("1 minute")
+  yield* Effect.sleep("1 minute")
+  yield* Effect.sleep("1 minute")
+  return "ok"
+})
+
+describeFeature(feature, Layer.empty, ({ When }) => {
+  When("the flaky call eventually succeeds after retrying with backoff", function*() {
+    const result = yield* Testing.settleThroughClock(flakyCallWithBackoff, {
+      step: "1 minute",
+      maxSteps: 12
+    })
+    assert.strictEqual(result, "ok")
+  })
+})
+```
 
 ## Install
 

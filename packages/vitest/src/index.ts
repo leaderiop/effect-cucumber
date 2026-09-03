@@ -1,7 +1,7 @@
 /**
  * Public entry point of `@effect-cucumber/vitest`: `describeFeature`, `loadFeature`, `defineSteps`,
- * `gherkinTags`, the dsl types, and the error/warning types. One barrel, no subpath exports; its
- * rows are gate-checked against `spec/overview.md` by `scripts/verify-api-surface.sh`.
+ * `gherkinTags`, `Testing`, the dsl types, and the error/warning types. One barrel, no subpath
+ * exports; its rows are gate-checked against `spec/overview.md` by `scripts/verify-api-surface.sh`.
  *
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
@@ -70,3 +70,10 @@ export type {
   UnusedStepDefinitionWarning,
   UnusedStepDefinitionWarningReason
 } from "./Errors.ts"
+
+/**
+ * Standalone test-authoring helpers, called directly inside a step body rather than through the
+ * DSL: `Testing.failureTag` and `Testing.settleThroughClock` (ADR-EC-028, ADR-EC-029, BEH-EC-020,
+ * BEH-EC-021).
+ */
+export * as Testing from "./Testing.ts"

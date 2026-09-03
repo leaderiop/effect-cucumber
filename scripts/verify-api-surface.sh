@@ -27,6 +27,9 @@ for (const m of barrel.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
   }
 }
 for (const m of barrel.matchAll(/export\s+(?:const|function|class|type|interface)\s+([A-Za-z_$][\w$]*)/g)) exported.add(m[1])
+// `export * as Name from "..."` — a namespace re-export (e.g. `Testing`), matched separately since
+// neither pattern above sees the `* as` form.
+for (const m of barrel.matchAll(/export\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from/g)) exported.add(m[1])
 
 // 2. DSL members: every top-level (two-space-indented) `readonly Name:` member of an exported
 //    container interface; a `readonly` nested inside a member's parameter type is not a member.

@@ -89,6 +89,17 @@ Step definitions are reusable across Features as of the audit remediation (F-29,
 typed module value and every container's `use(module)` registers it into that
 container's scope, with a module needing a service the Feature's Layer lacks
 rejected by name at the `use` call.
+Two standalone testing helpers are built too, grounded in real duplication found in a
+downstream consumer's own acceptance suite: `Testing.failureTag(exit)` narrows a failed
+`Exit`'s typed tag or fails the current assertion by name — never a silent `"Unknown"`
+string — and `Testing.settleThroughClock(effect, { step?, maxSteps? })` forks an Effect,
+advances the ambient `TestClock` up to `maxSteps` times, and joins it, dying (not hanging)
+with a located message if it never settles. Both are exported from a new
+[`packages/vitest/src/Testing.ts`](../packages/vitest/src/Testing.ts), re-exported as the
+`Testing` namespace from the package barrel (
+[BEH-EC-020/021](behaviors/09-testing-helpers.md),
+[ADR-EC-028](decisions/028-testing-failuretag-fails-the-assertion.md),
+[ADR-EC-029](decisions/029-settlethroughclock-parameterized-fork-adjust-join.md)).
 The cross-step-state convention is enforced structurally for the first time —
 `scripts/verify-acceptance-ref-state.sh` gives INV-EC-006 its first real mechanism, over
 this repository's own acceptance suite (a consumer's step modules remain a convention;
@@ -229,15 +240,6 @@ built to de-risk the decision before it locks.
   README as a copyable template. An oxlint-plugin version moves to
   § Under consideration, revisited once oxlint's plugin API stabilizes.
   ([#16](https://github.com/leaderiop/effect-cucumber/issues/16))
-- **A bundled helper for asserting a Scenario's expected failure by tag —
-  design locked.** `Testing.failureTag(exit: Exit<A, E>): string` — returns
-  the tag on a typed failure, and fails the assertion itself (via
-  `@effect/vitest`'s own `assert`, serializing the actual value) on anything
-  else — a defect, a non-tagged error, a success — never a silent
-  `"Unknown"` string. Lives beside `@effect/vitest`'s own narrowing
-  assertions stylistically, as a peer helper rather than folded into this
-  package's own export surface. (BDD Quality Ceiling Gap #2;
-  [#21](https://github.com/leaderiop/effect-cucumber/issues/21))
 - **A Rule that can narrow or replace the ambient World's `Context.Service`,
   not only extend it — design locked, spike-proven.** A working `.types.ts`
   spike compiled a third `RuleRegistrar` overload —
