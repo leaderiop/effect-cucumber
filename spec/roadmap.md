@@ -239,17 +239,21 @@ built to de-risk the decision before it locks.
   package's own export surface. (BDD Quality Ceiling Gap #2;
   [#21](https://github.com/leaderiop/effect-cucumber/issues/21))
 - **A Rule that can narrow or replace the ambient World's `Context.Service`,
-  not only extend it — spike in progress, not yet locked.** Research
-  confirmed no existing `Context`/`Layer` combinator does shape-narrowing —
-  `Context.merge`/`Layer.provideMerge` only replace same-shape values for a
-  shared key, and the raw `Effect.updateContext` primitive that IS type-sound
-  for this needs a genuinely new type parameter
-  (`RuleRegistrar<ROut, RNarrowed = ROut>`) to reach the DSL, with zero
-  ecosystem prior art to lean on. A throwaway `.types.ts` spike is
-  prototyping that type parameter in isolation before the signature is
-  committed. Does not reopen [ADR-EC-006](decisions/006-two-layer-scopes-only.md)'s
-  "no third Layer scope" decision — this narrows the RESULT type a Rule's
-  Scenarios see, not a new build-once tier. (BDD Quality Ceiling Gap #3;
+  not only extend it — design locked, spike-proven.** A working `.types.ts`
+  spike compiled a third `RuleRegistrar` overload —
+  `<R2,E2,RNarrowed>(name, extraLayer, narrow: (dsl: RuleDsl<ROut|R2>) => RuleDsl<RNarrowed>, define: (dsl: RuleDsl<RNarrowed>) => void)`,
+  backed by real `Effect.updateContext` calls — with BOTH compiler directions
+  proven, not just designed: the narrowed World type-checks and runs
+  correctly (real service values reached only through the reshaped Tags),
+  and a step reaching for the now-hidden Feature-level ambient service is
+  rejected by name (`effect(missingEffectContext)`) — the exact case the
+  current `RuleDsl<ROut | R2>` union cannot reject today. One real,
+  documented cost: the context-reshaping function is hand-written per Rule,
+  not auto-derived, stated as a tradeoff rather than hidden (the same way
+  INV-EC-003's `any`-boundary cost is documented, not hidden). Does not
+  reopen [ADR-EC-006](decisions/006-two-layer-scopes-only.md)'s "no third
+  Layer scope" decision — this narrows the RESULT type a Rule's Scenarios
+  see, not a new build-once tier. (BDD Quality Ceiling Gap #3;
   [#23](https://github.com/leaderiop/effect-cucumber/issues/23))
 - **Citing the failing step's text and `.feature` file:line in the runner's
   failure panel — design locked.** No custom `Reporter` needed — vitest's
@@ -289,50 +293,93 @@ built to de-risk the decision before it locks.
   typed wrapper only if the concurrent-execution work below ends up
   touching this same hook-lifecycle code anyway.
   ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
-- **Tagged/conditional hooks — spike in progress.** cucumber-js/cucumber-jvm
-  let `Before`/`After` be scoped by a tag expression; this library's hooks
-  apply unconditionally within their Rule/Feature scope today. A spike is
-  wiring the Cucumber tag-expression grammar vitest's own `--tagsFilter`
-  already parses into an optional tag-expression parameter on
-  `Before`/`After`/`BeforeStep`/`AfterStep`, to confirm it composes cleanly
-  with the existing Rule/Feature scoping rather than replacing it.
-  ([#32](https://github.com/leaderiop/effect-cucumber/issues/32))
-- **Attachments — a `World.attach()` equivalent — spike in progress.**
-  vitest's `TestContext` isn't threaded into step/hook bodies at all today,
-  and `context.annotate()` is already proven to auto-render in the default
-  reporter with no custom `Reporter` needed (same finding backing the
-  failure-panel fix above). The open question is the plumbing: how a step
-  body reaches an attach-capable handle without breaking `TestApi.ts`'s
-  framework-agnostic seam. A spike is prototyping that plumbing before the
-  API shape locks. ([#33](https://github.com/leaderiop/effect-cucumber/issues/33))
-- **Rerun-failed-only support — spike in progress.** cucumber-js,
-  cucumber-jvm, and behave all ship a rerun-file mechanism; vitest's own
-  `--changed` (git-diff-based) doesn't cover "just what failed last run." A
-  spike is prototyping a rerun-manifest file (which Scenario failed, keyed
-  how) that a new `describeFeature` option filters against at REGISTRATION
-  time — the same mechanism `includeTags`/`excludeTags` already uses, not a
-  new runner path. ([#34](https://github.com/leaderiop/effect-cucumber/issues/34))
-- **`Effect.Metric` at the Scenario emission boundary — spike in progress.**
-  `Metric.timer` (duration) and `Metric.counter` (pass/fail, tagged by
-  outcome) composing with the `@effect/opentelemetry` exporter recipe below.
-  A spike is wiring both into `ScenarioEffect.ts`/`Runner.ts` as always-on
-  ambient instrumentation (consistent with how `Effect.fn` tracing spans are
-  already always-on, ADR-EC-005) to see the actual shape and cost before
-  locking the design. ([#26](https://github.com/leaderiop/effect-cucumber/issues/26))
-- **Concurrent Scenario execution — spike in progress.** Verdict from
-  research, unhedged: realistically buildable with bounded new code, not
-  blocked upstream in `@effect/vitest`. `Runner.ts`'s existing once-cell for
-  `BeforeAllScenarios` is empirically race-safe (3 concurrent Scenarios,
-  build count exactly 1) — the real, reproduced bug is that
-  `BeforeAllScenarios` runs inside whichever Scenario's own `testTimeout`
-  reaches it first, so a short-timeout sibling's interrupt can cascade and
-  kill an unrelated long-timeout sibling under concurrency. A spike is
-  moving `BeforeAllScenarios`/`AfterAllScenarios` onto a real vitest
-  `beforeAll` with its own timeout budget instead of piggybacking on the
-  first Scenario's, and re-deriving the `AfterAllScenarios` "nothing
-  attempted" carve-out against that new trigger.
-  ([#37](https://github.com/leaderiop/effect-cucumber/issues/37); feasibility
-  research: [#36](https://github.com/leaderiop/effect-cucumber/issues/36))
+- **Tagged/conditional hooks — design locked, spike-proven.** A working
+  spike ran a real `Before("@db and not @slow", fn)`-style overload against
+  a real tagged `.feature` fixture — 4/4 passing, confirmed running only for
+  matching Scenarios. Correction to the original research: the parser isn't
+  `@cucumber/tag-expressions` (not in this repo's dependency tree at all) —
+  it's `@vitest/runner`'s own exported `createTagsFilter`, the same function
+  backing vitest's `--tagsFilter`, so no new dependency is needed.
+  `BeforeAllScenarios`/`AfterAllScenarios` are excluded from the overload —
+  no coherent single-Scenario tag set exists to check there, consistent with
+  their existing Rule-dsl restriction. Composes additively with existing
+  Rule/Feature scoping; the existing "independent batch, combined failure"
+  guarantee survives (a filtered-out hook is excluded before the batch is
+  assembled, proven with a dedicated test). One recurring cost carried over
+  from ADR-EC-026: this needs the same pre-declared "tag universe" CLI
+  filtering already requires. ([#32](https://github.com/leaderiop/effect-cucumber/issues/32))
+- **Attachments — a `World.attach()` equivalent — design locked,
+  spike-proven.** A working spike attached data from inside a step and saw
+  it rendered directly under a real failure panel via `context.annotate()`
+  — end to end, not simulated. `VitestTestApi.ts` (already permitted to name
+  vitest) captures the per-test `TestContext` from `@effect/vitest`'s
+  `it.effect` callback and provides a live `Attachments` service built from
+  it, mirroring `testEnv`'s existing crossing mechanism. Needs `TestApi.ts`
+  widened to `Scope.Scope | Attachments` — a small, type-only,
+  seam-compliant change (`scripts/verify-testapi-seam.sh` still passes
+  against it). `AfterAllScenarios` never receives a live `TestContext`, so
+  `Attachments` is a **compile-time-rejected** capability there, not a
+  silent runtime no-op — consistent with how per-Scenario-only services are
+  already rejected by name at that hook elsewhere in this DSL.
+  ([#33](https://github.com/leaderiop/effect-cucumber/issues/33))
+- **Rerun-failed-only support — design locked, spike-proven.** A working
+  spike ran the full write→read cycle for real: a 3-Scenario Feature with
+  one deliberate failure, run once (all 3 ran), a script converted vitest's
+  own `--reporter=json` output into a manifest, run again with
+  `rerunFailedOnly` — exactly 1 of 3 registered. Key finding:
+  `ScenarioKey.ts`'s existing `(ruleId, astName)` key is NOT reusable across
+  runs — `ruleId`/`ParsedScenario.id` come from a fresh `IdGenerator.uuid()`
+  on every `loadFeature()` call, random per parse. The real stable key is
+  `(featureName, ruleName, emittedTitle)`, reusing `OutlineTitle.ts`'s
+  existing per-row disambiguation. Write side is a standalone script over
+  `--reporter=json`, not a custom `Reporter` — `task.meta` is
+  JSON-reporter-only ([#17](https://github.com/leaderiop/effect-cucumber/issues/17)'s
+  finding already settled this). Two rough edges found by actually running
+  it, both must land before this ships (not optional polish): a Feature
+  whose every key is stale collapses to vitest's own "No test found in
+  suite" crash — needs a synthetic skip node — and the key needs the
+  Feature's file `uri` added, since same-named Features in different files
+  would otherwise collide. ([#34](https://github.com/leaderiop/effect-cucumber/issues/34))
+- **`Effect.Metric` at the Scenario emission boundary — design locked,
+  spike-proven, ships always-on.** A working spike wired `Metric.timer`
+  (duration) and `Metric.counter` (pass/fail, tagged by outcome) into the
+  REAL `Runner.ts` at both its `buildScenarioEffect` call sites (+16/−4
+  lines, zero `TestApi.ts` changes) — full 899-test suite green, and the
+  metrics themselves observed correct when actually run
+  (`scenario.result: {pass:1, fail:1}`, `scenario.duration` histogram
+  matching). Always-on, no opt-out, consistent with `Effect.fn` tracing
+  spans already being always-on (ADR-EC-005). Composes with the
+  `@effect/opentelemetry` exporter recipe already shipped in
+  `packages/vitest/README.md`. Two things this locks in for #13 (retries)
+  to honor: the metrics wrapper must sit OUTSIDE any retry combinator, or a
+  Scenario that fails then eventually passes double/triple-counts terminal
+  outcomes; and every Scenario runs under the ambient simulated `TestClock`
+  (ADR-EC-018), so `scenario.duration` reads ~0ms unless a step itself
+  advances the clock — worth a documented caveat beside the metric.
+  ([#26](https://github.com/leaderiop/effect-cucumber/issues/26))
+- **Concurrent Scenario execution — design locked, spike-proven, ships with
+  a new per-Scenario timeout knob.** A working spike reproduced the exact
+  bug for real first (a 400ms `BeforeAllScenarios`, a 100ms-timeout Scenario
+  and a 2000ms-timeout Scenario under `describe.concurrent`: the long one
+  failed too, killed by the short one's interrupt cascade) and then
+  confirmed the fix resolves it (both pass in ~2ms) by moving
+  `BeforeAllScenarios`/`AfterAllScenarios` onto a real vitest `beforeAll`
+  with its own timeout budget, registered once at the Feature block level,
+  every Scenario reading a captured `Exit` rather than racing the batch.
+  Caught and fixed a real regression risk along the way: a naive "let
+  `beforeAll` throw" version breaks BEH-EC-017's "same failure reported by
+  every Scenario individually" guarantee (a real vitest `beforeAll` failure
+  marks siblings *skipped*, not failed) — fixed by capturing the `Exit`
+  instead. The "nothing attempted" carve-out needed no new tracking — vitest
+  already withholds a block's `beforeAll`/`afterAll` when nothing inside it
+  will run (verified against `.skip`, `-t`, and `--tagsFilter`, including
+  nested Rules). Full monorepo suite (900 tests) unchanged under sequential
+  execution. Ships together with a per-Scenario `testTimeout` configuration
+  knob — surfaced by the spike as a real gap, and the actual thing that
+  makes concurrent execution useful (without it, every Scenario still
+  shares the Feature's one timeout, undercutting the point of running them
+  concurrently). ([#37](https://github.com/leaderiop/effect-cucumber/issues/37);
+  feasibility research: [#36](https://github.com/leaderiop/effect-cucumber/issues/36))
 
 ## Under consideration
 
