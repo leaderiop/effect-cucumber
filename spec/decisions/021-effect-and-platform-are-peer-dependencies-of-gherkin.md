@@ -40,7 +40,7 @@ The decision reached is not that ADR-EC-015 was mistaken — it's that this proj
 ## Follow-up (not decided by this ADR)
 
 - Whether `ParameterTypeStore` migrates from a plain-object registry to a `Context.Service`/`Layer`-provided one, now that [ADR-EC-007](007-cucumber-expressions-for-step-matching.md)'s "impossible" constraint is gone — this ADR only removes the constraint; it does not decide the migration.
-- Which package owns the `ManagedRuntime` construction (`@effect-cucumber/vitest` itself, or a separate thin adapter shared with a future non-vitest runner package) — raised during design, not yet settled.
+- ~~Which package owns the `ManagedRuntime` construction (`@effect-cucumber/vitest` itself, or a separate thin adapter shared with a future non-vitest runner package) — raised during design, not yet settled.~~ — **resolved**, see [ADR-EC-041](041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md): stays in `@effect-cucumber/vitest` until a second runner package actually exists.
 - ~~The actual rewrite of `Source.ts`, `loadFeature.ts`, and `Errors.ts`~~ — **done**, see the second Correction below. `BEH-EC-001` is updated to match; `BEH-EC-014`/`BEH-EC-015` were not touched by this rewrite (no change to their normative content was needed).
 - Bun/Deno concrete `FileSystem` Layers for `gherkin`'s own use are not built — `gherkin` never depends on a concrete platform implementation by design (see Decision), so this was never gherkin's to build; a future runner package targeting Bun/Deno would supply its own.
 

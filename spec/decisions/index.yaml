@@ -122,3 +122,6 @@ entries:
   - id: "ADR-EC-040"
     file: "040-beforeallscenarios-real-beforeall-captured-exit-and-timeout-suffix-tag.md"
     title: "BeforeAllScenarios moves off a hand-rolled once-cell onto a real vitest beforeAll, captures its Exit rather than throwing, and Scenarios gain a @timeout-<ms> tag for concurrent execution to be useful"
+  - id: "ADR-EC-041"
+    file: "041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md"
+    title: "ManagedRuntime construction stays owned by @effect-cucumber/vitest until a second runner package actually exists — resolves a Follow-up item from ADR-EC-021"

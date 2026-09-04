@@ -520,29 +520,39 @@ decisions, none blocking consumer adoption.
 
 ## Under consideration
 
-- **An oxlint plugin for LINT-01** — deferred behind the shipped shell-script
-  route ([`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh),
+All five items this section used to carry are now resolved, most of them
+already had been (this section's own prose had gone stale, not the repo):
+
+- **An oxlint plugin for LINT-01** — still deferred, the one genuinely open
+  item. Behind the shipped shell-script route
+  ([`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh),
   documented in `packages/vitest/README.md`'s "Recommended lint and compiler
   configuration" section) until oxlint's JS/TS plugin API graduates out of
   alpha; this repo's own `tools/oxlint/effect/` proves the API works today,
-  the concern is upstream stability, not feasibility.
-- **Which package owns `ManagedRuntime` construction** — `@effect-cucumber/vitest` itself, or a separate thin
-  adapter shared with a future non-vitest runner package. Raised as a Follow-up item in
-  [ADR-EC-021](decisions/021-effect-and-platform-are-peer-dependencies-of-gherkin.md) during the `Source.ts`/
-  `loadFeature.ts`/`Errors.ts` rewrite; not decided by that ADR and still open.
-- **Vendored `@effect/oxc` rules** (`tools/oxlint/effect/`, from GSD Stack
-  research) — 4 of Effect's own 5 unpublished oxlint rules, MIT-licensed,
-  with `no-unused-internal` deliberately excluded (its one rule requiring
-  `typescript <7.0.0`, incompatible with this project's TS 7). Currently
-  untracked, not yet formally adopted — decide during Phase 0 planning
-  whether to commit `tools/` and wire it into the lint config, or drop it.
-- **A scheduled canary CI job against a floating `effect@rc`** — GSD Stack
-  research's own prescription, not an ecosystem convention (no comparable
-  project does this). Optional, not a hard requirement for Phase 0.
-- **dprint's `semiColons: "asi"` (no-semicolon) house style** — Effect's own
-  convention, flagged by research as a real stylistic commitment worth an
-  explicit yes/no rather than silent inheritance when `dprint.json` is
-  copied over in Phase 0.
+  the concern is upstream stability, not feasibility. Revisit when oxlint's
+  plugin API stabilizes.
+- **Which package owns `ManagedRuntime` construction** — resolved by
+  [ADR-EC-041](decisions/041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md):
+  stays in `packages/vitest/src/loadFeature.ts`, no adapter package, until a
+  second non-vitest runner package is actually proposed.
+- **Vendored `@effect/oxc` rules** (`tools/oxlint/effect/`) — already
+  adopted, not merely proposed: 4 of Effect's own 5 unpublished oxlint rules
+  are git-tracked, wired into `.oxlintrc.json`'s `jsPlugins`/`rules`, run on
+  every push via `pnpm lint`, and `pnpm verify:oxlint-plugin` guards against
+  the wiring silently rotting into a no-op. `no-unused-internal` stays
+  excluded (its one rule requiring `typescript <7.0.0`, incompatible with
+  this project's TS 7).
+- **A scheduled canary CI job against a floating `effect@rc`** — shipped:
+  [`.github/workflows/canary.yml`](../.github/workflows/canary.yml) runs
+  weekly (and on demand) against whatever `effect`, `@effect/vitest` and
+  `@effect/platform-node` publish under their own `rc` dist-tag that day,
+  via [`scripts/canary-bump-effect-rc.mjs`](../scripts/canary-bump-effect-rc.mjs)
+  — never this repo's own committed pin, and never a gate on a PR or a
+  release.
+- **dprint's `semiColons: "asi"` (no-semicolon) house style** — already
+  decided and live: `dprint.json`'s `typescript.semiColons` has been `"asi"`
+  since Phase 0 (`0831e31`, "adopt Effect's dprint config"), enforced by
+  `pnpm lint`'s `dprint check` on every push.
 
 ## Explicitly not planned
 
