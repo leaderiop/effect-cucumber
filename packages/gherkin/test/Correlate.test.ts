@@ -2,10 +2,10 @@
  * BEH-EC-014, asserted row by row on the F21 fixture.
  */
 import { type GherkinDocument, IdGenerator, type Pickle, StepKeywordType } from "@cucumber/messages"
+import { assert, describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
-import { describe, expect, it } from "vitest"
 import {
   correlateFeature,
   type CorrelationResult,
@@ -475,16 +475,19 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
     expect(table.line).toBe(onlyStep().line)
   })
 
-  it("F25: the wrapped DataTable's hashes() decodes the fixture's rows", () => {
-    // The end-to-end join: fixture file -> parse -> compile -> correlate -> wrapper -> records.
-    // Every earlier test in this block reads a field; this one CALLS the wrapper, which is the
-    // only way to prove `makeDataTable` was handed the real rows and not an empty stand-in.
-    //
-    // `Effect.runSync` directly rather than the `Outcome` helper `DataTable.test.ts` builds:
-    // this table has no duplicate header column, so a failure here is a genuine regression and
-    // should surface as a thrown Effect failure rather than be converted into a value first.
-    expect(Effect.runSync(dataTableAt(onlyStep(), 1).hashes())).toEqual([{ a: "1", b: "2" }])
-  })
+  it.effect("F25: the wrapped DataTable's hashes() decodes the fixture's rows", () =>
+    Effect.gen(function*() {
+      // The end-to-end join: fixture file -> parse -> compile -> correlate -> wrapper -> records.
+      // Every earlier test in this block reads a field; this one CALLS the wrapper, which is the
+      // only way to prove `makeDataTable` was handed the real rows and not an empty stand-in.
+      //
+      // `yield*`-ed directly rather than the `succeeds`/`fails` helpers `DataTable.test.ts`
+      // builds: this table has no duplicate header column, so a failure here is a genuine
+      // regression and should fail the test via the Effect's own failure channel rather than be
+      // converted into a value first.
+      const rows = yield* dataTableAt(onlyStep(), 1).hashes()
+      assert.deepStrictEqual(rows, [{ a: "1", b: "2" }])
+    }))
 })
 
 describe("stepArguments across the remaining argument shapes (F33, F29)", () => {

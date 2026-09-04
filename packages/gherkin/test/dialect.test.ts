@@ -2,30 +2,12 @@
  * Gap 5: a `# language:` non-English feature file parses, correlates and validates with ZERO
  * special handling.
  */
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
-import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
-import { describe, expect, it } from "vitest"
 import { isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
-import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
-import { ParameterTypeStore } from "../src/ParameterTypes.ts"
-
-/**
- * `loadFeature` requires `FileSystem.FileSystem | ParameterTypeStore` as of ADR-EC-023 — real
- * `NodeFileSystem` isn't `Effect.runSync`-safe (suspends), so `load` provides both Layers and
- * runs via `Effect.runPromise`. `parseFeature` only requires `ParameterTypeStore`, and
- * `Layer.succeed`-backed services ARE `runSync`-safe (confirmed by reproduction), so `parse`
- * still uses `Effect.runSync`. Neither test in this file cares about custom parameter types, so
- * both always provide `ParameterTypeStore.Default`.
- */
-const load = (path: string) =>
-  Effect.runPromise(
-    loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-  )
-const parse = (source: string, uri: string) =>
-  Effect.runSync(parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default)))
+import { load, parse } from "./support/loadFixture.ts"
 
 const frenchPath = fileURLToPath(new URL("./fixtures/dialect-fr.feature", import.meta.url))
 
@@ -46,51 +28,61 @@ const stepAt = (scenario: ParsedScenario, at: number): ParsedStep => {
 }
 
 describe("loadFeature on dialect-fr.feature (F19)", () => {
-  it("loads a French feature file without throwing", async () => {
-    await expect(load(frenchPath)).resolves.not.toThrow()
-  })
+  it.effect("loads a French feature file without throwing", () =>
+    Effect.gen(function*() {
+      // Failure here fails the Effect, which fails the test — the same guarantee
+      // `resolves.not.toThrow()` gave, now enforced by it.effect itself.
+      yield* load(frenchPath)
+    }))
 
-  it("reports the declared language and the localised Feature keyword", async () => {
-    const feature = await load(frenchPath)
-    expect(feature.language).toBe("fr")
-    expect(feature.keyword).toBe("Fonctionnalité")
-    expect(feature.name).toBe("un fichier écrit en français")
-  })
+  it.effect("reports the declared language and the localised Feature keyword", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(frenchPath)
+      assert.strictEqual(feature.language, "fr")
+      assert.strictEqual(feature.keyword, "Fonctionnalité")
+      assert.strictEqual(feature.name, "un fichier écrit en français")
+    }))
 
-  it("correlates the single Scenario with its localised keyword", async () => {
-    const feature = await load(frenchPath)
-    const scenario = scenarioAt(feature.allScenarios, 0)
-    expect(feature.allScenarios).toHaveLength(1)
-    expect(scenario.keyword).toBe("Scénario")
-    expect(scenario.name).toBe("un scénario simple")
-  })
+  it.effect("correlates the single Scenario with its localised keyword", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(frenchPath)
+      const scenario = scenarioAt(feature.allScenarios, 0)
+      assert.lengthOf(feature.allScenarios, 1)
+      assert.strictEqual(scenario.keyword, "Scénario")
+      assert.strictEqual(scenario.name, "un scénario simple")
+    }))
 
-  it("puts the Contexte step first, recognised as a feature background step", async () => {
-    const feature = await load(frenchPath)
-    const step = stepAt(scenarioAt(feature.allScenarios, 0), 0)
-    expect(step.origin).toBe("feature-background")
-    expect(step.text).toBe("le contexte est prêt")
-  })
+  it.effect("puts the Contexte step first, recognised as a feature background step", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(frenchPath)
+      const step = stepAt(scenarioAt(feature.allScenarios, 0), 0)
+      assert.strictEqual(step.origin, "feature-background")
+      assert.strictEqual(step.text, "le contexte est prêt")
+    }))
 
-  it("trims the trailing space off the localised step keyword", async () => {
-    // The raw AST keyword is `"Etant donné que "`. `toBe`, not `toContain`: the assertion is
-    // about the trailing space, so a substring match would pass on the untrimmed value.
-    const feature = await load(frenchPath)
-    expect(stepAt(scenarioAt(feature.allScenarios, 0), 0).keyword).toBe("Etant donné que")
-  })
+  it.effect("trims the trailing space off the localised step keyword", () =>
+    Effect.gen(function*() {
+      // The raw AST keyword is `"Etant donné que "`. `strictEqual`, not a substring check: the
+      // assertion is about the trailing space, so a substring match would pass on the untrimmed
+      // value.
+      const feature = yield* load(frenchPath)
+      assert.strictEqual(stepAt(scenarioAt(feature.allScenarios, 0), 0).keyword, "Etant donné que")
+    }))
 
-  it("keeps run order, with the Scenario's own step after the background one", async () => {
-    const feature = await load(frenchPath)
-    const scenario = scenarioAt(feature.allScenarios, 0)
-    expect(scenario.steps).toHaveLength(2)
-    expect(stepAt(scenario, 1).origin).toBe("scenario")
-    expect(stepAt(scenario, 1).text).toBe("le scénario démarre")
-  })
+  it.effect("keeps run order, with the Scenario's own step after the background one", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(frenchPath)
+      const scenario = scenarioAt(feature.allScenarios, 0)
+      assert.lengthOf(scenario.steps, 2)
+      assert.strictEqual(stepAt(scenario, 1).origin, "scenario")
+      assert.strictEqual(stepAt(scenario, 1).text, "le scénario démarre")
+    }))
 
-  it("produces no warnings for a legitimate non-English file", async () => {
-    const feature = await load(frenchPath)
-    expect(feature.warnings).toEqual([])
-  })
+  it.effect("produces no warnings for a legitimate non-English file", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(frenchPath)
+      assert.deepStrictEqual(feature.warnings, [])
+    }))
 })
 
 /**
@@ -113,31 +105,33 @@ Fonctionnalité: un plan de scénario en français
 
 describe("a prototype-key language never reads through to Object.prototype", () => {
   it("answers false for every keyword lookup instead of throwing or returning a function", () => {
-    expect(isOutlineKeyword("constructor", "Scenario Outline")).toBe(false)
-    expect(isScenarioKeyword("toString", "Scenario")).toBe(false)
-    expect(isOutlineKeyword("__proto__", "Scenario Outline")).toBe(false)
+    assert.strictEqual(isOutlineKeyword("constructor", "Scenario Outline"), false)
+    assert.strictEqual(isScenarioKeyword("toString", "Scenario"), false)
+    assert.strictEqual(isOutlineKeyword("__proto__", "Scenario Outline"), false)
   })
 })
 
 describe("Outline detection is dialect-independent", () => {
   it("recognises the French Scenario Outline keyword through the dialect table", () => {
-    expect(isOutlineKeyword("fr", "Plan du scénario")).toBe(true)
-    expect(isOutlineKeyword("fr", "Scénario")).toBe(false)
+    assert.strictEqual(isOutlineKeyword("fr", "Plan du scénario"), true)
+    assert.strictEqual(isOutlineKeyword("fr", "Scénario"), false)
   })
 
-  it("compiles one scenario per Exemples row without raising a keyword mismatch", () => {
-    const feature = parse(frenchOutline, "inline-fr-outline.feature")
-    expect(feature.allScenarios).toHaveLength(2)
-    expect(scenarioAt(feature.allScenarios, 0).name).toBe("utiliser marteau")
-    expect(scenarioAt(feature.allScenarios, 1).name).toBe("utiliser tournevis")
-    expect(feature.warnings).toEqual([])
-  })
+  it.effect("compiles one scenario per Exemples row without raising a keyword mismatch", () =>
+    Effect.gen(function*() {
+      const feature = yield* parse(frenchOutline, "inline-fr-outline.feature")
+      assert.lengthOf(feature.allScenarios, 2)
+      assert.strictEqual(scenarioAt(feature.allScenarios, 0).name, "utiliser marteau")
+      assert.strictEqual(scenarioAt(feature.allScenarios, 1).name, "utiliser tournevis")
+      assert.deepStrictEqual(feature.warnings, [])
+    }))
 
-  it("does not mistake the French Outline for a plain Scenario with Examples", () => {
-    // A hardcoded English keyword list would classify `Plan du scénario` as a plain Scenario and
-    // throw `ScenarioKeywordWithExamples` here; the dialect lookup is what makes it pass.
-    expect(() => parse(frenchOutline, "inline-fr-outline.feature")).not.toThrow()
-    expect(scenarioAt(parse(frenchOutline, "inline-fr-outline.feature").allScenarios, 0).keyword)
-      .toBe("Plan du scénario")
-  })
+  it.effect("does not mistake the French Outline for a plain Scenario with Examples", () =>
+    Effect.gen(function*() {
+      // A hardcoded English keyword list would classify `Plan du scénario` as a plain Scenario
+      // and fail this Effect with `ScenarioKeywordWithExamples`; the dialect lookup is what makes
+      // it succeed instead.
+      const feature = yield* parse(frenchOutline, "inline-fr-outline.feature")
+      assert.strictEqual(scenarioAt(feature.allScenarios, 0).keyword, "Plan du scénario")
+    }))
 })

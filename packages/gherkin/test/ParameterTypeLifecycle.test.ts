@@ -1,34 +1,15 @@
 /**
  * BEH-EC-015 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
  */
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
-import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import { fileURLToPath } from "node:url"
-import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
-import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParameterTypeRegistry } from "../src/Model.ts"
 import { createParameterTypeStore, ParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import { createStepMatcher, type StepMatch } from "../src/StepMatcher.ts"
-
-/**
- * `loadFeature` requires `FileSystem.FileSystem | ParameterTypeStore` as of ADR-EC-023 —
- * `Effect.runSync` no longer works for `loadFeature` (the real `NodeFileSystem` suspends), so
- * `load` provides both Layers and runs via `Effect.runPromise`. `parseFeature` only requires
- * `ParameterTypeStore`, and `Layer.succeed`-backed services are confirmed `runSync`-safe (unlike
- * `FileSystem`), so `parse` still uses `Effect.runSync`. Both default to
- * `ParameterTypeStore.Default` when the caller doesn't supply a Layer, matching the old
- * "omitted option = default store" behavior.
- */
-const load = (path: string, parameterTypes: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.Default) =>
-  Effect.runPromise(loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, parameterTypes))))
-const parse = (
-  source: string,
-  uri: string,
-  parameterTypes: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.Default
-) => Effect.runSync(parseFeature(source, uri).pipe(Effect.provide(parameterTypes)))
+import { load, parse } from "./support/loadFixture.ts"
 
 /**
  * Two DIFFERENT fixtures, so "two separate calls" is genuinely two files and not one file twice.
@@ -70,10 +51,10 @@ const payMatchOf = (registry: ParameterTypeRegistry): ReadonlyArray<StepMatch<st
   }).match("I pay 42")
 
 /**
- * Runs `action`, asserts it threw a `StepPatternError`, and returns it.
+ * Runs `action`, requires it to fail with a `StepPatternError`, and returns it.
  *
- * Deliberately not `expect(...).toThrow()`: oxlint's `vitest(require-to-throw-message)` is
- * error-level in this repo and would force the rejection to be pinned by upstream-adjacent prose.
+ * A failure of any other kind propagates rather than being absorbed: swallowing it would let a
+ * `TypeError` inside `define` masquerade as a correctly reported rejection.
  */
 const rejectedBy = (action: () => void): StepPatternError => {
   try {
@@ -87,78 +68,71 @@ const rejectedBy = (action: () => void): StepPatternError => {
   throw new Error("expected define() to throw a StepPatternError, but it returned normally")
 }
 
-/**
- * Runs `action` `count` times, strictly sequentially — never concurrently. Exists because the
- * only way to guarantee each call fully completes before the next starts is an `await` inside a
- * loop, which `no-await-in-loop` flags on sight; centralizing that one, deliberate exception here
- * — instead of inline at the call site — is what the suppression below is actually annotating.
- */
-const sequentially = async <A>(count: number, action: () => Promise<A>): Promise<A> => {
-  let last = await action()
-  for (let call = 1; call < count; call += 1) {
-    // eslint-disable-next-line no-await-in-loop -- the entire point of this helper is serial execution
-    last = await action()
-  }
-  return last
-}
-
 describe("a custom parameter type defined once resolves in two separate loadFeature calls", () => {
-  it("resolves {money} in both calls and matches step text against each call's own registry", async () => {
-    const store = storeWithMoney()
-    const storeLayer = ParameterTypeStore.layerOf(store)
+  it.effect("resolves {money} in both calls and matches step text against each call's own registry", () =>
+    Effect.gen(function*() {
+      const store = storeWithMoney()
+      const storeLayer = ParameterTypeStore.layerOf(store)
 
-    // No try/catch anywhere in this test on purpose: a throw from either call fails it outright,
-    // which is exactly the assertion the criterion asks for. This is the case a process-global
-    // registry fails on call two — the first call's names are already registered, so the replay
-    // collides — and the case a top-level-registration-into-a-per-call-registry design fails on
-    // call two for the opposite reason: the registry that was written to no longer exists.
-    const featureA = await load(fixtureA, storeLayer)
-    const featureB = await load(fixtureB, storeLayer)
+      // No catch anywhere in this test on purpose: a failure from either call fails the Effect,
+      // which fails this test outright — exactly the assertion the criterion asks for. This is
+      // the case a process-global registry fails on call two — the first call's names are
+      // already registered, so the replay collides — and the case a
+      // top-level-registration-into-a-per-call-registry design fails on call two for the
+      // opposite reason: the registry that was written to no longer exists.
+      const featureA = yield* load(fixtureA, storeLayer)
+      const featureB = yield* load(fixtureB, storeLayer)
 
-    expect(featureA.parameterTypes.lookupByTypeName("money")).toBeDefined()
-    expect(featureB.parameterTypes.lookupByTypeName("money")).toBeDefined()
+      assert.isDefined(featureA.parameterTypes.lookupByTypeName("money"))
+      assert.isDefined(featureB.parameterTypes.lookupByTypeName("money"))
 
-    const matchesA = payMatchOf(featureA.parameterTypes)
-    const matchesB = payMatchOf(featureB.parameterTypes)
+      const matchesA = payMatchOf(featureA.parameterTypes)
+      const matchesB = payMatchOf(featureB.parameterTypes)
 
-    expect(matchesA).toHaveLength(1)
-    expect(matchesB).toHaveLength(1)
-    expect(matchesA[0]?.args).toEqual([{ amount: 42 }])
-    expect(matchesB[0]?.args).toEqual([{ amount: 42 }])
-  })
+      assert.lengthOf(matchesA, 1)
+      assert.lengthOf(matchesB, 1)
+      assert.deepStrictEqual(matchesA[0]?.args, [{ amount: 42 }])
+      assert.deepStrictEqual(matchesB[0]?.args, [{ amount: 42 }])
+    }))
 
-  it("hands the two calls two DIFFERENT registry objects", async () => {
-    const storeLayer = ParameterTypeStore.layerOf(storeWithMoney())
-    const featureA = await load(fixtureA, storeLayer)
-    const featureB = await load(fixtureB, storeLayer)
+  it.effect("hands the two calls two DIFFERENT registry objects", () =>
+    Effect.gen(function*() {
+      const storeLayer = ParameterTypeStore.layerOf(storeWithMoney())
+      const featureA = yield* load(fixtureA, storeLayer)
+      const featureB = yield* load(fixtureB, storeLayer)
 
-    // Reference inequality, and nothing weaker. A memoized registry passes every other assertion
-    // in this file; this is the only one it fails.
-    expect(featureA.parameterTypes).not.toBe(featureB.parameterTypes)
-  })
+      // Reference inequality, and nothing weaker. A memoized registry passes every other
+      // assertion in this file; this is the only one it fails.
+      assert.notStrictEqual(featureA.parameterTypes, featureB.parameterTypes)
+    }))
 
-  it("does not accumulate across twenty repeated calls on the same fixture", async () => {
-    const storeLayer = ParameterTypeStore.layerOf(storeWithMoney())
+  it.effect("does not accumulate across twenty repeated calls on the same fixture", () =>
+    Effect.gen(function*() {
+      const storeLayer = ParameterTypeStore.layerOf(storeWithMoney())
 
-    // Sequential on purpose, not `Promise.all`: the criterion is that REPEATED, ORDERED calls on
-    // one store don't accumulate cross-call state — a process-global registry fails on exactly a
-    // second SEQUENTIAL call (see the test above this describe block).
-    const last = await sequentially(20, () => load(fixtureA, storeLayer))
+      // Sequential on purpose, not concurrent: the criterion is that REPEATED, ORDERED calls on
+      // one store don't accumulate cross-call state — a process-global registry fails on exactly
+      // a second SEQUENTIAL call (see the test above this describe block). `Effect.forEach` is
+      // sequential by default (no `{ concurrency: 1 }` needed), which is what makes it a direct
+      // replacement for a hand-rolled `for` loop here, not merely a stylistic one.
+      const results = yield* Effect.forEach(Array.from({ length: 20 }), () => load(fixtureA, storeLayer))
+      const last = results.at(-1)!
 
-    expect(last.parameterTypes.lookupByTypeName("money")).toBeDefined()
-    expect(payMatchOf(last.parameterTypes)[0]?.args).toEqual([{ amount: 42 }])
-  })
+      assert.isDefined(last.parameterTypes.lookupByTypeName("money"))
+      assert.deepStrictEqual(payMatchOf(last.parameterTypes)[0]?.args, [{ amount: 42 }])
+    }))
 })
 
 describe("the default store path", () => {
-  it("gives a one-argument loadFeature call a registry carrying the built-ins", async () => {
-    // The path a real consumer takes. Reads only — nothing is ever defined into the default store
-    // from this file.
-    const feature = await load(fixtureA)
+  it.effect("gives a one-argument loadFeature call a registry carrying the built-ins", () =>
+    Effect.gen(function*() {
+      // The path a real consumer takes. Reads only — nothing is ever defined into the default
+      // store from this file.
+      const feature = yield* load(fixtureA)
 
-    expect(feature.parameterTypes.lookupByTypeName("int")).toBeDefined()
-    expect(feature.parameterTypes.lookupByTypeName("word")).toBeDefined()
-  })
+      assert.isDefined(feature.parameterTypes.lookupByTypeName("int"))
+      assert.isDefined(feature.parameterTypes.lookupByTypeName("word"))
+    }))
 })
 
 describe("a built-in name is rejected before any feature is loaded", () => {
@@ -178,36 +152,39 @@ describe("a built-in name is rejected before any feature is loaded", () => {
       })
     })
 
-    expect(error.reason).toBe("BuiltInParameterTypeName")
-    expect(error.parameterTypeName).toEqual(Option.some("int"))
+    assert.strictEqual(error.reason, "BuiltInParameterTypeName")
+    assert.deepStrictEqual(error.parameterTypeName, Option.some("int"))
   })
 })
 
 describe("parseFeature honours the same Layer", () => {
-  it("resolves the store's custom type for an inline source string", () => {
-    const source = "Feature: inline\n\n  Scenario: pays\n    Given I pay 42\n"
-    const feature = parse(source, "inline.feature", ParameterTypeStore.layerOf(storeWithMoney()))
+  it.effect("resolves the store's custom type for an inline source string", () =>
+    Effect.gen(function*() {
+      const source = "Feature: inline\n\n  Scenario: pays\n    Given I pay 42\n"
+      const feature = yield* parse(source, "inline.feature", ParameterTypeStore.layerOf(storeWithMoney()))
 
-    expect(feature.parameterTypes.lookupByTypeName("money")).toBeDefined()
-    expect(payMatchOf(feature.parameterTypes)[0]?.args).toEqual([{ amount: 42 }])
-  })
+      assert.isDefined(feature.parameterTypes.lookupByTypeName("money"))
+      assert.deepStrictEqual(payMatchOf(feature.parameterTypes)[0]?.args, [{ amount: 42 }])
+    }))
 })
 
 describe("the new Layer does not disturb the existing contract", () => {
-  it("still accepts BEH-EC-001's one-argument call form", async () => {
-    const feature = await load(fixtureA)
+  it.effect("still accepts BEH-EC-001's one-argument call form", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(fixtureA)
 
-    expect(Array.isArray(feature.warnings)).toBe(true)
-    expect(feature.warnings).toHaveLength(0)
-  })
+      assert.isTrue(Array.isArray(feature.warnings))
+      assert.lengthOf(feature.warnings, 0)
+    }))
 
-  it("leaves uri, name, allScenarios and warnings exactly as they were", async () => {
-    const feature = await load(fixtureA, ParameterTypeStore.layerOf(storeWithMoney()))
+  it.effect("leaves uri, name, allScenarios and warnings exactly as they were", () =>
+    Effect.gen(function*() {
+      const feature = yield* load(fixtureA, ParameterTypeStore.layerOf(storeWithMoney()))
 
-    expect(feature.uri).toBe(fixtureA)
-    expect(feature.name).toBe("correlation across every nesting level")
-    expect(Array.isArray(feature.allScenarios)).toBe(true)
-    expect(feature.allScenarios.length).toBeGreaterThan(0)
-    expect(Array.isArray(feature.warnings)).toBe(true)
-  })
+      assert.strictEqual(feature.uri, fixtureA)
+      assert.strictEqual(feature.name, "correlation across every nesting level")
+      assert.isTrue(Array.isArray(feature.allScenarios))
+      assert.isAbove(feature.allScenarios.length, 0)
+      assert.isTrue(Array.isArray(feature.warnings))
+    }))
 })

@@ -3,10 +3,11 @@
  * `Correlate.ts`'s population of `ParsedScenario.exampleRow` end to end through the real parser.
  */
 import { IdGenerator } from "@cucumber/messages"
+import { assert, describe, expect, it } from "@effect/vitest"
+import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
-import { describe, expect, it } from "vitest"
 import { correlateFeature } from "../src/Correlate.ts"
 import { ExamplesRowError } from "../src/Errors.ts"
 import { decodeExamplesRow, makeExamplesRow } from "../src/ExamplesRow.ts"
@@ -16,7 +17,7 @@ import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
 
 const parse = (source: string, uri: string) =>
-  Effect.runSync(parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default)))
+  parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default))
 
 describe("makeExamplesRow", () => {
   it("zips header and values positionally into raw", () => {
@@ -46,27 +47,42 @@ describe("makeExamplesRow", () => {
 })
 
 /**
- * The result of running `decodeExamplesRow`, as a value rather than as a throw — the same shape
- * `DataTable.test.ts`'s `outcomeOf` uses for `decodeHashes`.
+ * `succeeds`/`fails` fail the Effect with this instead of a plain `Error`: `@effect/tsgo`'s
+ * `globalErrorInEffectFailure` check (ADR-EC-016) flags an untagged `Error` in an Effect's failure
+ * channel — the same convention `Boom`/`OtherFailure` establish in
+ * `packages/vitest/test/Testing.test.ts`.
  */
-type Outcome<A> =
-  | { readonly failed: false; readonly value: A }
-  | { readonly failed: true; readonly error: ExamplesRowError }
+class UnexpectedOutcome extends Data.TaggedError("UnexpectedOutcome")<{ readonly message: string }> {}
 
-const outcomeOf = <A>(effect: Effect.Effect<A, ExamplesRowError>): Outcome<A> =>
-  Effect.runSync(Effect.match(effect, {
-    onFailure: (error): Outcome<A> => ({ failed: true, error }),
-    onSuccess: (value): Outcome<A> => ({ failed: false, value })
-  }))
+/** A decode that must succeed, as an Effect resolving to the decoded value. */
+const succeeds = <A>(effect: Effect.Effect<A, ExamplesRowError>): Effect.Effect<A, UnexpectedOutcome> =>
+  Effect.mapError(
+    effect,
+    (error) =>
+      new UnexpectedOutcome({ message: `expected decodeExamplesRow to succeed, but it failed with ${error.reason}` })
+  )
+
+/** A decode that must fail, as an Effect resolving to the `ExamplesRowError` it failed with. */
+const fails = <A>(effect: Effect.Effect<A, ExamplesRowError>): Effect.Effect<ExamplesRowError, UnexpectedOutcome> =>
+  Effect.matchEffect(effect, {
+    onFailure: (error) => Effect.succeed(error),
+    onSuccess: (value): Effect.Effect<ExamplesRowError, UnexpectedOutcome> =>
+      Effect.fail(
+        new UnexpectedOutcome({
+          message: `expected decodeExamplesRow to fail, but it succeeded with ${JSON.stringify(value)}`
+        })
+      )
+  })
 
 describe("decodeExamplesRow", () => {
   const Row = Schema.Struct({ name: Schema.String, count: Schema.NumberFromString })
 
-  it("decodes a well-formed row through the given Schema", () => {
-    const row = makeExamplesRow(["name", "count"], ["widget", "3"], "u.feature", 2)
-    const outcome = outcomeOf(decodeExamplesRow(Row)(row))
-    expect(outcome).toEqual({ failed: false, value: { name: "widget", count: 3 } })
-  })
+  it.effect("decodes a well-formed row through the given Schema", () =>
+    Effect.gen(function*() {
+      const row = makeExamplesRow(["name", "count"], ["widget", "3"], "u.feature", 2)
+      const value = yield* succeeds(decodeExamplesRow(Row)(row))
+      assert.deepStrictEqual(value, { name: "widget", count: 3 })
+    }))
 
   // `Schema.Number`, not `Schema.NumberFromString`: a raw cell value is always a string, so `Number`
   // rejects it outright regardless of content — `NumberFromString` accepts a non-numeric string
@@ -74,50 +90,50 @@ describe("decodeExamplesRow", () => {
   // nothing.
   const StrictRow = Schema.Struct({ name: Schema.String, count: Schema.Number })
 
-  it("fails with a located ExamplesRowError naming the offending column", () => {
-    const row = makeExamplesRow(["name", "count"], ["widget", "not-a-number"], "u.feature", 7)
-    const outcome = outcomeOf(decodeExamplesRow(StrictRow)(row))
-    if (!outcome.failed) {
-      throw new Error(`expected decodeExamplesRow to fail, but it succeeded with ${JSON.stringify(outcome.value)}`)
-    }
-    expect(outcome.error).toBeInstanceOf(ExamplesRowError)
-    expect(outcome.error.reason).toBe("RowDecodeFailed")
-    expect(outcome.error.uri).toBe("u.feature")
-    expect(Option.getOrNull(outcome.error.line)).toBe(7)
-    expect(Option.getOrNull(outcome.error.column)).toBe("count")
-    expect(outcome.error.message).toContain("u.feature:7")
-    expect(outcome.error.message).toContain("count")
-  })
+  it.effect("fails with a located ExamplesRowError naming the offending column", () =>
+    Effect.gen(function*() {
+      const row = makeExamplesRow(["name", "count"], ["widget", "not-a-number"], "u.feature", 7)
+      const error = yield* fails(decodeExamplesRow(StrictRow)(row))
+
+      assert.instanceOf(error, ExamplesRowError)
+      assert.strictEqual(error.reason, "RowDecodeFailed")
+      assert.strictEqual(error.uri, "u.feature")
+      assert.strictEqual(Option.getOrNull(error.line), 7)
+      assert.strictEqual(Option.getOrNull(error.column), "count")
+      assert.include(error.message, "u.feature:7")
+      assert.include(error.message, "count")
+    }))
 
   // A schema over the WHOLE row, not one of its fields (mirroring `DataTable.test.ts`'s identical
   // `decodeHashes(Schema.String)` case): the issue path is empty, so no single column is at fault.
-  it("reports an absent column when the decode failure has no locatable field", () => {
-    const row = makeExamplesRow(["name", "count"], ["widget", "3"], "u.feature", 4)
-    const outcome = outcomeOf(decodeExamplesRow(Schema.String)(row))
-    if (!outcome.failed) {
-      throw new Error(`expected decodeExamplesRow to fail, but it succeeded with ${JSON.stringify(outcome.value)}`)
-    }
-    expect(Option.isNone(outcome.error.column)).toBe(true)
-    expect(outcome.error.message).not.toContain("column")
-  })
+  it.effect("reports an absent column when the decode failure has no locatable field", () =>
+    Effect.gen(function*() {
+      const row = makeExamplesRow(["name", "count"], ["widget", "3"], "u.feature", 4)
+      const error = yield* fails(decodeExamplesRow(Schema.String)(row))
+
+      assert.isTrue(Option.isNone(error.column))
+      assert.notInclude(error.message, "column")
+    }))
 })
 
 describe("Correlate.ts populates ParsedScenario.exampleRow (ADR-EC-032)", () => {
-  it("is Option.none() for a plain Scenario", () => {
-    const feature = parse(
-      `Feature: Checkout
+  it.effect("is Option.none() for a plain Scenario", () =>
+    Effect.gen(function*() {
+      const feature = yield* parse(
+        `Feature: Checkout
   Scenario: paying
     When I pay
 `,
-      "checkout.feature"
-    )
-    expect(feature.allScenarios).toHaveLength(1)
-    expect(Option.isNone(feature.allScenarios[0]!.exampleRow)).toBe(true)
-  })
+        "checkout.feature"
+      )
+      assert.lengthOf(feature.allScenarios, 1)
+      assert.isTrue(Option.isNone(feature.allScenarios[0]!.exampleRow))
+    }))
 
-  it("is Option.some(ExamplesRow) for an Outline row, carrying that row's own header and values", () => {
-    const feature = parse(
-      `Feature: Discounts
+  it.effect("is Option.some(ExamplesRow) for an Outline row, carrying that row's own header and values", () =>
+    Effect.gen(function*() {
+      const feature = yield* parse(
+        `Feature: Discounts
   Scenario Outline: applying <code>
     When I apply <code>
 
@@ -126,27 +142,28 @@ describe("Correlate.ts populates ParsedScenario.exampleRow (ADR-EC-032)", () => 
       | SAVE10 | 10      |
       | SAVE50 | 50      |
 `,
-      "discounts.feature"
-    )
-    expect(feature.allScenarios).toHaveLength(2)
-    const [first, second] = feature.allScenarios
+        "discounts.feature"
+      )
+      assert.lengthOf(feature.allScenarios, 2)
+      const [first, second] = feature.allScenarios
 
-    const firstRow = Option.getOrThrow(first!.exampleRow)
-    expect(firstRow.header).toEqual(["code", "percent"])
-    expect(firstRow.values).toEqual(["SAVE10", "10"])
-    expect(firstRow.raw).toEqual({ code: "SAVE10", percent: "10" })
-    expect(firstRow.uri).toBe("discounts.feature")
+      const firstRow = Option.getOrThrow(first!.exampleRow)
+      assert.deepStrictEqual(firstRow.header, ["code", "percent"])
+      assert.deepStrictEqual(firstRow.values, ["SAVE10", "10"])
+      assert.deepStrictEqual(firstRow.raw, { code: "SAVE10", percent: "10" })
+      assert.strictEqual(firstRow.uri, "discounts.feature")
 
-    const secondRow = Option.getOrThrow(second!.exampleRow)
-    expect(secondRow.raw).toEqual({ code: "SAVE50", percent: "50" })
+      const secondRow = Option.getOrThrow(second!.exampleRow)
+      assert.deepStrictEqual(secondRow.raw, { code: "SAVE50", percent: "50" })
 
-    // Two DIFFERENT row objects, not one shared reference — each row keeps its own values.
-    expect(firstRow).not.toBe(secondRow)
-  })
+      // Two DIFFERENT row objects, not one shared reference — each row keeps its own values.
+      assert.notStrictEqual(firstRow, secondRow)
+    }))
 
-  it("gives each Examples block of a two-block Outline its OWN header (F24-style)", () => {
-    const feature = parse(
-      `Feature: Payments
+  it.effect("gives each Examples block of a two-block Outline its OWN header (F24-style)", () =>
+    Effect.gen(function*() {
+      const feature = yield* parse(
+        `Feature: Payments
   Scenario Outline: paying <amount>
     Given I pay <amount>
 
@@ -158,16 +175,17 @@ describe("Correlate.ts populates ParsedScenario.exampleRow (ADR-EC-032)", () => 
       | amount | card |
       | 20     | visa |
 `,
-      "payments.feature"
-    )
-    const [inEuros, withCard] = feature.allScenarios
-    expect(Option.getOrThrow(inEuros!.exampleRow).raw).toEqual({ amount: "10", currency: "EUR" })
-    expect(Option.getOrThrow(withCard!.exampleRow).raw).toEqual({ amount: "20", card: "visa" })
-  })
+        "payments.feature"
+      )
+      const [inEuros, withCard] = feature.allScenarios
+      assert.deepStrictEqual(Option.getOrThrow(inEuros!.exampleRow).raw, { amount: "10", currency: "EUR" })
+      assert.deepStrictEqual(Option.getOrThrow(withCard!.exampleRow).raw, { amount: "20", card: "visa" })
+    }))
 
-  it("locates an ExamplesRow at its own row's line, not the Outline's declaration line", () => {
-    const feature = parse(
-      `Feature: Outline
+  it.effect("locates an ExamplesRow at its own row's line, not the Outline's declaration line", () =>
+    Effect.gen(function*() {
+      const feature = yield* parse(
+        `Feature: Outline
 
   Scenario Outline: adding <count>
     Given I add <count> apples
@@ -177,12 +195,12 @@ describe("Correlate.ts populates ParsedScenario.exampleRow (ADR-EC-032)", () => 
       | 1     |
       | 2     |
 `,
-      "outline.feature"
-    )
-    const [first, second] = feature.allScenarios
-    expect(Option.getOrThrow(first!.exampleRow).line).toBe(8)
-    expect(Option.getOrThrow(second!.exampleRow).line).toBe(9)
-  })
+        "outline.feature"
+      )
+      const [first, second] = feature.allScenarios
+      assert.strictEqual(Option.getOrThrow(first!.exampleRow).line, 8)
+      assert.strictEqual(Option.getOrThrow(second!.exampleRow).line, 9)
+    }))
 })
 
 // A defensive re-derivation using the parse/compile/correlate pipeline directly, the same shape
