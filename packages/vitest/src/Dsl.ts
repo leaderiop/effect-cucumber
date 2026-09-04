@@ -30,6 +30,14 @@
  *   against, and the omission from this ONE union member is what makes `attach` a compile error
  *   there rather than a runtime no-op. The same exclusion mechanism ADR-EC-018's F-10 already uses
  *   for a per-Scenario `World` service, applied to a second, ambient (non-`World`) service.
+ * - `RuleRegistrar<ROut>`'s THIRD overload (ADR-EC-039, BEH-EC-031) is additive: a `narrow` step
+ *   between `extraLayer` and `define`, receiving the ordinary wide `RuleDsl<ROut | R2>` (exactly
+ *   what the existing three-argument overload already hands a Rule) and returning a `RuleDsl<
+ *   RNarrowed>` for a genuinely free `RNarrowed`, inferred from `narrow`'s own return type rather
+ *   than from `ROut`/`R2` — so `RNarrowed` may be, and in the shipped acceptance pair IS,
+ *   completely disjoint from `ROut | R2`. Producing a real `RuleDsl<RNarrowed>` is the CALLER's
+ *   job (typically `(dsl) => narrowRuleDsl(dsl, project)`, `RuleNarrowing.ts`) — this overload
+ *   itself grants nothing for free.
  */
 import type { StepArgs } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
@@ -136,12 +144,21 @@ export interface ScenarioRegistrar<ROut> {
 }
 
 /**
- * One `Rule(...)` container declaration, in either of the two forms: `Rule(name, define)` and
- * `Rule(name, extraLayer, define)` — BEH-EC-009.
+ * One `Rule(...)` container declaration, in any of THREE forms: `Rule(name, define)`,
+ * `Rule(name, extraLayer, define)` — BEH-EC-009 — and `Rule(name, extraLayer, narrow, define)`,
+ * which narrows or replaces (not merely extends) the World a Rule's own Scenarios see
+ * (ADR-EC-039, BEH-EC-031). The third overload is additive: the first two are unchanged, and a
+ * Rule that never uses `narrow` compiles and runs exactly as before.
  */
 export interface RuleRegistrar<ROut> {
   (name: string, define: (dsl: RuleDsl<ROut>) => void): void
   <R2, E2>(name: string, extraLayer: Layer.Layer<R2, E2, any>, define: (dsl: RuleDsl<ROut | R2>) => void): void
+  <R2, E2, RNarrowed>(
+    name: string,
+    extraLayer: Layer.Layer<R2, E2, any>,
+    narrow: (dsl: RuleDsl<ROut | R2>) => RuleDsl<RNarrowed>,
+    define: (dsl: RuleDsl<RNarrowed>) => void
+  ): void
 }
 
 /**

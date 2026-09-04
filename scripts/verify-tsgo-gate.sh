@@ -32,6 +32,8 @@ HOOK_ONCE_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-once.json"
 HOOK_ONCE_ATTACHMENTS_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-once-attachments.json"
 RULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-ok.json"
 RULE_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-missing.json"
+RULE_NARROWING_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-narrowing-ok.json"
+RULE_NARROWING_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-narrowing-missing.json"
 
 # Use the repo-local, effect-tsgo-patched compiler, never a global `tsc`.
 TSC="node node_modules/typescript/bin/tsc"
@@ -49,7 +51,7 @@ for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_
   "$STEP_MODULE_OK_CONFIG" "$STEP_MODULE_NEG_CONFIG" \
   "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$PER_SCENARIO_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
   "$HOOK_NEG_CONFIG" "$HOOK_ONCE_CONFIG" "$HOOK_ONCE_ATTACHMENTS_CONFIG" "$RULE_OK_CONFIG" \
-  "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG"; do
+  "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG" "$RULE_NARROWING_OK_CONFIG" "$RULE_NARROWING_NEG_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
 
@@ -332,6 +334,34 @@ if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_ONCE_ATTACHMENTS_OUTPUT"; 
   fail "the AfterAllScenarios attach(...) call was rejected, but NOT by effect(missingEffectContext) — the rejection no longer proves anything about the hook's required context. Check that FeatureDsl's BeforeAllScenarios/AfterAllScenarios are HookRegistrar<RShared> and that HookRegistrar's own union (packages/vitest/src/Dsl.ts) still omits Attachments."
 fi
 echo "✓ a once-per-Feature hook calling attach(...) is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertions 15 and 16: THE RULE-WORLD-NARROWING SATISFIED/STARVED FLIP PAIR (ADR-EC-039,
+# BEH-EC-031). Assertions 12/13 cover a Rule's extra Layer EXTENDING the ambient World; these two
+# cover `RuleRegistrar`'s third overload NARROWING/REPLACING it — the case the plain
+# `RuleDsl<ROut | R2>` union structurally cannot reject, since `|` only ever grows what a step may
+# reach for.
+# ---------------------------------------------------------------------------
+RULE_NARROWING_OK_OUTPUT="$($TSC -p "$RULE_NARROWING_OK_CONFIG" 2>&1)" && RULE_NARROWING_OK_EXIT=0 || RULE_NARROWING_OK_EXIT=$?
+
+if [[ "$RULE_NARROWING_OK_EXIT" -ne 0 ]]; then
+  echo "$RULE_NARROWING_OK_OUTPUT"
+  fail "the rule-world-narrowing positive control failed to compile — two narrowed Rules with disjoint reshaped worlds, a narrowed Background, a narrowed nested Scenario, and the CONTROL cases exercising the existing two-/three-argument Rule(...) forms unchanged should all type-check. Most likely cause: RuleRegistrar's third overload in packages/vitest/src/Dsl.ts was narrowed, or narrowRuleDsl in packages/vitest/src/RuleNarrowing.ts stopped threading Scope.Scope/Attachments through project's own required union."
+fi
+echo "✓ rule-world-narrowing positive control compiles clean (two disjoint narrowed Rules, narrowed Background/Scenario, unaffected two-/three-argument Rule forms)"
+
+RULE_NARROWING_NEG_OUTPUT="$($TSC -p "$RULE_NARROWING_NEG_CONFIG" 2>&1)" && RULE_NARROWING_NEG_EXIT=0 || RULE_NARROWING_NEG_EXIT=$?
+
+if [[ "$RULE_NARROWING_NEG_EXIT" -eq 0 ]]; then
+  echo "$RULE_NARROWING_NEG_OUTPUT"
+  fail "a step inside a narrowed Rule reaching for a SIBLING Rule's narrowed world or the FEATURE-LEVEL AMBIENT service COMPILED — ADR-EC-039's whole point (narrowing actually narrows, not just extends) is decorative. The second defect is the one that matters most: it is exactly what the plain RuleDsl<ROut | R2> union cannot reject, since narrowRuleDsl's returned dsl must NOT still expose ROut. Most likely cause: RuleNarrowing.ts's narrowStepRegistrar stopped calling Effect.updateContext, or narrowRuleDsl's return type widened back to include Wide."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$RULE_NARROWING_NEG_OUTPUT"; then
+  echo "$RULE_NARROWING_NEG_OUTPUT"
+  fail "the narrowed-Rule leak was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering rule-world narrowing. CI stays green on a rejection that no longer proves anything about context. Check that narrowRuleDsl's step-function union ordering in packages/vitest/src/RuleNarrowing.ts still matches Dsl.ts note (a) (generator branch first)."
+fi
+echo "✓ a step inside a narrowed Rule reaching for a sibling Rule's world or the Feature-level ambient service is rejected by name: effect(missingEffectContext)"
 
 echo ""
 echo "tsgo gate: ENFORCED"

@@ -179,6 +179,81 @@ stay Feature-only and are a compile error on a Rule's dsl. A Rule also gets its 
 like the Feature's), so a `.feature` file with a `Rule:`-level `Background:` has somewhere to register its steps; Rule-
 and Feature-level registrations never resolve each other's steps, and the innermost matching scope wins.
 
+**A `Rule` can narrow or replace the ambient World its own Scenarios see, not only extend it.** A
+fourth, additive `Rule` arity — `Rule(name, extraLayer, narrow, define)` — reshapes what a Rule's
+own steps are typed to require, rather than merely growing it: `narrow` receives the ordinary WIDE
+dsl (`RuleDsl<ROut | R2>`, exactly what the three-argument form already hands a Rule) and returns a
+`RuleDsl<RNarrowed>` for a genuinely free `RNarrowed` — it may be, and typically is, completely
+disjoint from `ROut | R2`. The sanctioned way to produce that return value is `narrowRuleDsl(dsl,
+project)`, exported from the package: `project` is a real function, backed by
+`Effect.updateContext`, that reaches into the Rule's actual ambient context and reshapes it. This
+is the one real, ongoing cost of the feature — `project` is hand-written per Rule, not
+auto-derived — in exchange for a genuine compile-time AND run-time boundary: a step inside a
+narrowed Rule cannot reach a sibling Rule's narrowed World, nor the Feature's own ambient service,
+by name (`effect(missingEffectContext)`, asserted by `pnpm verify:tsgo-gate`) — the one case the
+plain three-argument form's `RuleDsl<ROut | R2>` union structurally cannot express, since `|` only
+ever grows what a step may reach for.
+
+```ts
+import { describeFeature, narrowRuleDsl } from "@effect-cucumber/vitest"
+import { Attachments } from "@effect-cucumber/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Scope from "effect/Scope"
+
+// The Feature-level ambient service — narrowing hides this from a narrowed Rule's own steps.
+class AuditContext extends Context.Service<AuditContext, { readonly auditId: string }>()("AuditContext") {}
+
+// This Rule's own extra service.
+class RemediationService
+  extends Context.Service<RemediationService, { readonly remediate: (id: string) => Effect.Effect<string> }>()(
+    "RemediationService"
+  )
+{}
+
+// The NARROWED world this Rule's steps actually see — reshaped, not aliased.
+class RemediationWorld extends Context.Service<RemediationWorld, { readonly report: Effect.Effect<string> }>()(
+  "RemediationWorld"
+) {}
+
+// `project`: given the REAL ambient context, build the narrower one — Scope.Scope and Attachments
+// threaded through unchanged, the ambient services actually reshaped.
+const project = (
+  wide: Context.Context<AuditContext | RemediationService | Scope.Scope | Attachments>
+): Context.Context<RemediationWorld | Scope.Scope | Attachments> => {
+  const { auditId } = Context.get(wide, AuditContext)
+  const { remediate } = Context.get(wide, RemediationService)
+  return Context.make(RemediationWorld, RemediationWorld.of({ report: remediate(auditId) })).pipe(
+    Context.add(Scope.Scope, Context.get(wide, Scope.Scope)),
+    Context.add(Attachments, Context.get(wide, Attachments))
+  )
+}
+
+describeFeature(feature, AuditContext.layer, ({ Rule }) => {
+  Rule(
+    "Remediation",
+    RemediationService.layer,
+    (wideDsl) => narrowRuleDsl(wideDsl, project),
+    (dsl) => {
+      dsl.Given("the audit produces a remediation report", function*() {
+        // Only `RemediationWorld` is reachable here — not `AuditContext`, not any sibling Rule's
+        // own narrowed world.
+        yield* (yield* RemediationWorld).report
+      })
+    }
+  )
+})
+```
+
+A Scenario's own extra Layer (the three-argument `Scenario(name, extraLayer, define)` form) cannot be
+nested inside a narrowed Rule — composing the two is unsupported, and doing so throws a clear
+`Error` at registration time rather than silently mis-narrowing; promote the service to the Rule's
+own `extraLayer` instead. See
+[ADR-EC-039](../../spec/decisions/039-rule-world-narrowing-via-effect-updatecontext-in-narrowruledsl.md)
+and
+[BEH-EC-031](../../spec/behaviors/18-rule-world-narrowing.md).
+
 **`Before`, `After`, `BeforeStep` and `AfterStep` can be scoped further, by a tag expression.** An additional,
 additive two-argument form — `Before(tagExpr, fn)` — takes a leading tag-expression string, parsed and evaluated by
 the SAME grammar and engine vitest's own `--tagsFilter` uses (`and`/`or`/`not`/`&&`/`||`/`!`/parens — no new grammar

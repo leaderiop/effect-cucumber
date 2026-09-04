@@ -70,3 +70,7 @@ entries:
     file: "17-rerun-failed-only.md"
     title: "Rerun failed Scenarios only"
     id_range: "030"
+  - id: "BEH-EC-031"
+    file: "18-rule-world-narrowing.md"
+    title: "Rule World narrowing"
+    id_range: "031"

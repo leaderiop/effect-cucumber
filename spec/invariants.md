@@ -3,13 +3,16 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-All nine are enforced by code today, and each entry names the mechanism and the
+All ten are enforced by code today, and each entry names the mechanism and the
 assertions that back it. No entry on this page describes a **planned** mechanism
 any more; INV-EC-006 was the last one that did, and Phase 11 built it. INV-EC-007
 joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap,
 INV-EC-008 joined next, over `packages/vitest/src/VitestTestApi.ts`'s
-`Effect.Metric` wrapper, and INV-EC-009 joined most recently, over
-`packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
+`Effect.Metric` wrapper, INV-EC-009 joined next, over
+`packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`, and INV-EC-010 joined most
+recently, over `packages/vitest/src/RuleNarrowing.ts`'s `narrowRuleDsl`, enforced
+on both sides at once — a compile-time half and a run-time half — the same shape
+INV-EC-005 already has. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
 scope was built first, and Phase 10 built the `shared` clause of its own wording,
 so its entry names two mechanisms rather than one. INV-EC-005 has been enforced
 on both sides at once — runtime and compile time — since Phase 8.
@@ -464,3 +467,32 @@ generated ids, and `rerunFailedOnly` would filter out every Scenario on every ru
 
 **Related**: [BEH-EC-030](behaviors/17-rerun-failed-only.md),
 [ADR-EC-038](decisions/038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md).
+
+---
+
+## INV-EC-010: A narrowed Rule's step cannot observe a sibling Rule's narrowed World, nor the Feature-level ambient service
+
+A step registered through `narrowRuleDsl`'s returned `RuleDsl<Narrow>` can reach only `Narrow`
+(plus `Scope.Scope` and `Attachments`) — never `Wide`, never a sibling narrowed Rule's own
+`Narrow'`, and never any service the Feature's ambient Layer alone provides that `project` did not
+explicitly reshape into `Narrow`.
+
+**Source**: `packages/vitest/src/RuleNarrowing.ts`'s `narrowRuleDsl` — every step/hook registrar it
+returns wraps the author's body with `Effect.updateContext(effect, project)` before handing it to
+the underlying WIDE registrar, so the body's PUBLIC required-context type is retyped to exactly
+`Narrow | Scope.Scope | Attachments`, never a union that still includes `Wide` (unlike
+[INV-EC-005](#inv-ec-005-a-rule-scoped-layer-is-invisible-outside-that-rule)'s ordinary
+Rule-extra-Layer case, whose `RuleDsl<ROut | R2>` union always GROWS what a step may reach for —
+narrowing instead REPLACES it).
+
+**Enforced by**: compile time, by `scripts/verify-tsgo-gate.sh` assertions 15–16 — the real
+compile-gate fixture pair `packages/vitest/test/tsgo-gate/src/rule-narrowing-satisfied.ts` /
+`-starved.ts`, whose negative fixture is rejected by name (`effect(missingEffectContext)`) for both
+a step reaching for a sibling Rule's narrowed World and, separately, a step reaching for the
+Feature-level ambient service. Run time, by `packages/vitest/test/RuleNarrowing.test.ts` (the
+wrapping itself, against a hand-built fake wide dsl) and
+`packages/vitest/test/acceptance/rule-world-narrowing.steps.test.ts` (`@REQ-EC-031`, two real
+narrowed Rules in one Feature, each producing its own reshaped, live value).
+
+**Related**: [BEH-EC-031](behaviors/18-rule-world-narrowing.md),
+[ADR-EC-039](decisions/039-rule-world-narrowing-via-effect-updatecontext-in-narrowruledsl.md).

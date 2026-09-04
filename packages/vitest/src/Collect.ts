@@ -207,16 +207,29 @@ export const collect = (
     },
     // A Feature-level Scenario belongs to no Rule (`null`) and runs against the Feature's own Layer.
     Scenario: makeScenarioRegistrar(null, featureLayer),
+    // Three arities: `(name, define)`, `(name, extraLayer, define)` and
+    // `(name, extraLayer, narrow, define)` — ADR-EC-039/BEH-EC-031's World-narrowing overload.
+    // `narrow`, when present, is called against the ordinary wide `ruleDsl` built below and its
+    // RETURN VALUE — not `ruleDsl` itself — is what `defineRule` receives; every other field this
+    // closure computes (`ruleId`, `ruleAmbientLayer`, `ruleLayers`, the four Rule hooks) is
+    // IDENTICAL whether or not `narrow` was supplied, because narrowing only reshapes the dsl
+    // object handed to `defineRule`, never the Layer/registry bookkeeping around it.
     Rule: (
       ruleName: string,
-      extraLayerOrDefine: ErasedExtraLayer | ((dsl: RuleDsl<any>) => void),
-      maybeDefine?: (dsl: RuleDsl<any>) => void
+      a: ErasedExtraLayer | ((dsl: RuleDsl<any>) => void),
+      b?: ((dsl: RuleDsl<any>) => void) | ((dsl: RuleDsl<any>) => RuleDsl<any>),
+      c?: (dsl: RuleDsl<any>) => void
     ): void => {
-      // Arity narrowing, the same shape `makeScenarioRegistrar` uses.
-      const extraLayer: ErasedExtraLayer | null = maybeDefine === undefined
-        ? null
-        : (extraLayerOrDefine as ErasedExtraLayer)
-      const defineRule = maybeDefine ?? (extraLayerOrDefine as (dsl: RuleDsl<any>) => void)
+      const arity = c !== undefined ? 4 : b !== undefined ? 3 : 2
+      const extraLayer: ErasedExtraLayer | null = arity === 2 ? null : (a as ErasedExtraLayer)
+      const narrow: ((dsl: RuleDsl<any>) => RuleDsl<any>) | null = arity === 4
+        ? (b as (dsl: RuleDsl<any>) => RuleDsl<any>)
+        : null
+      const defineRule: (dsl: RuleDsl<any>) => void = arity === 4
+        ? (c as (dsl: RuleDsl<any>) => void)
+        : arity === 3
+        ? (b as (dsl: RuleDsl<any>) => void)
+        : (a as (dsl: RuleDsl<any>) => void)
 
       const ruleId = resolveRuleId(feature, ruleName)
       if (ruleId.startsWith(unregisteredRulePrefix)) {
@@ -268,9 +281,15 @@ export const collect = (
         AfterStep: ruleHookRegistrar("AfterStep")
       }
 
+      // `narrow`, when present, reshapes `ruleDsl` ONCE, here — its return value (never `ruleDsl`
+      // itself) is what `defineRule` sees, so every step it registers is already wrapped with the
+      // author's `project` by the time it reaches `registry.register` inside the narrowed dsl's
+      // own registrar closures (`RuleNarrowing.ts`'s `narrowRuleDsl`).
+      const dslForDefine: RuleDsl<any> = narrow === null ? ruleDsl : narrow(ruleDsl)
+
       registry.pushScope({ kind: "rule", name: ruleName, ruleId })
       try {
-        invokeDefine("Rule", ruleName, defineRule, ruleDsl)
+        invokeDefine("Rule", ruleName, defineRule, dslForDefine)
       } finally {
         registry.popScope()
       }

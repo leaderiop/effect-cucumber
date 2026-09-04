@@ -83,6 +83,14 @@ export { defineSteps } from "./StepModule.ts"
 export type { StepModule } from "./StepModule.ts"
 
 /**
+ * A Rule that narrows or replaces (not merely extends) the World its own Scenarios see
+ * (ADR-EC-039, BEH-EC-031). Called from inside `RuleRegistrar`'s third-overload `narrow`
+ * callback: `Rule(name, extraLayer, (dsl) => narrowRuleDsl(dsl, project), define)`.
+ */
+export { narrowRuleDsl } from "./RuleNarrowing.ts"
+export type { WorldProjection } from "./RuleNarrowing.ts"
+
+/**
  * The two channels step drift reaches a consumer through (BEH-EC-013, ADR-EC-019).
  */
 export { StepMatchError } from "./Errors.ts"
