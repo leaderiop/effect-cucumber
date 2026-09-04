@@ -35,6 +35,11 @@ jobs:
       # exit-0 run as a correctly wired one. Without this step the lint gate can
       # decay into a no-op while CI stays green. See scripts/verify-oxlint-plugin.sh.
       - run: pnpm verify:oxlint-plugin
+      # scripts/templates/oxlint-ref-state/ is a COPYABLE template this repo does not load against
+      # its own source (its unit tests under that directory only exercise the rule's visitor
+      # functions directly) — this step is the one place proving the template's oxlint wiring
+      # itself still works against real oxlint output. See scripts/verify-ref-state-oxlint-plugin.sh.
+      - run: pnpm verify:ref-state-oxlint-plugin
 
   types:
     name: Types and tsgo gate

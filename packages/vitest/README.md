@@ -706,6 +706,18 @@ rather than a path into this repository's own source, so the copy needs nothing 
 scripts/verify-ref-state.sh features/steps '*.steps.test.ts' 0
 ```
 
+A second option catches the same thing earlier — at author time, with a real squiggly underline in
+your editor, rather than only at CI time:
+[`scripts/templates/oxlint-ref-state/`](../../scripts/templates/oxlint-ref-state) is a copyable
+oxlint plugin implementing the identical rule (no `let`/`var`, no in-place `.push`/`.splice`/etc.)
+as a real `jsPlugins` rule, following the same vendored, unpublished-package pattern this
+repository already uses for Effect's own oxlint rules (see
+[`tools/oxlint/effect/ATTRIBUTION.md`](../../tools/oxlint/effect/ATTRIBUTION.md) — `@effect/oxc` is
+itself `"private": true` upstream and loaded via a local `jsPlugins` path, not installed from npm).
+See that directory's own README for the copy/wire steps. The two routes aren't exclusive — the
+oxlint rule gives inline feedback the shell script can't, the shell script's carve-out count gives
+a CI-time roll-up an oxlint disable comment doesn't centralize — adopt either or both.
+
 There is deliberately no DSL-level enforcement of this one either, for the identical reason the `any` boundary above
 has none: the failure mode is a closure the type system accepts, not a value the runtime can observe and reject.
 
