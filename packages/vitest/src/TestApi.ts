@@ -14,13 +14,18 @@ import type * as Scope from "effect/Scope"
  * computes it from the `@retry` tag the same way it computes `skip` from `@skip`, and only
  * `VitestTestApi.ts` — the one module allowed to import `@effect/vitest` — turns it into a real
  * `flakyTest` wrap, because this module and `Runner.ts` may never import a test framework
- * (`scripts/verify-testapi-seam.sh`).
+ * (`scripts/verify-testapi-seam.sh`). `scenario` (ADR-EC-037, BEH-EC-029) is the same shape again: a
+ * plain boolean, `true` for the two real per-Scenario emissions `Runner.ts`'s Feature/Rule loops make
+ * and `false` for its trailing unused-step-definition warning nodes — the ONE other caller of
+ * `api.effect` — so `VitestTestApi.ts`'s `Effect.Metric` wrapper can measure a real Scenario's
+ * terminal outcome without also measuring a warning node's always-`Effect.void` one.
  */
 export interface EmitOptions {
   readonly tags: ReadonlyArray<string>
   readonly skip: boolean
   readonly retry: boolean
   readonly contextFree: boolean
+  readonly scenario: boolean
 }
 
 /**

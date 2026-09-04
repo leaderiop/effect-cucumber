@@ -3,14 +3,15 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-All seven are enforced by code today, and each entry names the mechanism and the
+All eight are enforced by code today, and each entry names the mechanism and the
 assertions that back it. No entry on this page describes a **planned** mechanism
 any more; INV-EC-006 was the last one that did, and Phase 11 built it. INV-EC-007
-joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap.
-INV-EC-002 holds on BOTH Layer scopes: the per-Scenario scope was built first,
-and Phase 10 built the `shared` clause of its own wording, so its entry names two
-mechanisms rather than one. INV-EC-005 has been enforced on both sides at once —
-runtime and compile time — since Phase 8.
+joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap,
+and INV-EC-008 joined most recently, over `packages/vitest/src/VitestTestApi.ts`'s
+`Effect.Metric` wrapper. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
+scope was built first, and Phase 10 built the `shared` clause of its own wording,
+so its entry names two mechanisms rather than one. INV-EC-005 has been enforced
+on both sides at once — runtime and compile time — since Phase 8.
 
 INV-EC-006 is enforced WITHIN THIS REPOSITORY and the difference is not
 cosmetic, so the count above is stated with it attached rather than left to be
@@ -387,3 +388,47 @@ row's randomness can accidentally mask the other's.
 **Related**: [ADR-EC-018](decisions/018-shared-layer-testclock-isolation.md)
 (the sibling per-Scenario isolation guarantee for `TestClock`/`TestConsole`,
 which this invariant deliberately does not touch or depend on).
+
+---
+
+## INV-EC-008: A Scenario's terminal-outcome metric is recorded exactly once, reflecting only its final attempt
+
+Every emitted Scenario contributes exactly ONE increment to the `effect_cucumber.scenario.result`
+counter and exactly ONE sample to the `effect_cucumber.scenario.duration` histogram, tagged by its
+FINAL outcome alone. A Scenario tagged `@retry` that fails on one or more attempts before eventually
+passing (or exhausts `flakyTest`'s own retry schedule and fails) contributes neither an extra
+increment nor an extra sample for any intermediate attempt — an attempt's own failure is never
+separately counted as `outcome: "fail"`.
+
+**Source**: `packages/vitest/src/VitestTestApi.ts`'s `withMetrics` composes `withScenarioMetrics`
+(`packages/vitest/src/ScenarioMetrics.ts`) OUTSIDE `withRetry`'s `flakyTest` wrap — never inside it,
+and never at `packages/vitest/src/Runner.ts`'s own emission call sites, where an earlier spike
+(`research/metric-wiring-spike.md`) first wired this, before `@retry` existed. `Effect.exit` inside
+`withScenarioMetrics` therefore only ever observes whatever `flakyTest`'s own `Effect.retry` produces
+AFTER it settles — the fully-retried, terminal `Exit` — because every intermediate attempt is resolved
+and discarded entirely INSIDE `flakyTest`, strictly below where this wrapper's own `Metric.update`
+calls run. See [ADR-EC-037](decisions/037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md)
+for the full composition-point reasoning, including why `EmitOptions` needed a new `scenario: boolean`
+field this invariant's own enforcement additionally depends on (a warning node emitted through the
+identical seam must never be measured at all, not merely never double-counted).
+
+**Enforced by**: `packages/vitest/test/ScenarioMetrics.test.ts` — `withScenarioMetrics` driven
+directly against a synthetic Effect that fails once then passes, composed the REAL way
+(`withScenarioMetrics(flakyTest(...))`, exactly one terminal increment and one duration sample) and,
+as a mutation-style demonstration in the same file, the WRONG way (`flakyTest(withScenarioMetrics(...))`,
+which genuinely records two of each) — and
+`packages/vitest/test/acceptance/metrics.feature`/`.steps.test.ts` (`@REQ-EC-029`) against the real
+running framework: a Feature with one plain-passing Scenario and one `@retry`'d fail-then-pass
+Scenario, where an observer reads `Metric.value` after both complete and finds exactly two
+`outcome: "pass"` increments, zero `outcome: "fail"`, and two duration samples.
+
+**Implication**: a consumer charting `scenario.result`'s pass/fail ratio sees each Scenario counted
+exactly once regardless of how many attempts `@retry` needed — a dashboard built against this metric
+cannot be skewed by a flaky Scenario's own retry count, and a Scenario that ultimately fails after
+exhausting its retry schedule is counted as one failure, not eleven (`flakyTest`'s own
+`Schedule.recurs(10)` plus the original attempt).
+
+**Related**: [BEH-EC-029](behaviors/16-scenario-metrics.md),
+[ADR-EC-037](decisions/037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md),
+[ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md) (the retry mechanism this
+invariant composes around, never inside).

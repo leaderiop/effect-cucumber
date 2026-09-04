@@ -18,6 +18,10 @@
  *   as `EmitOptions.retry`, never APPLIED here: this module may not import a test framework
  *   (`scripts/verify-testapi-seam.sh`), so the real `flakyTest` wrap happens one module over, in
  *   `VitestTestApi.ts` (ADR-EC-034, BEH-EC-026).
+ * - `EmitOptions.scenario` is `true` for both per-Scenario loops below and `false` for the trailing
+ *   warning loop — the ONE other caller of `api.effect` in this module — so `VitestTestApi.ts`'s
+ *   `Effect.Metric` wrapper (ADR-EC-037, BEH-EC-029) measures a real Scenario's terminal outcome only,
+ *   never a warning node's always-`Effect.void` one.
  */
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
 import * as Deferred from "effect/Deferred"
@@ -46,7 +50,7 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
 
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
-const warningEmitOptions: EmitOptions = { tags: [], skip: false, retry: false, contextFree: true }
+const warningEmitOptions: EmitOptions = { tags: [], skip: false, retry: false, contextFree: true, scenario: false }
 
 const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
   scenarioKey(Option.getOrNull(scenarioPlan.ruleId), scenarioPlan.astName)
@@ -182,8 +186,9 @@ export const emitFeature = (
             )
           },
         // The Scenario's own tags, passed by reference: `ScenarioPlan.tags` is already the flattened,
-        // de-duplicated inheritance chain.
-        { tags: scenarioPlan.tags, skip, retry, contextFree: false }
+        // de-duplicated inheritance chain. `scenario: true` — this is a real Scenario, not a warning
+        // node (ADR-EC-037).
+        { tags: scenarioPlan.tags, skip, retry, contextFree: false, scenario: true }
       )
     }
 
@@ -221,9 +226,9 @@ export const emitFeature = (
                   () => buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet)
                 )
               },
-            // `contextFree: false`, for the same reason as the Feature-level loop's identical field
-            // above.
-            { tags: scenarioPlan.tags, skip, retry, contextFree: false }
+            // `contextFree: false` and `scenario: true`, for the same reason as the Feature-level
+            // loop's identical fields above.
+            { tags: scenarioPlan.tags, skip, retry, contextFree: false, scenario: true }
           )
         }
       })

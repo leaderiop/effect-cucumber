@@ -313,6 +313,38 @@ before this feature; `scripts/verify-testapi-seam.sh` passes unmodified. Proven 
 running framework: `packages/vitest/test/acceptance/attachments.feature` + `.steps.test.ts`
 (`REQ-EC-028`, `spec/traceability.md` §5).
 
+**`Effect.Metric` at the Scenario emission boundary** ships: `effect_cucumber.scenario.duration` (a
+`Metric.timer`) and `effect_cucumber.scenario.result` (a `Metric.counter`, tagged `outcome: "pass" |
+"fail"` via `Metric.withAttributes`), recorded once per Scenario for its TERMINAL outcome, always-on
+with no opt-out
+([ADR-EC-037](decisions/037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md),
+[BEH-EC-029](behaviors/16-scenario-metrics.md), [INV-EC-008](invariants.md#inv-ec-008-a-scenarios-terminal-outcome-metric-is-recorded-exactly-once-reflecting-only-its-final-attempt)).
+The earlier spike (`research/metric-wiring-spike.md`, branch `spike/metric-wiring`) wired this into
+`Runner.ts`'s own `buildScenarioEffect` call sites — the correct placement AT THE TIME, before `@retry`
+existed. Building this for real, AFTER `@retry` shipped (ADR-EC-034), confirmed that placement had
+become wrong: `Runner.ts` cannot import `@effect/vitest`
+(`scripts/verify-testapi-seam.sh`), so `@retry`'s `flakyTest` wrap already had to move to
+`VitestTestApi.ts`, and a metrics wrapper left at the spike's original call site would sit INSIDE
+`flakyTest`'s retried region — double/triple-counting a retried Scenario's intermediate attempts. The
+shipped wrapper (`packages/vitest/src/ScenarioMetrics.ts`'s `withScenarioMetrics`) instead composes at
+the SAME `VitestTestApi.ts` seam point `@retry`'s own `withRetry` wraps `flakyTest` at, OUTSIDE it —
+`effect/Metric` is not a forbidden import there, only a TEST FRAMEWORK is. A second, previously
+unconsidered wrinkle surfaced building this for real: `VitestTestApi.ts`'s emission seam is shared
+between real Scenarios AND `Runner.ts`'s trailing unused-step-definition warning nodes, so
+`TestApi.ts`'s `EmitOptions` gained one more boolean, `scenario`, letting the metrics wrapper measure
+only the former. The `TestClock` caveat holds unchanged from the spike's own finding — every Scenario
+runs under the ambient simulated clock (ADR-EC-018), so `scenario.duration` reads ~0ms unless a step
+itself advances it, and per ADR-EC-034's own finding that clock is not reset between a `@retry`
+Scenario's own attempts either, so one retried Scenario's single recorded sample reflects cumulative
+simulated time across every attempt. Composes with the `@effect/opentelemetry` exporter recipe already
+shipped in `packages/vitest/README.md`'s Observability section — `NodeSdk.layer`'s `Configuration`
+already accepts a `metricReader`. Proven against the real running framework AND in process:
+`packages/vitest/test/acceptance/metrics.feature` + `.steps.test.ts` (`REQ-EC-029`,
+`spec/traceability.md` §5) shows a plain-passing Scenario and a `@retry`'d fail-then-pass Scenario
+together contribute exactly two `outcome: "pass"` increments and zero `outcome: "fail"`, and
+`packages/vitest/test/ScenarioMetrics.test.ts` proves the composition order is load-bearing by
+measuring the WRONG order (`flakyTest` outside the metrics wrapper) genuinely double-counts.
+
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface, custom parameter types as data, the step matcher, the `DataTable` wrapper with `raw()`/`hashes()`/`rowsHash()`/`decodeHashes`, and the step-argument accessors behind `ParsedStep.stepArguments`); `@effect-cucumber/vitest` has real source too — `describeFeature` with both Layer argument forms (a plain `Layer`, or `{ shared, perScenario }`), the `FeatureDsl`/`RuleDsl`/`ScenarioDsl`/`BackgroundDsl`/`StepRegistrar`/`HookRegistrar`/`ScenarioRegistrar` type surface, per-instance step registration through `Registry.ts`, and the `Effect.fn(stepText)` auto-wrap with identity pass-through for an already-wrapped step. **The runner is built:** `Plan.ts` joins the registered definitions against the Feature and resolves every Pickle step, `ScenarioEffect.ts` composes each Scenario into one Effect, `Runner.ts` emits the `describe`/`it.effect` tree through an injected `TestApi`, and `describeFeature.ts` is the composition root that wires the three and constructs the concrete `TestApi`                                          |
@@ -439,34 +471,6 @@ built to de-risk the decision before it locks.
   suite" crash — needs a synthetic skip node — and the key needs the
   Feature's file `uri` added, since same-named Features in different files
   would otherwise collide. ([#34](https://github.com/leaderiop/effect-cucumber/issues/34))
-- **`Effect.Metric` at the Scenario emission boundary — design locked,
-  spike-proven, ships always-on.** A working spike wired `Metric.timer`
-  (duration) and `Metric.counter` (pass/fail, tagged by outcome) into the
-  REAL `Runner.ts` at both its `buildScenarioEffect` call sites (+16/−4
-  lines, zero `TestApi.ts` changes) — full 899-test suite green, and the
-  metrics themselves observed correct when actually run
-  (`scenario.result: {pass:1, fail:1}`, `scenario.duration` histogram
-  matching). Always-on, no opt-out, consistent with `Effect.fn` tracing
-  spans already being always-on (ADR-EC-005). Composes with the
-  `@effect/opentelemetry` exporter recipe already shipped in
-  `packages/vitest/README.md`. **Correction, now that `@retry` has shipped
-  ([ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md)):**
-  the spike's own call site is no longer where this wrapper belongs.
-  `flakyTest` could not live in `Runner.ts` at all — `scripts/verify-testapi-seam.sh`
-  forbids that module from importing `@effect/vitest` — so the retry wrap
-  moved one module over, to `VitestTestApi.ts`. A metrics wrapper placed at
-  the spike's literal `Runner.ts` call site would land INSIDE `flakyTest`'s
-  retried region, counting once per ATTEMPT rather than once per Scenario —
-  exactly the double/triple-counting this bullet already warned against, for
-  a different reason than originally stated. The correct future call site is
-  the SAME `VitestTestApi.ts` seam point `withRetry` wraps at, OUTSIDE it
-  (`effect/Metric` is not a forbidden import there — only a TEST FRAMEWORK
-  is). The other caveat still holds unchanged: every Scenario runs under the
-  ambient simulated `TestClock` (ADR-EC-018), so `scenario.duration` reads
-  ~0ms unless a step itself advances the clock, and — per ADR-EC-034's own
-  finding — that clock is not reset between a `@retry` Scenario's own
-  attempts either.
-  ([#26](https://github.com/leaderiop/effect-cucumber/issues/26))
 - **Concurrent Scenario execution — design locked, spike-proven, ships with
   a new per-Scenario timeout knob.** A working spike reproduced the exact
   bug for real first (a 400ms `BeforeAllScenarios`, a 100ms-timeout Scenario
