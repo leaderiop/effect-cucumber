@@ -87,6 +87,21 @@ const rejectedBy = (action: () => void): StepPatternError => {
   throw new Error("expected define() to throw a StepPatternError, but it returned normally")
 }
 
+/**
+ * Runs `action` `count` times, strictly sequentially — never concurrently. Exists because the
+ * only way to guarantee each call fully completes before the next starts is an `await` inside a
+ * loop, which `no-await-in-loop` flags on sight; centralizing that one, deliberate exception here
+ * — instead of inline at the call site — is what the suppression below is actually annotating.
+ */
+const sequentially = async <A>(count: number, action: () => Promise<A>): Promise<A> => {
+  let last = await action()
+  for (let call = 1; call < count; call += 1) {
+    // eslint-disable-next-line no-await-in-loop -- the entire point of this helper is serial execution
+    last = await action()
+  }
+  return last
+}
+
 describe("a custom parameter type defined once resolves in two separate loadFeature calls", () => {
   it("resolves {money} in both calls and matches step text against each call's own registry", async () => {
     const store = storeWithMoney()
@@ -125,14 +140,10 @@ describe("a custom parameter type defined once resolves in two separate loadFeat
   it("does not accumulate across twenty repeated calls on the same fixture", async () => {
     const storeLayer = ParameterTypeStore.layerOf(storeWithMoney())
 
-    let last = await load(fixtureA, storeLayer)
-    for (let call = 1; call < 20; call += 1) {
-      // Sequential on purpose, not `Promise.all`: the criterion is that REPEATED, ORDERED
-      // calls on one store don't accumulate cross-call state — a process-global registry
-      // fails on exactly a second SEQUENTIAL call (see the test above this describe block).
-      // eslint-disable-next-line no-await-in-loop
-      last = await load(fixtureA, storeLayer)
-    }
+    // Sequential on purpose, not `Promise.all`: the criterion is that REPEATED, ORDERED calls on
+    // one store don't accumulate cross-call state — a process-global registry fails on exactly a
+    // second SEQUENTIAL call (see the test above this describe block).
+    const last = await sequentially(20, () => load(fixtureA, storeLayer))
 
     expect(last.parameterTypes.lookupByTypeName("money")).toBeDefined()
     expect(payMatchOf(last.parameterTypes)[0]?.args).toEqual([{ amount: 42 }])
