@@ -126,18 +126,22 @@ const makeRecordingApi = (): {
   const records: Array<EmissionRecord> = []
   const api: TestApi = {
     describe: (name, define) => {
+      // oxlint-disable-next-line effect-cucumber/ref-state-only -- function-local array, never shared (GATE-ALLOW-MUTATION)
       records.push({ kind: "describe", name, self: null, options: null }) // GATE-ALLOW-MUTATION: function-local array, created fresh per makeRecordingApi() call and never shared across steps or Scenarios — the opposite of the module-scope holder INV-EC-006 forbids.
       define()
     },
     effect: (name, self, options) => {
+      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
       records.push({ kind: "effect", name, self, options }) // GATE-ALLOW-MUTATION: same function-local array as above; a TestApi callback is synchronous and cannot yield a Ref update.
     },
     // No fixture in this suite registers BeforeAllScenarios, so this recorder is never exercised —
     // present only so this fake keeps satisfying the real `TestApi` interface (ADR-EC-040).
     beforeAll: (name, self) => {
+      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
       records.push({ kind: "beforeAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
     },
     afterAll: (name, self) => {
+      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
       records.push({ kind: "afterAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
     }
   }

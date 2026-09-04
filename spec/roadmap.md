@@ -538,7 +538,11 @@ below. Kept for history:
   ([`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh),
   documented in `packages/vitest/README.md`'s "Recommended lint and compiler
   configuration" section) stays too — the two are complementary, not
-  competing.
+  competing. Dogfooded too, same day (ADR-EC-042's Correction): `.oxlintrc.json`
+  loads it against this repo's own `packages/vitest/test/acceptance/**`,
+  alongside `scripts/verify-acceptance-ref-state.sh` — matching the same two-layer
+  coverage `tools/oxlint/effect/` already gets (continuous dogfooding, plus a
+  standalone proof script).
 - **Which package owns `ManagedRuntime` construction** — resolved by
   [ADR-EC-041](decisions/041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md):
   stays in `packages/vitest/src/loadFeature.ts`, no adapter package, until a
