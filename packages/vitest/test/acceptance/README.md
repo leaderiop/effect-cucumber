@@ -63,7 +63,11 @@ Every value one step writes for a later step in the same Scenario goes through a
 counter standing in for one** — the module-scope escape hatch is closed on purpose. A module-scope holder satisfies the
 letter of the no-`let` rule while defeating its entire intent, and it is additionally unable to observe per-Scenario
 Layer freshness: one array is one array however many times the Layer was built. `scripts/verify-acceptance-ref-state.sh`
-enforces this.
+and, dogfooded the same way, `scripts/templates/oxlint-ref-state/`'s `ref-state-only` rule (`.oxlintrc.json`) both
+enforce this — over every step module in this directory, not `pitfalls-checklist.test.ts` or
+`negative-requirements.test.ts` (both marked "Not a pair" in `spec/traceability.md`'s §4 Test file map): both are
+framework-level meta-tests driving `Runner.ts`'s internals directly, with no Scenario for a value to cross between
+steps of, so INV-EC-006 doesn't describe what they do (ADR-EC-043).
 
 ## Zero `any`
 

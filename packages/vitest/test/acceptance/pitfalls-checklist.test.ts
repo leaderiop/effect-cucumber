@@ -123,26 +123,29 @@ const makeRecordingApi = (): {
   readonly api: TestApi
   readonly records: ReadonlyArray<EmissionRecord>
 } => {
+  // Registration-time test-harness bookkeeping, not cross-step Scenario state: this file is
+  // excluded from the INV-EC-006 Ref-only gates (scripts/verify-acceptance-ref-state.sh's
+  // EXCLUDED_FILES, .oxlintrc.json's matching override) because it is a framework-level
+  // meta-test — spec/traceability.md already classifies it "Not a pair" — driving Runner.ts's
+  // real emitFeature directly to record which synchronous callback it invoked, in order. There
+  // is no Scenario here for state to cross, and no Effect runtime running at registration time
+  // for a Ref to update through. See ADR-EC-043.
   const records: Array<EmissionRecord> = []
   const api: TestApi = {
     describe: (name, define) => {
-      // oxlint-disable-next-line effect-cucumber/ref-state-only -- function-local array, never shared (GATE-ALLOW-MUTATION)
-      records.push({ kind: "describe", name, self: null, options: null }) // GATE-ALLOW-MUTATION: function-local array, created fresh per makeRecordingApi() call and never shared across steps or Scenarios — the opposite of the module-scope holder INV-EC-006 forbids.
+      records.push({ kind: "describe", name, self: null, options: null })
       define()
     },
     effect: (name, self, options) => {
-      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
-      records.push({ kind: "effect", name, self, options }) // GATE-ALLOW-MUTATION: same function-local array as above; a TestApi callback is synchronous and cannot yield a Ref update.
+      records.push({ kind: "effect", name, self, options })
     },
     // No fixture in this suite registers BeforeAllScenarios, so this recorder is never exercised —
     // present only so this fake keeps satisfying the real `TestApi` interface (ADR-EC-040).
     beforeAll: (name, self) => {
-      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
-      records.push({ kind: "beforeAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
+      records.push({ kind: "beforeAll", name, self, options: null })
     },
     afterAll: (name, self) => {
-      // oxlint-disable-next-line effect-cucumber/ref-state-only -- same function-local array as above (GATE-ALLOW-MUTATION)
-      records.push({ kind: "afterAll", name, self, options: null }) // GATE-ALLOW-MUTATION: same function-local array as above.
+      records.push({ kind: "afterAll", name, self, options: null })
     }
   }
   return { api, records }
