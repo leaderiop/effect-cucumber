@@ -34,7 +34,7 @@ describe("two hook registries built in the same process share no state", () => {
     const a = createHookRegistry<Body>()
     const b = createHookRegistry<Body>()
 
-    a.register("Before", null, () => "a hook in A")
+    a.register("Before", null, null, () => "a hook in A")
 
     // THE load-bearing isolation assertion.
     expect(a.hooks()).toHaveLength(1)
@@ -46,11 +46,11 @@ describe("hooks() returns a snapshot rather than the live array", () => {
   it("does not grow a previously returned array when another hook is registered", () => {
     const registry = createHookRegistry<Body>()
 
-    registry.register("Before", null, () => "first")
+    registry.register("Before", null, null, () => "first")
     const captured = registry.hooks()
     expect(captured).toHaveLength(1)
 
-    registry.register("After", null, () => "second")
+    registry.register("After", null, null, () => "second")
 
     // Returning the internal array directly would make `captured` length 2 here, because it would be the same object
     // the registry keeps pushing onto.
@@ -63,9 +63,9 @@ describe("hooks come back in registration order", () => {
   it("preserves order across mixed kinds, including two Before hooks", () => {
     const registry = createHookRegistry<Body>()
 
-    registry.register("Before", null, firstBefore)
-    registry.register("After", null, anAfter)
-    registry.register("Before", null, secondBefore)
+    registry.register("Before", null, null, firstBefore)
+    registry.register("After", null, null, anAfter)
+    registry.register("Before", null, null, secondBefore)
 
     const [first, second, third] = registry.hooks()
 
@@ -87,9 +87,9 @@ describe("a hook's ruleId is what tells a Rule-scoped hook from a Feature-level 
   it("keeps each hook's own ruleId intact, including null", () => {
     const registry = createHookRegistry<Body>()
 
-    registry.register("Before", null, featureLevelBefore)
-    registry.register("Before", "r1", ruleOneBefore)
-    registry.register("Before", "r2", ruleTwoBefore)
+    registry.register("Before", null, null, featureLevelBefore)
+    registry.register("Before", "r1", null, ruleOneBefore)
+    registry.register("Before", "r2", null, ruleTwoBefore)
 
     const [feature, one, two] = registry.hooks()
 
@@ -103,9 +103,9 @@ describe("a hook's ruleId is what tells a Rule-scoped hook from a Feature-level 
   it("separates the three sets by ruleId alone, with no other bookkeeping", () => {
     const registry = createHookRegistry<Body>()
 
-    registry.register("Before", null, featureLevelBefore)
-    registry.register("Before", "r1", ruleOneBefore)
-    registry.register("Before", "r2", ruleTwoBefore)
+    registry.register("Before", null, null, featureLevelBefore)
+    registry.register("Before", "r1", null, ruleOneBefore)
+    registry.register("Before", "r2", null, ruleTwoBefore)
 
     // THE load-bearing assertion of this block, and the shape 08-05a actually uses: one flat list, filtered by
     // `ruleId` before it ever reaches `groupHooks`.
@@ -127,5 +127,34 @@ describe("a hook's ruleId is what tells a Rule-scoped hook from a Feature-level 
     const forFeature = registry.hooks().filter((hook) => hook.ruleId === null)
     expect(forFeature).toHaveLength(1)
     expect(forFeature[0]?.body).toBe(featureLevelBefore)
+  })
+})
+
+describe("a hook's tagExpr is what tells a tag-expression-scoped hook from an unconditional one (ADR-EC-035)", () => {
+  it("keeps each hook's own tagExpr intact, including null", () => {
+    const registry = createHookRegistry<Body>()
+
+    registry.register("Before", null, null, featureLevelBefore)
+    registry.register("Before", null, "@db", ruleOneBefore)
+    registry.register("Before", null, "@db and not @slow", ruleTwoBefore)
+
+    const [unconditional, bare, compound] = registry.hooks()
+
+    // `null` is a real recorded value, not an absent key — the same contract `ruleId` already has,
+    // extended to this new field.
+    expect(unconditional?.tagExpr).toBeNull()
+    expect(bare?.tagExpr).toBe("@db")
+    expect(compound?.tagExpr).toBe("@db and not @slow")
+  })
+
+  it("keeps tagExpr and ruleId as two independent fields on the same record", () => {
+    const registry = createHookRegistry<Body>()
+
+    registry.register("Before", "r1", "@db", ruleOneBefore)
+
+    const [only] = registry.hooks()
+
+    expect(only?.ruleId).toBe("r1")
+    expect(only?.tagExpr).toBe("@db")
   })
 })

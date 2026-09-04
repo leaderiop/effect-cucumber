@@ -14,7 +14,7 @@ import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import type * as Scope from "effect/Scope"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
-import type { HookBody, HookSet } from "../src/Hook.ts"
+import type { HookEntry, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
 import { emitFeature } from "../src/Runner.ts"
@@ -157,22 +157,30 @@ const makeRecorderLayer = (): {
   return { layer: Layer.succeed(Recorder, Recorder.of({ log })), log }
 }
 
-const recordingHook = (name: string): HookBody => () =>
-  Effect.gen(function*() {
-    const recorder = yield* Recorder
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
-    yield* Effect.yieldNow
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
-  })
+// Unconditional (`matches: null`) — this file is about the RUNNER's own bracketing/teardown, not tag
+// filtering, which `Hook.test.ts` and the acceptance pair own (ADR-EC-035, BEH-EC-027).
+const recordingHook = (name: string): HookEntry => ({
+  matches: null,
+  body: () =>
+    Effect.gen(function*() {
+      const recorder = yield* Recorder
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+      yield* Effect.yieldNow
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
+    })
+})
 
-// A hook body that records its own `:start`, suspends, then fails with `error` — no `:end`.
-const failingHook = (name: string, error: unknown): HookBody => () =>
-  Effect.gen(function*() {
-    const recorder = yield* Recorder
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
-    yield* Effect.yieldNow
-    return yield* Effect.fail(error)
-  })
+// A hook entry whose body records its own `:start`, suspends, then fails with `error` — no `:end`.
+const failingHook = (name: string, error: unknown): HookEntry => ({
+  matches: null,
+  body: () =>
+    Effect.gen(function*() {
+      const recorder = yield* Recorder
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+      yield* Effect.yieldNow
+      return yield* Effect.fail(error)
+    })
+})
 
 const recordingStep = (name: string): StepBody => () =>
   Effect.gen(function*() {

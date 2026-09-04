@@ -104,3 +104,6 @@ entries:
   - id: "ADR-EC-034"
     file: "034-retry-tag-wraps-flakytest-at-the-testapi-seam.md"
     title: "A @retry Gherkin tag wraps flakyTest at the TestApi seam — Runner.ts only decides, VitestTestApi.ts alone applies"
+  - id: "ADR-EC-035"
+    file: "035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md"
+    title: "Before/After/BeforeStep/AfterStep accept a leading tag-expression string, compiled once per Feature via vitest's own createTagsFilter"

@@ -257,6 +257,32 @@ PASSING overall, with a per-Scenario Layer build-ordinal counter reading `[1, 2]
 shared-vs-per-Scenario split, and the TestClock-persistence reading in one retried Scenario; and
 `packages/vitest/test/Runner.test.ts` carries the `BeforeAllScenarios`-not-rescued claim in process,
 composing `flakyTest` manually the identical order `VitestTestApi.ts` does.
+**Tag-expression-scoped hooks** ship: `Before`, `After`, `BeforeStep` and `AfterStep` accept an
+additional, additive two-argument form — `Before("@db and not @slow", fn)` — parsed and evaluated by
+the SAME grammar and engine vitest's own `--tagsFilter` uses
+([ADR-EC-035](decisions/035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md),
+[BEH-EC-027](behaviors/07-hook-ordering-and-guarantees.md#beh-ec-027-tag-expression-scoped-hooks-compose-with-rulefeature-scoping-and-are-excluded-before-batch-assembly)).
+Reuses vitest's own exported `createTagsFilter` (`@vitest/runner/utils`) — confirmed, against the
+CURRENTLY installed `@vitest/runner@4.1.11`, to be the actual mechanism behind `--tagsFilter`, and
+still NOT `@cucumber/tag-expressions`, which remains absent from this repository's dependency tree
+entirely — so `@vitest/runner` becomes a real, named peer/dev dependency rather than a transitive one
+relied on implicitly. `BeforeAllScenarios`/`AfterAllScenarios` are excluded from the tag-expression
+overload by TYPE (a compile error by arity, not a runtime rejection): no coherent single-Scenario tag
+set exists to check against a once-per-Feature hook, the same restriction shape those two hooks
+already have on a Rule's own dsl. Composes additively with existing Rule/Feature scoping, and a
+Rule-scoped hook's own tag expression is validated against the Feature-WIDE tag universe, not only
+that Rule's own tags. The existing independent-batch/combined-failure guarantee (BEH-EC-017) is
+unchanged in mechanism; BEH-EC-027 makes explicit what was already true — a tag-filtered-out hook is
+excluded BEFORE its Scenario's batch is assembled, never invoked, never a source of a dropped
+failure. The same "declared tag universe" cost ADR-EC-026 first paid for `includeTags`/`excludeTags`
+recurs here for a second, independent call site: an undeclared tag in a hook's own expression is a
+loud, located `HookTagExpressionError` at registration time, naming the offending hook and its
+`.feature` file. Proven against the real running framework:
+`packages/vitest/test/acceptance/tagged-hooks.feature` + `.steps.test.ts` (`REQ-EC-027`,
+`spec/traceability.md` §5) registers a bare `@db` hook and a compound `@db and not @slow` hook
+alongside an unconditional one, over three real Scenarios (untagged, `@db`, `@db @slow`), and proves
+by a `deepStrictEqual`'d hook log that the matching Scenario runs both scoped hooks, the non-matching
+one runs neither, and the `@db @slow` Scenario runs the bare-tag hook but not the compound one.
 
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -366,21 +392,6 @@ built to de-risk the decision before it locks.
   typed wrapper only if the concurrent-execution work below ends up
   touching this same hook-lifecycle code anyway.
   ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
-- **Tagged/conditional hooks — design locked, spike-proven.** A working
-  spike ran a real `Before("@db and not @slow", fn)`-style overload against
-  a real tagged `.feature` fixture — 4/4 passing, confirmed running only for
-  matching Scenarios. Correction to the original research: the parser isn't
-  `@cucumber/tag-expressions` (not in this repo's dependency tree at all) —
-  it's `@vitest/runner`'s own exported `createTagsFilter`, the same function
-  backing vitest's `--tagsFilter`, so no new dependency is needed.
-  `BeforeAllScenarios`/`AfterAllScenarios` are excluded from the overload —
-  no coherent single-Scenario tag set exists to check there, consistent with
-  their existing Rule-dsl restriction. Composes additively with existing
-  Rule/Feature scoping; the existing "independent batch, combined failure"
-  guarantee survives (a filtered-out hook is excluded before the batch is
-  assembled, proven with a dedicated test). One recurring cost carried over
-  from ADR-EC-026: this needs the same pre-declared "tag universe" CLI
-  filtering already requires. ([#32](https://github.com/leaderiop/effect-cucumber/issues/32))
 - **Attachments — a `World.attach()` equivalent — design locked,
   spike-proven.** A working spike attached data from inside a step and saw
   it rendered directly under a real failure panel via `context.annotate()`

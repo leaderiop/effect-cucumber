@@ -29,7 +29,7 @@ entries:
   - id: "BEH-EC-017"
     file: "07-hook-ordering-and-guarantees.md"
     title: "Hook ordering and guarantees"
-    id_range: "017"
+    id_range: "017, 027"
   - id: "BEH-EC-019"
     file: "08-step-modules.md"
     title: "Step modules"

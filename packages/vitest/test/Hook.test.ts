@@ -1,7 +1,7 @@
 /**
  * Tests for `Hook`.
  *
- * Carries: ADR-EC-005, ADR-EC-010.
+ * Carries: ADR-EC-005, ADR-EC-010, ADR-EC-035, BEH-EC-027.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -12,12 +12,14 @@ import {
   emptyHookSet,
   groupHooks,
   type HookBody,
+  type HookEntry,
   type HookSet,
   mergeHookSets,
   registerHook,
   runHookBatch
 } from "../src/Hook.ts"
 import type { HookDefinition } from "../src/HookRegistry.ts"
+import { HookTagExpressionError } from "../src/HookTagExpression.ts"
 
 // A bare-generator hook body, at module scope because it captures nothing (`unicorn/consistent-function-scoping`).
 const bareBefore = function*() {
@@ -34,19 +36,29 @@ const secondBefore: HookBody = () => Effect.succeed(undefined)
 // (`unicorn/consistent-function-scoping`).
 const succeedingHook: HookBody = () => Effect.succeed(undefined)
 
-// A hook body whose only property is being a reference nothing else in the process shares — every call returns a
-// fresh closure.
-const distinctHook = (): HookBody => () => Effect.succeed(undefined)
+// Capture-free failing hook bodies for the "filtered-out entry never surfaces, survivors still combine" test, at
+// module scope for the same reason (`unicorn/consistent-function-scoping`).
+const failingUnconditional: HookBody = () => Effect.fail("unconditional failed")
+const filteredOutFailure: HookBody = () => Effect.fail("must never surface — never invoked")
+const failingScoped: HookBody = () => Effect.fail("db-scoped failed")
 
-// A `HookSet` carrying exactly one distinct body under every one of the six keys, so a merge's result can be read
+// An UNCONDITIONAL entry wrapping a plain body — `matches: null`, today's only shape before ADR-EC-035 — for the
+// `runHookBatch` tests below that are not about tag filtering at all.
+const unconditional = (body: HookBody): HookEntry => ({ body, matches: null })
+
+// A hook entry whose only property is being a reference nothing else in the process shares — every call returns a
+// fresh object, unconditional (`matches: null`).
+const distinctEntry = (): HookEntry => unconditional(() => Effect.succeed(undefined))
+
+// A `HookSet` carrying exactly one distinct entry under every one of the six keys, so a merge's result can be read
 // positionally (`merged.Before[0]` is `feature.Before[0]`, and so on).
 const oneOfEachKind = (): HookSet => ({
-  Before: [distinctHook()],
-  After: [distinctHook()],
-  BeforeStep: [distinctHook()],
-  AfterStep: [distinctHook()],
-  BeforeAllScenarios: [distinctHook()],
-  AfterAllScenarios: [distinctHook()]
+  Before: [distinctEntry()],
+  After: [distinctEntry()],
+  BeforeStep: [distinctEntry()],
+  AfterStep: [distinctEntry()],
+  BeforeAllScenarios: [distinctEntry()],
+  AfterAllScenarios: [distinctEntry()]
 })
 
 describe("an already-wrapped hook function is accepted unchanged", () => {
@@ -96,25 +108,27 @@ describe("a failing hook", () => {
 describe("groupHooks partitions a flat list by kind", () => {
   it("puts each body under its own kind and preserves registration order within a kind", () => {
     // `ruleId: null` on every one of them: `groupHooks` partitions whatever flat list it is handed and never filters
-    // by scope itself, so this test stays a pure Feature-level partition test.
+    // by scope itself, so this test stays a pure Feature-level partition test. `tagExpr: null` — unconditional,
+    // today's only shape before ADR-EC-035 — since tag compilation itself is its own describe block below.
     const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
-      { kind: "Before", body: firstBefore, ruleId: null },
-      { kind: "After", body: anAfter, ruleId: null },
-      { kind: "Before", body: secondBefore, ruleId: null }
+      { kind: "Before", body: firstBefore, ruleId: null, tagExpr: null },
+      { kind: "After", body: anAfter, ruleId: null, tagExpr: null },
+      { kind: "Before", body: secondBefore, ruleId: null, tagExpr: null }
     ]
 
-    const grouped = groupHooks(definitions)
+    const grouped = groupHooks(definitions, [], "test.feature")
 
     expect(grouped.Before).toHaveLength(2)
-    // Reference identity, `toBe` and never `toEqual`.
-    expect(grouped.Before[0]).toBe(firstBefore)
-    expect(grouped.Before[1]).toBe(secondBefore)
+    // Reference identity on the BODY, `toBe` and never `toEqual` — each `HookSet` slot is now a `HookEntry`
+    // wrapping the registered body, not the body itself (ADR-EC-035).
+    expect(grouped.Before[0]?.body).toBe(firstBefore)
+    expect(grouped.Before[1]?.body).toBe(secondBefore)
     expect(grouped.After).toHaveLength(1)
-    expect(grouped.After[0]).toBe(anAfter)
+    expect(grouped.After[0]?.body).toBe(anAfter)
   })
 
   it("returns all six keys as empty arrays, not a partial object, for an empty list", () => {
-    const grouped = groupHooks([])
+    const grouped = groupHooks([], [], "test.feature")
 
     expect(grouped.Before).toEqual([])
     expect(grouped.After).toEqual([])
@@ -122,6 +136,70 @@ describe("groupHooks partitions a flat list by kind", () => {
     expect(grouped.AfterStep).toEqual([])
     expect(grouped.BeforeAllScenarios).toEqual([])
     expect(grouped.AfterAllScenarios).toEqual([])
+  })
+
+  it("gives an unconditional definition (tagExpr: null) a matches of null, never consulted by runHookBatch", () => {
+    const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
+      { kind: "Before", body: firstBefore, ruleId: null, tagExpr: null }
+    ]
+
+    const grouped = groupHooks(definitions, [], "test.feature")
+
+    expect(grouped.Before[0]?.matches).toBeNull()
+  })
+})
+
+describe("groupHooks compiles each definition's own tagExpr into a matcher (ADR-EC-035)", () => {
+  it("gives a bare-tag definition a matcher that reuses vitest's real createTagsFilter grammar", () => {
+    const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
+      { kind: "Before", body: firstBefore, ruleId: null, tagExpr: "@db" }
+    ]
+
+    const grouped = groupHooks(definitions, ["@db", "@slow"], "test.feature")
+    const matches = grouped.Before[0]?.matches
+
+    expect(matches).not.toBeNull()
+    expect(matches?.(["@db"])).toBe(true)
+    expect(matches?.(["@db", "@slow"])).toBe(true)
+    expect(matches?.(["@slow"])).toBe(false)
+    expect(matches?.([])).toBe(false)
+  })
+
+  it("compiles a compound and/not expression through the same real parser", () => {
+    const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
+      { kind: "Before", body: firstBefore, ruleId: null, tagExpr: "@db and not @slow" }
+    ]
+
+    const grouped = groupHooks(definitions, ["@db", "@slow"], "test.feature")
+    const matches = grouped.Before[0]?.matches
+
+    expect(matches?.(["@db"])).toBe(true)
+    expect(matches?.(["@db", "@slow"])).toBe(false)
+    expect(matches?.(["@slow"])).toBe(false)
+  })
+
+  it("throws a HookTagExpressionError, not vitest's own bare thrown string, for a tag absent from the universe", () => {
+    const definitions: ReadonlyArray<HookDefinition<HookBody>> = [
+      { kind: "Before", body: firstBefore, ruleId: null, tagExpr: "@nonexistent" }
+    ]
+
+    expect(() => groupHooks(definitions, ["@db"], "checkout.feature")).toThrowError(HookTagExpressionError)
+
+    let caught: unknown = null
+    try {
+      groupHooks(definitions, ["@db"], "checkout.feature")
+    } catch (error) {
+      caught = error
+    }
+
+    // The message NAMES the offending kind, expression and .feature file — not a bare parser string.
+    expect(caught).toBeInstanceOf(HookTagExpressionError)
+    const hookError = caught as HookTagExpressionError
+    expect(hookError.kind).toBe("Before")
+    expect(hookError.tagExpr).toBe("@nonexistent")
+    expect(hookError.featureUri).toBe("checkout.feature")
+    expect(hookError.message).toContain("checkout.feature")
+    expect(hookError.message).toContain("@nonexistent")
   })
 })
 
@@ -254,11 +332,11 @@ describe("a merged HookSet's array order is its execution order", () => {
       const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
 
       const merged = mergeHookSets(
-        { ...emptyHookSet, Before: [recordingHook("feature:before")] },
-        { ...emptyHookSet, Before: [recordingHook("rule:before")] }
+        { ...emptyHookSet, Before: [unconditional(recordingHook("feature:before"))] },
+        { ...emptyHookSet, Before: [unconditional(recordingHook("rule:before"))] }
       )
 
-      yield* runHookBatch(merged.Before)
+      yield* runHookBatch(merged.Before, [])
 
       // The end-to-end claim: concatenation order IS execution order.
       assert.deepStrictEqual(yield* Ref.get(log), ["feature:before", "rule:before"])
@@ -270,11 +348,11 @@ describe("a merged HookSet's array order is its execution order", () => {
       const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
 
       const merged = mergeHookSets(
-        { ...emptyHookSet, After: [recordingHook("feature:after")] },
-        { ...emptyHookSet, After: [recordingHook("rule:after")] }
+        { ...emptyHookSet, After: [unconditional(recordingHook("feature:after"))] },
+        { ...emptyHookSet, After: [unconditional(recordingHook("rule:after"))] }
       )
 
-      yield* runHookBatch(merged.After)
+      yield* runHookBatch(merged.After, [])
 
       // The unwind, observed rather than inferred from the merge's shape.
       assert.deepStrictEqual(yield* Ref.get(log), ["rule:after", "feature:after"])
@@ -284,7 +362,7 @@ describe("a merged HookSet's array order is its execution order", () => {
 describe("runHookBatch runs an independent batch of hooks", () => {
   it.effect("an empty batch succeeds", () =>
     Effect.gen(function*() {
-      const exit = yield* Effect.exit(runHookBatch([]))
+      const exit = yield* Effect.exit(runHookBatch([], []))
       assert.isTrue(Exit.isSuccess(exit))
     }))
 
@@ -300,7 +378,9 @@ describe("runHookBatch runs an independent batch of hooks", () => {
       const second: HookBody = () => Ref.update(log, (seen) => [...seen, "two"])
       const third: HookBody = () => Ref.update(log, (seen) => [...seen, "three"])
 
-      const exit = yield* Effect.exit(runHookBatch([failing, second, third]))
+      const exit = yield* Effect.exit(
+        runHookBatch([unconditional(failing), unconditional(second), unconditional(third)], [])
+      )
 
       assert.isTrue(Exit.isFailure(exit))
       // THE load-bearing assertion of this test — not merely that the batch failed, but that all three hooks ran.
@@ -314,7 +394,12 @@ describe("runHookBatch runs an independent batch of hooks", () => {
       const failingOne: HookBody = () => Effect.fail(errorOne)
       const failingTwo: HookBody = () => Effect.fail(errorTwo)
 
-      const exit = yield* Effect.exit(runHookBatch([failingOne, succeedingHook, failingTwo]))
+      const exit = yield* Effect.exit(
+        runHookBatch(
+          [unconditional(failingOne), unconditional(succeedingHook), unconditional(failingTwo)],
+          []
+        )
+      )
 
       assert.isTrue(Exit.isFailure(exit))
       if (Exit.isFailure(exit)) {
@@ -335,7 +420,12 @@ describe("runHookBatch runs an independent batch of hooks", () => {
         const theError = { tag: "the only failure" }
         const failing: HookBody = () => Effect.fail(theError)
 
-        const exit = yield* Effect.exit(runHookBatch([succeedingHook, failing, succeedingHook]))
+        const exit = yield* Effect.exit(
+          runHookBatch(
+            [unconditional(succeedingHook), unconditional(failing), unconditional(succeedingHook)],
+            []
+          )
+        )
 
         // `Cause.combine(Cause.empty, c)` returns `c` unchanged, so a batch with exactly one failure fails with the
         // ORIGINAL cause, and the existing squash-based reference-identity assertion style still works for it.
@@ -356,7 +446,14 @@ describe("runHookBatch runs an independent batch of hooks", () => {
           yield* Ref.update(log, (seen) => [...seen, `${name}:end`])
         })
 
-      yield* runHookBatch([recordingHook("one"), recordingHook("two"), recordingHook("three")])
+      yield* runHookBatch(
+        [
+          unconditional(recordingHook("one")),
+          unconditional(recordingHook("two")),
+          unconditional(recordingHook("three"))
+        ],
+        []
+      )
 
       // Bracketed around a real suspension (`Effect.yieldNow`), so a concurrent implementation is actually
       // falsifiable — a single entry per hook would let a concurrency mutation survive.
@@ -369,4 +466,74 @@ describe("runHookBatch runs an independent batch of hooks", () => {
         "three:end"
       ])
     }))
+})
+
+describe("runHookBatch excludes a tag-filtered-out entry BEFORE the batch, not from within it (ADR-EC-035, BEH-EC-027)", () => {
+  it.effect("never invokes an entry whose matches predicate rejects the Scenario's tags", () =>
+    Effect.gen(function*() {
+      const log = yield* Ref.make<ReadonlyArray<string>>([])
+      const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
+
+      const entries: ReadonlyArray<HookEntry> = [
+        unconditional(recordingHook("always")),
+        { body: recordingHook("db-only"), matches: (tags) => tags.includes("@db") }
+      ]
+
+      yield* runHookBatch(entries, ["@ui"])
+
+      // "db-only" never ran at all — not run-and-ignored, simply never invoked.
+      assert.deepStrictEqual(yield* Ref.get(log), ["always"])
+    }))
+
+  it.effect("invokes a tag-scoped entry when the Scenario's tags do match", () =>
+    Effect.gen(function*() {
+      const log = yield* Ref.make<ReadonlyArray<string>>([])
+      const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
+
+      const entries: ReadonlyArray<HookEntry> = [
+        { body: recordingHook("db-only"), matches: (tags) => tags.includes("@db") }
+      ]
+
+      yield* runHookBatch(entries, ["@db", "@slow"])
+
+      assert.deepStrictEqual(yield* Ref.get(log), ["db-only"])
+    }))
+
+  it.effect("preserves registration order among the entries that DO survive filtering", () =>
+    Effect.gen(function*() {
+      const log = yield* Ref.make<ReadonlyArray<string>>([])
+      const recordingHook = (name: string): HookBody => () => Ref.update(log, (seen) => [...seen, name])
+
+      const entries: ReadonlyArray<HookEntry> = [
+        unconditional(recordingHook("first")),
+        { body: recordingHook("second-filtered-out"), matches: (tags) => tags.includes("@slow") },
+        { body: recordingHook("third"), matches: (tags) => tags.includes("@db") }
+      ]
+
+      yield* runHookBatch(entries, ["@db"])
+
+      // "second-filtered-out" is silently absent, but "first" and "third" keep their REGISTRATION order.
+      assert.deepStrictEqual(yield* Ref.get(log), ["first", "third"])
+    }))
+
+  it.effect(
+    "a filtered-out entry's own failure never surfaces, and survivors' failures still COMBINE (BEH-EC-017)",
+    () =>
+      Effect.gen(function*() {
+        const entries: ReadonlyArray<HookEntry> = [
+          unconditional(failingUnconditional),
+          { body: filteredOutFailure, matches: (tags) => tags.includes("@slow") },
+          { body: failingScoped, matches: (tags) => tags.includes("@db") }
+        ]
+
+        const exit = yield* Effect.exit(runHookBatch(entries, ["@db"]))
+
+        assert.isTrue(Exit.isFailure(exit))
+        if (Exit.isFailure(exit)) {
+          const failedErrors = exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
+          // Exactly the two hooks that actually ran — the filtered-out one contributes NOTHING to combine or drop.
+          assert.deepStrictEqual(failedErrors, ["unconditional failed", "db-scoped failed"])
+        }
+      })
+  )
 })

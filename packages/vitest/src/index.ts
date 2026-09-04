@@ -5,8 +5,8 @@
  *
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
- * `HookRegistry.ts`, `Tags.ts`, `TestApi.ts`, `Collect.ts`, `VitestTestApi.ts`, `OutlineTitle.ts`,
- * `ScenarioKey.ts`. Tests import them by relative path.
+ * `HookRegistry.ts`, `HookTagExpression.ts`, `Tags.ts`, `TestApi.ts`, `Collect.ts`, `VitestTestApi.ts`,
+ * `OutlineTitle.ts`, `ScenarioKey.ts`. Tests import them by relative path.
  */
 
 export { describeFeature } from "./describeFeature.ts"
@@ -62,7 +62,8 @@ export type {
   ScenarioDsl,
   ScenarioRegistrar,
   StepParams,
-  StepRegistrar
+  StepRegistrar,
+  TaggedHookRegistrar
 } from "./Dsl.ts"
 
 /**

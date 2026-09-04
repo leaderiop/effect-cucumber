@@ -19,15 +19,16 @@ import { captureCallSite, formatCallSite } from "./CallSite.ts"
 import type {
   BackgroundDsl,
   FeatureDsl,
-  HookRegistrar,
   RuleDsl,
   ScenarioDsl,
   ScenarioRegistrar,
-  StepRegistrar
+  StepRegistrar,
+  TaggedHookRegistrar
 } from "./Dsl.ts"
 import { makeUnknownContainerWarning, type UnknownContainerWarning } from "./Errors.ts"
 import { groupHooks, type HookBody, type HookSet, registerHook } from "./Hook.ts"
 import { createHookRegistry, type HookKind } from "./HookRegistry.ts"
+import { featureTagUniverse } from "./HookTagExpression.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
 import { type ErasedExtraLayer, type ErasedLayer, type FeaturePlan, planFeature, type StepBody } from "./Plan.ts"
 import { createRegistry, type StepDefinition, type StepKeyword } from "./Registry.ts"
@@ -119,10 +120,18 @@ export const collect = (
     registry.register(keyword, pattern, register(pattern, fn), captureCallSite())
   }
 
-  // Mirrors `registrar` above, minus `pattern` and minus a call-site capture.
-  const hookRegistrar = (kind: HookKind): HookRegistrar<any> => (fn) => {
-    hookRegistry.register(kind, null, registerHook(kind, fn))
-  }
+  // Mirrors `registrar` above, minus `pattern` and minus a call-site capture. Shared by all SIX hook
+  // kinds at the `dsl` object literal below: `BeforeAllScenarios`/`AfterAllScenarios` are typed
+  // `HookRegistrar<RShared>` there (one-arg only), so a tag expression reaching this closure for
+  // either is rejected AT THE CALL SITE by TypeScript, never at runtime — this implementation stays
+  // one function for all six because the arity-driven branch below is the identical "was a string
+  // passed" check regardless of which kind is calling it.
+  const hookRegistrar =
+    (kind: HookKind): TaggedHookRegistrar<any> => (tagExprOrFn: string | (() => any), maybeFn?: () => any): void => {
+      const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
+      const fn = (maybeFn ?? tagExprOrFn) as () => any
+      hookRegistry.register(kind, null, tagExpr, registerHook(kind, fn))
+    }
 
   const scenarioDsl: ScenarioDsl<any> = {
     Given: registrar("Given"),
@@ -228,8 +237,14 @@ export const collect = (
 
       // The Rule-scoped counterpart of the Feature-level `hookRegistrar` closure above, differing
       // in exactly one thing: it passes THIS Rule's id where that one passes `null`.
-      const ruleHookRegistrar = (kind: HookKind): HookRegistrar<any> => (fn) => {
-        hookRegistry.register(kind, ruleId, registerHook(kind, fn))
+      const ruleHookRegistrar = (kind: HookKind): TaggedHookRegistrar<any> =>
+      (
+        tagExprOrFn: string | (() => any),
+        maybeFn?: () => any
+      ): void => {
+        const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
+        const fn = (maybeFn ?? tagExprOrFn) as () => any
+        hookRegistry.register(kind, ruleId, tagExpr, registerHook(kind, fn))
       }
 
       const ruleDsl: RuleDsl<any> = {
@@ -275,6 +290,13 @@ export const collect = (
   // Read ONCE, after `define(dsl)` has returned, and shared by both groupings below.
   const hookDefinitions = hookRegistry.hooks()
 
+  // Every literal tag anywhere in this Feature (Feature/Rule/Scenario/Examples tags, already
+  // flattened onto `ParsedScenario.tags` by the parser) — computed ONCE here, from data `Plan.ts`
+  // would flatten identically, never a second `gherkinTags`-style file rescan. This is the "declared
+  // tag universe" a tag-expression-scoped hook's `tagExpr` is validated against (ADR-EC-026's rule,
+  // extended to a second call site by ADR-EC-035/BEH-EC-027).
+  const availableTags = featureTagUniverse(feature.allScenarios)
+
   // PLAN, and it happens in the SHARED implementation rather than in `describeFeature` alone.
   return {
     feature,
@@ -288,12 +310,16 @@ export const collect = (
     containerWarnings,
     // Grouping happens HERE, in the shared implementation, for the same reason planning does — see
     // the `hooks` field's own doc comment on `FeatureCollection`. FILTERED to Feature scope.
-    hooks: groupHooks(hookDefinitions.filter((definition) => definition.ruleId === null)),
+    hooks: groupHooks(
+      hookDefinitions.filter((definition) => definition.ruleId === null),
+      availableTags,
+      feature.uri
+    ),
     ruleLayers,
     ruleHooks: new Map(
       [...ruleLayers.keys()].map((ruleId): readonly [string, HookSet] => [
         ruleId,
-        groupHooks(hookDefinitions.filter((definition) => definition.ruleId === ruleId))
+        groupHooks(hookDefinitions.filter((definition) => definition.ruleId === ruleId), availableTags, feature.uri)
       ])
     ),
     // Handed back as-is — sparse by design, one entry per three-argument `Scenario(...)` call and
