@@ -58,3 +58,7 @@ entries:
     file: "14-scenario-retries.md"
     title: "Scenario-level retries via @retry"
     id_range: "026"
+  - id: "BEH-EC-028"
+    file: "15-attachments.md"
+    title: "Attachments: a World.attach() equivalent"
+    id_range: "028"

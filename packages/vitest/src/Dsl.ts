@@ -22,11 +22,20 @@
  *   RShared>` — the plain, one-arg-only shape — on PURPOSE: passing a tag expression to either is a
  *   compile error by arity, the same way either is already a compile error on `RuleDsl` itself (no
  *   coherent single-Scenario tag set exists to check against a once-per-Feature hook).
+ * - `StepRegistrar<ROut>` and `TaggedHookRegistrar<ROut>` both add `Attachments` to a body's
+ *   required-context union (ADR-EC-036, BEH-EC-028) — `attach` is available to a step and to
+ *   `Before`/`After`/`BeforeStep`/`AfterStep`, all of which run INSIDE one Scenario's `it.effect`.
+ *   `HookRegistrar<ROut>` — `BeforeAllScenarios`/`AfterAllScenarios`'s own type — deliberately does
+ *   NOT: those two run outside any Scenario's callback, so there is no live `TestContext` to attach
+ *   against, and the omission from this ONE union member is what makes `attach` a compile error
+ *   there rather than a runtime no-op. The same exclusion mechanism ADR-EC-018's F-10 already uses
+ *   for a per-Scenario `World` service, applied to a second, ambient (non-`World`) service.
  */
 import type { StepArgs } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
+import type { Attachments } from "./Attachments.ts"
 
 /**
  * One step keyword — `Given`, `When`, `Then`, `And` or `But` — as the test author calls it.
@@ -37,15 +46,19 @@ export interface StepRegistrar<ROut> {
   <P extends string, A, E>(
     pattern: P,
     fn:
-      | ((...p: StepParams<P>) => Effect.gen.Return<A, E, ROut | Scope.Scope>)
-      | ((...p: StepParams<P>) => Effect.Effect<A, E, ROut | Scope.Scope>)
+      | ((...p: StepParams<P>) => Effect.gen.Return<A, E, ROut | Scope.Scope | Attachments>)
+      | ((...p: StepParams<P>) => Effect.Effect<A, E, ROut | Scope.Scope | Attachments>)
   ): void
 }
 
 /**
  * One hook — `Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios` or
  * `AfterAllScenarios` — as the test author calls it. `BeforeAllScenarios`/`AfterAllScenarios` alone
- * keep this exact one-arg-only shape (see `TaggedHookRegistrar` below).
+ * keep this exact one-arg-only shape (see `TaggedHookRegistrar` below), and this type's own union —
+ * `ROut | Scope.Scope`, deliberately WITHOUT `Attachments` — is the other half of what sets those two
+ * hooks apart: `BeforeAllScenarios`/`AfterAllScenarios` are the only DSL containers this file types
+ * with `HookRegistrar` rather than `TaggedHookRegistrar`, so they are the only ones `attach` is a
+ * compile error inside (ADR-EC-036, BEH-EC-028).
  */
 export interface HookRegistrar<ROut> {
   <A, E>(
@@ -68,14 +81,14 @@ export interface HookRegistrar<ROut> {
 export interface TaggedHookRegistrar<ROut> {
   <A, E>(
     fn:
-      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
-      | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
+      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope | Attachments>)
+      | (() => Effect.Effect<A, E, ROut | Scope.Scope | Attachments>)
   ): void
   <A, E>(
     tagExpr: string,
     fn:
-      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
-      | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
+      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope | Attachments>)
+      | (() => Effect.Effect<A, E, ROut | Scope.Scope | Attachments>)
   ): void
 }
 

@@ -1,7 +1,8 @@
 /**
  * Public entry point of `@effect-cucumber/vitest`: `describeFeature`, `loadFeature`, `defineSteps`,
- * `gherkinTags`, `Testing`, the dsl types, and the error/warning types. One barrel, no subpath
- * exports; its rows are gate-checked against `spec/overview.md` by `scripts/verify-api-surface.sh`.
+ * `gherkinTags`, `Testing`, `Attachments`/`attach`, the dsl types, and the error/warning types. One
+ * barrel, no subpath exports; its rows are gate-checked against `spec/overview.md` by
+ * `scripts/verify-api-surface.sh`.
  *
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
@@ -10,6 +11,14 @@
  */
 
 export { describeFeature } from "./describeFeature.ts"
+
+/**
+ * A `World.attach()` equivalent — attach evidence to the running Scenario from a step or a
+ * per-Scenario hook (ADR-EC-036, BEH-EC-028). Compile-time-rejected from `BeforeAllScenarios`/
+ * `AfterAllScenarios`.
+ */
+export { attach, Attachments } from "./Attachments.ts"
+export type { AttachmentsShape } from "./Attachments.ts"
 
 /**
  * Read and parse a `.feature` file at module top level (ADR-EC-024, BEH-EC-001).

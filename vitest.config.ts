@@ -15,8 +15,15 @@ export default defineConfig({
   test: {
     // `failure-panel-fixture` fails ON PURPOSE (ADR-EC-033's real-vitest-output proof) — excluded
     // here for the same reason `.claude` is, and reached only by its own standalone
-    // `vitest.config.ts` via `scripts/verify-failure-panel.sh`.
-    exclude: [...configDefaults.exclude, "**/.claude/**", "**/test/failure-panel-fixture/**"],
+    // `vitest.config.ts` via `scripts/verify-failure-panel.sh`. `attachments-fixture` is the
+    // identical shape for ADR-EC-036's real-vitest-output proof, reached only via
+    // `scripts/verify-attachments-panel.sh`.
+    exclude: [
+      ...configDefaults.exclude,
+      "**/.claude/**",
+      "**/test/failure-panel-fixture/**",
+      "**/test/attachments-fixture/**"
+    ],
     // The universe is computed from THIS file's directory, so `pnpm test` from the root and
     // `pnpm -r test` from a package directory declare the same list. `./vitest.tags.ts` holds the
     // one hand-written half and the one derivation; `packages/vitest/vitest.config.ts` reuses both.

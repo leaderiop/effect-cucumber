@@ -326,6 +326,43 @@ attempt leaves that state in place for the next one. Every `Before`/`After`/`Bef
 [ADR-EC-034](../../spec/decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md) and
 [BEH-EC-026](../../spec/behaviors/14-scenario-retries.md) for the full detail and the measurements behind each claim.
 
+**`attach(contentType, data)` is a `World.attach()` equivalent — evidence attached from a step or a per-Scenario
+hook shows up directly under that Scenario's real failure panel.** No custom `Reporter`, no extra configuration:
+
+```ts
+import { attach, describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+
+const feature = await loadFeature("./checkout.feature")
+
+class World extends Context.Service<World, { readonly total: number }>()("World") {
+  static readonly layer = Layer.succeed(this, World.of({ total: 42 }))
+}
+
+describeFeature(feature, World.layer, ({ Then }) => {
+  Then("the order total is {int}", function*(expected: number) {
+    const { total } = yield* World
+    // Shows up directly under the failure panel if the assertion below fails.
+    yield* attach("text/plain", `computed total: ${total}`)
+    yield* Effect.sync(() => {
+      if (total !== expected) throw new Error(`expected ${expected}, got ${total}`)
+    })
+  })
+})
+```
+
+`attach` is reachable from `Given`/`When`/`Then`/`And`/`But`, and from `Before`/`After`/`BeforeStep`/`AfterStep`
+(Feature-level or Rule-level, tagged or unconditional) — every body kind that runs inside the Scenario's own
+`it.effect`. It is a COMPILE error inside `BeforeAllScenarios`/`AfterAllScenarios`, never a silent no-op: neither
+hook runs inside a Scenario's own `it.effect`, so there is no live `vitest.TestContext` to attach against. A
+`@retry`'d Scenario's attachments ACCUMULATE across every attempt rather than resetting — the same evidence a
+failed first attempt left behind is still visible after a passing later one, which is usually exactly what you
+want when investigating why a Scenario needed retrying at all. See
+[ADR-EC-036](../../spec/decisions/036-attachments-a-world-shaped-service-crossing-the-testapi-seam-in-vitesttestapi.md)
+and [BEH-EC-028](../../spec/behaviors/15-attachments.md) for the full detail.
+
 **One prerequisite comes with tags, and it is not optional.** A tag must be DECLARED in your `vitest.config.ts`'s
 `test.tags`, or the runner rejects the emission — and a `--tagsFilter` pattern is validated against that same list
 regardless of the `strictTags` setting. This package catches the rejection, re-emits the test untagged and prints a

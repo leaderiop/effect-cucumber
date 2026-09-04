@@ -29,6 +29,7 @@ STEP_TABLE_ANNOTATION_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.step-table
 HOOK_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-ok.json"
 HOOK_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-missing.json"
 HOOK_ONCE_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-once.json"
+HOOK_ONCE_ATTACHMENTS_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.hook-once-attachments.json"
 RULE_OK_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-ok.json"
 RULE_NEG_CONFIG="packages/vitest/test/tsgo-gate/tsconfig.rule-missing.json"
 
@@ -47,7 +48,7 @@ fail() {
 for f in "$NEG_CONFIG" "$OK_CONFIG" "$FLOATING_CONFIG" "$STEP_OK_CONFIG" "$STEP_NEG_CONFIG" \
   "$STEP_MODULE_OK_CONFIG" "$STEP_MODULE_NEG_CONFIG" \
   "$WORLD_FIELD_CONFIG" "$LAYER_RIN_CONFIG" "$PER_SCENARIO_RIN_CONFIG" "$STEP_EXPECT_ERROR_CONFIG" "$HOOK_OK_CONFIG" \
-  "$HOOK_NEG_CONFIG" "$RULE_OK_CONFIG" \
+  "$HOOK_NEG_CONFIG" "$HOOK_ONCE_CONFIG" "$HOOK_ONCE_ATTACHMENTS_CONFIG" "$RULE_OK_CONFIG" \
   "$RULE_NEG_CONFIG" "$STEP_TABLE_ANNOTATION_CONFIG"; do
   [[ -f "$f" ]] || fail "missing fixture config $f — the gate fixture is absent, so nothing was verified."
 done
@@ -312,6 +313,25 @@ if ! grep -q "effect(missingEffectContext)" <<<"$RULE_NEG_OUTPUT"; then
   fail "the out-of-Rule step was rejected, but NOT by effect(missingEffectContext) — the tsgo diagnostic has stopped covering the Rule surface. CI stays green on a rejection that no longer proves anything about context. Two likely causes: FeatureDsl.Rule's \`R2\` generic parameter was dropped, so the fixture now fails for an arity or shape reason instead; or the step-function union in packages/vitest/src/Dsl.ts was reordered so the Effect-returning branch is listed FIRST, after which TypeScript reports the generator as a plain shape mismatch that the plugin has no reason to read as a context problem. See Dsl.ts note (a)."
 fi
 echo "✓ a Rule-scoped service used outside its Rule is rejected by name: effect(missingEffectContext)"
+
+# ---------------------------------------------------------------------------
+# Assertion 14: a ONCE-PER-FEATURE hook reaching for `attach` (Attachments) is rejected BY NAME
+# (ADR-EC-036, BEH-EC-028) — the identical mechanism assertion 11b already proves for a per-Scenario
+# `World` service, applied to a second, ambient (non-`World`) service `HookRegistrar<RShared>` also
+# omits from its union.
+# ---------------------------------------------------------------------------
+HOOK_ONCE_ATTACHMENTS_OUTPUT="$($TSC -p "$HOOK_ONCE_ATTACHMENTS_CONFIG" 2>&1)" && HOOK_ONCE_ATTACHMENTS_EXIT=0 || HOOK_ONCE_ATTACHMENTS_EXIT=$?
+
+if [[ "$HOOK_ONCE_ATTACHMENTS_EXIT" -eq 0 ]]; then
+  echo "$HOOK_ONCE_ATTACHMENTS_OUTPUT"
+  fail "an AfterAllScenarios hook calling attach(...) COMPILED — Attachments is no longer excluded from HookRegistrar<RShared>'s union (ADR-EC-036). AfterAllScenarios never receives a live TestContext, so this must stay a compile error, not a silent runtime no-op."
+fi
+
+if ! grep -q "effect(missingEffectContext)" <<<"$HOOK_ONCE_ATTACHMENTS_OUTPUT"; then
+  echo "$HOOK_ONCE_ATTACHMENTS_OUTPUT"
+  fail "the AfterAllScenarios attach(...) call was rejected, but NOT by effect(missingEffectContext) — the rejection no longer proves anything about the hook's required context. Check that FeatureDsl's BeforeAllScenarios/AfterAllScenarios are HookRegistrar<RShared> and that HookRegistrar's own union (packages/vitest/src/Dsl.ts) still omits Attachments."
+fi
+echo "✓ a once-per-Feature hook calling attach(...) is rejected by name: effect(missingEffectContext)"
 
 echo ""
 echo "tsgo gate: ENFORCED"
