@@ -3,13 +3,14 @@
  * the test run by itself.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
+import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
+import * as FileSystem from "effect/FileSystem"
 import * as Layer from "effect/Layer"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { describe, expect, it } from "vitest"
 import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedFeature } from "../src/Model.ts"
 import { createParameterTypeStore, ParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
@@ -19,17 +20,36 @@ const fixtureUrl = new URL("./fixtures/correlation-full.feature", import.meta.ur
 const fixturePath = fileURLToPath(fixtureUrl)
 
 /**
- * Every test in this file provides the same concrete `FileSystem` and the default
- * `ParameterTypeStore` this way — see the module doc comment and ADR-EC-023. Nothing in this
- * file cares about custom parameter types, so `ParameterTypeStore.Default` always suffices.
+ * A synchronous `FileSystem` test double, for the module-top-level proof below ONLY: `readFileString`
+ * via `Effect.sync` wrapping Node's own SYNCHRONOUS `readFileSync` — this genuinely reads the real
+ * file, just never suspends, so `Effect.runSync` over it completes start to finish with no Promise
+ * anywhere. `effect/FileSystem`'s `layerNoop` fills in every other `FileSystem` method with
+ * something that dies if called; `Source.ts#readFeatureSource` calls only `readFileString`, so
+ * that one override is all this needs. Every other test in this file provides the REAL
+ * `NodeFileSystem` (via `load` below) — this double exists solely to make the module-top-level
+ * `Effect.runSync` call possible, not to replace the real Layer everywhere.
+ */
+const syncFileSystem = FileSystem.layerNoop({
+  readFileString: (path) => Effect.sync(() => readFileSync(path, "utf8"))
+})
+
+/**
+ * Every `it.effect` test in this file that needs real, on-disk I/O provides the REAL
+ * `NodeFileSystem` this way — the production Layer a real consumer uses, and the one the two
+ * tests in "loadFeature returns an Effect requiring FileSystem" below are specifically pinning
+ * the behaviour of. Nothing in this file cares about custom parameter types, so
+ * `ParameterTypeStore.Default` always suffices (see the module doc comment and ADR-EC-023).
  */
 const load = (path: string) =>
-  Effect.runPromise(
-    loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-  )
+  loadFeature(path).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
 
-// The load-bearing line. Module top level, zero indentation, above every describe.
-const topLevelFeature = await load(fixturePath)
+// The load-bearing line. Module top level, zero indentation, above every describe. Genuinely
+// synchronous — `Effect.runSync` over `syncFileSystem` above never suspends — so this proves
+// BEH-EC-001 (loadFeature has no observable effect on the test run merely by being called) at
+// true module-evaluation time, with no Promise anywhere in this file. See ADR-EC-044.
+const topLevelFeature = Effect.runSync(
+  loadFeature(fixturePath).pipe(Effect.provide(Layer.mergeAll(syncFileSystem, ParameterTypeStore.Default)))
+)
 
 /**
  * Everything about a `ParsedFeature` that is stable across two calls.
@@ -70,7 +90,7 @@ describe("loadFeature at module top level", () => {
 
   it("contributes no tests of its own — this file reports only the tests it declares", () => {
     // Nothing to call. The assertion is the reported test count of this file, which is why the
-    // count must stay equal to the number of `it` blocks written here.
+    // count must stay equal to the number of `it`/`it.effect` blocks written here.
     expect(topLevelFeature.allScenarios).toHaveLength(1)
   })
 
@@ -96,15 +116,22 @@ describe("loadFeature returns an Effect requiring FileSystem", () => {
     // sync-only workaround costs the `Effect.runSync` recovery path. This test exists so a
     // future attempt to bring `runSync` back (e.g. swapping in a different Layer) is forced to
     // notice and update this file, not silently regress it.
-    expect(() =>
-      Effect.runSync(
-        loadFeature(fixturePath).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, ParameterTypeStore.Default)))
-      )
-    ).toThrowError(/asynchronous Effect was executed with Effect\.runSync/)
+    //
+    // A direct `Effect.runSync` call, not `it.effect`: the call itself, and what it throws, IS
+    // the assertion — using `it.effect` here would replace the exact thing being pinned with
+    // `@effect/vitest`'s own (async-capable) execution instead of it.
+    expect(() => Effect.runSync(load(fixturePath))).toThrowError(
+      /asynchronous Effect was executed with Effect\.runSync/
+    )
   })
 
   it("Effect.runPromise(loadFeature(...).pipe(Effect.provide(...))) returns a plain object", async () => {
-    const result = await load(fixturePath)
+    // Also a direct call, not `it.effect`, and for the same reason as the test above: this proves
+    // `gherkin`'s public Effect-returning API interops correctly via Effect's own canonical
+    // execution entry point — exactly how a real consumer who is an Effect program but not
+    // `@effect-cucumber/vitest` itself (ADR-EC-013/ADR-EC-021) would actually call it. Replacing
+    // this `Effect.runPromise` call with `it.effect` would prove something else entirely.
+    const result = await Effect.runPromise(load(fixturePath))
     expect(typeof result).toBe("object")
     expect(result).not.toHaveProperty("then")
     expect(result).not.toBeInstanceOf(Promise)
@@ -112,52 +139,55 @@ describe("loadFeature returns an Effect requiring FileSystem", () => {
 })
 
 describe("an unanticipated throw is a defect, not a typed failure", () => {
-  it("a store whose buildRegistry throws a plain Error makes parseFeature die rather than fail with ParseFailed", () => {
-    const broken: ParameterTypeStoreShape = {
-      ...createParameterTypeStore(),
-      buildRegistry: () => {
-        throw new Error("dependency changed under us")
-      }
-    }
-    const exit = Effect.runSyncExit(
-      parseFeature(rawFixture, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(broken)))
-    )
-    const cause = Exit.isFailure(exit) ? exit.cause : undefined
+  it.effect(
+    "a store whose buildRegistry throws a plain Error makes parseFeature die rather than fail with ParseFailed",
+    () =>
+      Effect.gen(function*() {
+        const broken: ParameterTypeStoreShape = {
+          ...createParameterTypeStore(),
+          buildRegistry: () => {
+            throw new Error("dependency changed under us")
+          }
+        }
+        const exit = yield* Effect.exit(
+          parseFeature(rawFixture, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(broken)))
+        )
+        const cause = Exit.isFailure(exit) ? exit.cause : undefined
 
-    expect(cause !== undefined && Cause.hasDies(cause)).toBe(true)
-    expect(cause !== undefined && Cause.hasFails(cause)).toBe(false)
-  })
+        assert.strictEqual(cause !== undefined && Cause.hasDies(cause), true)
+        assert.strictEqual(cause !== undefined && Cause.hasFails(cause), false)
+      })
+  )
 })
 
 describe("source-form parity", () => {
-  it("readFileSync + parseFeature agrees with loadFeature on the same file", () => {
-    // parseFeature takes source text directly — no FileSystem requirement, only
-    // ParameterTypeStore, and Layer.succeed-backed services are confirmed Effect.runSync-safe,
-    // so Effect.runSync still works here exactly as before; only the FileSystem-touching
-    // loadFeature lost it.
-    const fromDisk = Effect.runSync(
-      parseFeature(readFileSync(fixtureUrl, "utf8"), fixturePath).pipe(Effect.provide(ParameterTypeStore.Default))
-    )
-    expect(shapeOf(fromDisk)).toEqual(shapeOf(topLevelFeature))
-  })
+  it.effect("readFileSync + parseFeature agrees with loadFeature on the same file", () =>
+    Effect.gen(function*() {
+      // parseFeature takes source text directly — no FileSystem requirement, only
+      // ParameterTypeStore.
+      const fromDisk = yield* parseFeature(readFileSync(fixtureUrl, "utf8"), fixturePath).pipe(
+        Effect.provide(ParameterTypeStore.Default)
+      )
+      assert.deepStrictEqual(shapeOf(fromDisk), shapeOf(topLevelFeature))
+    }))
 
   it("the Vite ?raw string is byte-identical to what readFileSync returns", () => {
     expect(rawFixture).toBe(readFileSync(fixtureUrl, "utf8"))
   })
 
-  it("parseFeature over the ?raw string agrees with loadFeature over the path", () => {
-    const fromRaw = Effect.runSync(
-      parseFeature(rawFixture, fixturePath).pipe(Effect.provide(ParameterTypeStore.Default))
-    )
-    expect(shapeOf(fromRaw)).toEqual(shapeOf(topLevelFeature))
-  })
+  it.effect("parseFeature over the ?raw string agrees with loadFeature over the path", () =>
+    Effect.gen(function*() {
+      const fromRaw = yield* parseFeature(rawFixture, fixturePath).pipe(Effect.provide(ParameterTypeStore.Default))
+      assert.deepStrictEqual(shapeOf(fromRaw), shapeOf(topLevelFeature))
+    }))
 
-  it("gives the same content but different node ids on a second call", async () => {
-    const second = await load(fixturePath)
-    expect(shapeOf(second)).toEqual(shapeOf(topLevelFeature))
-    const firstId = topLevelFeature.allScenarios[0]?.id
-    const secondId = second.allScenarios[0]?.id
-    expect(typeof firstId).toBe("string")
-    expect(secondId).not.toBe(firstId)
-  })
+  it.effect("gives the same content but different node ids on a second call", () =>
+    Effect.gen(function*() {
+      const second = yield* load(fixturePath)
+      assert.deepStrictEqual(shapeOf(second), shapeOf(topLevelFeature))
+      const firstId = topLevelFeature.allScenarios[0]?.id
+      const secondId = second.allScenarios[0]?.id
+      assert.strictEqual(typeof firstId, "string")
+      assert.notStrictEqual(secondId, firstId)
+    }))
 })
