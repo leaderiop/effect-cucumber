@@ -500,26 +500,23 @@ research archived on the `planning-archive` branch. High-level shape:
    every Feature through it. The doc-examples compile check and the coverage
    thresholds — the merge-gate table's last two "Not wired" rows — are also
    done: `pnpm verify:doc-examples` and `pnpm coverage`.
+   Global (suite-wide) `BeforeAll`/`AfterAll` closed too, docs-only as designed:
+   `packages/vitest/README.md`'s "Both once-per-Feature hooks are scoped to one
+   Feature" section names vitest's own `globalSetup`/`globalTeardown` as the
+   sanctioned path for a once-per-SUITE concern, with no new DSL surface added —
+   every framework surveyed that supports a suite-wide hook hits the same
+   worker-isolation caveat this library's Feature-scoped `beforeAll`/`afterAll`
+   already documents ([#35](https://github.com/leaderiop/effect-cucumber/issues/35)).
 
 ## Planned
 
-Every item below traces to a resolved wayfinder ticket on
+All 18 gaps traced to resolved wayfinder tickets on
 [effect-cucumber gap decisions](https://github.com/leaderiop/effect-cucumber/issues/11)
 (a downstream "BDD Quality Ceiling" audit, this repo's own gaps, and a
 completeness survey against comparable Cucumber implementations and Effect's
-own testing ecosystem). **Design locked** means the shape below is decided
-and ready to build; **spike in progress** means a working prototype is being
-built to de-risk the decision before it locks.
-
-- **Global (suite-wide) `BeforeAll`/`AfterAll` hooks — design locked: docs
-  only, no new DSL surface.** vitest's own `globalSetup`/`globalTeardown`
-  already covers the suite-wide case today; every framework surveyed that
-  supports this hits the same worker-isolation caveat this library's
-  Feature-scoped once-cell already documents. Closes with a README section
-  showing `globalSetup`/`globalTeardown` as the sanctioned path — revisit a
-  typed wrapper only if the concurrent-execution work below ends up
-  touching this same hook-lifecycle code anyway.
-  ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
+own testing ecosystem) are shipped as of `0.2.0`. Nothing is currently planned;
+see "Under consideration" below for the open items — all repo-internal tooling
+decisions, none blocking consumer adoption.
 
 ## Under consideration
 
