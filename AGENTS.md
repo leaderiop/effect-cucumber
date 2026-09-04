@@ -29,19 +29,19 @@ checks `spec/`'s own internal consistency (index.yaml ↔ disk, every invariant
 and decision traced, every `@REQ-EC-NNN` tag carried exactly once with a §5 row,
 no broken relative links).
 
-One gate in `spec/process/definitions-of-done.md` is still **planned, not
-wired**: the script that extracts and type-checks every `` ```typescript ``
-fence under `spec/behaviors/` against the real API. Until it exists nothing
-compiles those fences — treat them as reviewed, not verified.
+Every `` ```typescript `` fence under `spec/` is extracted and type-checked
+against the real API by `pnpm verify:doc-examples`
+(`scripts/verify-doc-examples.sh`, row 5 of `spec/process/definitions-of-done.md`'s
+merge-gate table) — wired, not merely planned. A fence may opt out with a
+`// doc-examples:skip — <reason>` marker naming why, never silently.
 
 ## 2. Specification code fences
 
 `spec/` uses three TypeScript fence languages, and the distinction is
 load-bearing:
 
-- `` ```typescript `` — a **runnable example**. Intended to be extracted and
-  compiled against the real API by the doc-examples check, which is not wired
-  yet; write it as though it were, and it must import what it uses.
+- `` ```typescript `` — a **runnable example**. Extracted and compiled against
+  the real API by `pnpm verify:doc-examples`; it must import what it uses.
 - `` ```tsx `` — a runnable example **containing JSX**. Unlikely to be needed here
   (this is a headless testing library), kept for parity with the convention.
 - `` ```ts `` — an **API signature listing or fragment**. Reference material,
