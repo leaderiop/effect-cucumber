@@ -453,9 +453,9 @@ research archived on the `planning-archive` branch. High-level shape:
    `@effect-cucumber/gherkin` via ADR-EC-021, `@effect/tsgo` wired via ADR-EC-016; `publishConfig.exports`, pnpm
    catalogs and CI (`.github/workflows/`) are all in place, and ADR-EC-021's Follow-up items that gated this —
    the `Source.ts`/`loadFeature.ts`/`Errors.ts` rewrite, the `BEH-EC-001` update, and the `ParameterTypeStore`-as-Layer
-   migration (`Context.Service` in `packages/gherkin/src/ParameterTypes.ts`) — are all shipped. One follow-up from
-   that ADR is still genuinely undecided and tracked under "Under consideration" below: which package owns
-   `ManagedRuntime` construction.
+   migration (`Context.Service` in `packages/gherkin/src/ParameterTypes.ts`) — are all shipped. The last follow-up
+   from that ADR, which package owns `ManagedRuntime` construction, is resolved too — see
+   [ADR-EC-041](decisions/041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md).
 2. Implement `@effect-cucumber/gherkin`'s parse→compile→correlate pipeline
    (the riskiest phase — several silent-failure edge cases in
    `@cucumber/gherkin`'s `compile()` must become loud errors here).
@@ -520,17 +520,25 @@ decisions, none blocking consumer adoption.
 
 ## Under consideration
 
-All five items this section used to carry are now resolved, most of them
-already had been (this section's own prose had gone stale, not the repo):
+Empty. All five items this section used to carry are resolved — most of them
+already had been (this section's own prose had gone stale, not the repo); the
+last, LINT-01's oxlint plugin, is resolved by
+[ADR-EC-042](decisions/042-lint-01-ships-as-a-vendored-oxlint-plugin-template.md),
+below. Kept for history:
 
-- **An oxlint plugin for LINT-01** — still deferred, the one genuinely open
-  item. Behind the shipped shell-script route
+- **An oxlint plugin for LINT-01** — shipped:
+  [`scripts/templates/oxlint-ref-state/`](../scripts/templates/oxlint-ref-state)
+  is a real, editor-integrated `jsPlugins` rule (`ref-state-only`), vendored
+  and copyable — not published to npm — following the exact precedent this
+  repo's own `tools/oxlint/effect/` already set for consuming Effect's own
+  unpublished `@effect/oxc` rules. See ADR-EC-042 for why the earlier
+  "wait for oxlint's plugin API to leave alpha" framing didn't hold up: this
+  repo already depends on that same alpha API for its own linting, daily. The
+  shell-script route
   ([`scripts/templates/verify-consumer-ref-state.sh`](../scripts/templates/verify-consumer-ref-state.sh),
   documented in `packages/vitest/README.md`'s "Recommended lint and compiler
-  configuration" section) until oxlint's JS/TS plugin API graduates out of
-  alpha; this repo's own `tools/oxlint/effect/` proves the API works today,
-  the concern is upstream stability, not feasibility. Revisit when oxlint's
-  plugin API stabilizes.
+  configuration" section) stays too — the two are complementary, not
+  competing.
 - **Which package owns `ManagedRuntime` construction** — resolved by
   [ADR-EC-041](decisions/041-managedruntime-ownership-stays-in-vitest-until-a-second-runner-exists.md):
   stays in `packages/vitest/src/loadFeature.ts`, no adapter package, until a
