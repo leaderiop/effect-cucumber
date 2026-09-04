@@ -318,9 +318,18 @@ callback.
 **Source**: stated in [ADR-EC-009](decisions/009-cross-step-state-lives-in-a-ref.md),
 demonstrated in [BEH-EC-011](behaviors/03-rules-outlines-and-testclock.md#beh-ec-011-cross-step-state-lives-in-world-never-a-closure),
 and — as of Phase 11 — enforced over the acceptance suite by
-`scripts/verify-acceptance-ref-state.sh`, which fails if any
-`packages/vitest/test/acceptance/*.steps.test.ts` declares a `let` or `var` at
-any scope, or writes to a value in place.
+`scripts/verify-acceptance-ref-state.sh` and, dogfooded the same way, by
+`scripts/templates/oxlint-ref-state/`'s `ref-state-only` rule (wired into this
+repository's own `.oxlintrc.json`). Both fail if a `let` or `var` is declared
+at any scope, or a value is written to in place, in any `.ts` file under
+`packages/vitest/test/acceptance/` **except** two named, already-classified
+non-step files (`pitfalls-checklist.test.ts`, `negative-requirements.test.ts` —
+see [ADR-EC-043](decisions/043-ref-only-gate-excludes-framework-level-meta-tests.md)).
+That exclusion is deliberately a named list, not a `*.steps.test.ts`-only
+allowlist: a shared step-definition module that doesn't carry the
+`.steps.test.ts` suffix (e.g. `step-modules.module.ts`, a `defineSteps`-based
+module reused across pairs) still carries real step bodies and stays fully in
+scope.
 
 Be precise about the scope of that enforcement, because it is narrower in one
 direction and wider in another, and both matter.
@@ -345,11 +354,11 @@ the invariant remains a reviewed convention unless they adopt it themselves.
 generalized into a copyable template (glob and carve-out count as arguments
 instead of this repository's own hardcoded paths) — is the mechanism a consumer
 wires into their own CI to close that half; this package ships the template but
-does not run it against a consumer's tree itself. See
-`packages/vitest/README.md`'s "Recommended lint and compiler configuration"
-section and the v2 backlog archived on the `planning-archive` branch (an
-oxlint-plugin version, still deferred — `spec/roadmap.md` § Under
-consideration).
+does not run it against a consumer's tree itself.
+`scripts/templates/oxlint-ref-state/` is the same rule shipped as a real,
+editor-integrated oxlint plugin instead (ADR-EC-042), also copyable, also not
+run against a consumer's tree by this package. See `packages/vitest/README.md`'s
+"Recommended lint and compiler configuration" section.
 
 **Implication**: the reason this matters — `Scenario(name, () => {...})`'s
 callback runs once, at registration time, not once per test execution. A bare

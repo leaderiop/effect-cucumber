@@ -74,6 +74,20 @@
       "rules": {
         "effect-cucumber/ref-state-only": "error"
       }
+    },
+    {
+      // Later override wins per file — un-flags exactly these two, leaving everything else above
+      // (including step-modules.module.ts, a genuine shared step-definition module) enforced.
+      // Both are framework-level meta-tests, not step modules — see ADR-EC-043 and the matching
+      // EXCLUDED_FILES list in scripts/verify-acceptance-ref-state.sh, which this must stay in
+      // sync with.
+      "files": [
+        "packages/vitest/test/acceptance/pitfalls-checklist.test.ts",
+        "packages/vitest/test/acceptance/negative-requirements.test.ts"
+      ],
+      "rules": {
+        "effect-cucumber/ref-state-only": "off"
+      }
     }
   ]
 }

@@ -4,8 +4,20 @@
 # mutable binding — INV-EC-006 / ADR-EC-009: cross-step Scenario data survives only
 # through a Layer-provided Ref. `pnpm test` cannot catch it: a Scenario threading a
 # value through a closure PASSES on a clean run and leaks only across retries and
-# `-t`-narrowed selections. Carve-outs are marked GATE-ALLOW-MUTATION and counted.
-# Positive control: the scan is proven against a fixture that does mutate.
+# `-t`-narrowed selections. Positive control: the scan is proven against a fixture
+# that does mutate.
+#
+# Scans every .ts file in the acceptance directory EXCEPT the two named in
+# EXCLUDED_FILES below — see ADR-EC-043. Both are already classified "Not a pair"
+# in spec/traceability.md's §4 Test file map: they drive Runner.ts's internals
+# (loadFeature/collectFeature/emitFeature) directly to test the FRAMEWORK's own
+# registration/emission plumbing, not real Gherkin step bodies, so INV-EC-006 —
+# which is about a value one STEP hands a later STEP in the same Scenario — does
+# not describe what they do. A genuine step-definition module that doesn't carry
+# the .steps.test.ts suffix (e.g. step-modules.module.ts, a defineSteps-based
+# shared module) stays fully in scope; this is a named exclude list, not a
+# narrowed *.steps.test.ts allowlist, specifically so it can't silently drop that
+# kind of file from coverage too.
 #
 set -euo pipefail
 
@@ -19,6 +31,16 @@ CONTROL_FILE="packages/vitest/src/Runner.ts"
 
 MIN_STEP_MODULES=5
 
+# Framework-level meta-tests, not step modules — see the header comment above and
+# ADR-EC-043. Named explicitly (not matched by a glob) so a rename or a new
+# meta-test file can't silently widen or narrow this list; each is checked to
+# exist below, so a rename makes this gate fail loudly rather than quietly
+# start scanning (or quietly stop excluding) the wrong thing.
+EXCLUDED_FILES=(
+  "$ACCEPTANCE_DIR/pitfalls-checklist.test.ts"
+  "$ACCEPTANCE_DIR/negative-requirements.test.ts"
+)
+
 DECLARATION_RE='(^|[^A-Za-z0-9_$])(let|var)[[:space:]]+([A-Za-z_$]|\{|\[)'
 
 MUTATOR_RE='\.(push|pop|shift|unshift|splice|sort|reverse|fill)\('
@@ -29,7 +51,7 @@ COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'
 
 ALLOW_MARKER_RE='//[[:space:]]*GATE-ALLOW-MUTATION:[[:space:]]*[^[:space:]]'
 
-ALLOWED_MUTATIONS=4
+ALLOWED_MUTATIONS=0
 
 fail() {
   {
@@ -45,9 +67,15 @@ fail() {
 # Precondition, so a deleted or moved target never reads as a pass.
 [[ -d "$ACCEPTANCE_DIR" ]] || fail "missing directory $ACCEPTANCE_DIR — the tree this gate scans is absent, so nothing was verified. If the acceptance suite moved, update ACCEPTANCE_DIR in this script."
 [[ -f "$CONTROL_FILE" ]] || fail "missing file $CONTROL_FILE — the regex control's target is absent, so assertion 2 cannot run. Pick another file containing a real mutable binding and name it here."
+for excluded in "${EXCLUDED_FILES[@]}"; do
+  [[ -f "$excluded" ]] || fail "missing file $excluded — EXCLUDED_FILES names a file that no longer exists. If it was renamed, update EXCLUDED_FILES to match; if it was deleted, remove it from the list."
+done
 
 STEP_MODULES="$(find "$ACCEPTANCE_DIR" -type f -name '*.steps.test.ts' | sort)"
 SCANNED_TS="$(find "$ACCEPTANCE_DIR" -type f -name '*.ts' | sort)"
+for excluded in "${EXCLUDED_FILES[@]}"; do
+  SCANNED_TS="$(printf '%s\n' "$SCANNED_TS" | grep -vFx "$excluded" || true)"
+done
 
 # Prefix every line with its number, drop comment lines, then match. The
 # filtering happens BEFORE any count, so a doc comment that merely NAMES the

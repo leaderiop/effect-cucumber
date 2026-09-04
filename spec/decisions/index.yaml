@@ -128,3 +128,6 @@ entries:
   - id: "ADR-EC-042"
     file: "042-lint-01-ships-as-a-vendored-oxlint-plugin-template.md"
     title: "LINT-01 ships as a vendored, copyable oxlint plugin template — reverses the \"wait for oxlint's plugin API to leave alpha\" posture"
+  - id: "ADR-EC-043"
+    file: "043-ref-only-gate-excludes-framework-level-meta-tests.md"
+    title: "The INV-EC-006 Ref-only gate excludes two named framework-level meta-tests — a scope bug fix, not a new carve-out"
