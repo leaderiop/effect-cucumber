@@ -1,10 +1,11 @@
 /**
  * The runner's failure (`StepMatchError`, a `Schema.TaggedError`) and its plain-data notices:
  * `UnusedStepDefinitionWarning`, `UndeclaredTagWarning`, `UnknownContainerWarning`,
- * `ExcludedScenariosNotice`. Every author-controlled string in a message is `JSON.stringify`'d so
- * it cannot forge a second line (`test/Errors.test.ts`). `StepFailureLocation`/
- * `attachStepFailureLocation` are the failure-panel fix (ADR-EC-033) — a different shape from
- * everything else here, and documented separately below rather than folded into this header.
+ * `ExcludedScenariosNotice`, `StaleRerunManifestKeyWarning` (ADR-EC-038). Every author-controlled
+ * string in a message is `JSON.stringify`'d so it cannot forge a second line (`test/Errors.test.ts`).
+ * `StepFailureLocation`/`attachStepFailureLocation` are the failure-panel fix (ADR-EC-033) — a
+ * different shape from everything else here, and documented separately below rather than folded
+ * into this header.
  */
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
@@ -257,3 +258,41 @@ export const makeExcludedScenariosNotice = (args: {
     } were excluded by ${filters}. They were never registered, so they appear nowhere in this run's output — not even as skipped. Widen or remove the filter to run them.`
   }
 }
+
+/**
+ * A `rerunFailedOnly` manifest named a rerun key, under this Feature's own `uri`, that matches no
+ * Scenario `RerunKey.ts`'s `rerunKeysForPlan` computes for the CURRENT `.feature` file (ADR-EC-038).
+ * Unlike `UndeclaredTagWarning` above — caught at the one adapter permitted to name the test
+ * framework, because it reacts to the RUNNER's own rejection — this is detected entirely from this
+ * library's own plan data, before anything is emitted, so it follows `plan.warnings`' shape and
+ * printing site (`describeFeature.ts`) instead.
+ */
+export type StaleRerunManifestKeyWarningReason = "StaleRerunManifestKey"
+
+export interface StaleRerunManifestKeyWarning {
+  readonly _tag: "StaleRerunManifestKeyWarning"
+  readonly reason: StaleRerunManifestKeyWarningReason
+  readonly uri: string
+  readonly featureName: string
+  readonly keys: ReadonlyArray<string>
+  readonly message: string
+}
+
+export const makeStaleRerunManifestKeyWarning = (args: {
+  uri: string
+  featureName: string
+  keys: ReadonlyArray<string>
+}): StaleRerunManifestKeyWarning => ({
+  _tag: "StaleRerunManifestKeyWarning",
+  reason: "StaleRerunManifestKey",
+  uri: args.uri,
+  featureName: args.featureName,
+  keys: args.keys,
+  message: `${
+    quoted(args.uri)
+  }: StaleRerunManifestKey: the rerun manifest names ${args.keys.length} key(s) under Feature ${
+    quoted(args.featureName)
+  } that match no Scenario in this file: ${
+    quotedList(args.keys)
+  }. Ignored — the Scenario was likely renamed or removed, or the manifest is from a different revision of this file. Regenerate the manifest by re-running the write-side script against a fresh test run.`
+})

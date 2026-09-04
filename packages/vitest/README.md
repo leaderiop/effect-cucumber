@@ -681,6 +681,63 @@ describeFeature(feature, Layer.empty, ({ When }) => {
 })
 ```
 
+## Rerun failed Scenarios only
+
+`describeFeature`'s optional fourth argument accepts `rerunFailedOnly` and `rerunManifestPath`,
+filtering Scenario REGISTRATION against a manifest a prior run wrote — a Scenario the manifest does
+not name as failed is never emitted as a test node at all, not merely skipped:
+
+```ts
+describeFeature(feature, Layer.empty, ({ Given, Then, When }) => {
+  // ...steps...
+}, {
+  rerunFailedOnly: true,
+  rerunManifestPath: ".effect-cucumber/rerun-manifest.json" // the default; usually omitted
+})
+```
+
+`rerunFailedOnly: true` with no manifest file present yet (the first run) costs one `readFileSync`
+attempt and degrades to "run everything" — the same graceful-degradation shape `includeTags`/
+`excludeTags` already have. `rerunManifestPath` is never read at all when `rerunFailedOnly` is not
+exactly `true`.
+
+**The manifest format** is `{ "failed": ["<rerunKey>", ...] }`, where each `rerunKey` is a stable
+`(uri, ruleName, title)` triple — stable ACROSS separate `loadFeature()` calls, unlike this library's
+own internal `ScenarioKey.ts` key, which is not (see
+[INV-EC-009](../../spec/invariants.md#inv-ec-009-a-scenarios-rerun-key-is-stable-across-two-separate-loadfeature-invocations)).
+You never construct this string yourself.
+
+**The write side is a copy-paste template, not something this package runs for you.**
+[`scripts/templates/write-rerun-manifest.mjs`](../../scripts/templates/write-rerun-manifest.mjs) —
+the same posture LINT-01's `verify-consumer-ref-state.sh` template already established — reads a
+`vitest run --reporter=json` report and writes the manifest. Copy it into your own repository and
+wire it into your own CI:
+
+```json
+{
+  "scripts": {
+    "test:record-failures": "vitest run --reporter=json --outputFile=.vitest-report.json && node scripts/write-rerun-manifest.mjs",
+    "test:rerun-failed": "vitest run"
+  }
+}
+```
+
+with `rerunFailedOnly: true` set in your own `describeFeature` call (gated behind an environment
+variable if you want `test:rerun-failed` and an ordinary `vitest run` to share one config). Run
+`test:record-failures` once after a failing suite, then `test:rerun-failed` registers only the
+Scenarios that manifest names.
+
+**Two things worth knowing about the read side.** A manifest key that names no Scenario in the
+current `.feature` file — renamed, removed, or from a different revision of the file — prints one
+`console.warn` (`StaleRerunManifestKeyWarning`) and is otherwise ignored; it never fails the Feature.
+And a Feature or a Rule that the filter leaves with zero Scenarios gets exactly one synthetic,
+`skip: true` node in place of the empty block (titled `"↻ rerunFailedOnly: no Scenario here matched
+the rerun manifest (nothing to rerun)"`) instead of an empty `describe` — an empty block would
+otherwise trip vitest's own "No test found in suite" crash.
+
+See [ADR-EC-038](../../spec/decisions/038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md)
+and [BEH-EC-030](../../spec/behaviors/17-rerun-failed-only.md).
+
 ## Migrating from cucumber-js
 
 This section is about the TRANSLATION from cucumber-js's shapes to this library's — the DSL

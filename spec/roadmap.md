@@ -345,6 +345,33 @@ together contribute exactly two `outcome: "pass"` increments and zero `outcome: 
 `packages/vitest/test/ScenarioMetrics.test.ts` proves the composition order is load-bearing by
 measuring the WRONG order (`flakyTest` outside the metrics wrapper) genuinely double-counts.
 
+**Rerun-failed-only support** ships: `describeFeature`'s `rerunFailedOnly`/`rerunManifestPath`
+options filter Scenario REGISTRATION against a prior run's manifest
+([ADR-EC-038](decisions/038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md),
+[BEH-EC-030](behaviors/17-rerun-failed-only.md), `REQ-EC-030`, `spec/traceability.md` §5).
+The stable cross-run key (`RerunKey.ts`) is `(uri, ruleName, title)`, `uri` first — deliberately NOT
+`ScenarioKey.ts`'s existing `(ruleId, astName)` key, whose `ruleId` comes from a fresh
+`IdGenerator.uuid()` on every `loadFeature()` call and so cannot be compared across two separate runs
+at all (INV-EC-009). It is stamped onto vitest's own `ctx.task.meta.rerunKey` inside
+`VitestTestApi.ts` — the one module already permitted to name the framework, and already threading
+`ctx` through for `Attachments` (ADR-EC-036) — BEFORE a Scenario's own Effect runs, so it survives a
+failing Scenario; `vitest@4.1.11`'s `JsonReporter` is the only reporter that serialises `task.meta`
+verbatim, which is why the write side ships as a documented copy-paste template
+(`scripts/templates/write-rerun-manifest.mjs`), never a package export or a custom `Reporter`,
+following the exact LINT-01 precedent already established for consumer-side tooling this package
+does not run automatically. Both rough edges the spike found are fixed, not deferred: the key's `uri`
+component (first, not appended) stops two same-named Features in different files from colliding, and
+a Feature or Rule the filter leaves with zero Scenarios gets exactly one synthetic `skip: true` node
+in place of the empty block, instead of tripping vitest's own "No test found in suite" crash — proven
+against two REAL, separately-invoked `vitest run` processes by `scripts/verify-rerun-failed-only.sh`
+(a real failing run, the real shipped write-side script converting its `--reporter=json` output, and
+a second run consuming the generated manifest), alongside
+`packages/vitest/test/RerunKey.test.ts`/`RerunManifest.test.ts` for the pure derivation and manifest
+read, `packages/vitest/test/Runner.test.ts`'s rerun-filter block for the in-process emission logic,
+and `packages/vitest/test/acceptance/rerun-failed-only.feature`/`.steps.test.ts` (`REQ-EC-030`) for a
+real `describeFeature` run against a fixed manifest, proving a filtered-out Scenario's steps never
+execute at all.
+
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface, custom parameter types as data, the step matcher, the `DataTable` wrapper with `raw()`/`hashes()`/`rowsHash()`/`decodeHashes`, and the step-argument accessors behind `ParsedStep.stepArguments`); `@effect-cucumber/vitest` has real source too — `describeFeature` with both Layer argument forms (a plain `Layer`, or `{ shared, perScenario }`), the `FeatureDsl`/`RuleDsl`/`ScenarioDsl`/`BackgroundDsl`/`StepRegistrar`/`HookRegistrar`/`ScenarioRegistrar` type surface, per-instance step registration through `Registry.ts`, and the `Effect.fn(stepText)` auto-wrap with identity pass-through for an already-wrapped step. **The runner is built:** `Plan.ts` joins the registered definitions against the Feature and resolves every Pickle step, `ScenarioEffect.ts` composes each Scenario into one Effect, `Runner.ts` emits the `describe`/`it.effect` tree through an injected `TestApi`, and `describeFeature.ts` is the composition root that wires the three and constructs the concrete `TestApi`                                          |
@@ -453,24 +480,6 @@ built to de-risk the decision before it locks.
   typed wrapper only if the concurrent-execution work below ends up
   touching this same hook-lifecycle code anyway.
   ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
-- **Rerun-failed-only support — design locked, spike-proven.** A working
-  spike ran the full write→read cycle for real: a 3-Scenario Feature with
-  one deliberate failure, run once (all 3 ran), a script converted vitest's
-  own `--reporter=json` output into a manifest, run again with
-  `rerunFailedOnly` — exactly 1 of 3 registered. Key finding:
-  `ScenarioKey.ts`'s existing `(ruleId, astName)` key is NOT reusable across
-  runs — `ruleId`/`ParsedScenario.id` come from a fresh `IdGenerator.uuid()`
-  on every `loadFeature()` call, random per parse. The real stable key is
-  `(featureName, ruleName, emittedTitle)`, reusing `OutlineTitle.ts`'s
-  existing per-row disambiguation. Write side is a standalone script over
-  `--reporter=json`, not a custom `Reporter` — `task.meta` is
-  JSON-reporter-only ([#17](https://github.com/leaderiop/effect-cucumber/issues/17)'s
-  finding already settled this). Two rough edges found by actually running
-  it, both must land before this ships (not optional polish): a Feature
-  whose every key is stale collapses to vitest's own "No test found in
-  suite" crash — needs a synthetic skip node — and the key needs the
-  Feature's file `uri` added, since same-named Features in different files
-  would otherwise collide. ([#34](https://github.com/leaderiop/effect-cucumber/issues/34))
 - **Concurrent Scenario execution — design locked, spike-proven, ships with
   a new per-Scenario timeout knob.** A working spike reproduced the exact
   bug for real first (a 400ms `BeforeAllScenarios`, a 100ms-timeout Scenario

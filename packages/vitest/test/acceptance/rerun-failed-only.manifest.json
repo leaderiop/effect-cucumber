@@ -1,0 +1,5 @@
+{
+  "failed": [
+    "packages/vitest/test/acceptance/rerun-failed-only.feature::::A previously failing scenario reruns"
+  ]
+}

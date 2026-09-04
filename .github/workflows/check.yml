@@ -187,6 +187,25 @@ jobs:
       # invokes vitest once against its own dedicated standalone config.
       - if: matrix.node-version == 24
         run: pnpm verify:attachments-panel
+      # `pnpm test` exiting 0 does NOT prove that a manifest written from one
+      # real `vitest run`'s own `--reporter=json` output correctly filters a
+      # SECOND, separately-invoked `vitest run` over the same files — only
+      # that an in-process test observed `EmitOptions.rerunKey` stamped and
+      # the registration-time filter applied. The claim is about two REAL,
+      # separate `vitest run` processes and the real shipped
+      # `scripts/templates/write-rerun-manifest.mjs` between them, plus both
+      # of ADR-EC-038's synthetic-skip-node fixes and the stale-key warning —
+      # none of which a single in-process run can exercise. See
+      # scripts/verify-rerun-failed-only.sh.
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before
+      # this narrower gate's output. Node 24 ONLY, for the identical reason
+      # `verify:failure-panel`/`verify:attachments-panel` above are: a
+      # structural claim about real vitest output that does not vary by Node
+      # version, and the gate invokes vitest three times against its own
+      # dedicated standalone config.
+      - if: matrix.node-version == 24
+        run: pnpm verify:rerun-failed-only
       # `pnpm test` exiting 0 does NOT prove that the 24-item checklist in
       # spec/process/looks-done-but-isnt-checklist.md still runs in full, and it
       # proves nothing at all about ten of its items: a packed tarball's
