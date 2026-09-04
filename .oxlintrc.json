@@ -2,7 +2,8 @@
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "plugins": ["typescript", "import", "oxc", "eslint", "unicorn", "vitest"],
   "jsPlugins": [
-    { "name": "effect", "specifier": "./tools/oxlint/effect/index.ts" }
+    { "name": "effect", "specifier": "./tools/oxlint/effect/index.ts" },
+    { "name": "effect-cucumber", "specifier": "./scripts/templates/oxlint-ref-state/index.ts" }
   ],
   "categories": { "correctness": "error", "suspicious": "error", "perf": "error" },
   "ignorePatterns": [
@@ -60,6 +61,18 @@
       "files": ["tools/oxlint/effect/**"],
       "rules": {
         "unicorn/consistent-function-scoping": "off"
+      }
+    },
+    {
+      // Dogfoods scripts/templates/oxlint-ref-state/'s ref-state-only rule against this repo's own
+      // acceptance suite — see ADR-EC-042's Correction. Scoped here, not global: the rest of the
+      // codebase (Runner.ts, VitestTestApi.ts, ...) legitimately uses let/mutation outside the
+      // INV-EC-006 boundary this rule polices, which is specifically cross-step Scenario state in
+      // step modules. scripts/verify-acceptance-ref-state.sh already enforces the identical rule
+      // over this same directory at CI time; this is the same boundary, now also caught inline.
+      "files": ["packages/vitest/test/acceptance/**"],
+      "rules": {
+        "effect-cucumber/ref-state-only": "error"
       }
     }
   ]

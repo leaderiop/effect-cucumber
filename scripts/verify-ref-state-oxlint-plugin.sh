@@ -5,10 +5,13 @@
 # which exercise the rule's visitor functions directly and never prove the plugin actually LOADS
 # under oxlint's jsPlugins loader. This is the template's own analog of
 # scripts/verify-oxlint-plugin.sh (which proves the vendored tools/oxlint/effect/ plugin the same
-# way) — this repository does not load scripts/templates/oxlint-ref-state/ against its own source
-# (see the README in that directory for why: this repo's own gate is
-# scripts/verify-acceptance-ref-state.sh), so without this script the template's own oxlint wiring
-# could silently rot while its unit tests stayed green.
+# way). This repository ALSO loads scripts/templates/oxlint-ref-state/ against its own acceptance
+# suite now (.oxlintrc.json's overrides, scoped to packages/vitest/test/acceptance/**, alongside
+# scripts/verify-acceptance-ref-state.sh — see ADR-EC-042's Correction), but that dogfooding alone
+# would only prove the rule against whatever this repo's own suite happens to contain. This script
+# stays: a standalone probe with a deliberately minimal config proves the template is genuinely
+# self-contained and portable — exactly what a consumer experiences copying it fresh — independent
+# of anything this repo's own .oxlintrc.json happens to configure.
 #
 set -euo pipefail
 
@@ -43,9 +46,10 @@ fail() {
 
 mkdir -p "$PROBE_DIR"
 
-# A standalone config, not this repo's own .oxlintrc.json — a consumer copying the template wires
-# it into THEIR config, and this repo's own .oxlintrc.json deliberately does not load it (see the
-# README in scripts/templates/oxlint-ref-state/).
+# A standalone config, not this repo's own .oxlintrc.json — deliberately: this proves the template
+# is self-contained and portable, the same experience a consumer gets copying it fresh, rather than
+# only proving it works within this repo's own particular configuration (which .oxlintrc.json's own
+# overrides block, scoped to packages/vitest/test/acceptance/**, separately dogfoods).
 cat > "$PROBE_CONFIG" <<EOF
 {
   "jsPlugins": [
