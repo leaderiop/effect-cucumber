@@ -13,8 +13,15 @@ export default defineConfig({
   test: {
     // `failure-panel-fixture` fails ON PURPOSE (ADR-EC-033's real-vitest-output proof) — excluded
     // here for the same reason `.claude` is, and reached only by its own standalone
-    // `vitest.config.ts` via `scripts/verify-failure-panel.sh`.
-    exclude: [...configDefaults.exclude, "**/.claude/**", "**/test/failure-panel-fixture/**"],
+    // `vitest.config.ts` via `scripts/verify-failure-panel.sh`. `attachments-fixture` is the
+    // identical shape for ADR-EC-036's real-vitest-output proof, reached only via
+    // `scripts/verify-attachments-panel.sh`.
+    exclude: [
+      ...configDefaults.exclude,
+      "**/.claude/**",
+      "**/test/failure-panel-fixture/**",
+      "**/test/attachments-fixture/**"
+    ],
     tags: declaredTags(fileURLToPath(new URL("../../", import.meta.url))),
     allowOnly: false,
     // spec/traceability.md §6's 90%/90% target for this package, checked by `pnpm -F

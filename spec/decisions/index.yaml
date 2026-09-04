@@ -107,3 +107,6 @@ entries:
   - id: "ADR-EC-035"
     file: "035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md"
     title: "Before/After/BeforeStep/AfterStep accept a leading tag-expression string, compiled once per Feature via vitest's own createTagsFilter"
+  - id: "ADR-EC-036"
+    file: "036-attachments-a-world-shaped-service-crossing-the-testapi-seam-in-vitesttestapi.md"
+    title: "Attachments, a World-shaped Context.Service, crosses the TestApi seam entirely inside VitestTestApi.ts — TestApi.ts needed no widening"

@@ -284,6 +284,35 @@ alongside an unconditional one, over three real Scenarios (untagged, `@db`, `@db
 by a `deepStrictEqual`'d hook log that the matching Scenario runs both scoped hooks, the non-matching
 one runs neither, and the `@db @slow` Scenario runs the bare-tag hook but not the compound one.
 
+**Attachments** ship: `attach(contentType, data)`, a `World.attach()` equivalent, exported alongside
+the DSL from `@effect-cucumber/vitest`
+([ADR-EC-036](decisions/036-attachments-a-world-shaped-service-crossing-the-testapi-seam-in-vitesttestapi.md),
+[BEH-EC-028](behaviors/15-attachments.md)). `Attachments` is a framework-free `World`-shaped
+`Context.Service`; `VitestTestApi.ts` — already the one file the seam permits to name vitest — captures
+the per-test `vitest.TestContext` `@effect/vitest`'s `it.effect` hands its callback and provides a live
+`Attachments` built from it, so data attached from inside a step or a per-Scenario hook (`Before`,
+`After`, `BeforeStep`, `AfterStep`) is rendered directly under that Scenario's real failure panel by
+vitest's DEFAULT reporter — no custom `Reporter` involved, proven against a real `vitest run`'s actual
+printed stdout by `scripts/verify-attachments-panel.sh`, the identical "real output, not simulated"
+shape `scripts/verify-failure-panel.sh` already established for ADR-EC-033. `BeforeAllScenarios`/
+`AfterAllScenarios` reject `attach` at COMPILE time, never a silent runtime no-op: `HookRegistrar<RShared>`
+— those two hooks' own type — simply omits `Attachments` from its union, the identical mechanism
+ADR-EC-018's F-10 already uses to keep a per-Scenario-only `World` service out of a once-per-Feature
+hook, verified by diagnostic NAME (`effect(missingEffectContext)`) via `scripts/verify-tsgo-gate.sh`
+assertion 14, the same shape assertion 11b already proves for F-10's own case. A `@retry`'d Scenario's
+attachments ACCUMULATE across every attempt rather than resetting — a deliberate choice, consistent
+with the ambient `TestClock`/`TestConsole` already not resetting between `@retry` attempts
+(ADR-EC-034). One real, disclosed correction to the spike that answered this feature's plumbing
+question (`research/attachments-spike.md`, branch `spike/attachments`): the spike's simplified test
+harness needed `TestApi.ts` widened to `Scope.Scope | Attachments` to type-check, but the REAL
+production pipeline needed no such widening — `INV-EC-003`'s own erasure boundary
+(`Plan.ts`'s `StepBody`/`ScenarioEffect.ts`'s explicit return-type annotation) already carries whatever
+a step's checked body requires across `TestApi.ts` without naming it there, the identical mechanism
+that already lets a step reach a `ROut` service. `TestApi.ts` and `Runner.ts` are byte-identical to
+before this feature; `scripts/verify-testapi-seam.sh` passes unmodified. Proven against the real
+running framework: `packages/vitest/test/acceptance/attachments.feature` + `.steps.test.ts`
+(`REQ-EC-028`, `spec/traceability.md` §5).
+
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface, custom parameter types as data, the step matcher, the `DataTable` wrapper with `raw()`/`hashes()`/`rowsHash()`/`decodeHashes`, and the step-argument accessors behind `ParsedStep.stepArguments`); `@effect-cucumber/vitest` has real source too — `describeFeature` with both Layer argument forms (a plain `Layer`, or `{ shared, perScenario }`), the `FeatureDsl`/`RuleDsl`/`ScenarioDsl`/`BackgroundDsl`/`StepRegistrar`/`HookRegistrar`/`ScenarioRegistrar` type surface, per-instance step registration through `Registry.ts`, and the `Effect.fn(stepText)` auto-wrap with identity pass-through for an already-wrapped step. **The runner is built:** `Plan.ts` joins the registered definitions against the Feature and resolves every Pickle step, `ScenarioEffect.ts` composes each Scenario into one Effect, `Runner.ts` emits the `describe`/`it.effect` tree through an injected `TestApi`, and `describeFeature.ts` is the composition root that wires the three and constructs the concrete `TestApi`                                          |
@@ -392,20 +421,6 @@ built to de-risk the decision before it locks.
   typed wrapper only if the concurrent-execution work below ends up
   touching this same hook-lifecycle code anyway.
   ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
-- **Attachments — a `World.attach()` equivalent — design locked,
-  spike-proven.** A working spike attached data from inside a step and saw
-  it rendered directly under a real failure panel via `context.annotate()`
-  — end to end, not simulated. `VitestTestApi.ts` (already permitted to name
-  vitest) captures the per-test `TestContext` from `@effect/vitest`'s
-  `it.effect` callback and provides a live `Attachments` service built from
-  it, mirroring `testEnv`'s existing crossing mechanism. Needs `TestApi.ts`
-  widened to `Scope.Scope | Attachments` — a small, type-only,
-  seam-compliant change (`scripts/verify-testapi-seam.sh` still passes
-  against it). `AfterAllScenarios` never receives a live `TestContext`, so
-  `Attachments` is a **compile-time-rejected** capability there, not a
-  silent runtime no-op — consistent with how per-Scenario-only services are
-  already rejected by name at that hook elsewhere in this DSL.
-  ([#33](https://github.com/leaderiop/effect-cucumber/issues/33))
 - **Rerun-failed-only support — design locked, spike-proven.** A working
   spike ran the full write→read cycle for real: a 3-Scenario Feature with
   one deliberate failure, run once (all 3 ran), a script converted vitest's

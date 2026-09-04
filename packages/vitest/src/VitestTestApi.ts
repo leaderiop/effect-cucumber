@@ -21,14 +21,25 @@
  *   ever sees `self`, so it wraps once and is reused unchanged across a possible tags-degradation
  *   retry of the EMISSION itself (a different kind of retry, decided at registration time, not to be
  *   confused with the runtime one this adds).
+ * - `attachmentsLive` (ADR-EC-036, BEH-EC-028) is threaded into BOTH `it.effect`-shaped call sites
+ *   below — the plain path's own `effect` field and the shared path's `sharedRouteEffect` — never
+ *   into `afterAll`: `AfterAllScenarios` is rejected at the `Dsl.ts` type level before its thunk could
+ *   ever reach here (`HookRegistrar<RShared>` excludes `Attachments`), so there is nothing for
+ *   `afterAll`'s wiring to provide and no fallback/no-op Layer is needed. `attachmentsLive(ctx)` is
+ *   built ONCE per `it.effect` invocation and provided OUTSIDE `withRetry`'s `flakyTest` wrap (i.e.
+ *   around whatever `self` already is, retry-aware or not) — so a `@retry` Scenario's every attempt
+ *   shares the SAME live `Attachments`, bound to the SAME `ctx`: an attachment made on a failed
+ *   attempt is never cleared before the next attempt runs, and every attempt's attachments remain
+ *   visible in the final report. Deliberate, not an oversight — see ADR-EC-036.
  */
-import { afterAll, beforeAll, describe, flakyTest, it, layer, type Vitest } from "@effect/vitest"
+import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
+import { Attachments } from "./Attachments.ts"
 import { makeUndeclaredTagWarning } from "./Errors.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
 import type { ErasedLayer } from "./Plan.ts"
@@ -40,6 +51,24 @@ import type { TestApi } from "./TestApi.ts"
  * The per-Scenario simulated clock and console, rebuilt here from the two PUBLIC `effect` modules.
  */
 export const testEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())
+
+/**
+ * `Attachments`' LIVE implementation, built PER TEST from the `vitest.TestContext` `@effect/vitest`'s
+ * `it.effect` hands its callback (ADR-EC-036, BEH-EC-028) — unlike `testEnv` above, this cannot be a
+ * module-level constant, because `TestClock`/`TestConsole` need no per-test value from the framework
+ * but `Attachments` needs `ctx.annotate` specifically bound to the test currently running.
+ *
+ * `data` becomes the annotation's `message`; `contentType` becomes its `type` — the two-argument
+ * overload of `context.annotate(message, type?)`, rendered by vitest's DEFAULT reporter's failure
+ * panel with no custom `Reporter` involved.
+ */
+const attachmentsLive = (ctx: TestContext): Layer.Layer<Attachments> =>
+  Layer.succeed(
+    Attachments,
+    Attachments.of({
+      attach: (contentType, data) => Effect.promise(() => ctx.annotate(data, contentType)).pipe(Effect.asVoid)
+    })
+  )
 
 /**
  * When `retry` is true (the Scenario carried `@retry`), hand back a NEW thunk that calls the
@@ -92,7 +121,7 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
     block(name, { shuffle: false }, define)
   },
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
-    it.effect(name, self, emitOptions)
+    it.effect(name, (ctx) => self().pipe(Effect.provide(attachmentsLive(ctx))), emitOptions)
   }),
   // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
   // constructor would run a body: scoped, against a fresh simulated clock and console.
@@ -118,7 +147,11 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
     return sharedIt
   }
   const sharedRouteEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
-    requireSharedIt("effect").effect(name, () => self().pipe(Effect.provide(testEnv)), emitOptions)
+    requireSharedIt("effect").effect(
+      name,
+      (ctx) => self().pipe(Effect.provide(Layer.mergeAll(testEnv, attachmentsLive(ctx)))),
+      emitOptions
+    )
   })
   // The module-level `describe`, under a name oxlint's vitest rules do not recognise as a test-file
   // call: this is a library adapter forwarding a block, not a test declaring one.

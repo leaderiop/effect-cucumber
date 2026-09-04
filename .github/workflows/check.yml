@@ -170,6 +170,23 @@ jobs:
       # identical fact.
       - if: matrix.node-version == 24
         run: pnpm verify:failure-panel
+      # `pnpm test` exiting 0 does NOT prove that data attached from inside a
+      # step via `attach(contentType, data)` reaches the reporter's own
+      # failure panel — only that an in-process test observed
+      # `Attachments`' live implementation call `ctx.annotate`. The claim is
+      # about what a real `vitest run`'s DEFAULT reporter actually PRINTS,
+      # the identical "real stdout, not the types alone" shape
+      # `verify-failure-panel.sh` above proves for a failing step's own
+      # pattern/location. See scripts/verify-attachments-panel.sh
+      # (ADR-EC-036, BEH-EC-028).
+      #
+      # AFTER `pnpm test`, so an ordinary suite failure is reported before
+      # this narrower gate's output. Node 24 ONLY, for the identical reason
+      # `verify:failure-panel` above is: a structural claim about what the
+      # reporter prints, which does not vary by Node version, and the gate
+      # invokes vitest once against its own dedicated standalone config.
+      - if: matrix.node-version == 24
+        run: pnpm verify:attachments-panel
       # `pnpm test` exiting 0 does NOT prove that the 24-item checklist in
       # spec/process/looks-done-but-isnt-checklist.md still runs in full, and it
       # proves nothing at all about ten of its items: a packed tarball's
