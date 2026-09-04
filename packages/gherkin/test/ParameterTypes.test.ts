@@ -3,25 +3,31 @@
  * afterwards, repeated builds in one process never throw, and each name a registry already
  * provides is rejected by the `define` call itself.
  */
+import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
-import { describe, expect, it } from "vitest"
 import { StepPatternError } from "../src/Errors.ts"
 import { parseFeature } from "../src/loadFeature.ts"
-import { builtInParameterTypeNames, createParameterTypeStore, ParameterTypeStore } from "../src/ParameterTypes.ts"
+import {
+  builtInParameterTypeNames,
+  createParameterTypeStore,
+  ParameterTypeStore,
+  type ParameterTypeStoreShape
+} from "../src/ParameterTypes.ts"
 
 /** A transform whose result is trivially checkable, reused by most definitions below. */
 const amount = (...match: Array<string>): number => Number(match[0])
 
-/** The store one build of `ParameterTypeStore.Default` provides. */
-const buildStore = (): ReturnType<typeof createParameterTypeStore> =>
-  Effect.runSync(
-    Effect.gen(function*() {
-      return yield* ParameterTypeStore
-    }).pipe(Effect.provide(ParameterTypeStore.Default))
-  )
+/**
+ * The store one build of `ParameterTypeStore.Default` provides — a plain Effect, not a thunk:
+ * `yield*`-ing it twice inside one `Effect.gen` body runs the Layer's build Effect twice, giving
+ * two independent stores, exactly as calling a `buildStore()` function twice used to.
+ */
+const freshStore: Effect.Effect<ParameterTypeStoreShape> = Effect.gen(function*() {
+  return yield* ParameterTypeStore
+}).pipe(Effect.provide(ParameterTypeStore.Default))
 
 /**
  * Runs `action`, asserts it threw a `StepPatternError`, and returns it.
@@ -518,28 +524,29 @@ describe("stores share no state", () => {
     expect(second.definitions()).toHaveLength(1)
   })
 
-  it("ParameterTypeStore.Default builds a FRESH store per Layer build, so two builds share nothing", () => {
-    // mutation: turning `Default` back into a Layer over one module-level store turns this red —
-    // the second build would then see the first build's definition.
-    const first = buildStore()
-    first.define({
-      name: "firstBuildOnly",
-      regexp: /\d+/,
-      transform: amount,
-      definedAt: Option.none(),
-      useForSnippets: Option.none(),
-      preferForRegexpMatch: Option.none()
-    })
-    const second = buildStore()
+  it.effect("ParameterTypeStore.Default builds a FRESH store per Layer build, so two builds share nothing", () =>
+    Effect.gen(function*() {
+      // mutation: turning `Default` back into a Layer over one module-level store turns this red
+      // — the second build would then see the first build's definition.
+      const first = yield* freshStore
+      first.define({
+        name: "firstBuildOnly",
+        regexp: /\d+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      })
+      const second = yield* freshStore
 
-    expect(first.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeDefined()
-    expect(second.definitions()).toHaveLength(0)
-    expect(second.buildRegistry().lookupByTypeName("firstBuildOnly")).toBeUndefined()
-  })
+      assert.isDefined(first.buildRegistry().lookupByTypeName("firstBuildOnly"))
+      assert.lengthOf(second.definitions(), 0)
+      assert.isUndefined(second.buildRegistry().lookupByTypeName("firstBuildOnly"))
+    }))
 
-  it("ParameterTypeStore.layer(definitions) provides a store carrying the built-ins plus every definition", () => {
-    const store = Effect.runSync(
-      Effect.gen(function*() {
+  it.effect("ParameterTypeStore.layer(definitions) provides a store carrying the built-ins plus every definition", () =>
+    Effect.gen(function*() {
+      const store = yield* Effect.gen(function*() {
         return yield* ParameterTypeStore
       }).pipe(
         Effect.provide(ParameterTypeStore.layer([{
@@ -551,31 +558,31 @@ describe("stores share no state", () => {
           preferForRegexpMatch: Option.none()
         }]))
       )
-    )
 
-    expect(store.buildRegistry().lookupByTypeName("money")).toBeDefined()
-    expect(store.buildRegistry().lookupByTypeName("int")).toBeDefined()
-  })
+      assert.isDefined(store.buildRegistry().lookupByTypeName("money"))
+      assert.isDefined(store.buildRegistry().lookupByTypeName("int"))
+    }))
 
-  it("ParameterTypeStore.layer(definitions) fails in the Layer's error channel on a rejected definition", () => {
-    const money = {
-      name: "money",
-      regexp: /\d+/,
-      transform: amount,
-      definedAt: Option.none(),
-      useForSnippets: Option.none(),
-      preferForRegexpMatch: Option.none()
-    }
-    const exit = Effect.runSyncExit(
-      Effect.gen(function*() {
-        return yield* ParameterTypeStore
-      }).pipe(Effect.provide(ParameterTypeStore.layer([money, money])))
-    )
+  it.effect("ParameterTypeStore.layer(definitions) fails in the Layer's error channel on a rejected definition", () =>
+    Effect.gen(function*() {
+      const money = {
+        name: "money",
+        regexp: /\d+/,
+        transform: amount,
+        definedAt: Option.none(),
+        useForSnippets: Option.none(),
+        preferForRegexpMatch: Option.none()
+      }
+      const exit = yield* Effect.exit(
+        Effect.gen(function*() {
+          return yield* ParameterTypeStore
+        }).pipe(Effect.provide(ParameterTypeStore.layer([money, money])))
+      )
 
-    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
-    expect(failure).toBeInstanceOf(StepPatternError)
-    expect((failure as StepPatternError).reason).toBe("DuplicateParameterTypeName")
-  })
+      const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      assert.instanceOf(failure, StepPatternError)
+      assert.strictEqual((failure as StepPatternError).reason, "DuplicateParameterTypeName")
+    }))
 })
 
 describe("a rejection only knowable at replay time is still a named library error", () => {
@@ -608,17 +615,21 @@ describe("a rejection only knowable at replay time is still a named library erro
     expect(error.cause).toBeDefined()
   })
 
-  it("reaches parseFeature as a StepPatternError, never as a feature-file ParseFailed", () => {
-    const store = createParameterTypeStore()
-    preferentialDigits(store)
-    const source = "Feature: F\n  Scenario: S\n    Given 3 apples\n"
+  it.effect("reaches parseFeature as a StepPatternError, never as a feature-file ParseFailed", () =>
+    Effect.gen(function*() {
+      const store = createParameterTypeStore()
+      preferentialDigits(store)
+      const source = "Feature: F\n  Scenario: S\n    Given 3 apples\n"
 
-    const exit = Effect.runSyncExit(
-      parseFeature(source, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(store)))
-    )
-    const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      const exit = yield* Effect.exit(
+        parseFeature(source, "inline.feature").pipe(Effect.provide(ParameterTypeStore.layerOf(store)))
+      )
+      const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
 
-    expect(failure).toBeInstanceOf(StepPatternError)
-    expect(failure instanceof StepPatternError ? failure.reason : undefined).toBe("InvalidParameterTypeDefinition")
-  })
+      assert.instanceOf(failure, StepPatternError)
+      assert.strictEqual(
+        failure instanceof StepPatternError ? failure.reason : undefined,
+        "InvalidParameterTypeDefinition"
+      )
+    }))
 })
