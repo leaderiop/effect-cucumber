@@ -62,3 +62,7 @@ entries:
     file: "15-attachments.md"
     title: "Attachments: a World.attach() equivalent"
     id_range: "028"
+  - id: "BEH-EC-029"
+    file: "16-scenario-metrics.md"
+    title: "Effect.Metric at the Scenario emission boundary"
+    id_range: "029"

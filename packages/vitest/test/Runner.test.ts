@@ -95,6 +95,15 @@ const routingOf = (
     contextFree: options === null ? null : options.contextFree
   }))
 
+const scenarioFlagOf = (
+  records: ReadonlyArray<EmissionRecord>
+): ReadonlyArray<{ readonly kind: string; readonly name: string; readonly scenario: boolean | null }> =>
+  records.map(({ kind, name, options }) => ({
+    kind,
+    name,
+    scenario: options === null ? null : options.scenario
+  }))
+
 // The thunk recorded at `index`, or a thrown explanation.
 const teardownAt = (records: ReadonlyArray<EmissionRecord>): () => Effect.Effect<void, unknown, Scope.Scope> => {
   const found = records.find(({ kind }) => kind === "afterAll")
@@ -718,7 +727,7 @@ describe("the recording fake itself", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
     // The one place in this file that drives the fake directly rather than through `emitFeature`.
-    api.effect("after", () => Effect.void, { tags: [], skip: false, retry: false, contextFree: true })
+    api.effect("after", () => Effect.void, { tags: [], skip: false, retry: false, contextFree: true, scenario: false })
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every assertion that followed —
     // the failure would surface in an unrelated test.
@@ -1442,6 +1451,57 @@ describe("@retry reaches EmitOptions.retry, and composes independently of @skip/
         { kind: "effect", name: "plain one", tags: [], retry: false }
       ]
     )
+  })
+})
+
+describe("EmitOptions.scenario marks a real Scenario, not a warning node (ADR-EC-037, BEH-EC-029)", () => {
+  it("marks every Scenario scenario:true and the trailing ⚠ warning node scenario:false — the seam data VitestTestApi.ts's Effect.Metric wrapper reads to avoid measuring a warning node", () => {
+    const { api, records } = makeRecordingApi()
+
+    emitFeature({
+      api,
+      plan: planFeature({
+        feature: checkout,
+        definitions: [
+          ...checkoutDefinitions,
+          define({ pattern: "I never happen", scope: featureScope("Checkout"), definedAt: site(9) })
+        ]
+      }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+
+    assert.deepStrictEqual(scenarioFlagOf(records), [
+      { kind: "describe", name: "Checkout", scenario: null },
+      { kind: "effect", name: "paying", scenario: true },
+      { kind: "effect", name: "refunding", scenario: true },
+      {
+        kind: "effect",
+        name: `⚠ unused step definition: Given "I never happen" (/repo/test/runner.steps.ts:9:5)`,
+        scenario: false
+      }
+    ])
+  })
+
+  it("marks a RULE-NESTED Scenario scenario:true too — Runner.ts's second Scenario loop", () => {
+    const { api, records } = makeRecordingApi()
+    emitFeature({
+      api,
+      plan: planFeature({ feature: shop, definitions: shopRecorderDefinitions }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered
+    })
+    assert.deepStrictEqual(scenarioFlagOf(records), [
+      { kind: "describe", name: "Shop", scenario: null },
+      { kind: "effect", name: "browsing", scenario: true },
+      { kind: "describe", name: "refunds", scenario: null },
+      { kind: "effect", name: "refund granted", scenario: true },
+      { kind: "effect", name: "refund denied", scenario: true }
+    ])
   })
 })
 

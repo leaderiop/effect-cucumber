@@ -110,3 +110,6 @@ entries:
   - id: "ADR-EC-036"
     file: "036-attachments-a-world-shaped-service-crossing-the-testapi-seam-in-vitesttestapi.md"
     title: "Attachments, a World-shaped Context.Service, crosses the TestApi seam entirely inside VitestTestApi.ts — TestApi.ts needed no widening"
+  - id: "ADR-EC-037"
+    file: "037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md"
+    title: "Effect.Metric at the Scenario emission boundary wraps OUTSIDE flakyTest, entirely inside VitestTestApi.ts — never Runner.ts's emission call sites"

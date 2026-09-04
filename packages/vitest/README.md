@@ -465,6 +465,29 @@ logs-only setup is the same one-Layer shape. Trace-context propagation into a st
 (`effect/Tracer`'s `externalSpan`) is a property of what that step's Effect does, not something this package wires —
 it composes unassisted once the exporter Layer above is in place.
 
+**Scenario-level metrics are already-on, with zero setup — the `metricReader` above is only what makes them
+VISIBLE.** Every Scenario, in every `describeFeature` call, records `effect_cucumber.scenario.duration` (a
+duration histogram) and `effect_cucumber.scenario.result` (a counter, tagged `outcome: "pass" | "fail"`) the
+moment it completes — no opt-in step, no Gherkin tag, no `describeFeature` argument (`spec/decisions/037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md`).
+A Scenario tagged `@retry` contributes exactly ONE of each, for its final attempt only, never one per attempt.
+Add a `metricReader` to the SAME `NodeSdk.layer` above and both metrics export alongside the trace spans:
+
+```ts
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http"
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics"
+
+const TelemetryLive = NodeSdk.layer({
+  resource: { serviceName: "my-suite" },
+  spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),
+  metricReader: new PeriodicExportingMetricReader({ exporter: new OTLPMetricExporter() })
+})
+```
+
+One caveat worth knowing: every Scenario runs under the ambient SIMULATED `TestClock`
+([ADR-EC-018](../../spec/decisions/018-shared-layer-testclock-isolation.md)), so `scenario.duration` reads ~0ms
+unless a step itself calls `TestClock.adjust(...)` — a real, documented limitation of running under a simulated
+clock, not a bug.
+
 **This package now runs its own spec.** The dogfooded acceptance suite is built: real `.feature` files under
 [`test/acceptance/`](./test/acceptance), paired with `.steps.test.ts` modules, driven by the real `describeFeature`
 and producing real passing `it.effect` tests as part of the ordinary `pnpm test`. The three worked examples from

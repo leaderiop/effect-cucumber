@@ -31,6 +31,19 @@
  *   shares the SAME live `Attachments`, bound to the SAME `ctx`: an attachment made on a failed
  *   attempt is never cleared before the next attempt runs, and every attempt's attachments remain
  *   visible in the final report. Deliberate, not an oversight — see ADR-EC-036.
+ * - `withMetrics` (ADR-EC-037, BEH-EC-029, INV-EC-008) wraps `Effect.Metric` recording OUTSIDE
+ *   `withRetry`'s `flakyTest`, exactly the way `attachmentsLive` already wraps outside it — applied
+ *   to `retryAwareSelf`, so `withScenarioMetrics`'s own `Effect.exit` only ever observes a `@retry`
+ *   Scenario's FINAL, already-retried outcome, never an intermediate attempt's. Applied ONLY when
+ *   `EmitOptions.scenario` is `true`: `makeDegradingEffect` is the one function `Runner.ts`'s trailing
+ *   unused-step-definition warning nodes ALSO flow through (the only other caller of `api.effect`), and
+ *   a warning's own `() => Effect.void` is not a Scenario — wrapping it too would record a spurious
+ *   `outcome: "pass"`/near-zero-duration sample per unused step definition, polluting a metric named
+ *   `scenario.result`. Where it sits relative to `attachmentsLive` does not matter functionally
+ *   (`Metric`'s `MetricRegistry` is ambient, not something `Attachments` or `Metric` read from each
+ *   other), so it composes at the SAME point `withRetry` already does — inside `makeDegradingEffect`,
+ *   before either registration attempt — and `attachmentsLive` keeps wrapping OUTSIDE the whole
+ *   resulting `self` unchanged, with no reordering needed at its own call sites.
  */
 import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
@@ -45,6 +58,7 @@ import { makeUndeclaredTagWarning } from "./Errors.ts"
 import type { ErasedLayer } from "./Plan.ts"
 // The composite `scenarioLayers` key, in a LEAF module both this file and `Runner.ts` import rather
 // than private to either — `ScenarioKey.ts`'s own header has the argument.
+import { withScenarioMetrics } from "./ScenarioMetrics.ts"
 import type { TestApi } from "./TestApi.ts"
 
 /**
@@ -84,6 +98,18 @@ const withRetry = (
   self: Parameters<TestApi["effect"]>[1]
 ): Parameters<TestApi["effect"]>[1] => retry ? () => flakyTest(self()) : self
 
+/**
+ * `self` is CALLED first — the identical "call first, wrap the result" shape `withRetry` above and
+ * `Runner.ts`'s own `buildSeededScenarioEffect` already use — so whatever `self()` already is
+ * (`flakyTest`-wrapped or not) is fully resolved before `withScenarioMetrics` wraps its RESULT.
+ * Applied only when `scenario` (`EmitOptions.scenario`) is `true` (see the module doc comment's
+ * `withMetrics` note): a Scenario is measured, a warning node is not.
+ */
+const withMetrics = (
+  scenario: boolean,
+  self: Parameters<TestApi["effect"]>[1]
+): Parameters<TestApi["effect"]>[1] => scenario ? () => withScenarioMetrics(self()) : self
+
 const makeDegradingEffect = (
   featureUri: string,
   emit: (
@@ -94,14 +120,15 @@ const makeDegradingEffect = (
 ): TestApi["effect"] =>
 (name, self, options) => {
   // Computed once, before either registration attempt below, so a possible tags-degradation retry
-  // of the EMISSION reuses the identical retry-aware thunk rather than re-deriving it.
-  const retryAwareSelf = withRetry(options.retry, self)
+  // of the EMISSION reuses the identical retry-and-metrics-aware thunk rather than re-deriving it.
+  // `withMetrics` wraps OUTSIDE `withRetry`'s result, never the reverse (ADR-EC-037).
+  const observedSelf = withMetrics(options.scenario, withRetry(options.retry, self))
   try {
-    emit(name, retryAwareSelf, { tags: [...options.tags], skip: options.skip })
+    emit(name, observedSelf, { tags: [...options.tags], skip: options.skip })
   } catch (cause) {
     try {
       // The same name and the same thunk, with `skip` preserved: only the tags are dropped.
-      emit(name, retryAwareSelf, { skip: options.skip })
+      emit(name, observedSelf, { skip: options.skip })
     } catch {
       // Structural discrimination, and the only branch that reaches it: an emission with no tags
       // cannot fail `strictTags`, so whatever is wrong here was never about tags.
