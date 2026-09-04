@@ -131,3 +131,6 @@ entries:
   - id: "ADR-EC-043"
     file: "043-ref-only-gate-excludes-framework-level-meta-tests.md"
     title: "The INV-EC-006 Ref-only gate excludes two named framework-level meta-tests — a scope bug fix, not a new carve-out"
+  - id: "ADR-EC-044"
+    file: "044-effect-vitest-is-a-devdependency-of-gherkins-own-test-suite.md"
+    title: "@effect/vitest is a devDependency of @effect-cucumber/gherkin's own test suite — does not conflict with ADR-EC-021"
