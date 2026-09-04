@@ -3,12 +3,13 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-All eight are enforced by code today, and each entry names the mechanism and the
+All nine are enforced by code today, and each entry names the mechanism and the
 assertions that back it. No entry on this page describes a **planned** mechanism
 any more; INV-EC-006 was the last one that did, and Phase 11 built it. INV-EC-007
 joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap,
-and INV-EC-008 joined most recently, over `packages/vitest/src/VitestTestApi.ts`'s
-`Effect.Metric` wrapper. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
+INV-EC-008 joined next, over `packages/vitest/src/VitestTestApi.ts`'s
+`Effect.Metric` wrapper, and INV-EC-009 joined most recently, over
+`packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
 scope was built first, and Phase 10 built the `shared` clause of its own wording,
 so its entry names two mechanisms rather than one. INV-EC-005 has been enforced
 on both sides at once — runtime and compile time — since Phase 8.
@@ -432,3 +433,34 @@ exhausting its retry schedule is counted as one failure, not eleven (`flakyTest`
 [ADR-EC-037](decisions/037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md),
 [ADR-EC-034](decisions/034-retry-tag-wraps-flakytest-at-the-testapi-seam.md) (the retry mechanism this
 invariant composes around, never inside).
+
+---
+
+## INV-EC-009: A Scenario's rerun key is stable across two separate `loadFeature()` invocations
+
+A Scenario's rerun key — `RerunKey.ts`'s `(uri, ruleName, title)` triple — is the SAME string on two
+independent `loadFeature()`/`parseFeature()` calls over the identical `.feature` file content, unlike
+`ScenarioKey.ts`'s AST-derived `(ruleId, astName)` key, which is not: that key's `ruleId` (and
+`ParsedScenario.id`) come from a fresh `IdGenerator.uuid()` on every parse, so it is a different random
+value each time and cannot be compared across two separate runs at all.
+
+**Source**: `packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`, built entirely from
+`ParsedFeature.uri`, the enclosing Rule's `.name` (a Rule's NAME, not its generator-produced `.id`),
+and `OutlineTitle.ts`'s `buildScenarioTitles` output — none of which is derived from
+`IdGenerator.uuid()` or any other per-parse random value. Every input the key is built from is either
+literal text from the `.feature` file itself or a deterministic function of that text.
+
+**Enforced by**: `packages/vitest/test/RerunKey.test.ts`'s own stability-across-two-parses test —
+parsing the SAME `.feature` source string twice, through two separate `loadFeature`/`parseFeature`
+calls, and asserting `rerunKeysForPlan` produces IDENTICAL key strings both times — and the cross-run
+proof in `scripts/verify-rerun-failed-only.sh` (step 6: a manifest written from one real `vitest run`
+successfully filters a SECOND, separately-invoked `vitest run` over the same files).
+
+**Implication**: a manifest written from one run's `--reporter=json` output can be looked up correctly
+against a LATER, separately-parsed run of the same `.feature` file — the entire mechanism
+`rerunFailedOnly` depends on. Had the key instead been derived from `ScenarioKey.ts`'s
+`(ruleId, astName)` pair, no manifest written by one run could ever match a later run's own freshly
+generated ids, and `rerunFailedOnly` would filter out every Scenario on every run after the first.
+
+**Related**: [BEH-EC-030](behaviors/17-rerun-failed-only.md),
+[ADR-EC-038](decisions/038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md).

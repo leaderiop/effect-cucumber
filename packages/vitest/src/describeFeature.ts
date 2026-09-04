@@ -16,18 +16,37 @@
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import * as Layer from "effect/Layer"
 import type { FeatureDsl } from "./Dsl.ts"
-import { makeExcludedScenariosNotice } from "./Errors.ts"
+import { makeExcludedScenariosNotice, makeStaleRerunManifestKeyWarning } from "./Errors.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
 import { emitFeature, type EmitOutcome } from "./Runner.ts"
 // The composite `scenarioLayers` key, in a LEAF module both this file and `Runner.ts` import rather
 // than private to either — `ScenarioKey.ts`'s own header has the argument.
 import { collect, type FeatureCollection, type LayerArgument } from "./Collect.ts"
+// The stable cross-run key, shared by this module's `anyRunnable`/stale-key check and `Runner.ts`'s
+// emission walk — `RerunKey.ts`'s own header has the argument (ADR-EC-038).
+import { rerunKeysForPlan } from "./RerunKey.ts"
+import { defaultRerunManifestPath, readRerunManifest } from "./RerunManifest.ts"
 import { isSkipped, makeTagFilter, shouldEmit } from "./Tags.ts"
 import { sharedLayerTestApi, vitestTestApi } from "./VitestTestApi.ts"
 
 export interface DescribeFeatureOptions {
   readonly includeTags?: ReadonlyArray<string>
   readonly excludeTags?: ReadonlyArray<string>
+  /**
+   * Filter registration to only the Scenarios a rerun manifest names as failed (ADR-EC-038,
+   * BEH-EC-030). `false`/absent (the default): no filter, `rerunManifestPath` is never read. `true`
+   * with no manifest file present yet degrades to "no filter" too — the same graceful-degradation
+   * posture `includeTags`/`excludeTags`'s own `undefined`/`[]` sentinel already has, since a
+   * rerun-only mode that could not run without a manifest from a prior run of its own would be
+   * useless on the very first run.
+   */
+  readonly rerunFailedOnly?: boolean
+  /**
+   * Where the manifest `rerunFailedOnly` reads lives. Defaults to
+   * `RerunManifest.ts`'s `defaultRerunManifestPath` (`.effect-cucumber/rerun-manifest.json`,
+   * resolved against `process.cwd()`). Ignored when `rerunFailedOnly` is not `true`.
+   */
+  readonly rerunManifestPath?: string
 }
 
 /**
@@ -108,6 +127,38 @@ export function describeFeature(
   // collection output rather than interleaved with it. All NINE fields.
   const tagFilter = makeTagFilter(options ?? {})
 
+  // Computed UNCONDITIONALLY — every run, not only a `rerunFailedOnly` one — because the write-side
+  // script that produces a manifest for a LATER run needs each Scenario's key present in an
+  // ORDINARY run's own `--reporter=json` output (ADR-EC-038). Cheap: a couple of `Map` builds over
+  // this one Feature's own Scenario list.
+  const rerunKeys = rerunKeysForPlan(collection.plan)
+
+  // `null` (no filter) unless `rerunFailedOnly` is explicitly `true` — `rerunManifestPath` is never
+  // even read otherwise, mirroring `includeTags`/`excludeTags`'s own "absent costs nothing" shape.
+  const rerunFilter = options?.rerunFailedOnly === true
+    ? readRerunManifest(options.rerunManifestPath ?? defaultRerunManifestPath)
+    : null
+
+  // A manifest key under THIS Feature's own uri that matches no Scenario `rerunKeys` computed —
+  // renamed, removed, or from a different revision of this file. Detected from this library's own
+  // plan data alone, so it follows `plan.warnings`' printing site here rather than
+  // `UndeclaredTagWarning`'s adapter-catch pattern, which reacts to a RUNNER rejection instead
+  // (ADR-EC-038).
+  if (rerunFilter !== null) {
+    const uriPrefix = `${collection.plan.feature.uri}::`
+    const knownKeys = new Set(rerunKeys.values())
+    const staleKeys = [...rerunFilter].filter((key) => key.startsWith(uriPrefix) && !knownKeys.has(key))
+    if (staleKeys.length > 0) {
+      console.warn(
+        makeStaleRerunManifestKeyWarning({
+          uri: collection.plan.feature.uri,
+          featureName: collection.plan.feature.name,
+          keys: staleKeys
+        }).message
+      )
+    }
+  }
+
   // The return value is DELIBERATELY DISCARDED, and that is the fix for a defect that shipped.
   const onEmitted = (outcome: EmitOutcome): void => {
     if (outcome.excludedScenarioCount > 0) {
@@ -122,6 +173,9 @@ export function describeFeature(
         }).message
       )
     }
+    // No separate notice for `rerunExcludedScenarioCount`: unlike a tag-filter exclusion, a
+    // rerun-filter exclusion is the ORDINARY, intended outcome of the Scenario having passed last
+    // run — not something a consumer needs a warning about.
   }
 
   // THE ONE BRANCH between the two provision strategies, and it is an EXPLICIT read of an explicit
@@ -131,7 +185,9 @@ export function describeFeature(
   // The named `layer(...)` form builds the shared tier EAGERLY, in a `beforeAll` on the Feature's
   // block, so the block has to be opened through it only when something inside will run.
   const anyRunnable = collection.plan.scenarios.some((scenarioPlan) =>
-    shouldEmit(tagFilter, scenarioPlan.tags) && !isSkipped(scenarioPlan.tags)
+    shouldEmit(tagFilter, scenarioPlan.tags) &&
+    !isSkipped(scenarioPlan.tags) &&
+    (rerunFilter === null || rerunFilter.has(rerunKeys.get(scenarioPlan.scenarioId) ?? ""))
   )
 
   // On the shared path the memo map is made HERE and handed in, so the adapter's hooks can reach
@@ -151,6 +207,8 @@ export function describeFeature(
     ruleLayers: collection.ruleLayers,
     scenarioLayers: collection.scenarioLayers,
     tagFilter,
+    rerunKeys,
+    rerunFilter,
     onEmitted
   })
 }

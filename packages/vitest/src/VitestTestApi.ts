@@ -44,6 +44,16 @@
  *   other), so it composes at the SAME point `withRetry` already does — inside `makeDegradingEffect`,
  *   before either registration attempt — and `attachmentsLive` keeps wrapping OUTSIDE the whole
  *   resulting `self` unchanged, with no reordering needed at its own call sites.
+ * - `emitOptions.rerunKey` (ADR-EC-038, BEH-EC-030) is stamped onto `ctx.task.meta.rerunKey` INSIDE
+ *   both `it.effect` callbacks below, BEFORE `self()` runs — this is the same `ctx: TestContext`
+ *   `attachmentsLive(ctx)` already reads, no new seam beyond what ADR-EC-036 already opened. Setting
+ *   it before `self()` runs (rather than after, or only on success) is what makes it survive a
+ *   FAILING Scenario: `task.meta` is a plain property on the task object, unrelated to how the test
+ *   body later exits, so a rerun-manifest write-side script reading `--reporter=json`'s own output
+ *   sees it on a failed assertion result too. `rerunKey` is passed to `it.effect`'s own options
+ *   argument NOT as a field of that argument — vitest's `it.effect` knows nothing about it — but
+ *   read out of `emitOptions` in the surrounding closure instead, so only `{ tags, skip }` (fields
+ *   vitest's own `it.effect` actually interprets) cross into its options argument.
  */
 import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
@@ -60,6 +70,19 @@ import type { ErasedLayer } from "./Plan.ts"
 // than private to either — `ScenarioKey.ts`'s own header has the argument.
 import { withScenarioMetrics } from "./ScenarioMetrics.ts"
 import type { TestApi } from "./TestApi.ts"
+
+/**
+ * `TaskMeta` (`@vitest/runner`, re-exported by `vitest`) is declared as an empty interface
+ * specifically so a caller can extend it via declaration merging — vitest's own documented
+ * mechanism, not a workaround. This is the one place that merge happens; every other module reaches
+ * a rerun key only as the `EmitOptions.rerunKey`/`string | null` plain data `TestApi.ts` already
+ * declares.
+ */
+declare module "vitest" {
+  interface TaskMeta {
+    rerunKey?: string
+  }
+}
 
 /**
  * The per-Scenario simulated clock and console, rebuilt here from the two PUBLIC `effect` modules.
@@ -115,7 +138,7 @@ const makeDegradingEffect = (
   emit: (
     name: string,
     self: Parameters<TestApi["effect"]>[1],
-    options: { readonly tags?: Array<string>; readonly skip: boolean }
+    options: { readonly tags?: Array<string>; readonly skip: boolean; readonly rerunKey: string | null }
   ) => void
 ): TestApi["effect"] =>
 (name, self, options) => {
@@ -124,11 +147,12 @@ const makeDegradingEffect = (
   // `withMetrics` wraps OUTSIDE `withRetry`'s result, never the reverse (ADR-EC-037).
   const observedSelf = withMetrics(options.scenario, withRetry(options.retry, self))
   try {
-    emit(name, observedSelf, { tags: [...options.tags], skip: options.skip })
+    emit(name, observedSelf, { tags: [...options.tags], skip: options.skip, rerunKey: options.rerunKey })
   } catch (cause) {
     try {
-      // The same name and the same thunk, with `skip` preserved: only the tags are dropped.
-      emit(name, observedSelf, { skip: options.skip })
+      // The same name and the same thunk, with `skip`/`rerunKey` preserved: only the tags are
+      // dropped.
+      emit(name, observedSelf, { skip: options.skip, rerunKey: options.rerunKey })
     } catch {
       // Structural discrimination, and the only branch that reaches it: an emission with no tags
       // cannot fail `strictTags`, so whatever is wrong here was never about tags.
@@ -148,7 +172,21 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
     block(name, { shuffle: false }, define)
   },
   effect: makeDegradingEffect(featureUri, (name, self, emitOptions) => {
-    it.effect(name, (ctx) => self().pipe(Effect.provide(attachmentsLive(ctx))), emitOptions)
+    // `emitOptions` is passed to `it.effect` BY REFERENCE, unchanged from before this module carried
+    // a `rerunKey` field: `it.effect`'s own `TestOptions` only interprets `tags`/`skip` and ignores
+    // the rest, and passing the whole reduced-options object rather than a freshly-built
+    // `{ tags, skip }` literal is what keeps `tags`' optionality intact under
+    // `exactOptionalPropertyTypes` (a fresh literal would widen `tags?: Array<string>` to a
+    // mandatory `Array<string> | undefined`, which `TestOptions.tags` rejects).
+    it.effect(name, (ctx) => {
+      // Stamped BEFORE `self()` runs, so it is recorded on `ctx.task.meta` whether the Scenario
+      // passes or fails — `--reporter=json`'s own `JsonReporter` serialises `task.meta` verbatim
+      // per assertion result (ADR-EC-038), which is what the write-side script reads back.
+      if (emitOptions.rerunKey !== null) {
+        ctx.task.meta.rerunKey = emitOptions.rerunKey
+      }
+      return self().pipe(Effect.provide(attachmentsLive(ctx)))
+    }, emitOptions)
   }),
   // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
   // constructor would run a body: scoped, against a fresh simulated clock and console.
@@ -176,7 +214,14 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
   const sharedRouteEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     requireSharedIt("effect").effect(
       name,
-      (ctx) => self().pipe(Effect.provide(Layer.mergeAll(testEnv, attachmentsLive(ctx)))),
+      (ctx) => {
+        // Same stamp-before-run shape as the plain path's own `effect` field above.
+        if (emitOptions.rerunKey !== null) {
+          ctx.task.meta.rerunKey = emitOptions.rerunKey
+        }
+        return self().pipe(Effect.provide(Layer.mergeAll(testEnv, attachmentsLive(ctx))))
+      },
+      // `emitOptions` by reference, same reason as the plain path's own `effect` field above.
       emitOptions
     )
   })

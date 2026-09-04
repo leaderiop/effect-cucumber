@@ -66,3 +66,7 @@ entries:
     file: "16-scenario-metrics.md"
     title: "Effect.Metric at the Scenario emission boundary"
     id_range: "029"
+  - id: "BEH-EC-030"
+    file: "17-rerun-failed-only.md"
+    title: "Rerun failed Scenarios only"
+    id_range: "030"

@@ -150,7 +150,9 @@ const emitAll = (collected: FeatureCollection, api: TestApi): void => {
     ruleHooks: collected.ruleHooks,
     ruleLayers: collected.ruleLayers,
     scenarioLayers: collected.scenarioLayers,
-    tagFilter: noTagFilter
+    tagFilter: noTagFilter,
+    rerunFilter: null,
+    rerunKeys: new Map<string, string>()
   })
 }
 

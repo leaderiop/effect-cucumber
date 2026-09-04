@@ -113,3 +113,6 @@ entries:
   - id: "ADR-EC-037"
     file: "037-effect-metric-wraps-outside-flakytest-in-vitesttestapi.md"
     title: "Effect.Metric at the Scenario emission boundary wraps OUTSIDE flakyTest, entirely inside VitestTestApi.ts — never Runner.ts's emission call sites"
+  - id: "ADR-EC-038"
+    file: "038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md"
+    title: "Rerun-failed-only — a (uri, ruleName, title) key stamped onto task.meta, a template write-side script over --reporter=json, and a synthetic skip node for an emptied block"

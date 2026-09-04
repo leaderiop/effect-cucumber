@@ -7,7 +7,8 @@
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
  * `HookRegistry.ts`, `HookTagExpression.ts`, `Tags.ts`, `TestApi.ts`, `Collect.ts`, `VitestTestApi.ts`,
- * `OutlineTitle.ts`, `ScenarioKey.ts`. Tests import them by relative path.
+ * `OutlineTitle.ts`, `ScenarioKey.ts`, `RerunKey.ts`, `RerunManifest.ts`. Tests import them by
+ * relative path.
  */
 
 export { describeFeature } from "./describeFeature.ts"
@@ -88,6 +89,8 @@ export { StepMatchError } from "./Errors.ts"
 export type {
   ExcludedScenariosNotice,
   ExcludedScenariosNoticeReason,
+  StaleRerunManifestKeyWarning,
+  StaleRerunManifestKeyWarningReason,
   StepMatchErrorReason,
   UndeclaredTagWarning,
   UndeclaredTagWarningReason,

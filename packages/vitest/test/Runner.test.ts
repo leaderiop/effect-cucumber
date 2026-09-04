@@ -17,6 +17,7 @@ import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } fro
 import type { HookEntry, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
 import type { DefinitionSite, RegistryScope, StepDefinition, StepKeyword } from "../src/Registry.ts"
+import { rerunKeysForPlan } from "../src/RerunKey.ts"
 import { emitFeature } from "../src/Runner.ts"
 import { makeTagFilter, noTagFilter, onlyTag, retryTag, skipTag } from "../src/Tags.ts"
 import type { EmitOptions, TestApi } from "../src/TestApi.ts"
@@ -150,7 +151,7 @@ const noRuleScope = {
   scenarioLayers: new Map<string, Layer.Layer<any, any, never>>()
 }
 
-const unfiltered = { tagFilter: noTagFilter }
+const unfiltered = { tagFilter: noTagFilter, rerunFilter: null, rerunKeys: new Map<string, string>() }
 
 // The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe blocks below
 // reads: an append-only log of what ran, in run order.
@@ -727,7 +728,11 @@ describe("the recording fake itself", () => {
         throw new Error("the define callback blew up")
       }), /the define callback blew up/)
     // The one place in this file that drives the fake directly rather than through `emitFeature`.
-    api.effect("after", () => Effect.void, { tags: [], skip: false, retry: false, contextFree: true, scenario: false })
+    api.effect(
+      "after",
+      () => Effect.void,
+      { tags: [], skip: false, retry: false, contextFree: true, scenario: false, rerunKey: null }
+    )
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every assertion that followed —
     // the failure would surface in an unrelated test.
@@ -1552,7 +1557,9 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       layer,
       hooks: emptyHooks,
       ...noRuleScope,
-      tagFilter
+      tagFilter,
+      rerunFilter: null,
+      rerunKeys: new Map<string, string>()
     })
     return { records, outcome }
   }
@@ -1561,7 +1568,7 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
     const { outcome, records } = emitFiltered(noTagFilter)
 
     assert.deepStrictEqual(titlesOf(records), ["slow one", "wip one", "plain one", "slow nested", "wip nested"])
-    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0 })
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 0 })
   })
 
   it("excludeTags removes the excluded Scenarios ENTIRELY — absent by title, not present-and-skipped", () => {
@@ -1572,7 +1579,7 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
     assert.deepStrictEqual(titlesOf(records), ["slow one", "plain one", "slow nested"])
     assert.isFalse(titlesOf(records).includes("wip one"))
     assert.isFalse(titlesOf(records).includes("wip nested"))
-    assert.deepStrictEqual(outcome, { excludedScenarioCount: 2 })
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 2, rerunExcludedScenarioCount: 0 })
   })
 
   it("includeTags restricts emission to matching Scenarios, across the Rule's nested loop too", () => {
@@ -1582,7 +1589,7 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
     // in `Runner.ts` on purpose, so a filter added to only one of them leaves the other emitting everything.
     assert.deepStrictEqual(titlesOf(records), ["slow one", "slow nested"])
     // Three excluded: `wip one` and `plain one` from the Feature-level loop, `wip nested` from the Rule's.
-    assert.deepStrictEqual(outcome, { excludedScenarioCount: 3 })
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 3, rerunExcludedScenarioCount: 0 })
   })
 
   it("excludes a tag named in BOTH arrays — exclude wins the author's self-contradiction", () => {
@@ -1594,7 +1601,139 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       { kind: "describe", name: "Filtering", depth: 0 },
       { kind: "describe", name: "nested", depth: 1 }
     ])
-    assert.deepStrictEqual(outcome, { excludedScenarioCount: 5 })
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 5, rerunExcludedScenarioCount: 0 })
+  })
+})
+
+// ADR-EC-038/BEH-EC-030's unit-level proof: `rerunFilter` composes AFTER the tag filter, stamps
+// `EmitOptions.rerunKey` from the SAME map `RerunKey.ts`'s `rerunKeysForPlan` computes (never
+// recomputed here), and the Feature-level/Rule-level synthetic nodes fire exactly when the rerun
+// filter is the reason a block would otherwise be emptied — never merely because a tag filter did.
+describe("a rerunFailedOnly filter composes after the tag filter, stamps EmitOptions.rerunKey, and emits a synthetic node for a block the rerun filter emptied (ADR-EC-038, BEH-EC-030)", () => {
+  // The exact literal `Runner.ts`'s own private `rerunEmptyBlockTitle` uses — hardcoded here the same
+  // way `warningTitlesOf` below hardcodes the `⚠` prefix: this file may not import a private constant.
+  const rerunEmptyBlockTitle = "↻ rerunFailedOnly: no Scenario here matched the rerun manifest (nothing to rerun)"
+
+  // A fresh `planFeature` call over the SAME `filtering`/`browseIn` fixtures the "filtered-out
+  // Scenario" block above uses — that block's own `filteringPlan` is local to it, so this block
+  // builds its own rather than reaching across a `describe` boundary for a `const`.
+  const filteringPlan = planFeature({ feature: filtering, definitions: browseIn("Filtering") })
+  const filteringKeys = rerunKeysForPlan(filteringPlan)
+  const keyFor = (title: string): string => {
+    const scenarioPlan = filteringPlan.scenarios.find((candidate) => candidate.name === title)
+    if (scenarioPlan === undefined) {
+      throw new Error(`no ScenarioPlan named ${JSON.stringify(title)} in filteringPlan`)
+    }
+    const key = filteringKeys.get(scenarioPlan.scenarioId)
+    if (key === undefined) {
+      throw new Error(`rerunKeysForPlan produced no key for ${JSON.stringify(title)}`)
+    }
+    return key
+  }
+
+  const emitRerun = (
+    tagFilter: Parameters<typeof emitFeature>[0]["tagFilter"],
+    rerunFilter: ReadonlySet<string> | null
+  ) => {
+    const { api, records } = makeRecordingApi()
+    const outcome = emitFeature({
+      api,
+      plan: filteringPlan,
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      tagFilter,
+      rerunFilter,
+      rerunKeys: filteringKeys
+    })
+    return { records, outcome }
+  }
+
+  it("rerunFilter === null means no filter at all — identical to the unfiltered control", () => {
+    const { outcome, records } = emitRerun(noTagFilter, null)
+
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "wip one", "plain one", "slow nested", "wip nested"])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 0 })
+  })
+
+  it("composes AFTER the tag filter: a tag-excluded Scenario counts toward excludedScenarioCount, never rerunExcludedScenarioCount", () => {
+    // Names every Scenario's key, so nothing is rerun-excluded — only the tag filter below acts.
+    const rerunFilter = new Set(
+      ["slow one", "wip one", "plain one", "slow nested", "wip nested"].map(keyFor)
+    )
+    const { outcome, records } = emitRerun(makeTagFilter({ excludeTags: ["@wip"] }), rerunFilter)
+
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "plain one", "slow nested"])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 2, rerunExcludedScenarioCount: 0 })
+  })
+
+  it("excludes a Scenario the rerun filter does not name, and counts it separately from a tag exclusion", () => {
+    // Only "wip one" survives — the Rule's own two Scenarios are BOTH excluded too, which is exactly
+    // the Rule-level synthetic-node case the next few tests cover in detail; asserted here only
+    // incidentally, via `titlesOf`, to keep this test's own focus on the count.
+    const rerunFilter = new Set([keyFor("wip one")])
+    const { outcome, records } = emitRerun(noTagFilter, rerunFilter)
+
+    assert.deepStrictEqual(titlesOf(records), ["wip one", rerunEmptyBlockTitle])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 4 })
+  })
+
+  it("stamps EmitOptions.rerunKey with the SAME key rerunKeysForPlan computed, for every real Scenario node, and null for a warning/synthetic node", () => {
+    const { records } = emitRerun(noTagFilter, null)
+
+    const scenarioRerunKeys = records
+      .filter((record) => record.kind === "effect" && record.options?.scenario === true)
+      .map((record) => record.options?.rerunKey)
+    assert.deepStrictEqual(
+      scenarioRerunKeys,
+      ["slow one", "wip one", "plain one", "slow nested", "wip nested"].map(keyFor)
+    )
+
+    // Everything is rerun-excluded here, so the only `effect` node is the synthetic one — `scenario:
+    // false`, `rerunKey: null`, exactly like a trailing warning node.
+    const { records: emptyRecords } = emitRerun(noTagFilter, new Set())
+    const synthetic = emptyRecords.find((record) => record.kind === "effect" && record.depth === 1)
+    assert.isTrue(synthetic !== undefined)
+    assert.deepStrictEqual(synthetic?.options?.scenario, false)
+    assert.deepStrictEqual(synthetic?.options?.rerunKey, null)
+  })
+
+  it("emits ONE Feature-level synthetic node, and no Scenario nodes, when the rerun filter excludes EVERY Scenario in the Feature", () => {
+    const { outcome, records } = emitRerun(noTagFilter, new Set())
+
+    // Two `rerunEmptyBlockTitle` nodes: the Rule-level one (depth 2, inside "nested") and the
+    // Feature-level one (depth 1, a sibling of "nested" itself) — both fire because BOTH blocks ended
+    // up with zero Scenarios purely due to the rerun filter.
+    assert.deepStrictEqual(shapeOf(records), [
+      { kind: "describe", name: "Filtering", depth: 0 },
+      { kind: "describe", name: "nested", depth: 1 },
+      { kind: "effect", name: rerunEmptyBlockTitle, depth: 2 },
+      { kind: "effect", name: rerunEmptyBlockTitle, depth: 1 }
+    ])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 5 })
+  })
+
+  it("emits the Rule-level synthetic node ALONE when only the Rule's own Scenarios are rerun-excluded — the Feature-level block is NOT empty, so it gets no synthetic node", () => {
+    // Names only the three Feature-level Scenarios' keys — both of "nested"'s Scenarios are excluded.
+    const rerunFilter = new Set(["slow one", "wip one", "plain one"].map(keyFor))
+    const { outcome, records } = emitRerun(noTagFilter, rerunFilter)
+
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "wip one", "plain one", rerunEmptyBlockTitle])
+    // Exactly one synthetic node — the Rule's own, at depth 2 (inside "nested") — never a second,
+    // Feature-level one, since the Feature-level block is NOT empty (three real Scenarios survived).
+    const syntheticRecords = records.filter((record) => record.name === rerunEmptyBlockTitle)
+    assert.deepStrictEqual(syntheticRecords.length, 1)
+    assert.deepStrictEqual(syntheticRecords[0]?.depth, 2)
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 2 })
+  })
+
+  it("emits NO synthetic node when the rerun filter only partially excludes a block", () => {
+    const rerunFilter = new Set(["slow one", "slow nested"].map(keyFor))
+    const { outcome, records } = emitRerun(noTagFilter, rerunFilter)
+
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "slow nested"])
+    assert.isFalse(titlesOf(records).some((title) => title === rerunEmptyBlockTitle))
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 0, rerunExcludedScenarioCount: 3 })
   })
 })
 
@@ -1612,7 +1751,16 @@ describe("a tag filter cannot change which step definitions are reported unused 
 
   const emitWith = (tagFilter: Parameters<typeof emitFeature>[0]["tagFilter"]): ReadonlyArray<EmissionRecord> => {
     const { api, records } = makeRecordingApi()
-    emitFeature({ api, plan: planWithUnused, layer, hooks: emptyHooks, ...noRuleScope, tagFilter })
+    emitFeature({
+      api,
+      plan: planWithUnused,
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      tagFilter,
+      rerunFilter: null,
+      rerunKeys: new Map<string, string>()
+    })
     return records
   }
 
@@ -1702,7 +1850,9 @@ describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, 
         layer: recorderLayer,
         hooks: afterAllHooks(),
         ...noRuleScope,
-        tagFilter: makeTagFilter({ includeTags: ["@exampletag"] })
+        tagFilter: makeTagFilter({ includeTags: ["@exampletag"] }),
+        rerunFilter: null,
+        rerunKeys: new Map<string, string>()
       })
 
       assert.deepStrictEqual(titlesOf(records), [])
