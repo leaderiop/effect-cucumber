@@ -116,3 +116,6 @@ entries:
   - id: "ADR-EC-038"
     file: "038-rerun-failed-only-uri-scoped-key-stamped-via-task-meta-not-a-reporter.md"
     title: "Rerun-failed-only — a (uri, ruleName, title) key stamped onto task.meta, a template write-side script over --reporter=json, and a synthetic skip node for an emptied block"
+  - id: "ADR-EC-039"
+    file: "039-rule-world-narrowing-via-effect-updatecontext-in-narrowruledsl.md"
+    title: "A Rule can narrow or replace the ambient World its own Scenarios see — a third RuleRegistrar overload backed by real Effect.updateContext calls in narrowRuleDsl"
