@@ -1,10 +1,11 @@
 /**
  * Pins the verified decode-failure shape of `effect@4.0.0-rc.112`'s `Schema` module.
  */
+import { assert, describe, it } from "@effect/vitest"
+import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 import * as SchemaIssue from "effect/SchemaIssue"
-import { describe, expect, it } from "vitest"
 
 /** One data table row: a plain string column and a column that must transform to a real number. */
 const Row = Schema.Struct({ name: Schema.String, age: Schema.FiniteFromString })
@@ -13,21 +14,41 @@ const Row = Schema.Struct({ name: Schema.String, age: Schema.FiniteFromString })
 const Rows = Schema.Array(Row)
 
 /**
- * Run a decode that must fail, and return the `SchemaError` it failed with.
- *
- * Deliberately not `expect(...).toThrow()`: nothing here throws (the failure lives in an Effect's
- * error channel), and oxlint's `vitest(require-to-throw-message)` is error-level anyway, which
- * would force every assertion below to be made against upstream message prose.
+ * `failureOf` below fails the Effect with this instead of a plain `Error`: `@effect/tsgo`'s
+ * `globalErrorInEffectFailure` check (ADR-EC-016) flags an untagged `Error` in an Effect's failure
+ * channel — the same convention `Boom`/`OtherFailure` already establish in
+ * `packages/vitest/test/Testing.test.ts`.
  */
-const failureOf = (effect: Effect.Effect<unknown, Schema.SchemaError>): Schema.SchemaError => {
-  const outcome = Effect.runSync(Effect.match(effect, {
-    onFailure: (error): { readonly failed: true; readonly error: Schema.SchemaError } => ({ failed: true, error }),
-    onSuccess: (value): { readonly failed: false; readonly value: unknown } => ({ failed: false, value })
-  }))
-  if (!outcome.failed) {
-    throw new Error(`expected the decode to fail, but it succeeded with ${JSON.stringify(outcome.value)}`)
+class UnexpectedOutcome extends Data.TaggedError("UnexpectedOutcome")<{ readonly message: string }> {}
+
+/**
+ * A decode that must fail, as an Effect resolving to the `SchemaError` it failed with. Succeeding
+ * is itself a failure and says so, quoting what came back.
+ */
+const failureOf = (
+  effect: Effect.Effect<unknown, Schema.SchemaError>
+): Effect.Effect<Schema.SchemaError, UnexpectedOutcome> =>
+  Effect.matchEffect(effect, {
+    onFailure: (error) => Effect.succeed(error),
+    onSuccess: (value): Effect.Effect<Schema.SchemaError, UnexpectedOutcome> =>
+      Effect.fail(
+        new UnexpectedOutcome({
+          message: `expected the decode to fail, but it succeeded with ${JSON.stringify(value)}`
+        })
+      )
+  })
+
+/**
+ * Narrows away `undefined`, or throws. A plain function defined OUTSIDE any `Effect.gen` body on
+ * purpose — `@effect/tsgo`'s `globalErrorInEffectFailure` check (ADR-EC-016) flags a `new Error(...)`
+ * lexically inside an `Effect.gen` generator, even one that's thrown rather than failed/died with;
+ * calling a plain helper from inside the generator keeps the construction outside that scope.
+ */
+const definedOrThrow = <A>(value: A | undefined, message: string): A => {
+  if (value === undefined) {
+    throw new Error(message)
   }
-  return outcome.error
+  return value
 }
 
 /**
@@ -73,91 +94,106 @@ interface ElementFailureCase {
 }
 
 describe("upstream effect@4.0.0-rc.112 Schema decode failures", () => {
-  it("a failed decode fails with a SchemaError carrying an issue", () => {
-    const error = failureOf(Schema.decodeUnknownEffect(Row)({ name: "a", age: "xx" }))
+  it.effect("a failed decode fails with a SchemaError carrying an issue", () =>
+    Effect.gen(function*() {
+      const error = yield* failureOf(Schema.decodeUnknownEffect(Row)({ name: "a", age: "xx" }))
 
-    // Destructured for the same `no-underscore-dangle` reason the predicates above give.
-    const { _tag } = error
-    expect(_tag).toBe("SchemaError")
-    expect(error.issue).toBeDefined()
-    // `SchemaIssue` is used as a VALUE here, not only as a type: this pin must fail if the module
-    // stops existing at runtime, not merely if its declarations drift.
-    expect(SchemaIssue.isIssue(error.issue)).toBe(true)
-  })
+      // Destructured for the same `no-underscore-dangle` reason the predicates above give.
+      const { _tag } = error
+      assert.strictEqual(_tag, "SchemaError")
+      assert.isDefined(error.issue)
+      // `SchemaIssue` is used as a VALUE here, not only as a type: this pin must fail if the
+      // module stops existing at runtime, not merely if its declarations drift.
+      assert.isTrue(SchemaIssue.isIssue(error.issue))
+    }))
 
-  it("an array decode failure carries the element index and the property key on a Pointer path", () => {
-    // The mechanism decodeHashes is built on: the array index and the record key arrive on ONE
-    // accumulated path, in that order, so [rowIndex, columnName] is readable off it directly.
-    const error = failureOf(Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }]))
+  it.effect("an array decode failure carries the element index and the property key on a Pointer path", () =>
+    Effect.gen(function*() {
+      // The mechanism decodeHashes is built on: the array index and the record key arrive on ONE
+      // accumulated path, in that order, so [rowIndex, columnName] is readable off it directly.
+      const error = yield* failureOf(
+        Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }])
+      )
 
-    expect(pointerPaths(error.issue, [])).toEqual([[1, "name"]])
-  })
+      assert.deepStrictEqual(pointerPaths(error.issue, []), [[1, "name"]])
+    }))
 
-  it("the path's first element is a number and its second is a string", () => {
-    const error = failureOf(Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }]))
-    const [path] = pointerPaths(error.issue, [])
-    if (path === undefined) {
-      throw new Error("expected exactly one Pointer path for a single failing element")
-    }
+  it.effect("the path's first element is a number and its second is a string", () =>
+    Effect.gen(function*() {
+      const error = yield* failureOf(
+        Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }])
+      )
+      const path = definedOrThrow(
+        pointerPaths(error.issue, [])[0],
+        "expected exactly one Pointer path for a single failing element"
+      )
 
-    expect(typeof path[0]).toBe("number")
-    expect(typeof path[1]).toBe("string")
-  })
+      assert.strictEqual(typeof path[0], "number")
+      assert.strictEqual(typeof path[1], "string")
+    }))
 
-  it("SchemaError.message names the path", () => {
-    // The fallback text decodeHashes embeds verbatim in its own message when the path walk finds
-    // nothing usable. Asserted as CONTAINS rather than as an equality: the leading "Expected ..."
-    // sentence is upstream prose and is free to be reworded inside the rc line.
-    const error = failureOf(Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }]))
+  it.effect("SchemaError.message names the path", () =>
+    Effect.gen(function*() {
+      // The fallback text decodeHashes embeds verbatim in its own message when the path walk
+      // finds nothing usable. Asserted as CONTAINS rather than as an equality: the leading
+      // "Expected ..." sentence is upstream prose and is free to be reworded inside the rc line.
+      const error = yield* failureOf(
+        Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "1" }, { name: 2, age: "x" }])
+      )
 
-    expect(error.message).toContain("[1]")
-    expect(error.message).toContain("[\"name\"]")
-  })
+      assert.include(error.message, "[1]")
+      assert.include(error.message, "[\"name\"]")
+    }))
 
-  it("a top-level type failure produces no Pointer path at all", () => {
-    // The case decodeHashes must answer with Option.none()/Option.none() rather than by
-    // fabricating a row 1. Every ELEMENT failure of an array decode is wrapped in a Pointer
-    // carrying the index (asserted above), so this is what a location-free failure looks like.
-    const error = failureOf(Schema.decodeUnknownEffect(Rows)("nope"))
+  it.effect("a top-level type failure produces no Pointer path at all", () =>
+    Effect.gen(function*() {
+      // The case decodeHashes must answer with Option.none()/Option.none() rather than by
+      // fabricating a row 1. Every ELEMENT failure of an array decode is wrapped in a Pointer
+      // carrying the index (asserted above), so this is what a location-free failure looks like.
+      const error = yield* failureOf(Schema.decodeUnknownEffect(Rows)("nope"))
 
-    expect(pointerPaths(error.issue, [])).toEqual([])
-  })
+      assert.deepStrictEqual(pointerPaths(error.issue, []), [])
+    }))
 
-  it("Composite's children field is named as this pin expects", () => {
-    // A silent rename of `issues` in an rc bump would turn the walker into a function that always
-    // returns [], which would degrade every located error into an unlocated one WITHOUT failing
-    // any other assertion here. This is the assertion that catches that.
-    const error = failureOf(Schema.decodeUnknownEffect(Rows)([{ name: 2, age: "x" }]))
-    const { issue } = error
+  it.effect("Composite's children field is named as this pin expects", () =>
+    Effect.gen(function*() {
+      // A silent rename of `issues` in an rc bump would turn the walker into a function that
+      // always returns [], which would degrade every located error into an unlocated one WITHOUT
+      // failing any other assertion here. This is the assertion that catches that.
+      const error = yield* failureOf(Schema.decodeUnknownEffect(Rows)([{ name: 2, age: "x" }]))
+      const { issue } = error
 
-    expect(isComposite(issue)).toBe(true)
-    // The `_tag` string and the exported class still agree, so a walker may discriminate on either.
-    expect(issue instanceof SchemaIssue.Composite).toBe(true)
-    expect(Object.hasOwn(issue, "issues")).toBe(true)
-  })
+      assert.isTrue(isComposite(issue))
+      // The `_tag` string and the exported class still agree, so a walker may discriminate on
+      // either.
+      assert.instanceOf(issue, SchemaIssue.Composite)
+      assert.isTrue(Object.hasOwn(issue, "issues"))
+    }))
 
-  it("wraps every element failure of an array decode in a Pointer carrying the index", () => {
-    // Six element-failure shapes, all reaching a Pointer([index]) first. This is what makes the
-    // row ordinal recoverable for every kind of row schema a caller might supply, and it is why
-    // decodeHashes owns the Schema.Array wrapping rather than accepting an array schema.
-    const cases: ReadonlyArray<ElementFailureCase> = [
-      { label: "a wrong primitive row schema", effect: Schema.decodeUnknownEffect(Schema.Array(Schema.String))([{}]) },
-      { label: "a never row schema", effect: Schema.decodeUnknownEffect(Schema.Array(Schema.Never))([{}]) },
-      {
-        label: "a union row schema",
-        effect: Schema.decodeUnknownEffect(Schema.Array(Schema.Union([Schema.String, Schema.Number])))([{}])
-      },
-      { label: "an already-arrayed row schema", effect: Schema.decodeUnknownEffect(Schema.Array(Rows))([{}]) },
-      { label: "a missing required key", effect: Schema.decodeUnknownEffect(Rows)([{ name: "a" }]) },
-      { label: "a failed transform", effect: Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "x" }]) }
-    ]
+  it.effect("wraps every element failure of an array decode in a Pointer carrying the index", () =>
+    Effect.gen(function*() {
+      // Six element-failure shapes, all reaching a Pointer([index]) first. This is what makes the
+      // row ordinal recoverable for every kind of row schema a caller might supply, and it is why
+      // decodeHashes owns the Schema.Array wrapping rather than accepting an array schema.
+      const cases: ReadonlyArray<ElementFailureCase> = [
+        {
+          label: "a wrong primitive row schema",
+          effect: Schema.decodeUnknownEffect(Schema.Array(Schema.String))([{}])
+        },
+        { label: "a never row schema", effect: Schema.decodeUnknownEffect(Schema.Array(Schema.Never))([{}]) },
+        {
+          label: "a union row schema",
+          effect: Schema.decodeUnknownEffect(Schema.Array(Schema.Union([Schema.String, Schema.Number])))([{}])
+        },
+        { label: "an already-arrayed row schema", effect: Schema.decodeUnknownEffect(Schema.Array(Rows))([{}]) },
+        { label: "a missing required key", effect: Schema.decodeUnknownEffect(Rows)([{ name: "a" }]) },
+        { label: "a failed transform", effect: Schema.decodeUnknownEffect(Rows)([{ name: "a", age: "x" }]) }
+      ]
 
-    for (const { effect, label } of cases) {
-      const [path] = pointerPaths(failureOf(effect).issue, [])
-      if (path === undefined) {
-        throw new Error(`expected ${label} to produce a Pointer path`)
+      for (const { effect, label } of cases) {
+        const error = yield* failureOf(effect)
+        const path = definedOrThrow(pointerPaths(error.issue, [])[0], `expected ${label} to produce a Pointer path`)
+        assert.strictEqual(path[0], 0)
       }
-      expect(path[0]).toBe(0)
-    }
-  })
+    }))
 })
