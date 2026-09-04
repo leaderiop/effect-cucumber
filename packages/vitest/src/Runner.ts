@@ -140,9 +140,12 @@ export const emitFeature = (
     return found
   }
 
-  // NOTHING is provided to the batch here (F-10).
+  // NOTHING is provided to the batch here (F-10). `[]` for `scenarioTags`: `BeforeAllScenarios` is
+  // typed `HookRegistrar<RShared>` (BEH-EC-027), never `TaggedHookRegistrar`, so every entry here has
+  // `matches: null` by construction and never consults this argument — it exists only because
+  // `runHookBatch`'s signature is shared across all six hook kinds.
   const beforeAllScenariosCell: Effect.Effect<void, unknown, Scope.Scope> | null = hooks.BeforeAllScenarios.length > 0
-    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios))
+    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios, []))
     : null
 
   api.describe(plan.feature.name, () => {
@@ -232,9 +235,11 @@ export const emitFeature = (
         if (!attempted) {
           return Effect.void
         }
-        // Same as the once-cell above: no per-Scenario tier is provided to a once-per-Feature hook.
+        // Same as the once-cell above: no per-Scenario tier is provided to a once-per-Feature hook,
+        // and `[]` for the same "never consulted" reason documented on that once-cell.
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
-          hooks.AfterAllScenarios
+          hooks.AfterAllScenarios,
+          []
         )
         return afterAllScenariosEffect
       })

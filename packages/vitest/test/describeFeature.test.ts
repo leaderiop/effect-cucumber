@@ -392,8 +392,10 @@ describe("the collection carries every registered hook, grouped by kind", () => 
     })
 
     // THE load-bearing order assertion — reference identity in position, not just a length-2 check.
-    expect(collected.hooks.Before[0]).toBe(first)
-    expect(collected.hooks.Before[1]).toBe(second)
+    // `.body`, not the entry itself: a `HookSet` slot is a `HookEntry` wrapping the registered body,
+    // not the body itself (ADR-EC-035).
+    expect(collected.hooks.Before[0]?.body).toBe(first)
+    expect(collected.hooks.Before[1]?.body).toBe(second)
   })
 
   it("reports an empty array, not an absent key, for a kind nobody registered", () => {
@@ -436,7 +438,7 @@ describe("the collection carries every registered hook, grouped by kind", () => 
 
     // The registration path normalises once and does not re-wrap: `registerHook` delegates to `Step.ts`'s `register`,
     // which returns an already-wrapped function BY IDENTITY.
-    expect(collected.hooks.Before[0]).toBe(alreadyWrapped)
+    expect(collected.hooks.Before[0]?.body).toBe(alreadyWrapped)
   })
 
   it("gives a Scenario callback's dsl no Before key at runtime", () => {
@@ -537,6 +539,110 @@ const ruleLayerOf = (collected: FeatureCollection, ruleId: string): Layer.Layer<
 const planFor = (collected: FeatureCollection, name: string) =>
   collected.plan.scenarios.find((scenario) => scenario.name === name)
 
+// A Feature with a REAL tag on one Scenario and none on the other — what ADR-EC-035/BEH-EC-027's
+// tag-expression-scoped hooks need to compile a matcher against.
+const taggedFeature = Effect.runSync(
+  parseFeature(
+    `Feature: Checkout with tags
+  Rule: members get a discount
+    @db
+    Scenario: a member paying with a database-backed card
+      When the member pays with a database-backed card
+      Then the order is confirmed
+
+  @db
+  Scenario: paying with a database-backed card
+    When I pay with a database-backed card
+    Then the order is confirmed
+
+  @slow
+  Scenario: paying with a saved card
+    When I pay with a saved card
+    Then the order is confirmed
+`,
+    "test/describeFeature-tagged.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+const taggedRuleId = taggedFeature.rules.find((rule) => rule.name === "members get a discount")?.id
+if (taggedRuleId === undefined) {
+  throw new Error("the tagged fixture Feature has no Rule named \"members get a discount\"")
+}
+
+describe("Before/After/BeforeStep/AfterStep accept a leading tag-expression string (ADR-EC-035, BEH-EC-027)", () => {
+  it("gives an unconditional (one-arg) registration a null matcher, unchanged from before this feature", () => {
+    const collected = collectFeature(taggedFeature, Layer.empty, ({ Before }) => {
+      Before(noop)
+    })
+
+    expect(collected.hooks.Before[0]?.matches).toBeNull()
+  })
+
+  it("compiles a two-arg registration's tag expression into a real matcher, distinct from the unconditional form", () => {
+    const collected = collectFeature(taggedFeature, Layer.empty, ({ Before }) => {
+      Before(noop)
+      Before("@db", noop)
+    })
+
+    expect(collected.hooks.Before).toHaveLength(2)
+    expect(collected.hooks.Before[0]?.matches).toBeNull()
+
+    const matches = collected.hooks.Before[1]?.matches
+    expect(matches).not.toBeNull()
+    expect(matches?.(["@db"])).toBe(true)
+    expect(matches?.([])).toBe(false)
+  })
+
+  it("compiles a compound and/not expression through the same real vitest grammar", () => {
+    const collected = collectFeature(taggedFeature, Layer.empty, ({ Before }) => {
+      Before("@db and not @slow", noop)
+    })
+
+    const matches = collected.hooks.Before[0]?.matches
+    expect(matches?.(["@db"])).toBe(true)
+    expect(matches?.(["@db", "@slow"])).toBe(false)
+  })
+
+  it("compiles a Rule-scoped hook's tag expression against the FEATURE-wide tag universe, not the Rule's own", () => {
+    // "@db" is declared elsewhere in this Feature (the Feature-level Scenario), not inside this Rule — proving the
+    // universe `groupHooks` validates against is `featureTagUniverse(feature.allScenarios)`, Feature-wide.
+    const collected = collectFeature(taggedFeature, Layer.empty, ({ Rule }) => {
+      Rule("members get a discount", ({ Before }) => {
+        Before("@db", noop)
+      })
+    })
+
+    const matches = collected.ruleHooks.get(taggedRuleId)?.Before[0]?.matches
+    expect(matches?.(["@db"])).toBe(true)
+  })
+
+  it("throws a located HookTagExpressionError, synchronously, for a tag absent from the whole Feature", () => {
+    expect(() =>
+      collectFeature(taggedFeature, Layer.empty, ({ Before }) => {
+        Before("@nonexistent", noop)
+      })
+    ).toThrowError(/@nonexistent/)
+  })
+
+  it("rejects an unknown tag the identical way for After/BeforeStep/AfterStep, not only Before", () => {
+    expect(() =>
+      collectFeature(taggedFeature, Layer.empty, ({ After }) => {
+        After("@nonexistent", noop)
+      })
+    ).toThrowError(/@nonexistent/)
+    expect(() =>
+      collectFeature(taggedFeature, Layer.empty, ({ BeforeStep }) => {
+        BeforeStep("@nonexistent", noop)
+      })
+    ).toThrowError(/@nonexistent/)
+    expect(() =>
+      collectFeature(taggedFeature, Layer.empty, ({ AfterStep }) => {
+        AfterStep("@nonexistent", noop)
+      })
+    ).toThrowError(/@nonexistent/)
+  })
+})
+
 describe("the Rule container registers against the Rule it names", () => {
   it("gives the two fixture Rules two different ids", () => {
     // The premise every isolation assertion below rests on.
@@ -559,7 +665,7 @@ describe("the Rule container registers against the Rule it names", () => {
 
     // THE three-way isolation proof, and all three arms are load-bearing.
     expect(collected.ruleHooks.get(ruleAId)?.Before).toHaveLength(1)
-    expect(collected.ruleHooks.get(ruleAId)?.Before[0]).toBe(ruleABefore)
+    expect(collected.ruleHooks.get(ruleAId)?.Before[0]?.body).toBe(ruleABefore)
     expect(collected.hooks.Before).toHaveLength(0)
     expect(collected.ruleHooks.get(ruleBId)?.Before).toHaveLength(0)
   })

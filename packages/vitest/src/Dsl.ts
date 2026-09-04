@@ -16,6 +16,12 @@
  *   witness; naming `StepModule<ROut>` there loses the diagnostic (tsgo-gate step-module fixtures).
  * - `BackgroundDsl` is `Given`/`And` only (ADR-EC-017); once-per-Feature hooks are typed by the
  *   shared tier (`HookRegistrar<RShared>`, BEH-EC-006).
+ * - `Before`/`After`/`BeforeStep`/`AfterStep` are typed `TaggedHookRegistrar<ROut>`, not
+ *   `HookRegistrar<ROut>`: a SECOND call signature accepting a leading tag-expression string ahead of
+ *   the body (ADR-EC-035, BEH-EC-027). `BeforeAllScenarios`/`AfterAllScenarios` stay `HookRegistrar<
+ *   RShared>` — the plain, one-arg-only shape — on PURPOSE: passing a tag expression to either is a
+ *   compile error by arity, the same way either is already a compile error on `RuleDsl` itself (no
+ *   coherent single-Scenario tag set exists to check against a once-per-Feature hook).
  */
 import type { StepArgs } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
@@ -38,10 +44,35 @@ export interface StepRegistrar<ROut> {
 
 /**
  * One hook — `Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios` or
- * `AfterAllScenarios` — as the test author calls it.
+ * `AfterAllScenarios` — as the test author calls it. `BeforeAllScenarios`/`AfterAllScenarios` alone
+ * keep this exact one-arg-only shape (see `TaggedHookRegistrar` below).
  */
 export interface HookRegistrar<ROut> {
   <A, E>(
+    fn:
+      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
+      | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
+  ): void
+}
+
+/**
+ * `Before`, `After`, `BeforeStep` and `AfterStep` — the four hook kinds ADR-EC-035/BEH-EC-027 make
+ * tag-expression-scopable. The first overload is `HookRegistrar`'s own unconditional shape, UNTOUCHED
+ * and listed first, per this file's own convention that the existing shape stays the shape a caller
+ * meets first; the second is additive — a leading tag-expression string, parsed by vitest's OWN
+ * `createTagsFilter` (the exact grammar backing its `--tagsFilter`: `and`/`or`/`not`/parens), matched
+ * against the Scenario's own already-flattened, inherited tags at the point this hook would otherwise
+ * unconditionally run. `BeforeAllScenarios`/`AfterAllScenarios` are deliberately NOT this type — see
+ * this file's header note.
+ */
+export interface TaggedHookRegistrar<ROut> {
+  <A, E>(
+    fn:
+      | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
+      | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
+  ): void
+  <A, E>(
+    tagExpr: string,
     fn:
       | (() => Effect.gen.Return<A, E, ROut | Scope.Scope>)
       | (() => Effect.Effect<A, E, ROut | Scope.Scope>)
@@ -108,10 +139,10 @@ export interface RuleRegistrar<ROut> {
 export interface RuleDsl<ROut> extends ScenarioDsl<ROut> {
   readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
   readonly Scenario: ScenarioRegistrar<ROut>
-  readonly Before: HookRegistrar<ROut>
-  readonly After: HookRegistrar<ROut>
-  readonly BeforeStep: HookRegistrar<ROut>
-  readonly AfterStep: HookRegistrar<ROut>
+  readonly Before: TaggedHookRegistrar<ROut>
+  readonly After: TaggedHookRegistrar<ROut>
+  readonly BeforeStep: TaggedHookRegistrar<ROut>
+  readonly AfterStep: TaggedHookRegistrar<ROut>
 }
 
 /**
@@ -122,10 +153,10 @@ export interface FeatureDsl<ROut, RShared = never> extends ScenarioDsl<ROut> {
   readonly Background: (define: (dsl: BackgroundDsl<ROut>) => void) => void
   readonly Scenario: ScenarioRegistrar<ROut>
   readonly Rule: RuleRegistrar<ROut>
-  readonly Before: HookRegistrar<ROut>
-  readonly After: HookRegistrar<ROut>
-  readonly BeforeStep: HookRegistrar<ROut>
-  readonly AfterStep: HookRegistrar<ROut>
+  readonly Before: TaggedHookRegistrar<ROut>
+  readonly After: TaggedHookRegistrar<ROut>
+  readonly BeforeStep: TaggedHookRegistrar<ROut>
+  readonly AfterStep: TaggedHookRegistrar<ROut>
   readonly BeforeAllScenarios: HookRegistrar<RShared>
   readonly AfterAllScenarios: HookRegistrar<RShared>
 }

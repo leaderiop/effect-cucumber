@@ -58,8 +58,11 @@ export const buildScenarioEffect = (
   }
 ): Effect.Effect<void, unknown, Scope.Scope> =>
   Effect.gen(function*() {
+    // This Scenario's own already-flattened, inherited tags — the ONE value every tag-expression-
+    // scoped hook batch below is checked against (ADR-EC-035, BEH-EC-027). Read once, not per batch.
+    const scenarioTags = args.plan.tags
     // The Before GATE — one `yield*` and nothing else. Note (d).
-    yield* runHookBatch(args.hooks.Before)
+    yield* runHookBatch(args.hooks.Before, scenarioTags)
     // A loop of `yield*` inside ONE generator, and not a combinator over the list: the
     // short-circuit below is the absence of a next iteration, not a check anyone maintains.
     for (const planned of args.plan.steps) {
@@ -67,21 +70,21 @@ export const buildScenarioEffect = (
         // In position, after the steps before it have already run. Note (c).
         return yield* Effect.fail(planned.error)
       }
-      // The wrap is unconditional even when both batches are empty: `runHookBatch([])` succeeds
+      // The wrap is unconditional even when both batches are empty: `runHookBatch([], ...)` succeeds
       // immediately.
       yield* Effect.gen(function*() {
-        yield* runHookBatch(args.hooks.BeforeStep)
+        yield* runHookBatch(args.hooks.BeforeStep, scenarioTags)
         // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at registration (ADR-EC-005).
         // The location wrap covers ONLY this call — a BeforeStep/AfterStep hook failure is not a step
         // failure and keeps propagating unwrapped.
         yield* withStepFailureLocation(planned.step)(planned.step.body(...planned.step.args))
       }).pipe(
-        Effect.onExit(() => runHookBatch(args.hooks.AfterStep))
+        Effect.onExit(() => runHookBatch(args.hooks.AfterStep, scenarioTags))
       )
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.
   }).pipe(
     // The finalizer ignores its `exit` on purpose: After hooks receive no exit (ADR-EC-005).
-    Effect.onExit(() => runHookBatch(args.hooks.After)),
+    Effect.onExit(() => runHookBatch(args.hooks.After, args.plan.tags)),
     Effect.provide(args.layer)
   )

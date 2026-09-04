@@ -59,6 +59,16 @@ REQUIREMENT: The hooks in one BATCH — every hook of one kind due to run at one
              still prevents the steps that follow it (see below). Nothing
              about this requirement widens fail-fast's scope; it narrows one
              exception into it, at exactly the hook-batch boundary.
+
+             A hook excluded by its OWN tag expression
+             ([BEH-EC-027](#beh-ec-027-tag-expression-scoped-hooks-compose-with-rulefeature-scoping-and-are-excluded-before-batch-assembly))
+             is NOT a member of this batch at all — it is excluded BEFORE the
+             batch is assembled, never invoked, and therefore never a source
+             of a failure this requirement could combine or drop. A reader
+             tempted to read "every hook of one kind due to run" as including
+             a tag-filtered-out hook should not: that hook was never due to
+             run for THIS Scenario in the first place, the same way a hook
+             registered on a different Rule never was.
 ```
 
 ```
@@ -232,6 +242,117 @@ describeFeature(
     })
   }
 )
+```
+
+---
+
+## BEH-EC-027: Tag-expression-scoped hooks compose with Rule/Feature scoping, and are excluded before batch assembly
+
+> **See:** [ADR-EC-035](../decisions/035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md), [BEH-EC-017](#beh-ec-017-six-hooks-a-fixed-ordering-and-three-independent-guarantees)
+
+```
+REQUIREMENT: Before, After, BeforeStep and AfterStep each accept an
+             ADDITIONAL, optional leading argument: a tag-expression string,
+             parsed and evaluated by the SAME grammar and engine vitest's own
+             --tagsFilter uses (and/or/not/&&/||/!/parens) — never a second,
+             bespoke grammar. Before(fn) keeps working exactly as it does
+             without this behavior; Before(tagExpr, fn) is the additive form.
+             A hook registered with a tag expression runs for a Scenario ONLY
+             IF that Scenario's own fully-flattened, inherited tags (Feature,
+             Rule, Scenario and Examples tags all included, ADR-EC-026)
+             satisfy the expression; a hook registered without one keeps
+             running unconditionally for every Scenario its Rule/Feature
+             scope already reaches.
+```
+
+```
+REQUIREMENT: BeforeAllScenarios and AfterAllScenarios do NOT accept a tag
+             expression — passing one is a compile error by arity, not a
+             runtime rejection. No coherent single-Scenario tag set exists to
+             check against a once-per-Feature hook (it runs once, shared
+             across every Scenario, with no one Scenario's tags to consult at
+             the point it actually fires), so no arbitrary semantic was
+             invented for it. This is the SAME kind of restriction
+             BeforeAllScenarios/AfterAllScenarios already have on a Rule's
+             dsl (BEH-EC-017) — a compile-time absence, not a new mechanism.
+```
+
+```
+REQUIREMENT: A tag-expression-scoped hook composes ADDITIVELY with the
+             existing Rule/Feature scoping (BEH-EC-017/018) — the two filters
+             are orthogonal and both apply. A Rule-scoped Before("@db", fn)
+             narrows to that Rule's Scenarios (via Rule/Feature scoping,
+             unchanged) AND further narrows to only the @db-tagged ones among
+             them (via its own tag expression); neither filter widens or
+             replaces the other.
+```
+
+```
+REQUIREMENT: Every tag literal a hook's tag expression names must already be
+             declared somewhere in that hook's own Feature — the SAME
+             "declared tag universe" rule ADR-EC-026 already requires for
+             describeFeature's own includeTags/excludeTags, extended here to
+             a second call site, not a new rule. The universe is
+             FEATURE-WIDE: a Rule-scoped hook's tag expression is validated
+             against every tag anywhere in the whole Feature, not only tags
+             declared within that Rule, because an expression like "@db and
+             not @slow" needs @slow declared even for a Scenario that does
+             not carry it. A tag literal absent from the Feature's own
+             universe is a LOUD, located, registration-time throw — never a
+             silent degradation — naming the offending hook's kind, its exact
+             expression string and the .feature file.
+```
+
+```
+REQUIREMENT: A hook excluded by its own tag expression for a given Scenario
+             is excluded BEFORE that Scenario's hook batch is assembled — it
+             is never invoked, contributes no exit, and is therefore never a
+             batch member whose failure could be combined or dropped. The
+             independent-batch/combined-failure guarantee BEH-EC-017 already
+             states for a batch's SURVIVING members is unaffected by
+             filtering: registration order among the entries that DO run is
+             preserved, and their failures still combine exactly as an
+             unfiltered batch's would.
+```
+
+### Worked example
+
+```typescript
+// The dsl shape matches Dsl.ts's real FeatureDsl<ROut>: Before/After/BeforeStep/AfterStep are
+// TaggedHookRegistrar<ROut> — the existing one-arg form, plus this additive two-arg form.
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { Context, Effect, Layer, Ref } from "effect"
+
+class Log extends Context.Service<Log, { readonly entries: Ref.Ref<ReadonlyArray<string>> }>()("Log") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return Log.of({ entries: yield* Ref.make<ReadonlyArray<string>>([]) })
+    })
+  )
+}
+
+const feature = await loadFeature("./checkout.feature")
+
+// checkout.feature declares @db somewhere (ADR-EC-026/ADR-EC-035's "declared tag universe" rule),
+// e.g. on the "Paying with a card that hits the database" Scenario below.
+describeFeature(feature, Log.layer, ({ Before, Scenario }) => {
+  // Runs for EVERY Scenario in this Feature — unconditional, today's only shape before ADR-EC-035.
+  Before(function*() {
+    yield* Ref.update((yield* Log).entries, (log) => [...log, "always"])
+  })
+
+  // Runs ONLY for a Scenario whose own tags include @db — the additive, tag-expression-scoped form.
+  Before("@db", function*() {
+    yield* Ref.update((yield* Log).entries, (log) => [...log, "db-scoped"])
+  })
+
+  Scenario("Paying with a saved card", ({ Then, When }) => {
+    // No @db tag: only "always" ran ahead of this Scenario's steps.
+    When("I pay with a saved card", function*() {/* ... */})
+    Then("the order is confirmed", function*() {/* ... */})
+  })
+})
 ```
 
 ---

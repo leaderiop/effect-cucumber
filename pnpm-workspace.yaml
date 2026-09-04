@@ -18,6 +18,11 @@ catalog:
   # (enforced by scripts/verify-no-runner-dep.sh).
   "@effect/platform-node": 4.0.0-rc.112
   vitest: ^4.1.0
+  # `vitest`'s OWN runner package, pinned to the exact SAME version `vitest@4.1.11` itself declares
+  # as a dependency (verified: `node_modules/vitest/package.json`'s own `"@vitest/runner"` entry) —
+  # ADR-EC-035 imports its public `./utils` export (`createTagsFilter`) directly, so it is a real,
+  # named dependency of this package now, not a transitive one relied on implicitly.
+  "@vitest/runner": ^4.1.0
   # Coverage tooling, never a consumer-facing dependency — kept on the same range as `vitest`
   # above so pnpm always resolves a matching provider/runner pair.
   "@vitest/coverage-v8": ^4.1.0
@@ -38,3 +43,6 @@ catalogs:
     # range. vitest 5 exists as a prerelease and is NOT supported — do not
     # widen this.
     vitest: ">=4.1.0 <5.0.0"
+    # `@vitest/runner` ships as part of the SAME `vitest` release train, at the identical version
+    # `vitest` itself depends on — kept on `vitest`'s own peer range (ADR-EC-035).
+    "@vitest/runner": ">=4.1.0 <5.0.0"

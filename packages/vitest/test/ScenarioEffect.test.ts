@@ -15,7 +15,7 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { StepFailureLocation, StepMatchError } from "../src/Errors.ts"
-import type { HookBody, HookSet } from "../src/Hook.ts"
+import type { HookEntry, HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
 import { buildScenarioEffect } from "../src/ScenarioEffect.ts"
 
@@ -67,22 +67,30 @@ const throwingStep = (name: string, error: unknown): StepBody => () =>
     throw error
   })
 
-const recordingHook = (name: string): HookBody => () =>
-  Effect.gen(function*() {
-    const recorder = yield* Recorder
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
-    yield* Effect.yieldNow
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
-  })
+// Unconditional (`matches: null`) — this file is about hook ORDERING/guarantees, not tag filtering,
+// which `Hook.test.ts` and the acceptance pair own (ADR-EC-035, BEH-EC-027).
+const recordingHook = (name: string): HookEntry => ({
+  matches: null,
+  body: () =>
+    Effect.gen(function*() {
+      const recorder = yield* Recorder
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+      yield* Effect.yieldNow
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:end`])
+    })
+})
 
-// A hook body that records its own `:start`, suspends, and then fails with `error` — no `:end`.
-const failingHook = (name: string, error: unknown): HookBody => () =>
-  Effect.gen(function*() {
-    const recorder = yield* Recorder
-    yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
-    yield* Effect.yieldNow
-    return yield* Effect.fail(error)
-  })
+// A hook entry whose body records its own `:start`, suspends, and then fails with `error` — no `:end`.
+const failingHook = (name: string, error: unknown): HookEntry => ({
+  matches: null,
+  body: () =>
+    Effect.gen(function*() {
+      const recorder = yield* Recorder
+      yield* Ref.update(recorder.log, (seen) => [...seen, `${name}:start`])
+      yield* Effect.yieldNow
+      return yield* Effect.fail(error)
+    })
+})
 
 // A `Resolved` planned step.
 const resolved = (

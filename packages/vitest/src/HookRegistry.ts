@@ -16,13 +16,16 @@ export type HookKind =
   | "AfterAllScenarios"
 
 /**
- * One registered hook: the kind it was registered under, its normalised body, and the Rule it was
- * registered under, if any.
+ * One registered hook: the kind it was registered under, its normalised body, the Rule it was
+ * registered under (if any), and its own tag expression (if any, ADR-EC-035). `tagExpr: null` is a
+ * real, common value — an unconditional hook, today's only shape before ADR-EC-035 — not a marker
+ * for "not yet set."
  */
 export type HookDefinition<Fn> = {
   readonly kind: HookKind
   readonly body: Fn
   readonly ruleId: string | null
+  readonly tagExpr: string | null
 }
 
 /**
@@ -31,8 +34,8 @@ export type HookDefinition<Fn> = {
 export const createHookRegistry = <Fn>() => {
   const records: Array<HookDefinition<Fn>> = []
 
-  const register = (kind: HookKind, ruleId: string | null, body: Fn): void => {
-    records.push({ kind, body, ruleId })
+  const register = (kind: HookKind, ruleId: string | null, tagExpr: string | null, body: Fn): void => {
+    records.push({ kind, body, ruleId, tagExpr })
   }
 
   const hooks = (): ReadonlyArray<HookDefinition<Fn>> => [...records]

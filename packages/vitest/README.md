@@ -179,6 +179,38 @@ stay Feature-only and are a compile error on a Rule's dsl. A Rule also gets its 
 like the Feature's), so a `.feature` file with a `Rule:`-level `Background:` has somewhere to register its steps; Rule-
 and Feature-level registrations never resolve each other's steps, and the innermost matching scope wins.
 
+**`Before`, `After`, `BeforeStep` and `AfterStep` can be scoped further, by a tag expression.** An additional,
+additive two-argument form — `Before(tagExpr, fn)` — takes a leading tag-expression string, parsed and evaluated by
+the SAME grammar and engine vitest's own `--tagsFilter` uses (`and`/`or`/`not`/`&&`/`||`/`!`/parens — no new grammar
+to learn), and runs `fn` only for a Scenario whose own tags (Feature/Rule/Scenario/Examples all included) satisfy
+it. `Before(fn)` keeps working exactly as it always has — the tag-expression form is additive, not a replacement —
+and composes with Rule/Feature scoping (above): a Rule-scoped `Before("@db", fn)` narrows to that Rule's Scenarios
+AND further narrows to only the `@db`-tagged ones among them.
+
+```ts
+describeFeature(feature, World.layer, ({ Before, Scenario }) => {
+  // Runs for every Scenario in this Feature, exactly as `Before(fn)` always has.
+  Before(function*() {
+    yield* Effect.void
+  })
+
+  // Runs ONLY for a Scenario whose own tags satisfy this expression.
+  Before("@db and not @slow", function*() {
+    yield* Ref.set((yield* Session).usesDatabase, true)
+  })
+
+  // ...
+})
+```
+
+Every tag literal a hook's own expression names must already be declared somewhere in that Feature — the same
+"declared tag universe" rule tags already require below, extended to a second call site — or `describeFeature`
+throws a located `HookTagExpressionError` naming the offending hook and its `.feature` file at registration time.
+`BeforeAllScenarios`/`AfterAllScenarios` do NOT accept a tag expression — passing one is a compile error by arity,
+since a once-per-Feature hook has no single Scenario's tags to check against when it actually runs. See
+[ADR-EC-035](../../spec/decisions/035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md) and
+[BEH-EC-027](../../spec/behaviors/07-hook-ordering-and-guarantees.md#beh-ec-027-tag-expression-scoped-hooks-compose-with-rulefeature-scoping-and-are-excluded-before-batch-assembly).
+
 **Steps are reusable across Features through typed step modules.** `defineSteps<R>(define)` records step definitions
 in a shared file without registering them anywhere; every container's `use(module)` registers them into that
 container's scope — Feature-scoped at Feature level, Rule-scoped inside a `Rule` — exactly as if they had been written
@@ -754,17 +786,17 @@ state that must genuinely survive across every Scenario in one Feature (not the 
 moves into the `shared` half of `{ shared, perScenario }` instead of `perScenario`, per the Layer
 scopes documented above — not into a bigger `World`.
 
-### 2. Tag-scoped `Before` hooks → per-Feature (or per-Rule) `Before`
+### 2. Tag-scoped `Before` hooks → `Before(tagExpr, fn)`
 
 cucumber-js's `Before({ tags: "@admin" }, fn)` registers `fn` once, globally, and the framework
-decides at RUN time — per Scenario, by evaluating the tag expression — whether to run it. This
-library has no equivalent registration, because it has no global hook registry to filter: `Before` is
-always called from inside one `describeFeature` (or `Rule`) call, which already scopes it to that
-Feature's (or Rule's) Scenarios syntactically. The filtering a tag did at run time becomes a placement
-decision at registration time.
-
-**When a tag corresponds 1:1 to one Feature file** — the common case — move the hook body into that
-Feature's own `Before`:
+decides at RUN time — per Scenario, across every `.feature` file the runner loads — whether to run
+it. This library's tag-expression-scoped `Before`/`After`/`BeforeStep`/`AfterStep`
+([ADR-EC-035](../../spec/decisions/035-tag-expression-scoped-hooks-reuse-vitests-createtagsfilter.md))
+is the DIRECT mechanical equivalent for the overwhelming majority of real cucumber-js
+`Before({ tags: ... }, fn)` usage — any tag whose Scenarios all live inside ONE `.feature` file:
+`Before` is still always called from inside one `describeFeature` (or `Rule`) call, but that call's
+own second, additive form now takes the identical tag-expression STRING cucumber-js's own `tags`
+option would have, parsed by the same `and`/`or`/`not`/parens grammar vitest's `--tagsFilter` uses:
 
 ```ts
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
@@ -786,9 +818,11 @@ class Session extends Context.Service<Session, { readonly loggedInAs: Ref.Ref<st
 }
 
 describeFeature(feature, Session.layer, ({ Before, Given }) => {
-  // Replaces cucumber-js's globally registered `Before({ tags: "@admin" }, ...)`: this Feature file
-  // IS the `@admin` tag's scope, so the hook is registered here instead of filtered at runtime.
-  Before(function*() {
+  // The direct mechanical equivalent of cucumber-js's globally registered
+  // `Before({ tags: "@admin" }, ...)`, scoped to this Feature's own @admin-tagged Scenarios —
+  // works identically for a Scenario tagged @admin anywhere in this Feature, Rule-nested included,
+  // not only ones grouped under a matching `Rule:` block.
+  Before("@admin", function*() {
     yield* Ref.set((yield* Session).loggedInAs, "admin@example.com")
   })
 
@@ -798,16 +832,18 @@ describeFeature(feature, Session.layer, ({ Before, Given }) => {
 })
 ```
 
-**When a tag scopes only a subset of one Feature's Scenarios**, and that subset is already grouped
-under a Gherkin `Rule:`, put the hook in that `Rule`'s own `Before` instead — a Rule-scoped `Before`
-runs only for its Rule's Scenarios and composes with the Feature's own (outer setup before inner, per
-the ordering already documented above), which is exactly the partial scoping a tag gave you.
+This also subsumes the narrower "tag scopes only a subset of one Feature's Scenarios" case: before
+`Before(tagExpr, fn)` shipped, that case needed the subset regrouped under a Gherkin `Rule:` so a
+Rule-scoped `Before` could reach it structurally. A tag expression reaches that same subset directly,
+with no regrouping required — a Rule-scoped `Before(tagExpr, fn)` is still available too, and composes
+additively with Rule/Feature scoping when a Rule boundary already exists for an unrelated reason.
 
-**When neither applies** — the tag cuts across Scenarios in more than one Feature file, or across a
-subset of one Feature's Scenarios that isn't `Rule:`-shaped — there is no structural equivalent to
-reach for. The honest options are to regroup those Scenarios under a `Rule:` (turning the tag boundary
-into a real Gherkin boundary), or to fold the conditional logic the hook was doing into the step
-bodies that need it. There is no tag-filtered hook registry in this library to lean on instead.
+**When a tag spans MORE than one `.feature` file**, there remains no structural equivalent: a
+tag-expression-scoped hook is still registered per `describeFeature`/`Rule` call, never globally
+across files, because this library has no global hook registry to filter cucumber-js's own `Before`
+did. The honest options are to register the identical `Before(tagExpr, fn)` body in every Feature
+that needs it — small, explicit duplication rather than an implicit global — or to fold the
+conditional logic into the step bodies that need it.
 
 ### 3. Data tables
 
@@ -831,6 +867,9 @@ or [BEH-EC-016](../../spec/behaviors/06-datatable-and-docstring-arguments.md) �
   function returning an `Effect`.
 - Data tables (§3 above) and `DocString` arguments — decode mechanism changes, the `.feature` file
   does not.
+- Tag-scoped `Before`/`After`/`BeforeStep`/`AfterStep` hooks whose tag's Scenarios all live inside
+  one `.feature` file (§2 above) — `Before(tagExpr, fn)` reproduces cucumber-js's own
+  `Before({ tags: tagExpr }, fn)` directly, same grammar, since ADR-EC-035 shipped.
 
 **Real rework, not mechanical:**
 
@@ -838,9 +877,10 @@ or [BEH-EC-016](../../spec/behaviors/06-datatable-and-docstring-arguments.md) �
   deciding what's per-Scenario versus Feature-shared state, moving every field into a `Ref`, and
   removing the per-step Effect bridge — not a syntax swap. It is the highest-leverage piece of a
   migration precisely because it is the only piece with real cost.
-- Tag-scoped global hooks whose tag doesn't align with a Feature or a `Rule:` boundary (§2's third
-  case) — there is no registration this library offers that reproduces run-time, cross-file tag
-  filtering; the Gherkin structure has to change to make the scope structural.
+- Tag-scoped global hooks whose tag spans MORE than one `.feature` file (§2's remaining case) —
+  there is no registration this library offers that reproduces run-time, cross-FILE tag filtering; a
+  tag-expression-scoped hook is still registered per `describeFeature`/`Rule` call, never globally
+  across files.
 
 **New capability cucumber-js never had, not merely a port:** compile-time Layer-completeness checking
 — [INV-EC-003](../../spec/invariants.md#inv-ec-003-a-steps-effect-can-only-use-services-the-ambient-layer-provides),

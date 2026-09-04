@@ -54,13 +54,15 @@
     "effect": "catalog:peer",
     "@effect/platform-node": "catalog:peer",
     "@effect/vitest": "catalog:peer",
-    "vitest": "catalog:peer"
+    "vitest": "catalog:peer",
+    "@vitest/runner": "catalog:peer"
   },
   "devDependencies": {
     "effect": "catalog:",
     "@effect/vitest": "catalog:",
     "@effect/platform-node": "catalog:",
     "vitest": "catalog:",
+    "@vitest/runner": "catalog:",
     "@types/node": "catalog:"
   }
 }
