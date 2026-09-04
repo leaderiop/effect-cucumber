@@ -74,3 +74,7 @@ entries:
     file: "18-rule-world-narrowing.md"
     title: "Rule World narrowing"
     id_range: "031"
+  - id: "BEH-EC-032"
+    file: "19-concurrent-execution-and-scenario-timeout.md"
+    title: "Concurrent Scenario execution and per-Scenario timeout"
+    id_range: "032"

@@ -29,7 +29,7 @@ COMMENT_RE='^[0-9]+:[[:space:]]*(//|\*|/\*)'
 
 ALLOW_MARKER_RE='//[[:space:]]*GATE-ALLOW-MUTATION:[[:space:]]*[^[:space:]]'
 
-ALLOWED_MUTATIONS=3
+ALLOWED_MUTATIONS=4
 
 fail() {
   {

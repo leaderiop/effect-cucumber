@@ -1,11 +1,19 @@
 /**
- * The injected seam between `Runner.ts` and the test framework: `describe`, `effect`, `afterAll`.
- * Types only, and it must never import a framework (`scripts/verify-testapi-seam.sh`).
+ * The injected seam between `Runner.ts` and the test framework: `describe`, `effect`, `beforeAll`,
+ * `afterAll`. Types only, and it must never import a framework (`scripts/verify-testapi-seam.sh`).
  * `EmitOptions.contextFree` routes a node off the shared tier; `afterAll` runs whether or not a
  * filter selected the block's tests (BEH-EC-017). `EmitOptions.rerunKey` (ADR-EC-038, BEH-EC-030)
  * is a different kind of field from the rest: it is not interpreted here at all, only carried —
  * `VitestTestApi.ts` stamps it onto the vitest `TestContext.task.meta` so a `--reporter=json` run's
  * own output exposes it, for a write-side script to read back after the run finishes.
+ *
+ * `beforeAll` (ADR-EC-040, BEH-EC-032) is what `BeforeAllScenarios` now runs through — a real
+ * framework block-level setup hook, its own timeout budget independent of any Scenario's own
+ * `testTimeout`, mirroring `afterAll`'s existing shape exactly (name, a thunk, nothing else).
+ * `EmitOptions.timeout` (ADR-EC-040, BEH-EC-032) is the same kind of field as `rerunKey`: plain data,
+ * decided in `Runner.ts` from a Scenario's own `@timeout-...` tag (`Tags.ts`'s
+ * `readScenarioTimeoutTag`) and only INTERPRETED in `VitestTestApi.ts`, which reaches
+ * `@effect/vitest`'s real `it.effect(name, self, TestOptions)` timeout parameter with it.
  */
 import type * as Effect from "effect/Effect"
 import type * as Scope from "effect/Scope"
@@ -30,10 +38,11 @@ export interface EmitOptions {
   readonly contextFree: boolean
   readonly scenario: boolean
   readonly rerunKey: string | null
+  readonly timeout: number | null
 }
 
 /**
- * The subset of a test framework's surface `Runner.ts` uses — three members, and no more.
+ * The subset of a test framework's surface `Runner.ts` uses — four members, and no more.
  */
 export interface TestApi {
   readonly describe: (name: string, define: () => void) => void
@@ -42,5 +51,6 @@ export interface TestApi {
     self: () => Effect.Effect<void, unknown, Scope.Scope>,
     options: EmitOptions
   ) => void
+  readonly beforeAll: (name: string, self: () => Effect.Effect<void, unknown, Scope.Scope>) => void
   readonly afterAll: (name: string, self: () => Effect.Effect<void, unknown, Scope.Scope>) => void
 }

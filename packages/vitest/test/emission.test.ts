@@ -1050,6 +1050,16 @@ const sharedScenarioNames: Array<string> = []
 // What the shared-path teardown observed of the shared tier — the build ordinal it read.
 const sharedTeardownObservations: Array<number> = []
 
+// What the shared-path BeforeAllScenarios observed of the shared tier (ADR-EC-040, BEH-EC-032) — the
+// build ordinal it read. This exercises a genuinely NEW code path: before this ADR, BeforeAllScenarios
+// ran inside whichever Scenario's own `it.effect` body reached its once-cell first, so it was always
+// ambiently inside `@effect/vitest`'s own `layer(...)`-provisioned body and never needed its own
+// explicit re-provision. Now it runs through a real, separate framework `beforeAll`
+// (`sharedLayerTestApi`'s own `beforeAll` in `VitestTestApi.ts`), OUTSIDE `layer(...)`'s machinery
+// entirely — so this is the first real-run proof that the explicit `Layer.buildWithMemoMap` reuse
+// there actually supplies the shared tier to `BeforeAllScenarios`, not merely that it type-checks.
+const sharedBeforeAllObservations: Array<number> = []
+
 // Three Scenarios, ONE shared build.
 const sharedBuildFeature = Effect.runSync(
   parseFeature(
@@ -1079,7 +1089,13 @@ orderedBlock(() => {
   describeFeature(
     sharedBuildFeature,
     { shared: sharedProbeLayer, perScenario: scopedProbeLayer },
-    ({ AfterAllScenarios, Then, When }) => {
+    ({ AfterAllScenarios, BeforeAllScenarios, Then, When }) => {
+      BeforeAllScenarios(function*() {
+        const shared = yield* SharedProbe
+        sharedBeforeAllObservations.push(shared.buildOrdinal)
+        process.stdout.write("SHARED_BEFORE_ALL_SCENARIOS_RAN\n")
+      })
+
       AfterAllScenarios(function*() {
         const shared = yield* SharedProbe
         sharedTeardownObservations.push(shared.buildOrdinal)
@@ -1110,6 +1126,14 @@ orderedBlock(() => {
   )
 
   describe("the opt-in shared Layer scope builds exactly once per Feature", () => {
+    it("ran BeforeAllScenarios once, ahead of every Scenario, seeing the SAME shared build (ADR-EC-040, BEH-EC-032)", () => {
+      // The real proof that `VitestTestApi.ts`'s `sharedLayerTestApi.beforeAll` genuinely re-provides
+      // the shared tier to a hook now running OUTSIDE `@effect/vitest`'s own `layer(...)` machinery —
+      // buildOrdinal `1` (not `2`) means it reused the memoized build, never triggered a second one.
+      expect(sharedBeforeAllObservations).toEqual([1])
+      expect(sharedBuilds).toBe(1)
+    })
+
     it("ran the AfterAllScenarios teardown once against that same build, not a rebuild", () => {
       expect(sharedTeardownObservations).toEqual([1])
       expect(sharedBuilds).toBe(1)

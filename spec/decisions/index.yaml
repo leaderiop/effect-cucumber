@@ -119,3 +119,6 @@ entries:
   - id: "ADR-EC-039"
     file: "039-rule-world-narrowing-via-effect-updatecontext-in-narrowruledsl.md"
     title: "A Rule can narrow or replace the ambient World its own Scenarios see — a third RuleRegistrar overload backed by real Effect.updateContext calls in narrowRuleDsl"
+  - id: "ADR-EC-040"
+    file: "040-beforeallscenarios-real-beforeall-captured-exit-and-timeout-suffix-tag.md"
+    title: "BeforeAllScenarios moves off a hand-rolled once-cell onto a real vitest beforeAll, captures its Exit rather than throwing, and Scenarios gain a @timeout-<ms> tag for concurrent execution to be useful"

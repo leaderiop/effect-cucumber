@@ -17,13 +17,17 @@ export default defineConfig({
     // identical shape for ADR-EC-036's real-vitest-output proof, reached only via
     // `scripts/verify-attachments-panel.sh`. `rerun-fixture` is the identical shape again for
     // ADR-EC-038's real-two-`vitest-run`-cycle proof, reached only via
-    // `scripts/verify-rerun-failed-only.sh`.
+    // `scripts/verify-rerun-failed-only.sh`. `concurrent-fixture` is the identical shape once more
+    // for ADR-EC-040's real-two-`vitest-run`-cycle proof (a failing Feature, and the ONE place in
+    // this repository that opts into `sequence.concurrent: true`), reached only via
+    // `scripts/verify-concurrent-execution.sh`.
     exclude: [
       ...configDefaults.exclude,
       "**/.claude/**",
       "**/test/failure-panel-fixture/**",
       "**/test/attachments-fixture/**",
-      "**/test/rerun-fixture/**"
+      "**/test/rerun-fixture/**",
+      "**/test/concurrent-fixture/**"
     ],
     tags: declaredTags(fileURLToPath(new URL("../../", import.meta.url))),
     allowOnly: false,

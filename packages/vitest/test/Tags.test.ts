@@ -5,13 +5,14 @@
  *
  * Carries: BEH-EC-008.
  */
-import { describe, expect, it } from "@effect/vitest"
+import { assert, describe, expect, it } from "@effect/vitest"
 import {
   isRetried,
   isSkipped,
   makeTagFilter,
   noTagFilter,
   onlyTag,
+  readScenarioTimeoutTag,
   retryTag,
   shouldEmit,
   skipTag
@@ -214,5 +215,49 @@ describe("isRetried recognises exactly the reserved @retry tag (ADR-EC-034, BEH-
   it("is false for @skip or @only — the other two reserved tags are independent of this one", () => {
     expect(isRetried([skipTag])).toBe(false)
     expect(isRetried([onlyTag])).toBe(false)
+  })
+})
+
+describe("readScenarioTimeoutTag reads @timeout-<ms> (ADR-EC-040, BEH-EC-032)", () => {
+  it("is null for a Scenario with no tags at all", () => {
+    expect(readScenarioTimeoutTag(noTags)).toBe(null)
+  })
+
+  it("is null when no @timeout-* tag is present", () => {
+    expect(readScenarioTimeoutTag(["@slow", retryTag, skipTag])).toBe(null)
+  })
+
+  it("reads the numeric suffix as milliseconds", () => {
+    expect(readScenarioTimeoutTag(["@timeout-5000"])).toBe(5000)
+  })
+
+  it("reads it alongside unrelated tags, in either position", () => {
+    expect(readScenarioTimeoutTag(["@slow", "@timeout-100", "@wip"])).toBe(100)
+  })
+
+  it("keeps the LAST occurrence — the most specific declaration (closer to the Scenario) wins over an inherited one", () => {
+    // Mirrors the Feature/Rule/Scenario/Examples flattening order (ADR-EC-026): an earlier, inherited
+    // @timeout-* is overridden by a later, more specific one in the SAME array.
+    expect(readScenarioTimeoutTag(["@timeout-5000", "@timeout-100"])).toBe(100)
+  })
+
+  it("throws a located Error for @timeout with no numeric suffix at all", () => {
+    assert.throws(() => readScenarioTimeoutTag(["@timeout"]), /Malformed @timeout tag/)
+  })
+
+  it("throws for a non-numeric suffix", () => {
+    assert.throws(() => readScenarioTimeoutTag(["@timeout-abc"]), /Malformed @timeout tag/)
+  })
+
+  it("throws for the old parenthesised shape — a real, previously-considered format this tag deliberately does NOT accept (ADR-EC-040)", () => {
+    assert.throws(() => readScenarioTimeoutTag(["@timeout(5000)"]), /Malformed @timeout tag/)
+  })
+
+  it("throws for a zero milliseconds value", () => {
+    assert.throws(() => readScenarioTimeoutTag(["@timeout-0"]), /must be a positive integer/)
+  })
+
+  it("throws for any other tag starting with the reserved \"@timeout\" prefix — a deliberately wide net, not a narrow one, since a near-miss like this is far more likely to be a typo of the reserved tag than an unrelated custom tag someone chose to prefix identically", () => {
+    assert.throws(() => readScenarioTimeoutTag(["@timeoutish"]), /Malformed @timeout tag/)
   })
 })
