@@ -31,6 +31,7 @@
     "verify:failure-panel": "bash scripts/verify-failure-panel.sh",
     "verify:attachments-panel": "bash scripts/verify-attachments-panel.sh",
     "verify:rerun-failed-only": "bash scripts/verify-rerun-failed-only.sh",
+    "verify:concurrent-execution": "bash scripts/verify-concurrent-execution.sh",
     "verify:pitfalls": "bash scripts/verify-pitfalls-checklist.sh",
     "verify:api-surface": "bash scripts/verify-api-surface.sh",
     "verify:doc-examples": "bash scripts/verify-doc-examples.sh",

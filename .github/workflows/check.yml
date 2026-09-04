@@ -206,6 +206,15 @@ jobs:
       # dedicated standalone config.
       - if: matrix.node-version == 24
         run: pnpm verify:rerun-failed-only
+      # ADR-EC-040's real, cross-run proof: BeforeAllScenarios moved off a hand-rolled once-cell onto
+      # a real vitest `beforeAll`, proven against TWO separate `vitest run` processes under this
+      # repository's ONE `sequence.concurrent: true` fixture — the fix (heterogeneous per-Scenario
+      # `@timeout` budgets sharing a slow setup, both passing) and BEH-EC-017's failure-reporting
+      # guarantee holding under real concurrent scheduling. See scripts/verify-concurrent-execution.sh.
+      #
+      # AFTER `pnpm test`, Node 24 ONLY, for the identical reason `verify:rerun-failed-only` above is.
+      - if: matrix.node-version == 24
+        run: pnpm verify:concurrent-execution
       # `pnpm test` exiting 0 does NOT prove that the 24-item checklist in
       # spec/process/looks-done-but-isnt-checklist.md still runs in full, and it
       # proves nothing at all about ten of its items: a packed tarball's

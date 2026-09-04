@@ -52,22 +52,43 @@ runs once when a run is narrowed with `-t` or `--tagsFilter` to one Scenario, an
 Feature was attempted; a failure in it reports against the Feature's block. It relies on vitest's default
 `sequence.hooks: "stack"` ordering to run before the shared tier is released — `"list"` is not supported.
 
-Two preconditions come with the once-per-Feature hooks and are stated rather than left to be discovered.
-`BeforeAllScenarios` is a once-cell: it runs inside the **first attempted Scenario's** timeout budget (raise
-`testTimeout` for slow setup), and its first exit — success, failure, or the timeout interrupting it — is what every later
-Scenario reports; it is never retried, so a Scenario tagged `@retry` (below) cannot make a failed setup pass — every
-retry attempt re-observes the SAME already-settled once-cell rather than re-running `BeforeAllScenarios` itself
-(measured, not assumed: `packages/vitest/test/Runner.test.ts`, ADR-EC-034 design question 2). And Scenarios must run
-sequentially: a Feature emitted under `sequence.concurrent: true` or inside your own `describe.concurrent` is unsupported,
-because two Scenarios could enter the once-cell together.
+`BeforeAllScenarios` runs through a real vitest `beforeAll`, registered once at the Feature block level, ahead of
+every Scenario and every nested Rule (ADR-EC-040, BEH-EC-032) — **not** inside any Scenario's own timeout budget, on
+its own real timeout (vitest's default hook timeout; raise it via vitest's own hook-timeout configuration for a slow
+setup, not any Scenario's `testTimeout`). Its own Exit — success, failure, or an interruption from ITS OWN
+timeout — is captured once and is what every Scenario reports; it is never retried, so a Scenario tagged `@retry`
+(below) cannot make a failed setup pass — every retry attempt re-observes the SAME already-captured Exit rather than
+re-running `BeforeAllScenarios` itself (measured, not assumed: `packages/vitest/test/Runner.test.ts`,
+ADR-EC-034 design question 2, INV-EC-011).
+
+**Concurrent Scenario execution is supported.** A Feature emitted under vitest's `sequence.concurrent: true`, or
+inside your own `describe.concurrent`, keeps every guarantee above: `BeforeAllScenarios` still runs exactly once,
+still completes before any Scenario's own body starts (a real `beforeAll` always resolves before any `it` in its own
+block, concurrent scheduling included), and a `BeforeAllScenarios` failure is still reported individually by every
+Scenario, never as one suite-level failure with siblings skipped (ADR-EC-040 proves this for real, across two
+`vitest run` invocations: `scripts/verify-concurrent-execution.sh`). `describeFeature` never pins `concurrent: false`
+on anything it emits, so opting in is the ordinary vitest config change — no new option on `describeFeature` itself.
+Concurrent execution is only USEFUL once Scenarios in the same Feature can carry different real timeout budgets — see
+the `@timeout-<ms>` tag next.
+
+**A Scenario may carry its own `@timeout-<positive integer milliseconds>` tag** (e.g. `@timeout-5000`) to give it a
+real `it.effect` timeout independent of the Feature's own `testTimeout`. Absent, a Scenario keeps sharing the
+Feature's default exactly as before this tag existed. Present on more than one applicable level (Feature, Rule,
+Scenario, an Outline's Examples row), the MOST SPECIFIC declaration wins — the same Feature→Rule→Scenario→Examples
+inheritance order every other tag already follows. A malformed occurrence (`@timeout` with no suffix, a non-numeric
+or non-positive one, or the syntactically different `@timeout(5000)` parenthesised shape, which this tag does NOT
+accept) is a loud, located `Error` at registration time, not a silent fall-through. The hyphen suffix, rather than a
+more conventional-looking parenthesised call, is deliberate: vitest's own `test.tags` config declaration rejects a
+tag name containing parentheses outright, so a parenthesised form could break a consumer's own `vitest.config.ts`
+load entirely wherever that consumer declares their own tag universe.
 
 **Both once-per-Feature hooks are scoped to one Feature — for a hook that should run once per SUITE, reach for vitest's
 own `globalSetup`/`globalTeardown` instead.** `BeforeAllScenarios`/`AfterAllScenarios` deliberately don't reach across
-Features (each Feature's once-cell is its own), so a suite-wide "provision this once for every Feature in the run"
+Features (each Feature's own `beforeAll`/`afterAll` is its own), so a suite-wide "provision this once for every Feature in the run"
 concern belongs in `globalSetup` (an array of module paths in `vitest.config.ts`, each exporting a `setup`/`teardown`
 pair, run once per worker before/after the whole run) rather than a new construct here — this package intentionally adds
 no typed wrapper around it, since every comparable Cucumber implementation that supports a suite-wide hook hits the same
-worker-isolation caveat this library's Feature-scoped once-cell already documents above.
+worker-isolation caveat this library's Feature-scoped `beforeAll`/`afterAll` hooks already document above.
 
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
@@ -394,7 +415,7 @@ A Scenario that fails on an early attempt and passes on a later one is reported 
 per-Scenario Layer rebuilds fresh for EVERY attempt — the same "fresh every Scenario" guarantee `perScenario`
 already has, extended to "fresh every attempt" — and a `shared` Layer beside it in the same Feature still builds
 exactly once, unaffected by any Scenario next to it retrying. Two things `@retry` does NOT reset between attempts,
-worth knowing before reaching for it: `BeforeAllScenarios`'s once-cell (above — a retry cannot rescue a failed
+worth knowing before reaching for it: `BeforeAllScenarios`'s captured Exit (above — a retry cannot rescue a failed
 setup), and the ambient simulated `TestClock`/`TestConsole` — a step that advances the simulated clock on a failed
 attempt leaves that state in place for the next one. Every `Before`/`After`/`BeforeStep`/`AfterStep` hook on a
 `@retry` Scenario re-runs on every attempt, not only the first. See

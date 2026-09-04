@@ -134,23 +134,36 @@ REQUIREMENT: BeforeAllScenarios runs AT MOST ONCE per Feature, shared across
              Scenario in the Feature individually, not by a single
              Feature-level failure with zero Scenario results.
 
-             That SAME outcome includes an interruption: BeforeAllScenarios is
-             a once-cell whose first exit — success, failure, or the runner's
-             per-test timeout interrupting it — is what every later Scenario
-             awaits. It is NOT retried, because a retry would make a later
-             Scenario's result depend on how far the first attempt got and
-             could re-run half-applied side effects. Consequences stated so
-             nobody discovers them the hard way (F-21): BeforeAllScenarios
-             runs inside the FIRST attempted Scenario's timeout budget, so a
-             slow setup needs a larger testTimeout; and a Scenario-level
-             retry cannot turn a failed setup into a passing one.
+             That SAME outcome includes an interruption: BeforeAllScenarios
+             runs through a real framework `beforeAll`, registered once at
+             the Feature block level, ahead of every Scenario and every
+             nested Rule (ADR-EC-040, BEH-EC-032). Its `beforeAll` body never
+             itself throws — it captures its own Exit (success, failure, or
+             an interruption from ITS OWN timeout budget) in a closure
+             variable, and every Scenario re-raises that SAME captured Exit
+             (INV-EC-011) rather than re-running the batch. It is NOT
+             retried, because a retry would make a later Scenario's result
+             depend on how far the first attempt got and could re-run
+             half-applied side effects. Consequence stated so nobody
+             discovers it the hard way: a Scenario-level `@retry` cannot turn
+             a failed BeforeAllScenarios into a passing one.
 
-             Concurrent sequencing is UNSUPPORTED: a Feature emitted under
-             vitest's `sequence.concurrent: true`, or inside a consumer's
-             `describe.concurrent`, may run two Scenarios' fibers into the
-             once-cell together and the ordering guarantees in this file
-             do not hold. The runner cannot detect that setting and does
-             not try to; it is a documented precondition.
+             BeforeAllScenarios runs on ITS OWN real timeout budget —
+             vitest's default hook timeout, independent of any Scenario's own
+             `testTimeout` — because it is a real `beforeAll`, not code
+             reached from inside a Scenario's own body. A slow setup is
+             configured through vitest's own hook-timeout mechanism, not
+             through any Scenario's `testTimeout`.
+
+             Concurrent sequencing IS SUPPORTED (ADR-EC-040, BEH-EC-032): a
+             Feature emitted under vitest's `sequence.concurrent: true`, or
+             inside a consumer's own `describe.concurrent`, still sees
+             BeforeAllScenarios run exactly once, still completing before any
+             Scenario's own body starts — a real `beforeAll` always resolves
+             before any `it` in its own block, concurrent scheduling
+             included — so every guarantee in this requirement holds
+             unchanged under concurrent execution, not merely under
+             sequential.
 
              BeforeAllScenarios and AfterAllScenarios see the SHARED tier and
              nothing else (F-10). They are typed HookRegistrar<RShared> —

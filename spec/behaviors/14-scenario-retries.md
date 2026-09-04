@@ -56,16 +56,17 @@ REQUIREMENT: Every Before/After/BeforeStep/AfterStep hook belonging to a
 ```
 
 ```
-REQUIREMENT: BeforeAllScenarios's existing once-cell (a Deferred, memoising
-             every exit including a failure) MUST NOT be re-triggered by a
-             @retry Scenario's retry attempts — every attempt re-observes
-             the SAME already-settled Deferred rather than re-running the
-             hook body. A Feature whose BeforeAllScenarios fails therefore
-             fails every @retry Scenario after it on every attempt
-             identically; @retry cannot rescue a failed once-per-Feature
-             setup. packages/vitest/README.md's existing statement to this
-             effect remains accurate under @retry, not merely unaffected by
-             it.
+REQUIREMENT: BeforeAllScenarios's captured Exit (ADR-EC-040, BEH-EC-032 — a
+             real vitest beforeAll's own Exit, captured once in a closure
+             variable, memoising every outcome including a failure) MUST NOT
+             be re-triggered by a @retry Scenario's retry attempts — every
+             attempt re-observes the SAME already-captured Exit rather than
+             re-running the hook body. A Feature whose BeforeAllScenarios
+             fails therefore fails every @retry Scenario after it on every
+             attempt identically; @retry cannot rescue a failed
+             once-per-Feature setup. packages/vitest/README.md's existing
+             statement to this effect remains accurate under @retry, not
+             merely unaffected by it.
 ```
 
 ```

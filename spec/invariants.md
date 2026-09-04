@@ -3,16 +3,17 @@
 Properties that hold for every execution. Each names the mechanism that
 enforces it, because an invariant nobody enforces is a wish.
 
-All ten are enforced by code today, and each entry names the mechanism and the
+All eleven are enforced by code today, and each entry names the mechanism and the
 assertions that back it. No entry on this page describes a **planned** mechanism
 any more; INV-EC-006 was the last one that did, and Phase 11 built it. INV-EC-007
 joined afterward, over `packages/vitest/src/Runner.ts`'s `Random.withSeed` wrap,
 INV-EC-008 joined next, over `packages/vitest/src/VitestTestApi.ts`'s
 `Effect.Metric` wrapper, INV-EC-009 joined next, over
-`packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`, and INV-EC-010 joined most
-recently, over `packages/vitest/src/RuleNarrowing.ts`'s `narrowRuleDsl`, enforced
+`packages/vitest/src/RerunKey.ts`'s `rerunKeysForPlan`, INV-EC-010 joined next,
+over `packages/vitest/src/RuleNarrowing.ts`'s `narrowRuleDsl`, enforced
 on both sides at once — a compile-time half and a run-time half — the same shape
-INV-EC-005 already has. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
+INV-EC-005 already has, and INV-EC-011 joined most recently, over
+`packages/vitest/src/Runner.ts`'s `beforeAllScenariosExit` capture. INV-EC-002 holds on BOTH Layer scopes: the per-Scenario
 scope was built first, and Phase 10 built the `shared` clause of its own wording,
 so its entry names two mechanisms rather than one. INV-EC-005 has been enforced
 on both sides at once — runtime and compile time — since Phase 8.
@@ -496,3 +497,40 @@ narrowed Rules in one Feature, each producing its own reshaped, live value).
 
 **Related**: [BEH-EC-031](behaviors/18-rule-world-narrowing.md),
 [ADR-EC-039](decisions/039-rule-world-narrowing-via-effect-updatecontext-in-narrowruledsl.md).
+
+---
+
+## INV-EC-011: Every Scenario in a Feature observes the identical BeforeAllScenarios Exit
+
+Every Scenario in a Feature that declares a `BeforeAllScenarios` hook re-raises the SAME captured
+`Exit` — success, failure, or an interruption from the hook's own timeout — regardless of run order
+or whether the Scenarios are scheduled sequentially or concurrently. `BeforeAllScenarios`'s own body
+runs EXACTLY ONCE per Feature; no Scenario ever re-runs it, and no Scenario ever observes a
+DIFFERENT outcome from any other Scenario in the same Feature.
+
+**Source**: `packages/vitest/src/Runner.ts`'s `emitFeature` — `beforeAllScenariosExit`, a closure
+variable set exactly once, inside the real framework `beforeAll` registered at the top of the
+Feature's block (`api.beforeAll(beforeAllScenariosTitle, ...)`), whose own body wraps the hook batch
+in `Effect.exit(...)` and never itself throws. Every Scenario's own thunk reads this SAME closure
+variable through `withBeforeAllScenarios` and `Effect.flatMap`s it — re-raising the identical `Cause`
+on failure, or proceeding on success — rather than re-running `runHookBatch(hooks.BeforeAllScenarios,
+[])` a second time (ADR-EC-040).
+
+**Enforced by**: `packages/vitest/test/Runner.test.ts`'s "BeforeAllScenarios runs exactly once across
+every Scenario in the Feature" describe block — asserting the hook's own log entries appear exactly
+once regardless of which Scenario thunk is run first, and that both Scenario thunks fail with the
+SAME error by reference identity when the hook itself fails — and, for real, under real concurrent
+scheduling, by `scripts/verify-concurrent-execution.sh`'s `failing-beforeall.steps.test.ts` fixture
+(two Scenarios, a deliberately failing `BeforeAllScenarios`, run under `sequence.concurrent: true`:
+both fail individually, carrying the identical failure message).
+
+**Implication**: this is what makes moving `BeforeAllScenarios` off a hand-rolled once-cell and onto
+a real framework `beforeAll` safe without regressing
+[BEH-EC-017](behaviors/07-hook-ordering-and-guarantees.md)'s "same failure reported by every Scenario
+individually" guarantee. A real `beforeAll` that itself THROWS on failure produces a materially
+DIFFERENT shape — one suite-level failure with every sibling Scenario marked SKIPPED, not failed —
+which is exactly the regression this invariant's captured-Exit mechanism exists to prevent (verified
+empirically against real `vitest run`, ADR-EC-040).
+
+**Related**: [BEH-EC-032](behaviors/19-concurrent-execution-and-scenario-timeout.md),
+[ADR-EC-040](decisions/040-beforeallscenarios-real-beforeall-captured-exit-and-timeout-suffix-tag.md).

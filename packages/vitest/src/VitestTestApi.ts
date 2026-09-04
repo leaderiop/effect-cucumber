@@ -54,6 +54,21 @@
  *   argument NOT as a field of that argument — vitest's `it.effect` knows nothing about it — but
  *   read out of `emitOptions` in the surrounding closure instead, so only `{ tags, skip }` (fields
  *   vitest's own `it.effect` actually interprets) cross into its options argument.
+ * - `beforeAll` (ADR-EC-040, BEH-EC-032) is `BeforeAllScenarios`'s new real home, replacing the
+ *   once-cell that used to live inside `Runner.ts`. `vitestTestApi`'s implementation mirrors its own
+ *   `afterAll` below exactly (scoped, against a fresh simulated clock and console, run to a Promise).
+ *   `sharedLayerTestApi`'s implementation mirrors ITS OWN `afterAll` below just as exactly: it
+ *   re-runs `Layer.buildWithMemoMap` against the SAME `memoMap` the block's own `beforeAll(build
+ *   hold)` (registered by the `describe` factory, earlier in this same block — `beforeAll`s run in
+ *   REGISTRATION order) already populated, REUSING that memoized build rather than rebuilding it —
+ *   necessary because `BeforeAllScenarios` now runs OUTSIDE `@effect/vitest`'s own `layer(...)`
+ *   machinery (which only auto-provides the shared tier to `methods.effect`/`methods.it`-registered
+ *   bodies, never to a bare framework `beforeAll`), so without this explicit re-provision
+ *   `BeforeAllScenarios`'s real `RShared` requirement on the shared path would have nothing supplying
+ *   it at runtime. `EmitOptions.timeout` (ADR-EC-040, BEH-EC-032) reaches `it.effect`'s real
+ *   `TestOptions.timeout` the same way `rerunKey` reaches `task.meta`: carried, unapplied, through
+ *   `makeDegradingEffect`'s reduced options object, converting the library's `number | null` to the
+ *   `number | undefined` `TestOptions.timeout` itself accepts.
  */
 import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
@@ -138,7 +153,12 @@ const makeDegradingEffect = (
   emit: (
     name: string,
     self: Parameters<TestApi["effect"]>[1],
-    options: { readonly tags?: Array<string>; readonly skip: boolean; readonly rerunKey: string | null }
+    options: {
+      readonly tags?: Array<string>
+      readonly skip: boolean
+      readonly rerunKey: string | null
+      readonly timeout?: number
+    }
   ) => void
 ): TestApi["effect"] =>
 (name, self, options) => {
@@ -146,13 +166,20 @@ const makeDegradingEffect = (
   // of the EMISSION reuses the identical retry-and-metrics-aware thunk rather than re-deriving it.
   // `withMetrics` wraps OUTSIDE `withRetry`'s result, never the reverse (ADR-EC-037).
   const observedSelf = withMetrics(options.scenario, withRetry(options.retry, self))
+  // `EmitOptions.timeout` is `number | null` (ADR-EC-038's `rerunKey` convention: a required field,
+  // explicit `null` for "no override"). `it.effect`'s real `TestOptions.timeout?: number` is an
+  // OPTIONAL key under this repo's `exactOptionalPropertyTypes` — an explicit `timeout: undefined`
+  // is rejected there just as `null` would be, so a `null` override becomes an OMITTED key, via
+  // spread, rather than a present-but-undefined one — the same reason `tags` below is built with a
+  // fresh array rather than passed by reference only when it needs constructing.
+  const timeout = options.timeout === null ? {} : { timeout: options.timeout }
   try {
-    emit(name, observedSelf, { tags: [...options.tags], skip: options.skip, rerunKey: options.rerunKey })
+    emit(name, observedSelf, { tags: [...options.tags], skip: options.skip, rerunKey: options.rerunKey, ...timeout })
   } catch (cause) {
     try {
-      // The same name and the same thunk, with `skip`/`rerunKey` preserved: only the tags are
-      // dropped.
-      emit(name, observedSelf, { skip: options.skip, rerunKey: options.rerunKey })
+      // The same name and the same thunk, with `skip`/`rerunKey`/`timeout` preserved: only the tags
+      // are dropped.
+      emit(name, observedSelf, { skip: options.skip, rerunKey: options.rerunKey, ...timeout })
     } catch {
       // Structural discrimination, and the only branch that reaches it: an emission with no tags
       // cannot fail `strictTags`, so whatever is wrong here was never about tags.
@@ -188,6 +215,13 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
       return self().pipe(Effect.provide(attachmentsLive(ctx)))
     }, emitOptions)
   }),
+  // `BeforeAllScenarios`'s new real home (ADR-EC-040, BEH-EC-032) — the framework's own block-level
+  // SETUP hook, run to a Promise the same way `afterAll` below runs the teardown: scoped, against a
+  // fresh simulated clock and console, on its OWN timeout budget (vitest's default hook timeout),
+  // never a Scenario's `testTimeout`.
+  beforeAll: (_name, self) => {
+    beforeAll(() => Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv))))
+  },
   // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
   // constructor would run a body: scoped, against a fresh simulated clock and console.
   afterAll: (_name, self) => {
@@ -251,6 +285,30 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
         // Nothing here can force the shared Layer to build.
         ? contextFreeEffect(name, self, emitOptions)
         : sharedRouteEffect(name, self, emitOptions),
+    // `BeforeAllScenarios`'s new real home on the shared path (ADR-EC-040, BEH-EC-032) — registered
+    // inside the Feature block, AFTER the framework's own `beforeAll(build hold)` (registered by the
+    // `describe` factory above, earlier in this same block — `beforeAll`s run in REGISTRATION order,
+    // so `hold`'s build has already run by the time this fires). Re-running `Layer.buildWithMemoMap`
+    // against the SAME `memoMap` here REUSES that memoized build rather than rebuilding it — the
+    // identical technique `afterAll` below already uses for teardown, needed here because
+    // `BeforeAllScenarios` now runs OUTSIDE `@effect/vitest`'s own `layer(...)` machinery (which only
+    // auto-provides the shared tier to `methods.effect`/`methods.it`-registered bodies, never to a
+    // bare framework `beforeAll`) — without this, the hook's real `RShared` requirement would have
+    // nothing supplying it at runtime.
+    beforeAll: (_name, self) => {
+      requireSharedIt("beforeAll")
+      beforeAll(() =>
+        Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function*() {
+              const scope = yield* Effect.scope
+              const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
+              yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
+            })
+          )
+        )
+      )
+    },
     // Registered inside the Feature block after the framework's scope-closing `afterAll`, so under
     // `sequence.hooks: "stack"` it runs before that close.
     afterAll: (_name, self) => {

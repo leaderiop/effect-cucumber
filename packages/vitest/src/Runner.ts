@@ -7,8 +7,32 @@
  * - `attempted` is set inside every Scenario thunk and gates the AfterAllScenarios teardown, so a
  *   `-t`/`--tagsFilter` run that attempts nothing tears down nothing (BEH-EC-017,
  *   `scripts/verify-tags-filter.sh`).
- * - `makeOnce` memoises EVERY exit of BeforeAllScenarios, interruption included; every later
- *   Scenario reports the same failure (BEH-EC-017, `test/Runner.test.ts`).
+ * - `BeforeAllScenarios` runs through a REAL framework `beforeAll` (`api.beforeAll`, ADR-EC-040,
+ *   BEH-EC-032), registered ONCE at the top of this Feature's `api.describe` block, ahead of every
+ *   Scenario and every nested Rule — never inside a Scenario's own body, and never a hand-rolled
+ *   once-cell racing multiple Scenario fibers into it (the pre-ADR-EC-040 `makeOnce`/`Deferred`
+ *   mechanism this replaces). Its OWN `beforeAll` body never throws: it wraps the hook batch in
+ *   `Effect.exit(...)` and stores the result in `beforeAllScenariosExit`, a closure variable — a real
+ *   framework `beforeAll` that throws marks every sibling Scenario SKIPPED, not failed, which would
+ *   silently break BEH-EC-017's "the SAME failure is reported by EVERY Scenario individually"
+ *   guarantee (verified empirically against real `vitest run`, ADR-EC-040). Every Scenario thunk
+ *   reads `beforeAllScenariosExit` (via `withBeforeAllScenarios` below) and re-raises that SAME Exit
+ *   — success, failure or interruption — rather than re-running the batch (BEH-EC-017,
+ *   `test/Runner.test.ts`, INV-EC-011). This is also what makes concurrent Scenario execution safe:
+ *   a real `beforeAll` completes, on its own timeout budget, before ANY Scenario in the block starts
+ *   — even under `describe.concurrent`/`sequence.concurrent` — so a short-`@timeout` sibling can no
+ *   longer externally kill a long-`@timeout` sibling merely because BOTH raced the same in-flight
+ *   setup inside their own budgets.
+ * - No manual "was anything attempted" guard exists for the new `beforeAll`'s registration: vitest
+ *   itself never invokes a block's `beforeAll`/`afterAll` when every descendant leaf test in that
+ *   block is skipped or filtered out — verified empirically across `.skip`, `-t` and `--tagsFilter`,
+ *   including through a nested Rule block (ADR-EC-040) — so guarding registration with
+ *   `hooks.BeforeAllScenarios.length > 0` (the same guard `AfterAllScenarios` already used) is
+ *   sufficient, exactly as it already was before this change.
+ * - `@timeout-<ms>` (ADR-EC-040, BEH-EC-032) is DECIDED here (`readScenarioTimeoutTag(scenarioPlan.tags)`)
+ *   and carried across the `TestApi` seam as `EmitOptions.timeout`, never APPLIED here, for the same
+ *   "this module may not import a test framework" reason `retry` already documents below — the real
+ *   `it.effect(..., { timeout })` wiring happens one module over, in `VitestTestApi.ts`.
  * - Titles come from `OutlineTitle.ts` (`name` plus the row suffix), keyed by `scenarioId`; never
  *   `astName` (`test/OutlineTitle.test.ts`).
  * - Once-per-Feature hooks are provided nothing: the shared tier is ambient (BEH-EC-006).
@@ -36,8 +60,8 @@
  *   vitest's own "no test found in suite" failure, worse than what the filter was trying to avoid.
  */
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
-import * as Deferred from "effect/Deferred"
 import * as Effect from "effect/Effect"
+import type * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import * as Random from "effect/Random"
 import type * as Scope from "effect/Scope"
@@ -48,7 +72,7 @@ import type { ErasedExtraLayer, FeaturePlan, ScenarioPlan } from "./Plan.ts"
 import { buildScenarioEffect } from "./ScenarioEffect.ts"
 import { scenarioKey } from "./ScenarioKey.ts"
 import { scenarioSeed } from "./ScenarioSeed.ts"
-import { isRetried, isSkipped, shouldEmit, type TagFilter } from "./Tags.ts"
+import { isRetried, isSkipped, readScenarioTimeoutTag, shouldEmit, type TagFilter } from "./Tags.ts"
 import type { EmitOptions, TestApi } from "./TestApi.ts"
 
 export interface EmitOutcome {
@@ -63,6 +87,9 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
 
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
+// ADR-EC-040/BEH-EC-032: the real `beforeAll` node's own title, replacing the once-cell.
+const beforeAllScenariosTitle = "⚙ BeforeAllScenarios"
+
 const rerunEmptyBlockTitle = "↻ rerunFailedOnly: no Scenario here matched the rerun manifest (nothing to rerun)"
 
 const warningEmitOptions: EmitOptions = {
@@ -71,7 +98,8 @@ const warningEmitOptions: EmitOptions = {
   retry: false,
   contextFree: true,
   scenario: false,
-  rerunKey: null
+  rerunKey: null,
+  timeout: null
 }
 
 /**
@@ -86,27 +114,12 @@ const rerunEmptyBlockEmitOptions: EmitOptions = {
   retry: false,
   contextFree: true,
   scenario: false,
-  rerunKey: null
+  rerunKey: null,
+  timeout: null
 }
 
 const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
   scenarioKey(Option.getOrNull(scenarioPlan.ruleId), scenarioPlan.astName)
-
-const makeOnce = (
-  body: Effect.Effect<void, unknown, Scope.Scope>
-): Effect.Effect<void, unknown, Scope.Scope> => {
-  const deferred = Deferred.makeUnsafe<void, unknown>()
-  let started = false
-  return Effect.suspend((): Effect.Effect<void, unknown, Scope.Scope> => {
-    if (started) {
-      return Deferred.await(deferred)
-    }
-    started = true
-    // `Deferred.into` completes `deferred` with `body`'s exit and never fails itself; awaiting the
-    // deferred re-raises that exit for every later caller.
-    return Effect.flatMap(Deferred.into(body, deferred), () => Deferred.await(deferred))
-  })
-}
 
 /**
  * Declare every test node one planned Feature produces, through the injected seam alone.
@@ -206,15 +219,53 @@ export const emitFeature = (
     return found
   }
 
-  // NOTHING is provided to the batch here (F-10). `[]` for `scenarioTags`: `BeforeAllScenarios` is
-  // typed `HookRegistrar<RShared>` (BEH-EC-027), never `TaggedHookRegistrar`, so every entry here has
-  // `matches: null` by construction and never consults this argument — it exists only because
-  // `runHookBatch`'s signature is shared across all six hook kinds.
-  const beforeAllScenariosCell: Effect.Effect<void, unknown, Scope.Scope> | null = hooks.BeforeAllScenarios.length > 0
-    ? makeOnce(runHookBatch(hooks.BeforeAllScenarios, []))
-    : null
+  // ADR-EC-040/BEH-EC-032: whether this Feature declared a BeforeAllScenarios hook at all — decided
+  // once, outside every thunk, exactly like the old once-cell's own `=== null` check was.
+  const hasBeforeAllScenarios = hooks.BeforeAllScenarios.length > 0
+
+  // Set exactly once, by the real `beforeAll` registered inside `api.describe` below — `null` until
+  // then. Every Scenario thunk reads this (via `withBeforeAllScenarios`) rather than re-running the
+  // batch, preserving BEH-EC-017's "every Scenario reports individually" guarantee even though the
+  // batch itself now runs OUTSIDE any Scenario's own body (this file's header comment).
+  let beforeAllScenariosExit: Exit.Exit<void, unknown> | null = null
+
+  // A Scenario's own body, gated on BeforeAllScenarios's captured Exit when the Feature declared one.
+  // Reading `beforeAllScenariosExit` here happens at THUNK-INVOCATION time (this function is called
+  // synchronously from inside each Scenario's `() => {...}` thunk below, which the framework invokes
+  // only once collection has finished) — always AFTER the real `beforeAll` registered below has
+  // resolved, under real vitest scheduling, sequential or concurrent alike (a `beforeAll` always
+  // completes before any `it` in the same block starts). `Exit` is itself an `Effect` in v4
+  // (`Exit.Proto<A, E> extends Effect.Effect<A, E>`), so the captured Exit needs no `fromExit`-style
+  // conversion: `flatMap`ing it directly re-raises its failure (with the exact same `Cause`) or
+  // proceeds into the Scenario on success.
+  const withBeforeAllScenarios = (
+    effect: Effect.Effect<void, unknown, Scope.Scope>
+  ): Effect.Effect<void, unknown, Scope.Scope> =>
+    !hasBeforeAllScenarios || beforeAllScenariosExit === null
+      ? effect
+      : Effect.flatMap(beforeAllScenariosExit, () => effect)
 
   api.describe(plan.feature.name, () => {
+    // Registered FIRST, ahead of every Scenario and every nested Rule block, so — under real vitest
+    // scheduling — it always completes (or is itself withheld by vitest when nothing in this block
+    // will run, per this file's header comment) before any Scenario's own body starts, regardless of
+    // which Scenario the framework happens to run first and regardless of that Scenario's OWN
+    // `@timeout`/`testTimeout`. NOTHING is provided to the batch (F-10) — the shared tier is ambient,
+    // via `VitestTestApi.ts`'s own `beforeAll` implementation (BEH-EC-017). `[]` for `scenarioTags`:
+    // `BeforeAllScenarios` is typed `HookRegistrar<RShared>` (BEH-EC-027), never
+    // `TaggedHookRegistrar`, so every entry here has `matches: null` by construction and never
+    // consults this argument — it exists only because `runHookBatch`'s signature is shared across all
+    // six hook kinds.
+    if (hasBeforeAllScenarios) {
+      api.beforeAll(
+        beforeAllScenariosTitle,
+        () =>
+          Effect.map(Effect.exit(runHookBatch(hooks.BeforeAllScenarios, [])), (exit) => {
+            beforeAllScenariosExit = exit
+          })
+      )
+    }
+
     // Feature-level Scenarios first, in the order the document has them.
     for (const scenario of plan.feature.scenarios) {
       const scenarioPlan = planFor(scenario)
@@ -239,21 +290,18 @@ export const emitFeature = (
       // `flakyTest` itself: only `VitestTestApi.ts` may import a test framework
       // (`scripts/verify-testapi-seam.sh`), so this walk only ever DECIDES, never APPLIES (ADR-EC-034).
       const retry = isRetried(scenarioPlan.tags)
+      // `@timeout-<ms>` reaches the node the same way `@retry` does — decided here from the
+      // Scenario's own (already-flattened, inherited) tags, carried as plain data across the seam and
+      // APPLIED only in `VitestTestApi.ts` (ADR-EC-040, BEH-EC-032). A malformed occurrence throws
+      // synchronously here, at registration time — see `Tags.ts`'s own `readScenarioTimeoutTag`.
+      const timeout = readScenarioTimeoutTag(scenarioPlan.tags)
       const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? layer
       api.effect(
         titleFor(scenarioPlan),
-        beforeAllScenariosCell === null
-          ? () => {
-            attempted = true
-            return buildSeededScenarioEffect(scenarioPlan, effectiveLayer, hooks)
-          }
-          : () => {
-            attempted = true
-            return Effect.flatMap(
-              beforeAllScenariosCell,
-              () => buildSeededScenarioEffect(scenarioPlan, effectiveLayer, hooks)
-            )
-          },
+        () => {
+          attempted = true
+          return withBeforeAllScenarios(buildSeededScenarioEffect(scenarioPlan, effectiveLayer, hooks))
+        },
         // The Scenario's own tags, passed by reference: `ScenarioPlan.tags` is already the flattened,
         // de-duplicated inheritance chain. `scenario: true` — this is a real Scenario, not a warning
         // node (ADR-EC-037). `rerunKeys` always has an entry for every `scenarioId` `planFor` can
@@ -264,7 +312,8 @@ export const emitFeature = (
           retry,
           contextFree: false,
           scenario: true,
-          rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null
+          rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null,
+          timeout
         }
       )
     }
@@ -298,22 +347,16 @@ export const emitFeature = (
           const skip = isSkipped(scenarioPlan.tags)
           // Same computation as the Feature-level loop above, for the same reason.
           const retry = isRetried(scenarioPlan.tags)
+          // Same computation as the Feature-level loop above, for the same reason.
+          const timeout = readScenarioTimeoutTag(scenarioPlan.tags)
           const effectiveLayer = scenarioLayers.get(scenarioKeyFor(scenarioPlan)) ?? ruleLayer
           ruleEmittedCount += 1
           api.effect(
             titleFor(scenarioPlan),
-            beforeAllScenariosCell === null
-              ? () => {
-                attempted = true
-                return buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet)
-              }
-              : () => {
-                attempted = true
-                return Effect.flatMap(
-                  beforeAllScenariosCell,
-                  () => buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet)
-                )
-              },
+            () => {
+              attempted = true
+              return withBeforeAllScenarios(buildSeededScenarioEffect(scenarioPlan, effectiveLayer, ruleHookSet))
+            },
             // `contextFree: false` and `scenario: true`, for the same reason as the Feature-level
             // loop's identical fields above.
             {
@@ -322,7 +365,8 @@ export const emitFeature = (
               retry,
               contextFree: false,
               scenario: true,
-              rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null
+              rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null,
+              timeout
             }
           )
         }
@@ -340,8 +384,8 @@ export const emitFeature = (
         if (!attempted) {
           return Effect.void
         }
-        // Same as the once-cell above: no per-Scenario tier is provided to a once-per-Feature hook,
-        // and `[]` for the same "never consulted" reason documented on that once-cell.
+        // Same as BeforeAllScenarios's own `beforeAll` above: no per-Scenario tier is provided to a
+        // once-per-Feature hook, and `[]` for the same "never consulted" reason documented there.
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
           hooks.AfterAllScenarios,
           []

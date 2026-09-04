@@ -395,6 +395,40 @@ interface: a Scenario's own extra Layer cannot be nested inside a narrowed Rule,
 [ADR-EC-006](decisions/006-two-layer-scopes-only.md)'s "no third Layer scope" decision — see
 ADR-EC-039's own section on exactly why.
 
+**Concurrent Scenario execution ships too, as of this change**, along with the per-Scenario
+`@timeout-<ms>` tag that makes it useful. `BeforeAllScenarios` no longer runs inside whichever
+Scenario's own body reaches a hand-rolled once-cell first — it runs through a real vitest
+`beforeAll`, registered once at the Feature block level, ahead of every Scenario and every nested
+Rule, capturing its own `Exit` in a closure variable rather than ever throwing directly
+([ADR-EC-040](decisions/040-beforeallscenarios-real-beforeall-captured-exit-and-timeout-suffix-tag.md),
+[BEH-EC-032](behaviors/19-concurrent-execution-and-scenario-timeout.md),
+[INV-EC-011](invariants.md#inv-ec-011-every-scenario-in-a-feature-observes-the-identical-beforeallscenarios-exit)).
+This fixes a real, reproduced bug: under concurrent scheduling, a short-`testTimeout` Scenario racing
+the same in-flight setup as a long-`testTimeout` one could time out and cascade-interrupt the other,
+even though the other's own budget was never at risk — reproduced independently against the OLD
+mechanism, and proven fixed against the shipped one, by two real `vitest run` invocations
+(`scripts/verify-concurrent-execution.sh`). A consumer opts a Feature's emitted Scenarios into
+concurrent scheduling the ordinary vitest way (`sequence.concurrent: true`) — `describeFeature` never
+pins `concurrent: false`, so no new option was needed for that half. The `@timeout-<ms>` Scenario tag
+(`Tags.ts`'s `readScenarioTimeoutTag`, last-match-wins inheritance, a loud registration-time throw on
+a malformed occurrence) reaches `@effect/vitest`'s real `it.effect` timeout parameter — without it,
+every Scenario in a concurrently-scheduled Feature would still share the ONE Feature-wide
+`testTimeout`, undercutting the point of running them concurrently at all. One real, disclosed
+constraint discovered only by building the acceptance/cross-run fixtures, not by design review alone:
+the tag's parameter is a HYPHEN suffix (`@timeout-5000`), not the originally-planned parenthesised
+call (`@timeout(5000)`) — vitest's own `test.tags` config declaration rejects a tag name containing
+parentheses with a hard startup error, and this repository's own `vitest.tags.ts` unconditionally
+declares every tag any acceptance `.feature` file carries, so the parenthesised shape would have
+broken `vitest.config.ts` load for the whole repository. `BeforeAllScenarios`'s move onto a real
+`beforeAll` also closed a real, previously-latent gap on the shared-Layer path:
+`sharedLayerTestApi`'s new `beforeAll` implementation re-provisions the shared tier explicitly (reusing
+the SAME memoized build via `Layer.buildWithMemoMap`, never rebuilding), because a hook now running
+outside `@effect/vitest`'s own `layer(...)` machinery would otherwise have nothing supplying its real
+`RShared` requirement at runtime — proven for real by `packages/vitest/test/emission.test.ts`'s
+extended shared-build fixture. The full existing suite (1036 tests before this change) passes
+byte-for-byte unchanged under the default sequential path, proving the single most shared code path
+in the codebase was not disturbed for a consumer who never opts into either new capability.
+
 | Gate                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Packages exist                                    | Yes — both scaffolded and correctly linked. `@effect-cucumber/gherkin` has real source (`loadFeature`, `parseFeature`, the `ParsedFeature` contract, the error/warning surface, custom parameter types as data, the step matcher, the `DataTable` wrapper with `raw()`/`hashes()`/`rowsHash()`/`decodeHashes`, and the step-argument accessors behind `ParsedStep.stepArguments`); `@effect-cucumber/vitest` has real source too — `describeFeature` with both Layer argument forms (a plain `Layer`, or `{ shared, perScenario }`), the `FeatureDsl`/`RuleDsl`/`ScenarioDsl`/`BackgroundDsl`/`StepRegistrar`/`HookRegistrar`/`ScenarioRegistrar` type surface, per-instance step registration through `Registry.ts`, and the `Effect.fn(stepText)` auto-wrap with identity pass-through for an already-wrapped step. **The runner is built:** `Plan.ts` joins the registered definitions against the Feature and resolves every Pickle step, `ScenarioEffect.ts` composes each Scenario into one Effect, `Runner.ts` emits the `describe`/`it.effect` tree through an injected `TestApi`, and `describeFeature.ts` is the composition root that wires the three and constructs the concrete `TestApi`                                          |
@@ -486,29 +520,6 @@ built to de-risk the decision before it locks.
   typed wrapper only if the concurrent-execution work below ends up
   touching this same hook-lifecycle code anyway.
   ([#35](https://github.com/leaderiop/effect-cucumber/issues/35))
-- **Concurrent Scenario execution — design locked, spike-proven, ships with
-  a new per-Scenario timeout knob.** A working spike reproduced the exact
-  bug for real first (a 400ms `BeforeAllScenarios`, a 100ms-timeout Scenario
-  and a 2000ms-timeout Scenario under `describe.concurrent`: the long one
-  failed too, killed by the short one's interrupt cascade) and then
-  confirmed the fix resolves it (both pass in ~2ms) by moving
-  `BeforeAllScenarios`/`AfterAllScenarios` onto a real vitest `beforeAll`
-  with its own timeout budget, registered once at the Feature block level,
-  every Scenario reading a captured `Exit` rather than racing the batch.
-  Caught and fixed a real regression risk along the way: a naive "let
-  `beforeAll` throw" version breaks BEH-EC-017's "same failure reported by
-  every Scenario individually" guarantee (a real vitest `beforeAll` failure
-  marks siblings _skipped_, not failed) — fixed by capturing the `Exit`
-  instead. The "nothing attempted" carve-out needed no new tracking — vitest
-  already withholds a block's `beforeAll`/`afterAll` when nothing inside it
-  will run (verified against `.skip`, `-t`, and `--tagsFilter`, including
-  nested Rules). Full monorepo suite (900 tests) unchanged under sequential
-  execution. Ships together with a per-Scenario `testTimeout` configuration
-  knob — surfaced by the spike as a real gap, and the actual thing that
-  makes concurrent execution useful (without it, every Scenario still
-  shares the Feature's one timeout, undercutting the point of running them
-  concurrently). ([#37](https://github.com/leaderiop/effect-cucumber/issues/37);
-  feasibility research: [#36](https://github.com/leaderiop/effect-cucumber/issues/36))
 
 ## Under consideration
 
