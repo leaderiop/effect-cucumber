@@ -1,0 +1,37 @@
+name: Canary against effect@rc
+
+# Drift detection, not a release gate: never blocks a PR or the release workflow. Runs on a
+# schedule (and on demand) against whatever `effect`, `@effect/vitest` and `@effect/platform-node`
+# publish under their own `rc` npm dist-tag TODAY, rather than this repo's own committed pin
+# (ADR-EC-012 pins an exact rc for everyone else, on purpose). A red run here means the next rc
+# bump will need real work, found before it lands as a surprise in that bump's own PR. See
+# spec/roadmap.md's "Under consideration" -> canary entry, and scripts/canary-bump-effect-rc.mjs.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC — weekly is plenty for an rc line that ships every few weeks.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Build and test against today's effect rc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Point the pnpm catalog at today's effect rc
+        run: node scripts/canary-bump-effect-rc.mjs
+      # Not --frozen-lockfile: the bump above deliberately moves the workspace off the lockfile's
+      # committed versions, only inside this ephemeral checkout.
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck:test
+      - run: pnpm test
+      - run: pnpm test:shuffle
