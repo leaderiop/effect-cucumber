@@ -146,3 +146,6 @@ entries:
   - id: "ADR-EC-051"
     file: "051-knip-and-a-cucumber-js-comparison-benchmark-suite.md"
     title: "knip for monorepo-wide dead-export detection, and a black-box wall-clock benchmark suite comparing this library against the real @cucumber/cucumber package"
+  - id: "ADR-EC-052"
+    file: "052-hookfailurelocation-extends-stepfailurelocation-to-hooks.md"
+    title: "A failing hook gains a HookFailureLocation .cause, naming its own kind and registration call site — closing ADR-EC-033's hook carve-out"

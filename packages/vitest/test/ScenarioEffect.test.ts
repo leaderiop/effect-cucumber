@@ -2,9 +2,11 @@
  * INV-EC-001's runtime proof: a Scenario is one Effect, its steps run in list order, the first failure stops every
  * step after it, and the Feature's Layer is built fresh on every execution. Also carries the failure-panel fix's in-process half (ADR-EC-033):
  * a step's own failure or defect gains a `StepFailureLocation` `.cause` before it can propagate (ADR-EC-033); the
- * real-vitest-output half lives in `scripts/verify-failure-panel.sh`.
+ * real-vitest-output half lives in `scripts/verify-failure-panel.sh`. A hook's own failure gaining a
+ * `HookFailureLocation` `.cause` (ADR-EC-052, closing ADR-EC-033's own hook carve-out) is asserted here too, since
+ * `runHookBatch` is exercised through `buildScenarioEffect` in this file.
  *
- * Carries: ADR-EC-004, ADR-EC-019, ADR-EC-033, BEH-EC-025, INV-EC-001, INV-EC-002, INV-EC-004.
+ * Carries: ADR-EC-004, ADR-EC-019, ADR-EC-033, ADR-EC-052, BEH-EC-025, BEH-EC-033, INV-EC-001, INV-EC-002, INV-EC-004.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -14,9 +16,10 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
-import { StepFailureLocation, StepMatchError } from "../src/Errors.ts"
+import { HookFailureLocation, StepFailureLocation, StepMatchError } from "../src/Errors.ts"
 import type { HookEntry, HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
+import type { DefinitionSite } from "../src/Registry.ts"
 import { buildScenarioEffect } from "../src/ScenarioEffect.ts"
 
 // The one service the fixture Layer provides: an append-only log of the steps that ran.
@@ -68,9 +71,12 @@ const throwingStep = (name: string, error: unknown): StepBody => () =>
   })
 
 // Unconditional (`matches: null`) — this file is about hook ORDERING/guarantees, not tag filtering,
-// which `Hook.test.ts` and the acceptance pair own (ADR-EC-035, BEH-EC-027).
-const recordingHook = (name: string): HookEntry => ({
+// which `Hook.test.ts` and the acceptance pair own (ADR-EC-035, BEH-EC-027). `definedAt` defaults to
+// `null` (today's shape for every call site in this file that is not itself about ADR-EC-052) and is
+// only supplied where a test needs a specific location to assert against.
+const recordingHook = (name: string, definedAt: DefinitionSite | null = null): HookEntry => ({
   matches: null,
+  definedAt,
   body: () =>
     Effect.gen(function*() {
       const recorder = yield* Recorder
@@ -81,8 +87,10 @@ const recordingHook = (name: string): HookEntry => ({
 })
 
 // A hook entry whose body records its own `:start`, suspends, and then fails with `error` — no `:end`.
-const failingHook = (name: string, error: unknown): HookEntry => ({
+// `definedAt` defaults to `null`, for the same reason as `recordingHook` above.
+const failingHook = (name: string, error: unknown, definedAt: DefinitionSite | null = null): HookEntry => ({
   matches: null,
+  definedAt,
   body: () =>
     Effect.gen(function*() {
       const recorder = yield* Recorder
@@ -743,22 +751,34 @@ describe("a step's own failure gains a StepFailureLocation .cause before it can 
       assert.strictEqual(location.cause, original)
     }))
 
-  it.effect("does NOT attach a location to a Before hook's own failure (out of scope for ADR-EC-033)", () =>
-    Effect.gen(function*() {
-      const { layer } = makeRecording()
-      const boom = { why: "the Before hook's own error" }
-      const plan = planOf([resolved("one", recordingStep("one"))])
-      const hooks = hooksWith({ Before: [failingHook("before", boom)] })
+  it.effect(
+    "attaches a HookFailureLocation to a Before hook's own failure (ADR-EC-052 closes ADR-EC-033's hook carve-out)",
+    () =>
+      Effect.gen(function*() {
+        const { layer } = makeRecording()
+        const boom = { why: "the Before hook's own error" }
+        const plan = planOf([resolved("one", recordingStep("one"))])
+        const definedAt: DefinitionSite = { file: "features/hooks.feature", line: 4, column: 3 }
+        const hooks = hooksWith({ Before: [failingHook("before", boom, definedAt)] })
 
-      const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
+        const exit = yield* Effect.exit(buildScenarioEffect({ plan, layer, hooks }))
 
-      assert.isTrue(Exit.isFailure(exit))
-      const reported = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
-      assert.strictEqual(reported, boom)
-      // A hook is not a step: `withStepFailureLocation` never wraps `runHookBatch`, so `boom` never
-      // gains a `.cause` at all.
-      assert.strictEqual((boom as { cause?: unknown }).cause, undefined)
-    }))
+        assert.isTrue(Exit.isFailure(exit))
+        const reported = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+        // BY REFERENCE, same as a step's own failure (ADR-EC-033): `boom` is mutated in place, never
+        // replaced by a wrapper.
+        assert.strictEqual(reported, boom)
+        assert.instanceOf((boom as { cause?: unknown }).cause, HookFailureLocation)
+        const location = (boom as { cause?: unknown }).cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "Before")
+        assert.strictEqual(location.file, "features/hooks.feature")
+        assert.strictEqual(location.line, 4)
+        // `.name` is what makes vitest's own reporter recurse into `.cause`, exactly as
+        // `StepFailureLocation` already relies on (`scripts/verify-failure-panel.sh`'s hook-failure
+        // extension proves this against a real `vitest run`).
+        assert.strictEqual(location.name, "HookFailureLocation")
+      })
+  )
 
   it.effect("does NOT attach a location to an Unresolved step's StepMatchError (it already self-locates)", () =>
     Effect.gen(function*() {

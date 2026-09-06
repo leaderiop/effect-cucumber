@@ -5,6 +5,12 @@
  * its `.feature` file:line. The in-process half of this proof lives in
  * `packages/vitest/test/ScenarioEffect.test.ts`'s own ADR-EC-033 describe block.
  *
+ * Also carries ADR-EC-052/BEH-EC-033's own real-output proof: the second, `@hookfail`-tagged
+ * Scenario's `Before` hook (below) fails ON PURPOSE, scoped to that Scenario alone via ADR-EC-035's
+ * tag-expression-scoped hooks, so the first Scenario's own step failure above stays unaffected. Its
+ * own registration call site — THIS file, not `failing.feature` — is what `HookFailureLocation` must
+ * report.
+ *
  * Excluded from every normal `vitest run` by the root and per-package `vitest.config.ts` files (see
  * their own `exclude` arrays; the literal directory-glob pattern is deliberately not spelled out
  * again here — a two-asterisk sequence written inside a block comment closes it early, which is
@@ -33,7 +39,7 @@ class World extends Context.Service<World, { readonly apples: Ref.Ref<number> }>
   )
 }
 
-describeFeature(feature, World.layer, ({ Given, Then, When }) => {
+describeFeature(feature, World.layer, ({ Before, Given, Then, When }) => {
   Given("I have {int} apples", function*(count: number) {
     yield* Ref.set((yield* World).apples, count)
   })
@@ -47,5 +53,15 @@ describeFeature(feature, World.layer, ({ Given, Then, When }) => {
   // fix has to cover (`ScenarioEffect.ts`'s `Effect.catchDefect` half).
   Then("I should have {int} apples", function*(expected: number) {
     assert.strictEqual(yield* Ref.get((yield* World).apples), expected)
+  })
+
+  // ADR-EC-052/BEH-EC-033's own real-output proof: a Before hook that fails on purpose, scoped to
+  // the "@hookfail"-tagged Scenario only (ADR-EC-035's tag-expression-scoped hooks), so the first
+  // Scenario's own failure above is unaffected. THIS call's own file:line — not `failing.feature`'s —
+  // is what `HookFailureLocation` must report; `scripts/verify-failure-panel.sh` hardcodes the line
+  // the `Before(` call below sits on.
+  Before("@hookfail", function*() {
+    yield* Effect.void
+    throw new Error("Before hook failed on purpose")
   })
 })

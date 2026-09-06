@@ -1,13 +1,15 @@
 /**
  * Tests for `Hook`.
  *
- * Carries: ADR-EC-005, ADR-EC-010, ADR-EC-035, BEH-EC-027.
+ * Carries: ADR-EC-005, ADR-EC-010, ADR-EC-035, ADR-EC-052, BEH-EC-027, BEH-EC-033.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Ref from "effect/Ref"
+import { unrecordedLocation } from "../src/CallSite.ts"
+import { HookFailureLocation } from "../src/Errors.ts"
 import {
   emptyHookSet,
   groupHooks,
@@ -20,6 +22,7 @@ import {
 } from "../src/Hook.ts"
 import type { HookDefinition } from "../src/HookRegistry.ts"
 import { HookTagExpressionError } from "../src/HookTagExpression.ts"
+import type { DefinitionSite } from "../src/Registry.ts"
 
 // A bare-generator hook body, at module scope because it captures nothing (`unicorn/consistent-function-scoping`).
 const bareBefore = function*() {
@@ -336,7 +339,7 @@ describe("a merged HookSet's array order is its execution order", () => {
         { ...emptyHookSet, Before: [unconditional(recordingHook("rule:before"))] }
       )
 
-      yield* runHookBatch(merged.Before, [])
+      yield* runHookBatch("Before", merged.Before, [])
 
       // The end-to-end claim: concatenation order IS execution order.
       assert.deepStrictEqual(yield* Ref.get(log), ["feature:before", "rule:before"])
@@ -352,7 +355,7 @@ describe("a merged HookSet's array order is its execution order", () => {
         { ...emptyHookSet, After: [unconditional(recordingHook("rule:after"))] }
       )
 
-      yield* runHookBatch(merged.After, [])
+      yield* runHookBatch("After", merged.After, [])
 
       // The unwind, observed rather than inferred from the merge's shape.
       assert.deepStrictEqual(yield* Ref.get(log), ["rule:after", "feature:after"])
@@ -362,7 +365,7 @@ describe("a merged HookSet's array order is its execution order", () => {
 describe("runHookBatch runs an independent batch of hooks", () => {
   it.effect("an empty batch succeeds", () =>
     Effect.gen(function*() {
-      const exit = yield* Effect.exit(runHookBatch([], []))
+      const exit = yield* Effect.exit(runHookBatch("Before", [], []))
       assert.isTrue(Exit.isSuccess(exit))
     }))
 
@@ -379,7 +382,7 @@ describe("runHookBatch runs an independent batch of hooks", () => {
       const third: HookBody = () => Ref.update(log, (seen) => [...seen, "three"])
 
       const exit = yield* Effect.exit(
-        runHookBatch([unconditional(failing), unconditional(second), unconditional(third)], [])
+        runHookBatch("Before", [unconditional(failing), unconditional(second), unconditional(third)], [])
       )
 
       assert.isTrue(Exit.isFailure(exit))
@@ -387,44 +390,60 @@ describe("runHookBatch runs an independent batch of hooks", () => {
       assert.deepStrictEqual(yield* Ref.get(log), ["one", "two", "three"])
     }))
 
-  it.effect("combines two failures into one cause, preserving both original errors by identity", () =>
-    Effect.gen(function*() {
-      const errorOne = { tag: "one failed" }
-      const errorTwo = { tag: "two failed" }
-      const failingOne: HookBody = () => Effect.fail(errorOne)
-      const failingTwo: HookBody = () => Effect.fail(errorTwo)
+  it.effect(
+    "combines two failures into one cause, each gaining its OWN DISTINCT HookFailureLocation, preserving both original errors by identity (ADR-EC-052)",
+    () =>
+      Effect.gen(function*() {
+        const errorOne = { tag: "one failed" }
+        const errorTwo = { tag: "two failed" }
+        const definedAtOne: DefinitionSite = { file: "features/one.feature", line: 10, column: 3 }
+        const definedAtTwo: DefinitionSite = { file: "features/two.feature", line: 20, column: 5 }
+        const failingOne: HookEntry = { matches: null, body: () => Effect.fail(errorOne), definedAt: definedAtOne }
+        const failingTwo: HookEntry = { matches: null, body: () => Effect.fail(errorTwo), definedAt: definedAtTwo }
 
-      const exit = yield* Effect.exit(
-        runHookBatch(
-          [unconditional(failingOne), unconditional(succeedingHook), unconditional(failingTwo)],
-          []
+        const exit = yield* Effect.exit(
+          runHookBatch("Before", [failingOne, unconditional(succeedingHook), failingTwo], [])
         )
-      )
 
-      assert.isTrue(Exit.isFailure(exit))
-      if (Exit.isFailure(exit)) {
-        const failedErrors = exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
+        assert.isTrue(Exit.isFailure(exit))
+        if (Exit.isFailure(exit)) {
+          const failedErrors = exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
 
-        // Reference identity on BOTH original errors, not a structural comparison — a wrapper error class would lose
-        // this.
-        assert.strictEqual(failedErrors.length, 2)
-        assert.isTrue(failedErrors.includes(errorOne))
-        assert.isTrue(failedErrors.includes(errorTwo))
-      }
-    }))
+          // Reference identity on BOTH original errors, not a structural comparison — a wrapper error class would lose
+          // this. Only mutated in place (each gained a `.cause`), never replaced.
+          assert.strictEqual(failedErrors.length, 2)
+          assert.isTrue(failedErrors.includes(errorOne))
+          assert.isTrue(failedErrors.includes(errorTwo))
+
+          const causeOne = (errorOne as { cause?: unknown }).cause
+          const causeTwo = (errorTwo as { cause?: unknown }).cause
+          assert.instanceOf(causeOne, HookFailureLocation)
+          assert.instanceOf(causeTwo, HookFailureLocation)
+          const locationOne = causeOne as HookFailureLocation
+          const locationTwo = causeTwo as HookFailureLocation
+
+          // Each failing entry's OWN registration site, not one shared instance reused twice.
+          assert.notStrictEqual(locationOne, locationTwo)
+          assert.strictEqual(locationOne.hookKind, "Before")
+          assert.strictEqual(locationOne.file, "features/one.feature")
+          assert.strictEqual(locationOne.line, 10)
+          assert.strictEqual(locationTwo.hookKind, "Before")
+          assert.strictEqual(locationTwo.file, "features/two.feature")
+          assert.strictEqual(locationTwo.line, 20)
+        }
+      })
+  )
 
   it.effect(
-    "a batch with exactly one failure fails with the original cause, recoverable by Cause.squash",
+    "a batch with exactly one failure fails with the original cause, recoverable by Cause.squash, gaining a HookFailureLocation .cause (ADR-EC-052)",
     () =>
       Effect.gen(function*() {
         const theError = { tag: "the only failure" }
-        const failing: HookBody = () => Effect.fail(theError)
+        const definedAt: DefinitionSite = { file: "features/only.feature", line: 7, column: 1 }
+        const failing: HookEntry = { matches: null, body: () => Effect.fail(theError), definedAt }
 
         const exit = yield* Effect.exit(
-          runHookBatch(
-            [unconditional(succeedingHook), unconditional(failing), unconditional(succeedingHook)],
-            []
-          )
+          runHookBatch("After", [unconditional(succeedingHook), failing, unconditional(succeedingHook)], [])
         )
 
         // `Cause.combine(Cause.empty, c)` returns `c` unchanged, so a batch with exactly one failure fails with the
@@ -433,6 +452,63 @@ describe("runHookBatch runs an independent batch of hooks", () => {
           Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the batch unexpectedly succeeded",
           theError
         )
+        const cause = (theError as { cause?: unknown }).cause
+        assert.instanceOf(cause, HookFailureLocation)
+        const location = cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "After")
+        assert.strictEqual(location.file, "features/only.feature")
+        assert.strictEqual(location.line, 7)
+      })
+  )
+
+  it.effect(
+    "a hook that THROWS (a defect, not Effect.fail) still gains a HookFailureLocation .cause, via the catchDefect lane (ADR-EC-052)",
+    () =>
+      Effect.gen(function*() {
+        const boom = { tag: "the hook's own thrown defect" }
+        const definedAt: DefinitionSite = { file: "features/defect.feature", line: 42, column: 2 }
+        const throwing: HookEntry = {
+          matches: null,
+          body: () =>
+            Effect.sync(() => {
+              throw boom
+            }),
+          definedAt
+        }
+
+        const exit = yield* Effect.exit(runHookBatch("BeforeStep", [throwing], []))
+
+        assert.isTrue(Exit.isFailure(exit))
+        // The defect, not a typed failure — squashed identically either way, still the SAME original object.
+        assert.strictEqual(Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the batch unexpectedly succeeded", boom)
+        const cause = (boom as { cause?: unknown }).cause
+        assert.instanceOf(cause, HookFailureLocation)
+        const location = cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "BeforeStep")
+        assert.strictEqual(location.file, "features/defect.feature")
+        assert.strictEqual(location.line, 42)
+      })
+  )
+
+  it.effect(
+    "a failing hook with no captured definedAt (definedAt null/absent) falls back to unrecordedLocation and line 0, never undefined or a crash (ADR-EC-052)",
+    () =>
+      Effect.gen(function*() {
+        const theError = { tag: "no call site was ever captured for this one" }
+        // `unconditional` never sets `definedAt` — the exact shape a hook whose registration-time
+        // `captureCallSite()` returned null (or an older/degraded HookDefinition with the field simply
+        // absent) would produce.
+        const failing = unconditional(() => Effect.fail(theError))
+
+        const exit = yield* Effect.exit(runHookBatch("AfterAllScenarios", [failing], []))
+
+        assert.isTrue(Exit.isFailure(exit))
+        const cause = (theError as { cause?: unknown }).cause
+        assert.instanceOf(cause, HookFailureLocation)
+        const location = cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "AfterAllScenarios")
+        assert.strictEqual(location.file, unrecordedLocation)
+        assert.strictEqual(location.line, 0)
       })
   )
 
@@ -447,6 +523,7 @@ describe("runHookBatch runs an independent batch of hooks", () => {
         })
 
       yield* runHookBatch(
+        "Before",
         [
           unconditional(recordingHook("one")),
           unconditional(recordingHook("two")),
@@ -479,7 +556,7 @@ describe("runHookBatch excludes a tag-filtered-out entry BEFORE the batch, not f
         { body: recordingHook("db-only"), matches: (tags) => tags.includes("@db") }
       ]
 
-      yield* runHookBatch(entries, ["@ui"])
+      yield* runHookBatch("Before", entries, ["@ui"])
 
       // "db-only" never ran at all — not run-and-ignored, simply never invoked.
       assert.deepStrictEqual(yield* Ref.get(log), ["always"])
@@ -494,7 +571,7 @@ describe("runHookBatch excludes a tag-filtered-out entry BEFORE the batch, not f
         { body: recordingHook("db-only"), matches: (tags) => tags.includes("@db") }
       ]
 
-      yield* runHookBatch(entries, ["@db", "@slow"])
+      yield* runHookBatch("Before", entries, ["@db", "@slow"])
 
       assert.deepStrictEqual(yield* Ref.get(log), ["db-only"])
     }))
@@ -510,29 +587,48 @@ describe("runHookBatch excludes a tag-filtered-out entry BEFORE the batch, not f
         { body: recordingHook("third"), matches: (tags) => tags.includes("@db") }
       ]
 
-      yield* runHookBatch(entries, ["@db"])
+      yield* runHookBatch("Before", entries, ["@db"])
 
       // "second-filtered-out" is silently absent, but "first" and "third" keep their REGISTRATION order.
       assert.deepStrictEqual(yield* Ref.get(log), ["first", "third"])
     }))
 
   it.effect(
-    "a filtered-out entry's own failure never surfaces, and survivors' failures still COMBINE (BEH-EC-017)",
+    "a filtered-out entry's own failure never surfaces, and survivors' failures still COMBINE, each gaining its OWN DISTINCT HookFailureLocation (BEH-EC-017, ADR-EC-052)",
     () =>
       Effect.gen(function*() {
+        const unconditionalDefinedAt: DefinitionSite = { file: "features/unconditional.feature", line: 3, column: 1 }
+        const scopedDefinedAt: DefinitionSite = { file: "features/scoped.feature", line: 8, column: 1 }
         const entries: ReadonlyArray<HookEntry> = [
-          unconditional(failingUnconditional),
+          { body: failingUnconditional, matches: null, definedAt: unconditionalDefinedAt },
           { body: filteredOutFailure, matches: (tags) => tags.includes("@slow") },
-          { body: failingScoped, matches: (tags) => tags.includes("@db") }
+          { body: failingScoped, matches: (tags) => tags.includes("@db"), definedAt: scopedDefinedAt }
         ]
 
-        const exit = yield* Effect.exit(runHookBatch(entries, ["@db"]))
+        const exit = yield* Effect.exit(runHookBatch("Before", entries, ["@db"]))
 
         assert.isTrue(Exit.isFailure(exit))
         if (Exit.isFailure(exit)) {
           const failedErrors = exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
           // Exactly the two hooks that actually ran — the filtered-out one contributes NOTHING to combine or drop.
-          assert.deepStrictEqual(failedErrors, ["unconditional failed", "db-scoped failed"])
+          // Each original string failure is wrapped in a new Error (attachHookFailureLocation's non-object branch,
+          // ADR-EC-033's pre-existing behaviour reused verbatim) carrying its OWN HookFailureLocation as `.cause`.
+          assert.strictEqual(failedErrors.length, 2)
+          const [firstError, secondError] = failedErrors as [Error, Error]
+          assert.strictEqual(firstError.message, "unconditional failed")
+          assert.strictEqual(secondError.message, "db-scoped failed")
+
+          assert.instanceOf(firstError.cause, HookFailureLocation)
+          assert.instanceOf(secondError.cause, HookFailureLocation)
+          const firstLocation = firstError.cause as HookFailureLocation
+          const secondLocation = secondError.cause as HookFailureLocation
+          assert.notStrictEqual(firstLocation, secondLocation)
+          assert.strictEqual(firstLocation.hookKind, "Before")
+          assert.strictEqual(firstLocation.file, "features/unconditional.feature")
+          assert.strictEqual(firstLocation.line, 3)
+          assert.strictEqual(secondLocation.hookKind, "Before")
+          assert.strictEqual(secondLocation.file, "features/scoped.feature")
+          assert.strictEqual(secondLocation.line, 8)
         }
       })
   )

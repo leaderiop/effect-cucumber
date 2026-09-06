@@ -260,7 +260,7 @@ export const emitFeature = (
       api.beforeAll(
         beforeAllScenariosTitle,
         () =>
-          Effect.map(Effect.exit(runHookBatch(hooks.BeforeAllScenarios, [])), (exit) => {
+          Effect.map(Effect.exit(runHookBatch("BeforeAllScenarios", hooks.BeforeAllScenarios, [])), (exit) => {
             beforeAllScenariosExit = exit
           })
       )
@@ -387,6 +387,7 @@ export const emitFeature = (
         // Same as BeforeAllScenarios's own `beforeAll` above: no per-Scenario tier is provided to a
         // once-per-Feature hook, and `[]` for the same "never consulted" reason documented there.
         const afterAllScenariosEffect: Effect.Effect<void, unknown, Scope.Scope> = runHookBatch(
+          "AfterAllScenarios",
           hooks.AfterAllScenarios,
           []
         )
