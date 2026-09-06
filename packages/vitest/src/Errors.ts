@@ -255,12 +255,19 @@ export const makeUndeclaredTagWarning = (args: {
 })
 
 /**
- * Which of `describeFeature`'s two registration-time tag options caused an exclusion.
+ * Which of `describeFeature`'s registration-time tag options caused an exclusion.
+ * `ExcludedByTagExpression` (ADR-EC-054) is the `tagExpression` option's own reason: since
+ * `tagExpression` is mutually exclusive with `includeTags`/`excludeTags` at the `describeFeature`
+ * call site, a notice reporting it always carries `includeTags: []`/`excludeTags: []` — deriving
+ * the reason from those two arrays alone (as before ADR-EC-054) would have mislabeled every
+ * `tagExpression` exclusion as `ExcludedByExcludeTags` with an empty, uninformative list, which is
+ * exactly the bug this reason and `tagExpression` field were added to fix.
  */
 export type ExcludedScenariosNoticeReason =
   | "ExcludedByIncludeTags"
   | "ExcludedByExcludeTags"
   | "ExcludedByBothTagFilters"
+  | "ExcludedByTagExpression"
 
 export interface ExcludedScenariosNotice {
   readonly _tag: "ExcludedScenariosNotice"
@@ -270,14 +277,23 @@ export interface ExcludedScenariosNotice {
   readonly count: number
   readonly includeTags: ReadonlyArray<string>
   readonly excludeTags: ReadonlyArray<string>
+  /**
+   * `describeFeature`'s `tagExpression` option (ADR-EC-054), or `undefined` when this notice was
+   * built from `includeTags`/`excludeTags` instead — the two are mutually exclusive at the
+   * `describeFeature` call site, so this is never set alongside a non-empty `includeTags`/`excludeTags`.
+   */
+  readonly tagExpression: string | undefined
   readonly message: string
 }
 
 const excludedScenariosNoticeReason = (
   includeTags: ReadonlyArray<string>,
-  excludeTags: ReadonlyArray<string>
+  excludeTags: ReadonlyArray<string>,
+  tagExpression: string | undefined
 ): ExcludedScenariosNoticeReason =>
-  includeTags.length > 0
+  tagExpression !== undefined
+    ? "ExcludedByTagExpression"
+    : includeTags.length > 0
     ? (excludeTags.length > 0 ? "ExcludedByBothTagFilters" : "ExcludedByIncludeTags")
     : "ExcludedByExcludeTags"
 
@@ -287,9 +303,12 @@ export const makeExcludedScenariosNotice = (args: {
   count: number
   includeTags: ReadonlyArray<string>
   excludeTags: ReadonlyArray<string>
+  tagExpression?: string | undefined
 }): ExcludedScenariosNotice => {
-  const reason = excludedScenariosNoticeReason(args.includeTags, args.excludeTags)
-  const filters = reason === "ExcludedByIncludeTags"
+  const reason = excludedScenariosNoticeReason(args.includeTags, args.excludeTags, args.tagExpression)
+  const filters = reason === "ExcludedByTagExpression"
+    ? `tagExpression ${quoted(args.tagExpression ?? "")}`
+    : reason === "ExcludedByIncludeTags"
     ? `includeTags [${quotedList(args.includeTags)}]`
     : reason === "ExcludedByExcludeTags"
     ? `excludeTags [${quotedList(args.excludeTags)}]`
@@ -302,6 +321,7 @@ export const makeExcludedScenariosNotice = (args: {
     count: args.count,
     includeTags: args.includeTags,
     excludeTags: args.excludeTags,
+    tagExpression: args.tagExpression,
     message: `${quoted(args.uri)}: ${reason}: ${args.count} Scenario(s) in Feature ${
       quoted(args.featureName)
     } were excluded by ${filters}. They were never registered, so they appear nowhere in this run's output — not even as skipped. Widen or remove the filter to run them.`

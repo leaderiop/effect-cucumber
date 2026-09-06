@@ -1,6 +1,10 @@
 /**
  * Reserved tags (`@skip`, `@only`, `@retry`) and the registration-time filter. `undefined` and `[]`
  * both mean no filter; where a tag is in both lists, exclude wins (BEH-EC-008, `test/Tags.test.ts`).
+ * `TagFilter` also carries an optional pre-compiled `expression` matcher (ADR-EC-054,
+ * `TagExpression.ts`) which, when present, OVERRIDES `include`/`exclude` entirely rather than
+ * composing with them — `describeFeature`'s own `tagExpression` option, reusing the identical
+ * `createTagsFilter` engine `HookTagExpression.ts` already uses for tag-expression-scoped hooks.
  */
 
 /**
@@ -85,6 +89,18 @@ export const readScenarioTimeoutTag = (tags: ReadonlyArray<string>): number | nu
 export interface TagFilter {
   readonly include: ReadonlyArray<string>
   readonly exclude: ReadonlyArray<string>
+  /**
+   * `describeFeature`'s `tagExpression` option (ADR-EC-054), already compiled into a matcher by
+   * `TagExpression.ts`'s `compileFeatureTagExpression` — or `null` for "no expression; use
+   * `include`/`exclude` instead", which is what every filter built before this option existed still
+   * gets. When set, this OVERRIDES `include`/`exclude` entirely rather than composing with them:
+   * `tagExpression` is mutually exclusive with `includeTags`/`excludeTags` at the `describeFeature`
+   * call site (a located, registration-time throw — never a silent precedence rule), so a real
+   * `TagFilter` never has a non-empty `include`/`exclude` alongside a non-null `expression`; a
+   * hand-built one (`Runner.test.ts`) may, which is exactly why `shouldEmit` below checks
+   * `expression` FIRST and returns early rather than folding it into the same boolean expression.
+   */
+  readonly expression: ((tags: ReadonlyArray<string>) => boolean) | null
 }
 
 /**
@@ -92,21 +108,26 @@ export interface TagFilter {
  */
 export const noTagFilter: TagFilter = {
   include: [],
-  exclude: []
+  exclude: [],
+  expression: null
 }
 
 /**
- * Normalise the two OPTIONAL public options into the required `TagFilter` the rest of the phase
- * passes around.
+ * Normalise the OPTIONAL public options into the required `TagFilter` the rest of the phase passes
+ * around.
  *
- * @param options - the consumer's own `includeTags`/`excludeTags`, either or both absent
+ * @param options - the consumer's own `includeTags`/`excludeTags`, either or both absent; or a
+ * pre-compiled `expression` (ADR-EC-054), mutually exclusive with the other two at the
+ * `describeFeature` call site — `makeTagFilter` itself does not enforce that, it only normalises
  */
 export const makeTagFilter = (options: {
   readonly includeTags?: ReadonlyArray<string> | undefined
   readonly excludeTags?: ReadonlyArray<string> | undefined
+  readonly expression?: ((tags: ReadonlyArray<string>) => boolean) | null | undefined
 }): TagFilter => ({
   include: options.includeTags ?? [],
-  exclude: options.excludeTags ?? []
+  exclude: options.excludeTags ?? [],
+  expression: options.expression ?? null
 })
 
 /**
@@ -114,8 +135,10 @@ export const makeTagFilter = (options: {
  * @param tags - the Scenario's fully flattened `ParsedScenario.tags`, `@` prefixes intact
  */
 export const shouldEmit = (filter: TagFilter, tags: ReadonlyArray<string>): boolean =>
-  (filter.include.length === 0 || filter.include.some((tag) => tags.includes(tag))) &&
-  !filter.exclude.some((tag) => tags.includes(tag))
+  filter.expression !== null
+    ? filter.expression(tags)
+    : (filter.include.length === 0 || filter.include.some((tag) => tags.includes(tag))) &&
+      !filter.exclude.some((tag) => tags.includes(tag))
 
 /**
  * @param tags - the Scenario's fully flattened `ParsedScenario.tags`, `@` prefixes intact

@@ -152,3 +152,6 @@ entries:
   - id: "ADR-EC-053"
     file: "053-strict-mode-and-suite-wide-assertion-promote-unused-step-warnings.md"
     title: "An opt-in strict Feature option and a suite-wide assertNoUnusedStepDefinitions promote unused-step warnings to failures — ADR-EC-019's own default untouched"
+  - id: "ADR-EC-054"
+    file: "054-describefeature-tagexpression-option-reuses-vitests-createtagsfilter.md"
+    title: "describeFeature gains a tagExpression registration filter, reusing vitest's own createTagsFilter — the second independent call site for the engine ADR-EC-035 already integrated"

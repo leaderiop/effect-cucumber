@@ -1816,3 +1816,71 @@ orderedBlock(() => {
     })
   })
 })
+
+// A new `describeFeature` call for the `tagExpression` option (ADR-EC-054) — appended at the end
+// of this file, after every other `describeFeature` call above, so their own "THE Nth" ordinal
+// comments never need renumbering. Mirrors `excludeTagsFeature`'s own pattern: a real
+// `describeFeature` call, real recorded side effects, and one real collection-time notice.
+const tagExpressionRan: Array<string> = []
+
+const tagExpressionFeature = Effect.runSync(
+  parseFeature(
+    `Feature: tagExpression selects a boolean-grammar subset at registration time
+
+  @slow
+  Scenario: a slow Scenario the expression selects
+    When the slow step runs
+
+  @slow @wip
+  Scenario: a slow-and-wip Scenario the expression excludes
+    When the slow-and-wip step runs
+
+  Scenario: a plain Scenario the expression excludes too
+    When the plain step runs
+`,
+    "test/tag-expression.feature"
+  ).pipe(Effect.provide(ParameterTypeStore.Default))
+)
+
+orderedBlock(() => {
+  describeFeature(tagExpressionFeature, Layer.empty, ({ When }) => {
+    When("the slow step runs", function*() {
+      tagExpressionRan.push(currentTestName())
+      yield* Effect.void
+    })
+    When("the slow-and-wip step runs", function*() {
+      tagExpressionRan.push(currentTestName())
+      yield* Effect.void
+    })
+    When("the plain step runs", function*() {
+      tagExpressionRan.push(currentTestName())
+      yield* Effect.void
+    })
+  }, { tagExpression: "@slow and not @wip" })
+
+  describe("tagExpression restricts registration to a boolean-grammar subset, reusing vitest's own createTagsFilter (ADR-EC-054)", () => {
+    it("registered and ran ONLY the Scenario the expression selects", () => {
+      expect(tagExpressionRan).toEqual([
+        `tagExpression selects a boolean-grammar subset at registration time${nameSeparator}a slow Scenario the expression selects`
+      ])
+    })
+
+    it("printed one excluded-Scenarios notice naming tagExpression, the quoted expression and the count", () => {
+      const printed = warningsFor("test/tag-expression.feature")
+      // Exactly ONE, per Feature — the same shape excludeTags's own notice already has.
+      expect(printed).toHaveLength(1)
+
+      const line = printed[0] ?? ""
+      expect(line).toContain("2 Scenario(s)")
+      expect(line).toContain("ExcludedByTagExpression")
+      expect(line).toContain("tagExpression")
+      expect(line).toContain(JSON.stringify("@slow and not @wip"))
+      expect(line).toContain("never registered")
+      // Never mislabeled as an (empty) includeTags/excludeTags exclusion — the bug this option's
+      // own ADR discovered and fixed in Errors.ts.
+      expect(line).not.toContain("ExcludedByIncludeTags")
+      expect(line).not.toContain("ExcludedByExcludeTags")
+      expect(line).not.toContain("ExcludedByBothTagFilters")
+    })
+  })
+})

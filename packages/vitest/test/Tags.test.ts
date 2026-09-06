@@ -55,8 +55,8 @@ describe("noTagFilter filters nothing", () => {
     expect(shouldEmit(noTagFilter, noTags)).toBe(true)
   })
 
-  it("holds both of its arrays empty", () => {
-    expect(noTagFilter).toStrictEqual({ include: [], exclude: [] })
+  it("holds both of its arrays empty, and no expression", () => {
+    expect(noTagFilter).toStrictEqual({ include: [], exclude: [], expression: null })
   })
 })
 
@@ -129,6 +129,41 @@ describe("the two halves compose", () => {
     expect(shouldEmit(filter, ["@slow"])).toBe(true)
     expect(shouldEmit(filter, ["@slow", "@wip"])).toBe(false)
     expect(shouldEmit(filter, ["@wip"])).toBe(false)
+  })
+})
+
+// Module scope, not inline in the `it` below: a closure that captures nothing from its parent
+// scope belongs at the top level (oxlint's `consistent-function-scoping`).
+const smokeNotWip = (tags: ReadonlyArray<string>) => tags.includes("@smoke") && !tags.includes("@wip")
+
+describe("expression overrides the plain include/exclude arrays entirely (ADR-EC-054)", () => {
+  it("uses the expression predicate directly, ignoring includeTags/excludeTags even when both are also given", () => {
+    const filter = makeTagFilter({
+      includeTags: ["@ignored-include"],
+      excludeTags: ["@ignored-exclude"],
+      expression: smokeNotWip
+    })
+    expect(shouldEmit(filter, ["@smoke"])).toBe(true)
+    expect(shouldEmit(filter, ["@smoke", "@wip"])).toBe(false)
+    // The plain arrays are inert once expression is set: a Scenario matching ONLY the (ignored)
+    // includeTags entry does not survive, and a Scenario carrying the (ignored) excludeTags entry
+    // alongside a matching one is not excluded by it.
+    expect(shouldEmit(filter, ["@ignored-include"])).toBe(false)
+    expect(shouldEmit(filter, ["@smoke", "@ignored-exclude"])).toBe(true)
+  })
+
+  it("falls back to plain include/exclude semantics when expression is explicitly null", () => {
+    const filter = makeTagFilter({ includeTags: ["@slow"], expression: null })
+    expect(filter.expression).toBeNull()
+    expect(shouldEmit(filter, ["@slow"])).toBe(true)
+    expect(shouldEmit(filter, ["@wip"])).toBe(false)
+  })
+
+  it("falls back to plain include/exclude semantics when expression is absent (undefined)", () => {
+    const filter = makeTagFilter({ excludeTags: ["@wip"] })
+    expect(filter.expression).toBeNull()
+    expect(shouldEmit(filter, ["@wip"])).toBe(false)
+    expect(shouldEmit(filter, ["@other"])).toBe(true)
   })
 })
 
