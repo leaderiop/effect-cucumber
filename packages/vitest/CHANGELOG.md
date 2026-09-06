@@ -1,5 +1,12 @@
 # @effect-cucumber/vitest
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [120dcc5]
+  - @effect-cucumber/gherkin@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
