@@ -130,7 +130,10 @@ export const collect = (
     (kind: HookKind): TaggedHookRegistrar<any> => (tagExprOrFn: string | (() => any), maybeFn?: () => any): void => {
       const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
       const fn = (maybeFn ?? tagExprOrFn) as () => any
-      hookRegistry.register(kind, null, tagExpr, registerHook(kind, fn))
+      // The `captureCallSite` call below MUST stay INSIDE this arrow — the one a test author calls as
+      // `Before`/`After`/etc. — so the captured stack frame is the author's own call site, not this
+      // file's (ADR-EC-052, mirroring `registrar`'s own step-registration capture above).
+      hookRegistry.register(kind, null, tagExpr, registerHook(kind, fn), captureCallSite())
     }
 
   const scenarioDsl: ScenarioDsl<any> = {
@@ -257,7 +260,10 @@ export const collect = (
       ): void => {
         const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
         const fn = (maybeFn ?? tagExprOrFn) as () => any
-        hookRegistry.register(kind, ruleId, tagExpr, registerHook(kind, fn))
+        // Same requirement as the Feature-level `hookRegistrar` above: `captureCallSite` MUST stay
+        // INSIDE this arrow so it captures the author's own `Before`/`After`/etc. call site, not this
+        // file's (ADR-EC-052).
+        hookRegistry.register(kind, ruleId, tagExpr, registerHook(kind, fn), captureCallSite())
       }
 
       const ruleDsl: RuleDsl<any> = {

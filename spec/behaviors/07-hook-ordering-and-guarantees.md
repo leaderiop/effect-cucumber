@@ -370,4 +370,89 @@ describeFeature(feature, Log.layer, ({ Before, Scenario }) => {
 
 ---
 
+## BEH-EC-033: A failing hook gains a HookFailureLocation, naming its own kind and registration site
+
+> **See:** [ADR-EC-052](../decisions/052-hookfailurelocation-extends-stepfailurelocation-to-hooks.md), [ADR-EC-033](../decisions/033-stepfailurelocation-attached-as-cause-not-a-rewritten-message.md), [BEH-EC-017](#beh-ec-017-six-hooks-a-fixed-ordering-and-three-independent-guarantees)
+
+```
+REQUIREMENT: A failing hook of any of the six kinds (Before, After, BeforeStep,
+             AfterStep, BeforeAllScenarios, AfterAllScenarios) gains a
+             HookFailureLocation as its own .cause before it can propagate —
+             the hook counterpart of the location a failing STEP already gets
+             (ADR-EC-033). HookFailureLocation names the failing hook's OWN
+             kind and the file/line of that hook's OWN REGISTRATION call
+             (the Before(...)/After(...)/etc. call the test author wrote) —
+             never the Scenario it happened to be running for, and never the
+             .feature file, since a hook is not tied to any one Scenario's
+             .feature location the way a step is. This applies to BOTH
+             failure lanes a hook body can take, mirroring the step-side
+             fix: a typed Effect.fail and a thrown exception (a defect).
+```
+
+```
+REQUIREMENT: The original failure or defect value is never replaced — only
+             mutated in place, exactly as a step's own failure already is
+             (ADR-EC-033). Reference identity survives: code already holding
+             the original value (a Cause.squash, a structural cause.reasons
+             walk) still sees the SAME object, now carrying a new .cause. Any
+             .cause the value already carried becomes HookFailureLocation's
+             OWN .cause, chained one level deeper, never silently dropped.
+```
+
+```
+REQUIREMENT: A batch with more than one failing hook of the SAME kind
+             (BEH-EC-017's independent-batch/combined-failure guarantee)
+             attaches a DISTINCT HookFailureLocation to EACH failing entry —
+             one per entry's own registration site — never one shared
+             instance reused across the batch. Two Before hooks registered
+             at two different call sites that both fail are each identifiable
+             by their own file/line in the combined, reported cause.
+```
+
+```
+REQUIREMENT: This closes the ONE deliberate scope boundary ADR-EC-033's own
+             Negative consequences named as future-facing policy — a hook
+             failure carrying no step-shaped location — rather than leaving
+             it open. The scope boundary ADR-EC-033 keeps for an UNRESOLVED
+             step's StepMatchError (it already self-locates from the Pickle,
+             never from a running body) is UNCHANGED by this requirement and
+             remains the only one left.
+```
+
+### Worked example
+
+```typescript
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import { Context, Effect, Layer, Ref } from "effect"
+
+class Database extends Context.Service<Database, { readonly connected: Ref.Ref<boolean> }>()("Database") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function*() {
+      return Database.of({ connected: yield* Ref.make(false) })
+    })
+  )
+}
+
+const feature = await loadFeature("./checkout.feature")
+
+describeFeature(feature, Database.layer, ({ Before, Scenario }) => {
+  // If this throws or Effect.fails, the reported failure gains a HookFailureLocation .cause naming
+  // "Before" and THIS call's own file:line — not checkout.feature's, and not the Scenario below's.
+  Before(function*() {
+    const failedToConnect = !(yield* Ref.get((yield* Database).connected))
+    if (failedToConnect) {
+      return yield* Effect.fail("could not reach the database" as const)
+    }
+  })
+
+  Scenario("Paying with a saved card", ({ Then, When }) => {
+    When("I pay with a saved card", function*() {/* ... */})
+    Then("the order is confirmed", function*() {/* ... */})
+  })
+})
+```
+
+---
+
 _Previous: [06 — DataTable and DocString arguments](./06-datatable-and-docstring-arguments.md)_

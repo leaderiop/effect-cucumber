@@ -2,6 +2,7 @@
  * Per-`describeFeature` hook registry: six kinds, each attributed to a Rule id or `null`. Never
  * module-level (`test/HookRegistry.test.ts`).
  */
+import type { DefinitionSite } from "./Registry.ts"
 
 /**
  * The six hook kinds a Feature-level DSL can register a body under, in the canonical order
@@ -19,13 +20,17 @@ export type HookKind =
  * One registered hook: the kind it was registered under, its normalised body, the Rule it was
  * registered under (if any), and its own tag expression (if any, ADR-EC-035). `tagExpr: null` is a
  * real, common value — an unconditional hook, today's only shape before ADR-EC-035 — not a marker
- * for "not yet set."
+ * for "not yet set." `definedAt` is the hook's own registration call site — `Registry.ts`'s
+ * `StepDefinition.definedAt`'s hook counterpart (ADR-EC-052) — `null` only when `captureCallSite()`
+ * itself returned `null` (no usable stack frame), never a marker for "not yet captured": every real
+ * registrar closure captures one.
  */
 export type HookDefinition<Fn> = {
   readonly kind: HookKind
   readonly body: Fn
   readonly ruleId: string | null
   readonly tagExpr: string | null
+  readonly definedAt?: DefinitionSite | null
 }
 
 /**
@@ -34,8 +39,14 @@ export type HookDefinition<Fn> = {
 export const createHookRegistry = <Fn>() => {
   const records: Array<HookDefinition<Fn>> = []
 
-  const register = (kind: HookKind, ruleId: string | null, tagExpr: string | null, body: Fn): void => {
-    records.push({ kind, body, ruleId, tagExpr })
+  const register = (
+    kind: HookKind,
+    ruleId: string | null,
+    tagExpr: string | null,
+    body: Fn,
+    definedAt: DefinitionSite | null = null
+  ): void => {
+    records.push({ kind, body, ruleId, tagExpr, definedAt })
   }
 
   const hooks = (): ReadonlyArray<HookDefinition<Fn>> => [...records]

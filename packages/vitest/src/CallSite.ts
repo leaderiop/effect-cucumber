@@ -10,7 +10,12 @@ const lineAndColumn = /^(.+):(\d+):(\d+)$/
 
 const fileProtocol = "file://"
 
-const unrecordedLocation = "an unrecorded location"
+/**
+ * The shared "no call site available" wording — `captureCallSite()`'s own `formatCallSite` uses it,
+ * and `Hook.ts` reuses it verbatim (rather than a second, drifting copy) for a `HookEntry` whose
+ * `definedAt` is `null` (ADR-EC-052).
+ */
+export const unrecordedLocation = "an unrecorded location"
 
 const directoryOf = (file: string): string => {
   const lastSeparator = Math.max(file.lastIndexOf("/"), file.lastIndexOf("\\"))

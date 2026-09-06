@@ -154,3 +154,23 @@ Reference-identity preservation matters beyond print quality: `packages/vitest/t
 satisfies the mechanism the sketch itself named (a real `Error` with `.name`) — the same trade every prior
 roadmap-correction ADR in this series has made, verified against the real installed dependency rather than
 assumed from the sketch's prose.
+
+---
+
+> **Correction (2026-09-06, closed by [ADR-EC-052](052-hookfailurelocation-extends-stepfailurelocation-to-hooks.md)):**
+> the **Negative** section above states, as a deliberate scope boundary rather than an oversight:
+>
+>> A hook failure (`Before`/`BeforeStep`/`After`/`AfterStep`) still carries no step-shaped location —
+>> stated as a deliberate scope boundary (hooks are not steps) rather than an oversight; a hook's own
+>> `Effect.fn(kind)` span is what identifies it today, unchanged by this ADR.
+>
+> That carve-out is now CLOSED. ADR-EC-052 gives a failing hook of any of the six kinds its own
+> `HookFailureLocation` `.cause` — naming the hook's kind and its OWN registration call site — by the
+> identical mechanism this ADR already established for a step (`.cause`, a real `Error` subclass,
+> vitest's own unmodified default reporter). `packages/vitest/test/ScenarioEffect.test.ts`'s test
+> previously titled `"does NOT attach a location to a Before hook's own failure (out of scope for
+> ADR-EC-033)"` was rewritten to assert the opposite; `packages/vitest/test/Hook.test.ts`'s
+> combined-failure and single-failure `runHookBatch` tests were rewritten the same way. Nothing above
+> this correction is deleted or rewritten — the Decision and the rest of the Negative/Consequences
+> section stand as originally written for what THIS ADR itself shipped (the step-shaped fix); only the
+> one carved-out gap this correction names is now closed, by a separate ADR.

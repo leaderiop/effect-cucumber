@@ -4,3 +4,9 @@ Feature: A deliberately failing Scenario for the failure-panel gate
     Given I have 3 apples
     When I add 2 more apples
     Then I should have 6 apples
+
+  @hookfail
+  Scenario: A Before hook fails on purpose
+    Given I have 3 apples
+    When I add 2 more apples
+    Then I should have 5 apples

@@ -3,12 +3,15 @@
  * `UnusedStepDefinitionWarning`, `UndeclaredTagWarning`, `UnknownContainerWarning`,
  * `ExcludedScenariosNotice`, `StaleRerunManifestKeyWarning` (ADR-EC-038). Every author-controlled
  * string in a message is `JSON.stringify`'d so it cannot forge a second line (`test/Errors.test.ts`).
- * `StepFailureLocation`/`attachStepFailureLocation` are the failure-panel fix (ADR-EC-033) — a
- * different shape from everything else here, and documented separately below rather than folded
- * into this header.
+ * `StepFailureLocation`/`attachStepFailureLocation` are the failure-panel fix (ADR-EC-033), and
+ * `HookFailureLocation`/`attachHookFailureLocation` are its hook counterpart (ADR-EC-052, closing
+ * ADR-EC-033's own hook carve-out) — a different shape from everything else here, and documented
+ * separately below rather than folded into this header. Both share one private mutate-and-wrap
+ * helper (`attachFailureLocation`), generic over which concrete located-error class to construct.
  */
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
+import type { HookKind } from "./HookRegistry.ts"
 
 /**
  * A failing step's own location — its cucumber-expression pattern, the `.feature` file it lives
@@ -40,31 +43,77 @@ export class StepFailureLocation extends Error {
 }
 
 /**
- * Attach a `StepFailureLocation` to `value` as `.cause`, and return the result to re-fail/re-die
- * with. `value` is mutated IN PLACE when it is an object — the common case, since a step failure is
- * almost always a real `Error` (a thrown `AssertionError`, a domain `Schema.TaggedError`) — so its
- * reference identity survives for anything else already holding it (INV-EC-006's `cause.reasons`
- * walk, `test/acceptance/negative/after-on-failure.feature`'s own reference-identity assertion,
- * neither of which this function's call site touches, but both of which a REPLACING implementation
- * would have broken). Any `.cause` `value` already carried is preserved as the NEW
- * `StepFailureLocation`'s own `.cause`, so attaching a location never silently drops one.
+ * A failing hook's own kind, its `.feature` file and the line ITS OWN registration call (`Before(...)`,
+ * `After(...)`, and so on — never the Scenario it happened to be running for) sits on — the hook
+ * counterpart of `StepFailureLocation` above, attached the same way and for the identical reason
+ * (ADR-EC-052, closing ADR-EC-033's own "out of scope" carve-out for hooks). Same real-`Error`-subclass
+ * shape, for the identical reason: vitest's default reporter only recurses into `.cause` when it
+ * carries a `.name`.
+ */
+export class HookFailureLocation extends Error {
+  readonly hookKind: HookKind
+  readonly file: string
+  readonly line: number
+
+  constructor(
+    args: { readonly hookKind: HookKind; readonly file: string; readonly line: number; readonly cause?: unknown }
+  ) {
+    super(`${args.file}:${args.line}: ${args.hookKind} hook`, { cause: args.cause })
+    this.name = "HookFailureLocation"
+    this.hookKind = args.hookKind
+    this.file = args.file
+    this.line = args.line
+  }
+}
+
+/**
+ * The shared mutate-and-wrap mechanics behind `attachStepFailureLocation`/`attachHookFailureLocation`
+ * below: `value` is mutated IN PLACE when it is an object — the common case, since a step or hook
+ * failure is almost always a real `Error` (a thrown `AssertionError`, a domain `Schema.TaggedError`)
+ * — so its reference identity survives for anything else already holding it (INV-EC-006's
+ * `cause.reasons` walk, `test/acceptance/negative/after-on-failure.feature`'s own reference-identity
+ * assertion, neither of which either call site touches, but both of which a REPLACING implementation
+ * would have broken). Any `.cause` `value` already carried is threaded through to `makeLocation`, so
+ * it becomes the new located-error's own `.cause` rather than being silently dropped.
  *
- * The rare non-object failure (a step failing with a bare string or number, which nothing in this
- * codebase's own step bodies does, but `Effect`'s `E` channel does not forbid) has nowhere to hang
- * a `.cause`, so it is wrapped in a new `Error` instead — the only branch here that changes
- * identity rather than preserving it.
+ * The rare non-object failure (a step or hook failing with a bare string or number, which nothing in
+ * this codebase's own bodies do, but `Effect`'s `E` channel does not forbid) has nowhere to hang a
+ * `.cause`, so it is wrapped in a new `Error` instead — the only branch here that changes identity
+ * rather than preserving it.
+ *
+ * Generic over a FACTORY (`makeLocation`) rather than over the located-error class itself:
+ * `StepFailureLocation` and `HookFailureLocation` carry different identifying fields (`step` vs
+ * `hookKind`), so there is no shared field shape to be generic over — only the "build the concrete
+ * located-error instance given the pre-existing cause" step is actually shared.
+ */
+const attachFailureLocation = (value: unknown, makeLocation: (cause: unknown) => Error): unknown => {
+  if (typeof value === "object" && value !== null) {
+    const existingCause = "cause" in value ? (value as { cause?: unknown }).cause : undefined
+    ;(value as { cause?: unknown }).cause = makeLocation(existingCause)
+    return value
+  }
+  return new Error(String(value), { cause: makeLocation(undefined) })
+}
+
+/**
+ * Attach a `StepFailureLocation` to `value` as `.cause`, and return the result to re-fail/re-die
+ * with. See `attachFailureLocation` above for the shared mutate-in-place/preserve-existing-`.cause`
+ * mechanics; this wrapper only supplies WHICH located-error class to build (ADR-EC-033).
  */
 export const attachStepFailureLocation = (
   value: unknown,
   location: { readonly step: string; readonly file: string; readonly line: number }
-): unknown => {
-  if (typeof value === "object" && value !== null) {
-    const existingCause = "cause" in value ? (value as { cause?: unknown }).cause : undefined
-    ;(value as { cause?: unknown }).cause = new StepFailureLocation({ ...location, cause: existingCause })
-    return value
-  }
-  return new Error(String(value), { cause: new StepFailureLocation(location) })
-}
+): unknown => attachFailureLocation(value, (cause) => new StepFailureLocation({ ...location, cause }))
+
+/**
+ * Attach a `HookFailureLocation` to `value` as `.cause`, and return the result to re-fail/re-die
+ * with. See `attachFailureLocation` above for the shared mutate-in-place/preserve-existing-`.cause`
+ * mechanics; this wrapper only supplies WHICH located-error class to build (ADR-EC-052).
+ */
+export const attachHookFailureLocation = (
+  value: unknown,
+  location: { readonly hookKind: HookKind; readonly file: string; readonly line: number }
+): unknown => attachFailureLocation(value, (cause) => new HookFailureLocation({ ...location, cause }))
 
 /**
  * Why a `StepMatchError` was raised.

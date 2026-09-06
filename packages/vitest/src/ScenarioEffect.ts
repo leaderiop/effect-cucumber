@@ -7,13 +7,15 @@
  * - `After`/`AfterStep` run through `Effect.onExit` and never mask the guarded failure; the
  *   per-Scenario Layer is provided OUTERMOST, so hooks run before its finalizers (BEH-EC-006).
  * - The per-Scenario Layer is provided fresh on every execution and never memoised (INV-EC-002).
- * - A step's OWN failure or defect (never a hook's — Before/BeforeStep/After/AfterStep keep their
- *   own `Effect.fn(kind)` span identity, ADR-EC-005) is wrapped with `withStepFailureLocation`
- *   before it can propagate, so `.cause` carries the step's pattern and `.feature` location before
- *   the failure ever reaches vitest's reporter (ADR-EC-033). An `Unresolved` planned step's
- *   `StepMatchError` is NOT wrapped here: it already locates itself, in its own `message`/`uri`/
- *   `line` fields, since `Plan.ts` builds it directly from the Pickle rather than from a running
- *   step body.
+ * - A step's OWN failure or defect (never a hook's — a hook batch gains its OWN `HookFailureLocation`
+ *   one module over, inside `Hook.ts`'s `runHookBatch`, ADR-EC-052/BEH-EC-033 — and every hook kind
+ *   keeps its own `Effect.fn(kind)` span identity besides, ADR-EC-005) is wrapped with
+ *   `withStepFailureLocation` before it can propagate, so `.cause` carries the step's pattern and
+ *   `.feature` location before the failure ever reaches vitest's reporter (ADR-EC-033). An
+ *   `Unresolved` planned step's `StepMatchError` is NOT wrapped here either: it already locates
+ *   itself, in its own `message`/`uri`/`line` fields, since `Plan.ts` builds it directly from the
+ *   Pickle rather than from a running step body — the one scope boundary ADR-EC-033 still keeps,
+ *   now that ADR-EC-052 has closed the hook one.
  */
 import * as Effect from "effect/Effect"
 import type * as Scope from "effect/Scope"
@@ -62,7 +64,7 @@ export const buildScenarioEffect = (
     // scoped hook batch below is checked against (ADR-EC-035, BEH-EC-027). Read once, not per batch.
     const scenarioTags = args.plan.tags
     // The Before GATE — one `yield*` and nothing else. Note (d).
-    yield* runHookBatch(args.hooks.Before, scenarioTags)
+    yield* runHookBatch("Before", args.hooks.Before, scenarioTags)
     // A loop of `yield*` inside ONE generator, and not a combinator over the list: the
     // short-circuit below is the absence of a next iteration, not a check anyone maintains.
     for (const planned of args.plan.steps) {
@@ -73,18 +75,18 @@ export const buildScenarioEffect = (
       // The wrap is unconditional even when both batches are empty: `runHookBatch([], ...)` succeeds
       // immediately.
       yield* Effect.gen(function*() {
-        yield* runHookBatch(args.hooks.BeforeStep, scenarioTags)
+        yield* runHookBatch("BeforeStep", args.hooks.BeforeStep, scenarioTags)
         // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at registration (ADR-EC-005).
         // The location wrap covers ONLY this call — a BeforeStep/AfterStep hook failure is not a step
-        // failure and keeps propagating unwrapped.
+        // failure and gains its OWN `HookFailureLocation` inside `runHookBatch` instead (ADR-EC-052).
         yield* withStepFailureLocation(planned.step)(planned.step.body(...planned.step.args))
       }).pipe(
-        Effect.onExit(() => runHookBatch(args.hooks.AfterStep, scenarioTags))
+        Effect.onExit(() => runHookBatch("AfterStep", args.hooks.AfterStep, scenarioTags))
       )
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.
   }).pipe(
     // The finalizer ignores its `exit` on purpose: After hooks receive no exit (ADR-EC-005).
-    Effect.onExit(() => runHookBatch(args.hooks.After, args.plan.tags)),
+    Effect.onExit(() => runHookBatch("After", args.hooks.After, args.plan.tags)),
     Effect.provide(args.layer)
   )

@@ -10,25 +10,36 @@
  * filtered-out hook is excluded BEFORE it becomes a batch member — never invoked, never a source of a
  * dropped failure, and therefore never in tension with the independent-batch/combined-failure
  * guarantee (BEH-EC-017) that batch already has.
+ *
+ * ADR-EC-052/BEH-EC-033: `runHookBatch` also attaches a `HookFailureLocation` `.cause` to every
+ * failing/dying entry before it can propagate — the hook counterpart of `ScenarioEffect.ts`'s own
+ * `withStepFailureLocation`, closing ADR-EC-033's own "a hook still carries no location" carve-out.
+ * The `kind` a batch is being run for is a new LEADING parameter here: every call site already
+ * statically knows which `HookSet` key it is pulling, so there is nothing to infer.
  */
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
+import { unrecordedLocation } from "./CallSite.ts"
+import { attachHookFailureLocation } from "./Errors.ts"
 import type { HookDefinition, HookKind } from "./HookRegistry.ts"
 import { compileHookTagExpr, type TagMatcher } from "./HookTagExpression.ts"
 import type { ErasedEffect } from "./Plan.ts"
+import type { DefinitionSite } from "./Registry.ts"
 import { register } from "./Step.ts"
 
 export type HookBody = () => Effect.Effect<any, any, any>
 
 /**
- * One `HookSet` slot: a hook's normalised body, plus its own pre-compiled tag-expression matcher —
- * `null` for an unconditional hook (today's only shape before ADR-EC-035), which `runHookBatch` never
- * consults before invoking.
+ * One `HookSet` slot: a hook's normalised body, its own pre-compiled tag-expression matcher — `null`
+ * for an unconditional hook (today's only shape before ADR-EC-035), which `runHookBatch` never
+ * consults before invoking — and its own registration call site (ADR-EC-052), `null` only when
+ * `captureCallSite()` itself found none.
  */
 export type HookEntry = {
   readonly body: HookBody
   readonly matches: TagMatcher | null
+  readonly definedAt?: DefinitionSite | null
 }
 
 /**
@@ -82,7 +93,8 @@ export const groupHooks = (
       availableTags,
       kind: definition.kind,
       featureUri
-    })
+    }),
+    definedAt: definition.definedAt ?? null
   })
 
   for (const definition of definitions) {
@@ -157,11 +169,26 @@ export const mergeHookSets = (feature: HookSet, rule: HookSet): HookSet => ({
  * never contributes a failure to combine or drop; it is excluded BEFORE the loop reaches it, not a
  * batch member whose result is discarded afterward.
  *
+ * Every surviving entry's body is wrapped so a `HookFailureLocation` naming `kind` and the entry's
+ * OWN `definedAt` is attached as `.cause` before its failure/defect can propagate (ADR-EC-052,
+ * BEH-EC-033) — covering BOTH lanes a hook body can fail through, mirroring
+ * `ScenarioEffect.ts`'s `withStepFailureLocation`: a typed `Effect.fail` (`Effect.mapError`) and a
+ * thrown exception, which Effect's runtime turns into a defect (`Effect.catchDefect`). An entry with
+ * no recorded `definedAt` (a raw test fixture, or the rare case `captureCallSite()` found nothing)
+ * still gets a `HookFailureLocation`, naming the shared `unrecordedLocation` wording and line `0`
+ * rather than skipping the wrap.
+ *
+ * @param kind - which `HookSet` key `entries` was pulled from — every call site already knows this
+ * statically, so it is a plain leading argument, never inferred
  * @param entries - one kind's hook entries, already grouped and tag-compiled by `groupHooks`
  * @param scenarioTags - the CURRENT Scenario's own fully-flattened, inherited tags — `[]` for
  * `BeforeAllScenarios`/`AfterAllScenarios`, whose entries never carry a matcher to consult (BEH-EC-027)
  */
-export const runHookBatch = (entries: ReadonlyArray<HookEntry>, scenarioTags: ReadonlyArray<string>): ErasedEffect =>
+export const runHookBatch = (
+  kind: HookKind,
+  entries: ReadonlyArray<HookEntry>,
+  scenarioTags: ReadonlyArray<string>
+): ErasedEffect =>
   Effect.gen(function*() {
     const failures: Array<Cause.Cause<unknown>> = []
 
@@ -169,7 +196,16 @@ export const runHookBatch = (entries: ReadonlyArray<HookEntry>, scenarioTags: Re
       if (entry.matches !== null && !entry.matches(scenarioTags)) {
         continue
       }
-      const exit = yield* Effect.exit(entry.body())
+      const location = {
+        hookKind: kind,
+        file: entry.definedAt?.file ?? unrecordedLocation,
+        line: entry.definedAt?.line ?? 0
+      }
+      const located = entry.body().pipe(
+        Effect.mapError((error) => attachHookFailureLocation(error, location)),
+        Effect.catchDefect((defect) => Effect.die(attachHookFailureLocation(defect, location)))
+      )
+      const exit = yield* Effect.exit(located)
       if (Exit.isFailure(exit)) {
         failures.push(exit.cause)
       }
