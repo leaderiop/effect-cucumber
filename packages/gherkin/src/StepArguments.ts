@@ -20,6 +20,10 @@ export interface DocString {
   readonly content: string
   /** The content-type written after the opening delimiter; a REQUIRED `Option` field (ADR-EC-022). */
   readonly mediaType: Option.Option<string>
+  /** The feature file this DocString came from, mirroring `DataTable.uri` (ADR-EC-046). */
+  readonly uri: string
+  /** This step's line, mirroring `DataTable.line` (ADR-EC-046) — a DocString carries no location of its own. */
+  readonly line: number
 }
 
 /** The two things a step can carry; discriminate on `_tag`, never `in` or `instanceof`. */
@@ -61,7 +65,9 @@ export const stepArgumentsOf = (
       argument: {
         _tag: "DocString",
         content: docString.content,
-        mediaType: Option.fromUndefinedOr(docString.mediaType)
+        mediaType: Option.fromUndefinedOr(docString.mediaType),
+        uri,
+        line
       }
     })
   }

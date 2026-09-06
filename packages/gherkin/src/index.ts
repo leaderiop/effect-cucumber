@@ -5,7 +5,8 @@
  * parameter types are DATA declared through `ParameterTypeStore.layer([...])` and replayed per call into the fresh
  * registry on `ParsedFeature.parameterTypes`, which `createStepMatcher` takes; there is no process-wide store.
  * `ParsedStep.stepArguments` carries a step's DocString and DataTable wrapped and in source order, and
- * `decodeHashes` decodes table rows through `Schema` (ADR-EC-008). `ParsedScenario.exampleRow` carries an
+ * `decodeHashes` decodes table rows through `Schema` (ADR-EC-008); `decodeDocString` decodes a DocString's
+ * `content` the same way, one level shallower (ADR-EC-046). `ParsedScenario.exampleRow` carries an
  * Outline row's raw Examples data (`Option.none()` for a plain Scenario), and `decodeExamplesRow` decodes it
  * through `Schema` the same way (ADR-EC-032).
  *
@@ -43,6 +44,9 @@ export type { DataTable } from "./DataTable.ts"
 export { stepArgumentsOf } from "./StepArguments.ts"
 export type { DocString, StepArgument } from "./StepArguments.ts"
 
+/** `decodeDocString` (ADR-EC-046), the DocString counterpart of `decodeHashes`. */
+export { decodeDocString } from "./DocString.ts"
+
 /** An Outline row's raw Examples data, and `decodeExamplesRow` (ADR-EC-032) — one column not referenced
  * by any step pattern reaching a step body typed, decoded through `Schema` the same way a DataTable
  * already does. */
@@ -58,6 +62,9 @@ export type { DataTableErrorReason } from "./Errors.ts"
 
 export { ExamplesRowError } from "./Errors.ts"
 export type { ExamplesRowErrorReason } from "./Errors.ts"
+
+export { DocStringError } from "./Errors.ts"
+export type { DocStringErrorReason } from "./Errors.ts"
 
 export type {
   GherkinDocument,

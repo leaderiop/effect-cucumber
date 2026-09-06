@@ -137,3 +137,6 @@ entries:
   - id: "ADR-EC-045"
     file: "045-parametertypestoredefault-shares-one-registry-across-zero-customization-builds.md"
     title: "ParameterTypeStore.Default shares one process-wide ParameterTypeRegistry across every zero-customization build, instead of building fresh every time"
+  - id: "ADR-EC-046"
+    file: "046-docstring-decodes-through-schema-on-demand-mirroring-datatable.md"
+    title: "A DocString decodes through Schema on demand via decodeDocString, mirroring decodeHashes one level shallower — closes a gap against the DataTable/ExamplesRow precedent"

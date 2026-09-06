@@ -7,7 +7,7 @@ TEXT becomes typed arguments; this file specifies what happens to a step's DocSt
 the two arguments a cucumber-expression never sees, because they are not part of the step text a
 pattern is matched against at all.
 
-> **See:** [ADR-EC-008](../decisions/008-data-tables-and-doc-strings-decode-through-schema.md), [ADR-EC-025](../decisions/025-datatable-wrapper-accessor-contract.md)
+> **See:** [ADR-EC-008](../decisions/008-data-tables-and-doc-strings-decode-through-schema.md), [ADR-EC-025](../decisions/025-datatable-wrapper-accessor-contract.md), [ADR-EC-046](../decisions/046-docstring-decodes-through-schema-on-demand-mirroring-datatable.md)
 
 See [`spec/roadmap.md`](../roadmap.md) for what is built versus what is only specified — this
 document describes the contract, not the build status.
@@ -98,6 +98,32 @@ REQUIREMENT: A DocString MUST be plain data with no accessors: content, plus
              this library does not depend on, and a doc string does not. The
              _tag exists anyway, purely as the union's discriminant, and is NOT
              a hint that methods are coming.
+
+             A DocString also carries uri and line, mirroring DataTable's own
+             location fields (ADR-EC-046) — populated by stepArgumentsOf from
+             parameters it already receives, the same ones it already forwards
+             to makeDataTable on the DataTable branch.
+```
+
+```
+REQUIREMENT: decodeDocString(schema) MUST decode a DocString's content through
+             the given Schema, one level shallower than decodeHashes: content
+             is a single string, not an array of rows, so there is no row or
+             column to locate — only the DocString's own uri/line, mirroring
+             decodeHashes'/decodeExamplesRow's location reporting one level up
+             (ADR-EC-046).
+
+             A failed decode MUST produce a located DocStringError naming the
+             DocString's uri and line, and MUST quote the full, untruncated
+             content in its message — no ellipsis, no truncation — per this
+             file's own no-truncation policy (Errors.ts note (b)).
+
+             DocStringError's reason set is closed at exactly one:
+             DecodeFailed. A DocString has no header, width, or row shape of
+             its own to violate — the only way a decode can fail is the
+             caller's Schema rejecting content — so there is nothing else for
+             the reason union to name, the same closure ExamplesRowError
+             already has for the identical reason.
 ```
 
 ```
@@ -257,7 +283,21 @@ export interface DocString {
   readonly _tag: "DocString"
   readonly content: string
   readonly mediaType: Option.Option<string>
+  readonly uri: string
+  readonly line: number
 }
+
+export const decodeDocString: <S extends Schema.Constraint>(
+  schema: S
+) => (docString: DocString) => Effect.Effect<S["Type"], DocStringError, S["DecodingServices"]>
+
+export class DocStringError extends Schema.TaggedError<DocStringError>()("DocStringError", {
+  reason: Schema.Literals(["DecodeFailed"]),
+  uri: Schema.String,
+  line: Schema.OptionFromUndefinedOr(Schema.Number),
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Unknown)
+}) {}
 
 export interface DataTable {
   readonly _tag: "DataTable"
@@ -308,7 +348,10 @@ upstream of the point where that `Option` is constructed.
 
 `decodeHashes`' type parameter mirrors `Schema.decodeUnknownEffect`'s own, so a row schema carrying
 decoding services propagates them into the resulting Effect's `R` channel rather than erasing them to
-`never`.
+`never`. `decodeDocString`'s type parameter mirrors the same shape, one level shallower: `content` is
+a single string, not an array of rows, so there is no `Schema.Array` wrapping and no row/column to
+locate on failure (ADR-EC-046). `DocStringErrorReason` is exported alongside `DocStringError` as the
+plain one-member union above — closed at one for the same reason `ExamplesRowErrorReason` is.
 
 ### Worked example
 
