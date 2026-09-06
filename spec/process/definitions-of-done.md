@@ -37,7 +37,9 @@ Beyond the rows above, `check.yml` runs twelve further `verify:*` gates —
 `api-surface` (the `check-api-surface` script `spec/overview.md` used to call
 planned), `doc-examples` and `no-planning-refs` (no source or test comment may
 cite an artefact that lives only on the `planning-archive` branch) — plus
-`pnpm circular` and `pnpm test:shuffle`, for twenty-two commands in total. Each exists because something
+`pnpm verify:package-boundaries` (a declarative dependency-cruiser ruleset —
+supersedes the `pnpm circular`/madge check it replaced, ADR-EC-050) and
+`pnpm test:shuffle`, for twenty-two commands in total. Each exists because something
 it now catches was once green while being wrong.
 
 ## Test pyramid

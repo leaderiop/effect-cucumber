@@ -255,7 +255,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # verify-pack.sh builds each package itself, so no separate `pnpm build`.
       - run: pnpm verify:pack
-      - run: pnpm circular
+      # `pnpm build` and `pnpm test` exiting 0 do NOT prove packages/*/src stays inside its own
+      # boundaries — a declarative dependency-cruiser ruleset (`.dependency-cruiser.cjs`), not
+      # `pnpm circular` (madge), is now the authoritative gate. It supersedes madge's own
+      # circular-import check (proven equivalent on this codebase before madge was retired) and
+      # adds two rules madge never covered: `@effect-cucumber/gherkin/src` reaching a test runner
+      # or concrete platform implementation via an import (defense in depth alongside
+      # `verify:no-runner-dep` below, which additionally covers the package.json manifest side —
+      # a check this tool cannot express), and `@effect-cucumber/vitest/src` reaching gherkin's
+      # internals via a relative import that bypasses gherkin's public barrel — a real gap no
+      # script here enforced before this job. See ADR-EC-050.
+      - run: pnpm verify:package-boundaries
       # `pnpm test` exiting 0 does NOT prove @effect-cucumber/gherkin cannot
       # reach a test runner — a green suite is equally consistent with src/
       # having quietly grown a vitest import. A loadFeature that cannot reach a
