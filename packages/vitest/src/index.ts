@@ -27,8 +27,10 @@ export type { AttachmentsShape } from "./Attachments.ts"
 export {
   createParameterTypeStore,
   DataTableError,
+  decodeDocString,
   decodeExamplesRow,
   decodeHashes,
+  DocStringError,
   ExamplesRowError,
   LoadFeatureError,
   ParameterTypeStore,
@@ -37,6 +39,7 @@ export {
 export type {
   DataTable,
   DocString,
+  DocStringErrorReason,
   ExamplesRow,
   ExamplesRowErrorReason,
   ParameterTypeDefinition,

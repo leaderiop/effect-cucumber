@@ -465,6 +465,14 @@ describe("a step carrying both a DocString and a DataTable (F25)", () => {
     expect(docString.mediaType).toEqual(Option.none())
   })
 
+  it("F25: the wrapped DocString carries the step's uri and line", () => {
+    // Mirrors the DataTable analogue below (ADR-EC-046): a DocString is located the same way a
+    // DataTable is, from the same `stepArgumentsOf` uri/line parameters.
+    const docString = docStringAt(onlyStep(), 0)
+    expect(docString.uri).toBe("docstring-and-datatable.feature")
+    expect(docString.line).toBe(onlyStep().line)
+  })
+
   it("F25: the wrapped DataTable carries the step's uri and line", () => {
     // `correlateFixture` passes the fixture NAME as the uri, so this also asserts that the uri
     // reaching the wrapper is the caller's rather than the document's (which is always

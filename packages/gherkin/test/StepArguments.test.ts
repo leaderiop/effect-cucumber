@@ -103,6 +103,9 @@ describe("a step carrying one argument", () => {
     const docString = onlyDocString(argumentsOf({ docString: docStringOf(undefined, undefined) }))
     expect(docString.content).toBe("the docstring content")
     expect(docString.mediaType).toEqual(Option.none())
+    // A DocString is located the same way a DataTable is (ADR-EC-046): the uri/line it was handed.
+    expect(docString.uri).toBe(uri)
+    expect(docString.line).toBe(line)
   })
 
   it("wraps a lone DocString's mediaType as Option.some when the author wrote one", () => {
@@ -110,6 +113,8 @@ describe("a step carrying one argument", () => {
     // pair of tests is what stops the two branches collapsing into one.
     const docString = onlyDocString(argumentsOf({ docString: docStringOf(undefined, "text/plain") }))
     expect(docString.mediaType).toEqual(Option.some("text/plain"))
+    expect(docString.uri).toBe(uri)
+    expect(docString.line).toBe(line)
   })
 
   it("wraps a lone DataTable at the uri and line it was handed, rows intact", () => {

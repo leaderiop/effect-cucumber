@@ -1,5 +1,5 @@
 /**
- * The typed failure surface of `@effect-cucumber/gherkin`: three `Schema.TaggedError` classes, one plain-data
+ * The typed failure surface of `@effect-cucumber/gherkin`: five `Schema.TaggedError` classes, one plain-data
  * warning. Every error discriminates on a closed `reason` literal union, so a caller asserts `err.reason` and never
  * matches message text. A leaf of the package's module DAG: it imports only `effect`.
  *
@@ -126,6 +126,28 @@ export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTa
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   row: Schema.OptionFromUndefinedOr(Schema.Number),
   column: Schema.OptionFromUndefinedOr(Schema.String),
+  message: Schema.String,
+  cause: Schema.optionalKey(Schema.Unknown)
+}) {}
+
+/**
+ * Why a `DocStringError` was raised — closed at one, exactly like `ExamplesRowError` and for the
+ * same reason: a `DocString` has no header/width/row shape of its own to get wrong, only a single
+ * `content` value handed straight to a caller-supplied `Schema` (ADR-EC-046), so `DecodeFailed` is
+ * the only failure `decodeDocString` can produce.
+ */
+export type DocStringErrorReason = "DecodeFailed"
+
+/**
+ * A step's DocString argument failed to decode through a caller-supplied `Schema` (ADR-EC-046,
+ * `DocString.ts`). `line` is the step's own — `stepArgumentsOf`'s own `uri`/`line` parameters,
+ * mirroring `DataTableError.line` — kept `Option` for the same reason every other located field in
+ * this module is (ADR-EC-022).
+ */
+export class DocStringError extends Schema.TaggedError<DocStringError>()("DocStringError", {
+  reason: Schema.Literals(["DecodeFailed"]),
+  uri: Schema.String,
+  line: Schema.OptionFromUndefinedOr(Schema.Number),
   message: Schema.String,
   cause: Schema.optionalKey(Schema.Unknown)
 }) {}
