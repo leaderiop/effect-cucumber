@@ -348,15 +348,17 @@ export class ParameterTypeStore
   ): Layer.Layer<ParameterTypeStore, StepPatternError> =>
     Layer.effect(
       ParameterTypeStore,
-      Effect.suspend(() => {
-        try {
+      Effect.try({
+        try: () => {
           const store = createParameterTypeStore()
           for (const definition of definitions) {
             store.define(definition)
           }
-          return Effect.succeed(ParameterTypeStore.of(store))
-        } catch (thrown) {
-          return thrown instanceof StepPatternError ? Effect.fail(thrown) : Effect.die(thrown)
+          return ParameterTypeStore.of(store)
+        },
+        catch: (thrown): StepPatternError => {
+          if (thrown instanceof StepPatternError) return thrown
+          throw thrown
         }
       })
     )
