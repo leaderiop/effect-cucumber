@@ -1,5 +1,5 @@
 {
-  "name": "effect-cucumber-benchmarks",
+  "name": "benchmarks",
   "private": true,
   "version": "0.0.0",
   "description": "Black-box wall-clock benchmark suite comparing this library against the real @cucumber/cucumber npm package (ADR-EC-051). Not part of the published packages.",
