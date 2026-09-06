@@ -1,5 +1,95 @@
 # @effect-cucumber/vitest
 
+## 0.4.0
+
+### Minor Changes
+
+- 9798385: `describeFeature` gains a `tagExpression?: string` option — a registration-time filter expressed
+  in vitest's own boolean tag-expression grammar (`and`/`or`/`not`/`&&`/`||`/`!`/parens), the
+  IDENTICAL `createTagsFilter` engine (`@vitest/runner/utils`) this library already reuses for
+  tag-expression-scoped hooks (`Before(tagExpr, fn)`). Mutually exclusive with `includeTags`/
+  `excludeTags`: combining `tagExpression` with either throws a located error naming both option
+  names, at registration time, before anything collects.
+  
+  ```ts
+  // Compound conditions includeTags/excludeTags cannot express as two plain arrays.
+  describeFeature(feature, layer, define, { tagExpression: "@smoke and not @wip" })
+  ```
+  
+  A tag literal `tagExpression` names that is absent from the Feature's own declared tag universe,
+  or a malformed expression string, throws synchronously, before registration — the same
+  "declared tag universe" rule already enforced for `includeTags`/`excludeTags` and for hook tag
+  expressions.
+  
+  `ExcludedScenariosNotice` gains a matching `"ExcludedByTagExpression"` reason and a `tagExpression`
+  field, fixing a real bug this option's compiled-tag-matcher approach would otherwise have
+  introduced: without it, a `tagExpression` exclusion — always carrying an empty `includeTags`/
+  `excludeTags` pair — would have been mislabeled `ExcludedByExcludeTags` with an uninformative
+  empty list.
+  
+  See [ADR-EC-054](../spec/decisions/054-describefeature-tagexpression-option-reuses-vitests-createtagsfilter.md).
+- 53aeb6b: A step's `DocString` argument can now be decoded through `effect/Schema` on demand, mirroring
+  `decodeHashes` (DataTable) and `decodeExamplesRow` (ExamplesRow) one level shallower — a DocString
+  decodes a single string, so there is no row/column to locate, only the DocString's own `uri`/`line`
+  (both new fields on `DocString` itself, populated from the step's own location).
+  
+  ```ts
+  import { decodeDocString } from "@effect-cucumber/vitest"
+  import { Schema } from "effect"
+  
+  const Payload = Schema.Struct({ sku: Schema.String, qty: Schema.Number })
+  
+  Then("the request body is:", function*(docString) {
+    const payload = yield* decodeDocString(Schema.fromJsonString(Payload))(docString)
+    // ...
+  })
+  ```
+  
+  A decode failure raises a `DocStringError` (reason `DecodeFailed`) naming the DocString's `uri` and
+  `line`, quoting the full, untruncated content. See ADR-EC-046.
+- c763e88: `describeFeature` gains an opt-in `strict?: boolean` option, and a new suite-wide
+  `assertNoUnusedStepDefinitions` function is exported, both promoting an unused-step-definition
+  warning ([ADR-EC-019](../spec/decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md)) to a
+  real failure — the default (`strict` absent/`false`, `assertNoUnusedStepDefinitions` never called)
+  is byte-for-byte unchanged from ADR-EC-019's own non-fatal-by-default behavior.
+  
+  ```ts
+  // Per-Feature: fail THIS Feature's own ⚠ warning node immediately.
+  describeFeature(feature, layer, define, { strict: true })
+  
+  // Suite-wide: gate every collected Feature at once, e.g. in a dedicated verification test.
+  import { assertNoUnusedStepDefinitions, collectFeature } from "@effect-cucumber/vitest"
+  
+  assertNoUnusedStepDefinitions([collectFeature(featureA, layerA, defineA), collectFeature(featureB, layerB, defineB)])
+  ```
+  
+  The two mechanisms are independent, not layered: a Feature may use either, both, or neither.
+  `collectFeature`/`FeatureCollection` — previously reachable only inside this package's own test
+  suite — are promoted to the public barrel, since `assertNoUnusedStepDefinitions`'s whole design
+  assumes a consumer calls `collectFeature()` themselves. See
+  [ADR-EC-053](../spec/decisions/053-strict-mode-and-suite-wide-assertion-promote-unused-step-warnings.md).
+
+### Patch Changes
+
+- 2fd296f: A failing hook (`Before`, `After`, `BeforeStep`, `AfterStep`, `BeforeAllScenarios`, or
+  `AfterAllScenarios`) now gains a `HookFailureLocation` `.cause` — naming the hook's own kind and the
+  `.feature`-adjacent file/line its own registration call (`Before(...)`, `After(...)`, etc.) sits on —
+  before its failure or defect can propagate. This closes the hook carve-out
+  [ADR-EC-033](../spec/decisions/033-stepfailurelocation-attached-as-cause-not-a-rewritten-message.md)
+  deliberately left open: a step's own failure already reached vitest's failure panel with its pattern
+  and `.feature:line` attached; a hook's did not. `HookFailureLocation` is a real `Error` subclass, the
+  same shape as `StepFailureLocation`, printed for free by vitest's own unmodified default reporter as a
+  nested "Caused by:" block.
+  
+  This is a genuine, deliberate behavior change, not merely additive: a hook failure's own value is
+  mutated in place to carry a new `.cause` (any pre-existing `.cause` is preserved one level deeper), so
+  a consumer's own test asserting a hook failure's exact byte-identical shape (rather than recovering the
+  original error by reference identity, e.g. via `Cause.squash`) may need updating. No public API
+  signature changed. See
+  [ADR-EC-052](../spec/decisions/052-hookfailurelocation-extends-stepfailurelocation-to-hooks.md).
+- Updated dependencies [53aeb6b]
+  - @effect-cucumber/gherkin@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
