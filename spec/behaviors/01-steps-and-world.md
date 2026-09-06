@@ -314,6 +314,7 @@ REQUIREMENT: A field of World MUST NOT be reachable by a step unless it
 ## BEH-EC-013: Fail loudly on an unmatched, unused, or ambiguous step
 
 > **See:** [ADR-EC-019](../decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md)
+> **See:** [ADR-EC-053](../decisions/053-strict-mode-and-suite-wide-assertion-promote-unused-step-warnings.md)
 
 ```
 REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
@@ -324,6 +325,17 @@ REQUIREMENT: A Pickle step matching zero registered Given/When/Then/And/But
              silently pick the first-registered match. A registered pattern
              matching zero steps across the whole Feature MUST be reported
              as a Feature-level warning, not a hard failure.
+```
+
+```
+REQUIREMENT: describeFeature's `strict` option (default false, preserving the warning-only
+             default above exactly) MUST turn an unused-step-definition warning's reporter
+             node into a real failure of that node, surfacing the warning's own message
+             verbatim. Independently, a suite-wide `assertNoUnusedStepDefinitions` MUST throw,
+             naming every offending warning's message, when given any collected Feature
+             carrying unused-step-definition warnings, and MUST NOT throw otherwise. The two
+             mechanisms are independent, not layered — a Feature may use either, both, or
+             neither.
 ```
 
 ### Worked example

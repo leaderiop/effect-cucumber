@@ -164,7 +164,8 @@ const emitAll = (collected: FeatureCollection, api: TestApi): void => {
     scenarioLayers: collected.scenarioLayers,
     tagFilter: noTagFilter,
     rerunFilter: null,
-    rerunKeys: new Map<string, string>()
+    rerunKeys: new Map<string, string>(),
+    strict: false
   })
 }
 

@@ -60,6 +60,7 @@
  *   vitest's own "no test found in suite" failure, worse than what the filter was trying to avoid.
  */
 import type { ParsedScenario } from "@effect-cucumber/gherkin"
+import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import type * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
@@ -84,6 +85,22 @@ const warningTitle = (warning: UnusedStepDefinitionWarning): string =>
   `⚠ unused step definition: ${warning.keyword} ${JSON.stringify(warning.pattern)} (${
     Option.getOrElse(warning.definedAt, () => "an unrecorded location")
   })`
+
+/**
+ * What `strict` (ADR-EC-053) fails a ⚠ warning node's `Effect` with. `UnusedStepDefinitionWarning`
+ * itself is a plain interface, not an `Error` subclass, and vitest's default reporter only nicely
+ * renders a failure carrying `.name`/`.message` — the SAME reasoning `StepFailureLocation`/
+ * `HookFailureLocation` (`Errors.ts`, ADR-EC-033, ADR-EC-052) already document for exactly this
+ * problem. A bare `new Error(warning.message)` would satisfy that but is exactly what `@effect/tsgo`'s
+ * `globalErrorInEffectFailure` check (ADR-EC-016) flags as an untagged error in the Effect failure
+ * channel — this project's own build-gating diagnostic (`ignoreEffectErrorsInTscExitCode: false`), so
+ * a real, private `Data.TaggedError` is used instead: it is STILL a genuine `Error` subclass (`.name`
+ * is the tag, `.message` the field below), satisfying the reporter, while remaining a tagged failure
+ * the plugin recognizes. Never exported: nothing catches this by tag, it exists purely to be printed.
+ */
+class UnusedStepDefinitionFailure extends Data.TaggedError("UnusedStepDefinitionFailure")<{
+  readonly message: string
+}> {}
 
 const afterAllScenariosTitle = "⚙ AfterAllScenarios"
 
@@ -149,6 +166,13 @@ export const emitFeature = (
     readonly rerunKeys: ReadonlyMap<string, string>
     readonly rerunFilter: ReadonlySet<string> | null
     readonly onEmitted?: ((outcome: EmitOutcome) => void) | undefined
+    // Normalised (an absent/`false` `DescribeFeatureOptions.strict` collapsed to `false`) by
+    // `describeFeature.ts` before this call — required, never optional, at this internal layer
+    // (ADR-EC-053). Decided and applied ENTIRELY inside this closure; never crosses the `TestApi`
+    // seam as data, unlike `retry`/`timeout`/`skip` above, because turning a warning into a failure
+    // is a choice about WHICH Effect this module hands `api.effect`, not about how the framework
+    // runs it.
+    readonly strict: boolean
   }
 ): EmitOutcome => {
   const {
@@ -162,6 +186,7 @@ export const emitFeature = (
     ruleHooks,
     ruleLayers,
     scenarioLayers,
+    strict,
     tagFilter
   } = args
 
@@ -411,7 +436,20 @@ export const emitFeature = (
     // Reversing this to put the warnings first pushes the Feature's own Scenarios off the top of
     // the block.
     for (const warning of plan.warnings) {
-      api.effect(warningTitle(warning), () => Effect.void, warningEmitOptions) // contextFree: true
+      api.effect(
+        warningTitle(warning),
+        // `strict` (ADR-EC-053): the ADR-EC-019 default (`false`) keeps this node an always-passing
+        // `Effect.void`. `Effect.fail(new UnusedStepDefinitionFailure({ message: warning.message }))`,
+        // never `Effect.fail(warning)` directly and never a bare `new Error(...)` — see
+        // `UnusedStepDefinitionFailure`'s own doc comment above for why. This is NOT inconsistent
+        // with `ScenarioEffect.ts`'s own `Effect.fail(planned.error)`: that works unwrapped because
+        // `StepMatchError` already IS a real `Error`-shaped `Schema.TaggedError`, whereas
+        // `UnusedStepDefinitionWarning` never was one.
+        strict
+          ? () => Effect.fail(new UnusedStepDefinitionFailure({ message: warning.message }))
+          : () => Effect.void,
+        warningEmitOptions // contextFree: true
+      )
     }
 
     // Every counter above is final by the time this line runs, whether the framework runs the

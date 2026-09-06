@@ -171,7 +171,14 @@ const noRuleScope = {
   scenarioLayers: new Map<string, Layer.Layer<any, any, never>>()
 }
 
-const unfiltered = { tagFilter: noTagFilter, rerunFilter: null, rerunKeys: new Map<string, string>() }
+// `strict: false` here is the ADR-EC-019 default every pre-existing test in this file exercises —
+// `strict: true` is opted into explicitly, per call, by the tests that need it (ADR-EC-053).
+const unfiltered = {
+  tagFilter: noTagFilter,
+  rerunFilter: null,
+  rerunKeys: new Map<string, string>(),
+  strict: false
+}
 
 // The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe blocks below
 // reads: an append-only log of what ran, in run order.
@@ -690,6 +697,30 @@ describe("an unused step definition surfaces as a test node", () => {
 
       // ADR-EC-019 makes an unused pattern a warning and not a failure.
       assert.isTrue(Exit.isSuccess(yield* Effect.exit(thunkAt(records, 3)())))
+    }))
+
+  it.effect("emits it as an always-PASSING test with `strict: false` too — the explicit spelling of the ADR-EC-019 default (ADR-EC-053)", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered, strict: false })
+
+      assert.isTrue(Exit.isSuccess(yield* Effect.exit(thunkAt(records, 3)())))
+    }))
+
+  it.effect("emits it as a FAILING test carrying the warning's own message verbatim when `strict: true` (ADR-EC-053, BEH-EC-013)", () =>
+    Effect.gen(function*() {
+      const { api, records } = makeRecordingApi()
+
+      emitFeature({ api, plan: unusedPlan, layer, hooks: emptyHooks, ...noRuleScope, ...unfiltered, strict: true })
+
+      const exit = yield* Effect.exit(thunkAt(records, 3)())
+      assert.isTrue(Exit.isFailure(exit))
+      const squashed = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+      const expectedMessage = unusedPlan.warnings[0]?.message
+      assert.isDefined(expectedMessage)
+      // Not a generic string, not `[object Object]` — the warning's own `.message`, verbatim.
+      assert.strictEqual((squashed as Error).message, expectedMessage)
     }))
 
   it("gives two definitions sharing one pattern string two distinct titles", () => {
@@ -1606,7 +1637,8 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       ...noRuleScope,
       tagFilter,
       rerunFilter: null,
-      rerunKeys: new Map<string, string>()
+      rerunKeys: new Map<string, string>(),
+      strict: false
     })
     return { records, outcome }
   }
@@ -1691,7 +1723,8 @@ describe("a rerunFailedOnly filter composes after the tag filter, stamps EmitOpt
       ...noRuleScope,
       tagFilter,
       rerunFilter,
-      rerunKeys: filteringKeys
+      rerunKeys: filteringKeys,
+      strict: false
     })
     return { records, outcome }
   }
@@ -1806,7 +1839,8 @@ describe("a tag filter cannot change which step definitions are reported unused 
       ...noRuleScope,
       tagFilter,
       rerunFilter: null,
-      rerunKeys: new Map<string, string>()
+      rerunKeys: new Map<string, string>(),
+      strict: false
     })
     return records
   }
@@ -1899,7 +1933,8 @@ describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, 
         ...noRuleScope,
         tagFilter: makeTagFilter({ includeTags: ["@exampletag"] }),
         rerunFilter: null,
-        rerunKeys: new Map<string, string>()
+        rerunKeys: new Map<string, string>(),
+        strict: false
       })
 
       assert.deepStrictEqual(titlesOf(records), [])

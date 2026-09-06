@@ -1,8 +1,8 @@
 /**
- * Public entry point of `@effect-cucumber/vitest`: `describeFeature`, `loadFeature`, `defineSteps`,
- * `gherkinTags`, `Testing`, `Attachments`/`attach`, the dsl types, and the error/warning types. One
- * barrel, no subpath exports; its rows are gate-checked against `spec/overview.md` by
- * `scripts/verify-api-surface.sh`.
+ * Public entry point of `@effect-cucumber/vitest`: `describeFeature`, `collectFeature`,
+ * `assertNoUnusedStepDefinitions`, `loadFeature`, `defineSteps`, `gherkinTags`, `Testing`,
+ * `Attachments`/`attach`, the dsl types, and the error/warning types. One barrel, no subpath
+ * exports; its rows are gate-checked against `spec/overview.md` by `scripts/verify-api-surface.sh`.
  *
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
@@ -11,7 +11,15 @@
  * relative path.
  */
 
-export { describeFeature } from "./describeFeature.ts"
+/**
+ * `collectFeature`: register and plan a Feature without emitting anything — `describeFeature`
+ * minus the Emit stage. Promoted to the public barrel (ADR-EC-053) specifically so
+ * `assertNoUnusedStepDefinitions` below has a real, documented way to be handed something: its
+ * whole design assumes a consumer calls `collectFeature()` themselves, across every Feature in
+ * their suite, so the collector it feeds must be public API, not test-only-via-relative-import.
+ */
+export { collectFeature, describeFeature } from "./describeFeature.ts"
+export type { FeatureCollection } from "./describeFeature.ts"
 
 /**
  * A `World.attach()` equivalent — attach evidence to the running Scenario from a step or a
@@ -110,6 +118,14 @@ export type {
   UnusedStepDefinitionWarning,
   UnusedStepDefinitionWarningReason
 } from "./Errors.ts"
+
+/**
+ * The suite-wide half of strict mode (BEH-EC-013, ADR-EC-053): call once, across every
+ * `collectFeature()` result in a suite, to throw naming every unused-step-definition warning's own
+ * message. Independent of `DescribeFeatureOptions.strict`, the per-Feature half — a consumer may
+ * use either, both, or neither.
+ */
+export { assertNoUnusedStepDefinitions } from "./StrictMode.ts"
 
 /**
  * Standalone test-authoring helpers, called directly inside a step body rather than through the
