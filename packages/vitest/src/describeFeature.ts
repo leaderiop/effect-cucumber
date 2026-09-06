@@ -47,6 +47,15 @@ export interface DescribeFeatureOptions {
    * resolved against `process.cwd()`). Ignored when `rerunFailedOnly` is not `true`.
    */
   readonly rerunManifestPath?: string
+  /**
+   * Promote this Feature's own unused-step-definition warnings to a real failure of the
+   * reporter-channel warning node (BEH-EC-013, ADR-EC-019, ADR-EC-053). `false`/absent
+   * (the default): the exact ADR-EC-019 behavior — a non-fatal warning on three channels, none of
+   * them able to fail a run. Independent of `assertNoUnusedStepDefinitions` (the suite-wide
+   * mechanism): a Feature can use either, both, or neither — they are not layered, and using one
+   * does not disable or subsume the other.
+   */
+  readonly strict?: boolean
 }
 
 /**
@@ -209,6 +218,9 @@ export function describeFeature(
     tagFilter,
     rerunKeys,
     rerunFilter,
-    onEmitted
+    onEmitted,
+    // Normalised here, the one place a caller-facing `undefined`/`false` is collapsed to a plain
+    // boolean before crossing into `Runner.ts`'s own required field (ADR-EC-053).
+    strict: options?.strict === true
   })
 }
