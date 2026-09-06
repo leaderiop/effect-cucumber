@@ -15,7 +15,10 @@ export interface TestContextOptions {
   ruleOptions?: Array<unknown>
 }
 
-export const createTestContext = (options: TestContextOptions = {}) => {
+// Not exported (ADR-EC-051/knip): only `runRule` below, in this same file, calls it. Still copied
+// verbatim by a consumer who copies this whole file (see the module doc comment above) — dropping
+// the `export` keyword changes nothing about what gets copied or how it behaves.
+const createTestContext = (options: TestContextOptions = {}) => {
   const {
     sourceCode = "",
     filename = "/test/file.ts",

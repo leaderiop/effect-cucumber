@@ -82,9 +82,3 @@ export const createRegistry = <Fn>(featureName: string) => {
 
   return { pushScope, popScope, currentScope, register, definitions }
 }
-
-/**
- * Derived from the factory rather than hand-written, following `ParameterTypeStoreShape`'s
- * precedent, so the shape and the thing it describes cannot drift apart.
- */
-export type RegistryShape<Fn> = ReturnType<typeof createRegistry<Fn>>

@@ -1,0 +1,20 @@
+{
+  // Standalone — checked via its own `pnpm --filter benchmarks check` script (`tsc -p
+  // tsconfig.json --noEmit`), never via the root `tsc -b`. Deliberately absent from root
+  // tsconfig.json's `references` array (ADR-EC-051): this workspace is private, unpublished, and
+  // not part of the two packages' build graph.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    // The base sets `${configDir}/src`, which would reject `cucumber/`, `effect-cucumber/` and
+    // `test/`, all siblings of `src/` here.
+    "rootDir": "${configDir}",
+    // `import.meta.url`, `node:child_process`, `node:fs`, `process.argv`, etc.
+    "types": ["node"]
+  },
+  "include": ["src", "cucumber", "effect-cucumber", "test"]
+}

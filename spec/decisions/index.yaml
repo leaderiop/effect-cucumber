@@ -143,3 +143,6 @@ entries:
   - id: "ADR-EC-050"
     file: "050-dependency-cruiser-replaces-madge-and-adds-import-boundary-rules.md"
     title: "dependency-cruiser becomes the authoritative, declarative package-boundary gate — replaces madge --circular and closes a previously-unenforced deep-import gap"
+  - id: "ADR-EC-051"
+    file: "051-knip-and-a-cucumber-js-comparison-benchmark-suite.md"
+    title: "knip for monorepo-wide dead-export detection, and a black-box wall-clock benchmark suite comparing this library against the real @cucumber/cucumber package"
