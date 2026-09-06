@@ -8,8 +8,13 @@
  * mean, where the Scenario is in hand; only a pattern that does not COMPILE throws.
  *
  * Compilation is memoised per `(registry, pattern)`, never per pattern: an expression snapshots the registry it
- * was built against (`test/expressions-pin.test.ts`) and `buildRegistry()` is fresh per call. It is LAZY — nothing
- * compiles until the first `match`. This module takes a registry and never imports `./ParameterTypes.ts`. The two
+ * was built against (`test/expressions-pin.test.ts`), and `createParameterTypeStore().buildRegistry()` is fresh
+ * per call — as is any customized store's. `ParameterTypeStore.Default`'s zero-customization case is the one
+ * exception (ADR-EC-045): it hands every such call the SAME registry object on purpose, so this cache actually
+ * shares compiled expressions across Feature files that use no custom parameter types. Either way, this module
+ * only ever sees whatever registry object it is given and keys on its identity — it has no opinion on how that
+ * object came to be. It is LAZY — nothing compiles until the first `match`. This module takes a registry and never
+ * imports `./ParameterTypes.ts`. The two
  * runtime transform guards live here: `Argument.getValue` returns a transform's result unwrapped and lets a throw
  * escape synchronously (`test/expressions-pin.test.ts`). `D` is an opaque caller payload, never inspected.
  */

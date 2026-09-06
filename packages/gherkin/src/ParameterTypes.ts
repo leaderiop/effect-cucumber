@@ -7,6 +7,16 @@
  * `ParameterTypeStore.layer(definitions)` one carrying custom types, `createParameterTypeStore()` a plain one. The
  * store is a `Context.Service` so `loadFeature`/`parseFeature` receive it ambiently.
  *
+ * **`ParameterTypeStore.Default`'s registry is the one exception to "fresh per build"** (ADR-EC-045): when a
+ * `Default`-provided store's `buildRegistry()` is called while it still carries zero records — the ordinary case,
+ * since nothing customizes it — it returns a single process-wide, built-ins-only `ParameterTypeRegistry` shared by
+ * every such call, instead of constructing a new one every time. This is what lets `StepMatcher.ts`'s
+ * registry-keyed expression cache actually share compiled expressions across Feature files that use no custom
+ * parameter types, which is most of them. A store that has had `define` called on it before its own
+ * `buildRegistry` still gets a correctly fresh, unshared registry (`test/ParameterTypes.test.ts`), and
+ * `ParameterTypeStore.layer(...)`/`createParameterTypeStore()` are untouched by this — both still build fresh on
+ * every call, which is the isolation guarantee ADR-EC-023's amendment exists to protect.
+ *
  * Rejections detectable from the definition alone happen at DEFINITION time. A preferential-regexp collision is
  * only knowable at replay and surfaces from `buildRegistry` as `InvalidParameterTypeDefinition`, never as a
  * feature-file `ParseFailed` (`test/ParameterTypes.test.ts`). `transform` omits upstream's `PromiseLike` half:
@@ -274,6 +284,39 @@ export const createParameterTypeStore = () => {
 export type ParameterTypeStoreShape = ReturnType<typeof createParameterTypeStore>
 
 /**
+ * Lazily built once per process, never rebuilt or mutated afterward: the built-ins-only registry every
+ * zero-customization `ParameterTypeStore.Default` store shares (ADR-EC-045). Built from a throwaway
+ * `createParameterTypeStore()` carrying no records, so it is exactly what a fresh built-ins-only
+ * `buildRegistry()` call would have produced — this module never registers a custom type into it.
+ */
+let sharedDefaultRegistry: ParameterTypeRegistry | undefined
+
+/** First caller builds it, every later caller reuses the same instance. */
+const sharedDefaultParameterTypeRegistry = (): ParameterTypeRegistry => {
+  if (sharedDefaultRegistry === undefined) {
+    sharedDefaultRegistry = createParameterTypeStore().buildRegistry()
+  }
+  return sharedDefaultRegistry
+}
+
+/**
+ * The store `ParameterTypeStore.Default` provides: a FRESH `createParameterTypeStore()`, so `define`/`definitions`
+ * behave exactly as they always have, with `buildRegistry` overridden to return the shared singleton above WHEN
+ * this particular store still has zero records at call time. A store that has had `define` called on it — not
+ * how `ParameterTypeStore.Default` is meant to be used, but the shape permits it, and `test/ParameterTypes.test.ts`
+ * exercises exactly this — falls through to `inner.buildRegistry()`, a genuinely fresh, unshared registry, so a
+ * definition never leaks into the shared instance.
+ */
+const createDefaultParameterTypeStore = (): ParameterTypeStoreShape => {
+  const inner = createParameterTypeStore()
+  return {
+    define: inner.define,
+    definitions: inner.definitions,
+    buildRegistry: () => inner.definitions().length === 0 ? sharedDefaultParameterTypeRegistry() : inner.buildRegistry()
+  }
+}
+
+/**
  * The store as an ambient `Context.Service` (ADR-EC-023): `loadFeature`/`parseFeature` require it and nothing
  * provides it by default. `.of(...)` lifts a plain shape into the branded service value.
  */
@@ -284,10 +327,15 @@ export class ParameterTypeStore
   static readonly layerOf = (store: ParameterTypeStoreShape): Layer.Layer<ParameterTypeStore> =>
     Layer.succeed(ParameterTypeStore, ParameterTypeStore.of(store))
 
-  /** A FRESH built-ins-only store per Layer build; two builds never see each other's definitions. */
+  /**
+   * A FRESH built-ins-only store per Layer build; two builds never see each other's DEFINITIONS
+   * (`test/ParameterTypes.test.ts`). Its `buildRegistry()` shares one process-wide registry across every build
+   * that never customizes it (ADR-EC-045) — the two are independent guarantees, and this one only narrows how
+   * many distinct `ParameterTypeRegistry` objects the common case allocates, never what a store can see.
+   */
   static readonly Default: Layer.Layer<ParameterTypeStore> = Layer.sync(
     ParameterTypeStore,
-    () => ParameterTypeStore.of(createParameterTypeStore())
+    () => ParameterTypeStore.of(createDefaultParameterTypeStore())
   )
 
   /**
