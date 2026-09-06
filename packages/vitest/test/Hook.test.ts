@@ -8,6 +8,7 @@ import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Ref from "effect/Ref"
+import { unrecordedLocation } from "../src/CallSite.ts"
 import { HookFailureLocation } from "../src/Errors.ts"
 import {
   emptyHookSet,
@@ -457,6 +458,57 @@ describe("runHookBatch runs an independent batch of hooks", () => {
         assert.strictEqual(location.hookKind, "After")
         assert.strictEqual(location.file, "features/only.feature")
         assert.strictEqual(location.line, 7)
+      })
+  )
+
+  it.effect(
+    "a hook that THROWS (a defect, not Effect.fail) still gains a HookFailureLocation .cause, via the catchDefect lane (ADR-EC-052)",
+    () =>
+      Effect.gen(function*() {
+        const boom = { tag: "the hook's own thrown defect" }
+        const definedAt: DefinitionSite = { file: "features/defect.feature", line: 42, column: 2 }
+        const throwing: HookEntry = {
+          matches: null,
+          body: () =>
+            Effect.sync(() => {
+              throw boom
+            }),
+          definedAt
+        }
+
+        const exit = yield* Effect.exit(runHookBatch("BeforeStep", [throwing], []))
+
+        assert.isTrue(Exit.isFailure(exit))
+        // The defect, not a typed failure — squashed identically either way, still the SAME original object.
+        assert.strictEqual(Exit.isFailure(exit) ? Cause.squash(exit.cause) : "the batch unexpectedly succeeded", boom)
+        const cause = (boom as { cause?: unknown }).cause
+        assert.instanceOf(cause, HookFailureLocation)
+        const location = cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "BeforeStep")
+        assert.strictEqual(location.file, "features/defect.feature")
+        assert.strictEqual(location.line, 42)
+      })
+  )
+
+  it.effect(
+    "a failing hook with no captured definedAt (definedAt null/absent) falls back to unrecordedLocation and line 0, never undefined or a crash (ADR-EC-052)",
+    () =>
+      Effect.gen(function*() {
+        const theError = { tag: "no call site was ever captured for this one" }
+        // `unconditional` never sets `definedAt` — the exact shape a hook whose registration-time
+        // `captureCallSite()` returned null (or an older/degraded HookDefinition with the field simply
+        // absent) would produce.
+        const failing = unconditional(() => Effect.fail(theError))
+
+        const exit = yield* Effect.exit(runHookBatch("AfterAllScenarios", [failing], []))
+
+        assert.isTrue(Exit.isFailure(exit))
+        const cause = (theError as { cause?: unknown }).cause
+        assert.instanceOf(cause, HookFailureLocation)
+        const location = cause as HookFailureLocation
+        assert.strictEqual(location.hookKind, "AfterAllScenarios")
+        assert.strictEqual(location.file, unrecordedLocation)
+        assert.strictEqual(location.line, 0)
       })
   )
 
