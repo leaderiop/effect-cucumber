@@ -324,6 +324,18 @@ const forgingNotice = () =>
     excludeTags: [forgingTag]
   })
 
+// ADR-EC-054: tagExpression is mutually exclusive with includeTags/excludeTags, so a real caller
+// only ever hands this factory an empty pair alongside a defined tagExpression — never all three.
+const tagExpressionNotice = () =>
+  makeExcludedScenariosNotice({
+    featureName: "Checkout",
+    uri: "features/checkout.feature",
+    count: 2,
+    includeTags: [],
+    excludeTags: [],
+    tagExpression: "@smoke and not @wip"
+  })
+
 describe("UndeclaredTagWarning", () => {
   it("carries the exact _tag and the one reason member", () => {
     const { _tag } = undeclaredWarning()
@@ -433,6 +445,24 @@ describe("ExcludedScenariosNotice derives its reason from the two arrays", () =>
     expect(includeOnlyNotice().message).toContain("ExcludedByIncludeTags")
     expect(excludeOnlyNotice().message).toContain("ExcludedByExcludeTags")
     expect(bothFiltersNotice().message).toContain("ExcludedByBothTagFilters")
+  })
+
+  it("reports ExcludedByTagExpression when tagExpression is set, regardless of the (always-empty) tag arrays (ADR-EC-054)", () => {
+    // The real bug this ADR fixed: before it, an empty includeTags/excludeTags pair alongside a
+    // tagExpression filter fell through to ExcludedByExcludeTags with an empty, uninformative list.
+    const reason: ExcludedScenariosNoticeReason = "ExcludedByTagExpression"
+    expect(tagExpressionNotice().reason).toBe(reason)
+    expect(tagExpressionNotice().message).toContain("ExcludedByTagExpression")
+    expect(tagExpressionNotice().message).not.toContain("ExcludedByExcludeTags")
+    expect(tagExpressionNotice().message).not.toContain("ExcludedByIncludeTags")
+  })
+
+  it("names tagExpression and its quoted value in the message, never includeTags/excludeTags", () => {
+    const { message } = tagExpressionNotice()
+    expect(message).toContain("tagExpression")
+    expect(message).toContain(JSON.stringify("@smoke and not @wip"))
+    expect(message).not.toContain("includeTags")
+    expect(message).not.toContain("excludeTags")
   })
 })
 

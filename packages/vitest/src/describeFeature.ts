@@ -26,12 +26,27 @@ import { collect, type FeatureCollection, type LayerArgument } from "./Collect.t
 // emission walk — `RerunKey.ts`'s own header has the argument (ADR-EC-038).
 import { rerunKeysForPlan } from "./RerunKey.ts"
 import { defaultRerunManifestPath, readRerunManifest } from "./RerunManifest.ts"
+import { compileFeatureTagExpression, featureTagUniverse } from "./TagExpression.ts"
 import { isSkipped, makeTagFilter, shouldEmit } from "./Tags.ts"
 import { sharedLayerTestApi, vitestTestApi } from "./VitestTestApi.ts"
 
 export interface DescribeFeatureOptions {
   readonly includeTags?: ReadonlyArray<string>
   readonly excludeTags?: ReadonlyArray<string>
+  /**
+   * A registration-time filter expressed in vitest's own boolean tag-expression grammar
+   * (`and`/`or`/`not`/`&&`/`||`/`!`/parens) — the IDENTICAL `createTagsFilter` engine
+   * (`@vitest/runner/utils`) this library already reuses for tag-expression-scoped hooks
+   * (`Before(tagExpr, fn)`, ADR-EC-035). Compiled once per `describeFeature` call, against this
+   * Feature's own declared tag universe (`featureTagUniverse(feature.allScenarios)`) — an
+   * expression naming a tag literal absent from every Scenario in this Feature, or a malformed
+   * expression string, throws synchronously, before anything registers (ADR-EC-054).
+   *
+   * Mutually exclusive with `includeTags`/`excludeTags`: setting `tagExpression` alongside either
+   * throws a located error naming both option names, rather than silently picking one — see
+   * [ADR-EC-054](../../../spec/decisions/054-describefeature-tagexpression-option-reuses-vitests-createtagsfilter.md).
+   */
+  readonly tagExpression?: string
   /**
    * Filter registration to only the Scenarios a rerun manifest names as failed (ADR-EC-038,
    * BEH-EC-030). `false`/absent (the default): no filter, `rerunManifestPath` is never read. `true`
@@ -121,6 +136,35 @@ export function describeFeature(
   define: (dsl: FeatureDsl<any, any>) => void,
   options?: DescribeFeatureOptions
 ): void {
+  // ADR-EC-054: BOTH checks below run before anything else — even before `collect()`, which is
+  // what actually calls `define` and registers real vitest nodes — so a throw here (a
+  // self-contradictory option combination, or a malformed/undeclared-tag expression) registers
+  // NOTHING, exactly like `collectFeature`/`describeFeature`'s existing "register, then plan"
+  // ordering already guarantees for every other synchronous throw in this file.
+  if (
+    options?.tagExpression !== undefined &&
+    (options.includeTags !== undefined || options.excludeTags !== undefined)
+  ) {
+    throw new Error(
+      `describeFeature's options set BOTH tagExpression (${JSON.stringify(options.tagExpression)}) and `
+        + `includeTags/excludeTags (includeTags: ${JSON.stringify(options.includeTags ?? null)}, `
+        + `excludeTags: ${JSON.stringify(options.excludeTags ?? null)}) for Feature ${
+          JSON.stringify(feature.name)
+        } (${feature.uri}). These are mutually exclusive registration filters — choose one.`
+    )
+  }
+  // Compiled against the WHOLE Feature's declared tag universe, the same scope
+  // `HookTagExpression.ts`'s own `compileHookTagExpr` already validates a hook's tag expression
+  // against (ADR-EC-035) — never only the Scenarios that happen to survive some other filter,
+  // since no other filter can be active here (the mutual-exclusion check above).
+  const tagExpressionMatcher = options?.tagExpression === undefined
+    ? null
+    : compileFeatureTagExpression({
+      tagExpr: options.tagExpression,
+      availableTags: featureTagUniverse(feature.allScenarios),
+      featureUri: feature.uri
+    })
+
   // REGISTER, then PLAN — both inside `collect`, which `collectFeature` shares verbatim.
   const collection = collect(feature, layerArgument, define)
 
@@ -133,8 +177,15 @@ export function describeFeature(
   }
 
   // EMIT, and last: the loop above runs first so the warnings appear ABOVE the emitted block in
-  // collection output rather than interleaved with it. All NINE fields.
-  const tagFilter = makeTagFilter(options ?? {})
+  // collection output rather than interleaved with it. All NINE fields. `tagExpressionMatcher`,
+  // when set, overrides `includeTags`/`excludeTags` entirely inside `makeTagFilter` — moot here
+  // since the mutual-exclusion check above already guarantees the other two are absent whenever it
+  // is set.
+  const tagFilter = makeTagFilter({
+    includeTags: options?.includeTags,
+    excludeTags: options?.excludeTags,
+    expression: tagExpressionMatcher
+  })
 
   // Computed UNCONDITIONALLY — every run, not only a `rerunFailedOnly` one — because the write-side
   // script that produces a manifest for a LATER run needs each Scenario's key present in an
@@ -178,7 +229,12 @@ export function describeFeature(
           count: outcome.excludedScenarioCount,
           // The normalised arrays, not the optional `options` fields: the notice's fields are required.
           includeTags: tagFilter.include,
-          excludeTags: tagFilter.exclude
+          excludeTags: tagFilter.exclude,
+          // The raw option string, not `tagFilter.expression` (a compiled function, unfit to
+          // print) — `undefined` whenever `tagExpression` was not set, which is what tells
+          // `makeExcludedScenariosNotice` to derive its reason from the two arrays above instead
+          // (ADR-EC-054).
+          tagExpression: options?.tagExpression
         }).message
       )
     }

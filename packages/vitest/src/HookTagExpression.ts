@@ -4,6 +4,14 @@
  * `--tagsFilter` (`and`/`or`/`not`/`&&`/`||`/`!`/parens) — rather than a second, hand-rolled grammar
  * or `@cucumber/tag-expressions` (not in this repo's dependency tree at all, ADR-EC-035).
  *
+ * The actual compile-and-wrap-on-throw mechanics now live in `TagExpression.ts` (ADR-EC-054),
+ * shared with `describeFeature.ts`'s own `tagExpression` option — the second, independent call
+ * site for the identical engine. This module re-exports `featureTagUniverse`/`TagMatcher` from
+ * there for backward compatibility with its own existing importers (`Collect.ts`,
+ * `HookTagExpression.test.ts`), and `compileHookTagExpr` below calls the shared
+ * `compileTagExpression`, wrapping its throw in `HookTagExpressionError` exactly as before this
+ * extraction — this module's own OWN public behaviour is unchanged.
+ *
  * Invariants a reader must not tidy away:
  * - `createTagsFilter` validates every tag literal an expression names against a caller-supplied
  *   "available tags" universe and throws SYNCHRONOUSLY, at compile time (not lazily, when the
@@ -15,26 +23,11 @@
  *   "declared tag universe" rule [ADR-EC-026](../../../spec/decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
  *   already established for `includeTags`/`excludeTags`, rediscovered here for a different call site.
  */
-import { createTagsFilter } from "@vitest/runner/utils"
 import type { HookKind } from "./HookRegistry.ts"
+import { compileTagExpression, featureTagUniverse, type TagMatcher } from "./TagExpression.ts"
 
-/**
- * A compiled tag-expression matcher: given a Scenario's own fully-flattened tags, does this hook's
- * expression select it.
- */
-export type TagMatcher = (scenarioTags: ReadonlyArray<string>) => boolean
-
-/**
- * Every literal tag anywhere in a Feature — Feature, Rule, Scenario and Examples tags all already
- * flattened onto each `ParsedScenario.tags` by the parser — deduplicated. This is the "available
- * tags" universe `createTagsFilter` requires: an expression like `@db and not @slow` needs `@slow`
- * declared even for a Scenario that does not carry it.
- *
- * @param scenarios - every Scenario in the Feature (`ParsedFeature.allScenarios`)
- */
-export const featureTagUniverse = (
-  scenarios: ReadonlyArray<{ readonly tags: ReadonlyArray<string> }>
-): ReadonlyArray<string> => [...new Set(scenarios.flatMap((scenario) => scenario.tags))].toSorted()
+export { featureTagUniverse }
+export type { TagMatcher }
 
 /**
  * A hook's own tag expression names a tag literal absent from its Feature's declared tag universe
@@ -95,8 +88,7 @@ export const compileHookTagExpr = (
   if (args.tagExpr === null) return null
   const tagExpr = args.tagExpr
   try {
-    const filter = createTagsFilter([tagExpr], args.availableTags.map((name) => ({ name })))
-    return (scenarioTags: ReadonlyArray<string>) => filter([...scenarioTags])
+    return compileTagExpression(tagExpr, args.availableTags)
   } catch (cause) {
     throw new HookTagExpressionError({ kind: args.kind, tagExpr, featureUri: args.featureUri, cause })
   }

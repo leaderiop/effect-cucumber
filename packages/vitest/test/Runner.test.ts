@@ -1623,6 +1623,10 @@ describe("`@retry` cannot rescue a Scenario whose BeforeAllScenarios already fai
   )
 })
 
+// Module scope, not inline in the `it` below: a closure that captures nothing from its parent
+// scope belongs at the top level (oxlint's `consistent-function-scoping`).
+const isSlowTagged = (tags: ReadonlyArray<string>) => tags.includes("@slow")
+
 // Roadmap success criterion 4: a Scenario the filter removes produces NO emission record — it is absent, not skipped.
 describe("a filtered-out Scenario produces no emission record at all", () => {
   const filteringPlan = planFeature({ feature: filtering, definitions: browseIn("Filtering") })
@@ -1681,6 +1685,17 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       { kind: "describe", name: "nested", depth: 1 }
     ])
     assert.deepStrictEqual(outcome, { excludedScenarioCount: 5, rerunExcludedScenarioCount: 0 })
+  })
+
+  it("an expression-based filter (ADR-EC-054) restricts emission identically to includeTags/excludeTags, across the Rule's nested loop too", () => {
+    // A hand-built TagFilter, never `makeTagFilter` — this proves `emitFeature`'s own `shouldEmit`
+    // call honours `expression` regardless of how the filter was constructed.
+    const { outcome, records } = emitFiltered({ include: [], exclude: [], expression: isSlowTagged })
+
+    // Identical to "includeTags restricts emission..." above, by construction: `@slow` selects the
+    // same two Scenarios an `includeTags: ["@slow"]` filter already does.
+    assert.deepStrictEqual(titlesOf(records), ["slow one", "slow nested"])
+    assert.deepStrictEqual(outcome, { excludedScenarioCount: 3, rerunExcludedScenarioCount: 0 })
   })
 })
 

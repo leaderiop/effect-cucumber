@@ -10,8 +10,9 @@ import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
-import { collectFeature, type FeatureCollection } from "../src/describeFeature.ts"
+import { collectFeature, describeFeature, type FeatureCollection } from "../src/describeFeature.ts"
 import type { ScenarioDsl } from "../src/Dsl.ts"
+import { TagExpressionError } from "../src/TagExpression.ts"
 
 // A service both candidate Layers below provide, carrying a value that says which one built it.
 class Marker extends Context.Service<Marker, { readonly who: string }>()("Marker") {}
@@ -176,7 +177,7 @@ describe("a step definition carries the container it was registered inside", () 
 describe("a step definition records where its author wrote it", () => {
   it("names this test file and the exact line of the Given call, not a line inside the package", () => {
     // POSITION-SENSITIVE: the literal below is the real line number of the `Given(...)` call two lines further down.
-    const givenLine = 181
+    const givenLine = 182
     const collected = collectFeature(feature, Layer.empty, ({ Given }) => {
       Given("a located step", noop)
     })
@@ -640,6 +641,40 @@ describe("Before/After/BeforeStep/AfterStep accept a leading tag-expression stri
         AfterStep("@nonexistent", noop)
       })
     ).toThrowError(/@nonexistent/)
+  })
+})
+
+describe("describeFeature's tagExpression option (ADR-EC-054, BEH-EC-008)", () => {
+  // `define` never runs in any of these: the mutual-exclusion check and the expression compile
+  // both happen as the VERY FIRST thing describeFeature's body does, before `collect()` — so a
+  // throw here proves nothing was registered, and `() => {}` never needs to satisfy the Feature's
+  // own steps.
+  it("throws a located error naming BOTH option names when combined with includeTags", () => {
+    expect(() => describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@db", includeTags: ["@db"] }))
+      .toThrowError(/tagExpression/)
+    expect(() => describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@db", includeTags: ["@db"] }))
+      .toThrowError(/includeTags/)
+  })
+
+  it("throws the identical way when combined with excludeTags instead", () => {
+    expect(() =>
+      describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@db", excludeTags: ["@slow"] })
+    ).toThrowError(/tagExpression/)
+    expect(() =>
+      describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@db", excludeTags: ["@slow"] })
+    ).toThrowError(/excludeTags/)
+  })
+
+  it("throws a located TagExpressionError, by type, for a tag literal absent from the whole Feature's declared tag universe", () => {
+    expect(() => describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@nonexistent" }))
+      .toThrowError(TagExpressionError)
+    expect(() => describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@nonexistent" }))
+      .toThrowError(/@nonexistent/)
+  })
+
+  it("throws the identical TagExpressionError for a malformed expression string too, mirroring HookTagExpression.ts's own error shape", () => {
+    expect(() => describeFeature(taggedFeature, Layer.empty, () => {}, { tagExpression: "@db and" }))
+      .toThrowError(TagExpressionError)
   })
 })
 

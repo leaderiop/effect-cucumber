@@ -234,7 +234,7 @@ REQUIREMENT: When describeFeature's second argument has a `shared` field, that
 
 ## BEH-EC-008: Tags map to vitest's native tag system; `@skip` also routes to `it.effect.skip`
 
-> **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
+> **See:** [ADR-EC-020](../decisions/020-vitest-native-tags-for-skip-only.md) (superseded), [ADR-EC-026](../decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md), [ADR-EC-054](../decisions/054-describefeature-tagexpression-option-reuses-vitests-createtagsfilter.md)
 
 ```
 REQUIREMENT: Every tag on a Scenario (including inherited Feature/Rule/
@@ -255,14 +255,34 @@ REQUIREMENT: includeTags and excludeTags, on describeFeature's optional
              at REGISTRATION time, so a Scenario the filter excludes never
              becomes a test and is ABSENT from the report rather than
              present in it as skipped. Both MUST accept a plain array of tag
-             strings, never vitest's boolean tag-expression grammar, and
-             undefined and an empty array MUST both mean NO FILTER, so a
-             computed-empty array can never silence a suite. Native vitest
-             tag filtering (--tagsFilter) MUST continue to work
-             independently on whatever was registered, reporting
-             non-matching tests as skipped rather than removing them: the
-             registration filter and the CLI filter COMPOSE, and neither
-             replaces the other.
+             strings, never vitest's boolean tag-expression grammar — that
+             grammar is the separate tagExpression option below (ADR-EC-054),
+             mutually exclusive with these two — and undefined and an empty
+             array MUST both mean NO FILTER, so a computed-empty array can
+             never silence a suite. Native vitest tag filtering (--tagsFilter)
+             MUST continue to work independently on whatever was registered,
+             reporting non-matching tests as skipped rather than removing
+             them: the registration filter and the CLI filter COMPOSE, and
+             neither replaces the other.
+```
+
+```
+REQUIREMENT: describeFeature's optional fourth argument MAY instead carry a
+             tagExpression string, evaluated through the IDENTICAL
+             createTagsFilter engine (@vitest/runner/utils) this library
+             already reuses for tag-expression-scoped hooks
+             (BEH-EC-027/ADR-EC-035) — the same and/or/not/&&/||/!/parens
+             grammar, compiled once per describeFeature call against this
+             Feature's own declared tag universe (ADR-EC-026's rule,
+             rediscovered for this call site). tagExpression MUST be mutually
+             exclusive with includeTags/excludeTags: setting tagExpression
+             alongside either MUST throw a located error naming BOTH option
+             names, at REGISTRATION time, before anything is collected — never
+             a silent precedence rule between the two mechanisms. A
+             tagExpression naming a tag literal absent from the Feature's
+             declared tag universe, or a malformed expression string, MUST
+             throw a located error synchronously, before anything registers
+             (ADR-EC-054).
 ```
 
 ```
