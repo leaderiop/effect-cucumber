@@ -1,7 +1,9 @@
 /**
  * BEH-EC-015: a custom parameter type declared once as data is present in every registry built
  * afterwards, repeated builds in one process never throw, and each name a registry already
- * provides is rejected by the `define` call itself.
+ * provides is rejected by the `define` call itself. Also covers ADR-EC-045: a
+ * `ParameterTypeStore.Default` build that never customizes shares one process-wide registry with
+ * every other such build, while one that does still gets a fresh, unshared registry.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -543,6 +545,45 @@ describe("stores share no state", () => {
       assert.lengthOf(second.definitions(), 0)
       assert.isUndefined(second.buildRegistry().lookupByTypeName("firstBuildOnly"))
     }))
+
+  it.effect(
+    "ParameterTypeStore.Default's registry is a shared singleton across builds that never customize it (ADR-EC-045)",
+    () =>
+      Effect.gen(function*() {
+        // mutation: reverting ParameterTypeStore.Default's buildRegistry to `createParameterTypeStore()`'s plain,
+        // always-fresh implementation turns this red — two builds would then produce two distinct objects.
+        const first = yield* freshStore
+        const second = yield* freshStore
+
+        assert.strictEqual(first.buildRegistry(), second.buildRegistry())
+      })
+  )
+
+  it.effect(
+    "a store that defines a custom type before its first buildRegistry() call is NOT given the shared singleton",
+    () =>
+      Effect.gen(function*() {
+        // The store that never customizes still gets it, proving the branch is real and not "always fresh".
+        const plain = yield* freshStore
+        const customized = yield* freshStore
+        customized.define({
+          name: "customBeforeFirstBuild",
+          regexp: /\d+/,
+          transform: amount,
+          definedAt: Option.none(),
+          useForSnippets: Option.none(),
+          preferForRegexpMatch: Option.none()
+        })
+
+        const sharedA = plain.buildRegistry()
+        const sharedB = (yield* freshStore).buildRegistry()
+        const customRegistry = customized.buildRegistry()
+
+        assert.strictEqual(sharedA, sharedB)
+        assert.notStrictEqual(customRegistry, sharedA)
+        assert.isDefined(customRegistry.lookupByTypeName("customBeforeFirstBuild"))
+      })
+  )
 
   it.effect("ParameterTypeStore.layer(definitions) provides a store carrying the built-ins plus every definition", () =>
     Effect.gen(function*() {

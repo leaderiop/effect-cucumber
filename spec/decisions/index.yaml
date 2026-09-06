@@ -134,3 +134,6 @@ entries:
   - id: "ADR-EC-044"
     file: "044-effect-vitest-is-a-devdependency-of-gherkins-own-test-suite.md"
     title: "@effect/vitest is a devDependency of @effect-cucumber/gherkin's own test suite — does not conflict with ADR-EC-021"
+  - id: "ADR-EC-045"
+    file: "045-parametertypestoredefault-shares-one-registry-across-zero-customization-builds.md"
+    title: "ParameterTypeStore.Default shares one process-wide ParameterTypeRegistry across every zero-customization build, instead of building fresh every time"

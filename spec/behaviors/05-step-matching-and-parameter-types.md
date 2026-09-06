@@ -19,7 +19,7 @@ document describes the contract, not the build status.
 
 ## BEH-EC-015: Step text resolves to typed arguments against a per-call parameter type registry
 
-> **See:** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md), [ADR-EC-019](../decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md)
+> **See:** [ADR-EC-007](../decisions/007-cucumber-expressions-for-step-matching.md), [ADR-EC-019](../decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md), [ADR-EC-045](../decisions/045-parametertypestoredefault-shares-one-registry-across-zero-customization-builds.md) (narrows "per-call" for the zero-customization case — see the second REQUIREMENT block below)
 
 A step pattern is a cucumber-expression, reused verbatim rather than reimplemented (ADR-EC-007).
 That choice buys argument coercion for free — but only if three things are true at once, and each
@@ -76,12 +76,25 @@ REQUIREMENT: A custom parameter type MUST be declared as a plain
              ParameterTypeRegistry: at declaration time there is no registry
              in play at all, only data.
 
-             Every loadFeature / parseFeature call MUST construct a FRESH
-             ParameterTypeRegistry and replay every recorded record into it.
-             A definition made once at module scope is therefore present in
-             every subsequent call, and a duplicate-registration failure can
-             never occur across calls — a fresh registry has nothing registered
-             into it yet.
+             Every loadFeature / parseFeature call against a store carrying
+             one or more custom parameter types — ParameterTypeStore.layer(...)
+             or createParameterTypeStore() used directly — MUST construct a
+             FRESH ParameterTypeRegistry and replay every recorded record into
+             it. A definition made once at module scope is therefore present
+             in every subsequent call, and a duplicate-registration failure
+             can never occur across calls — a fresh registry has nothing
+             registered into it yet.
+
+             ParameterTypeStore.Default's zero-customization case is the one
+             exception (ADR-EC-045): a call against a store that has recorded
+             NO custom parameter type MAY instead receive one process-wide,
+             built-ins-only ParameterTypeRegistry shared with every other such
+             call, rather than a freshly constructed one. This is an
+             allocation optimization only — nothing about what a step author
+             observes changes, since a shared registry and a fresh one holding
+             only the built-ins are behaviorally identical, and the moment a
+             store records any definition it is no longer eligible for
+             sharing and falls back to the FRESH rule above.
 
              Two declarations MUST be rejected, and both MUST be rejected at
              DECLARATION time rather than at replay time or at match time, so
