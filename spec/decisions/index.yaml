@@ -140,3 +140,6 @@ entries:
   - id: "ADR-EC-046"
     file: "046-docstring-decodes-through-schema-on-demand-mirroring-datatable.md"
     title: "A DocString decodes through Schema on demand via decodeDocString, mirroring decodeHashes one level shallower — closes a gap against the DataTable/ExamplesRow precedent"
+  - id: "ADR-EC-050"
+    file: "050-dependency-cruiser-replaces-madge-and-adds-import-boundary-rules.md"
+    title: "dependency-cruiser becomes the authoritative, declarative package-boundary gate — replaces madge --circular and closes a previously-unenforced deep-import gap"
