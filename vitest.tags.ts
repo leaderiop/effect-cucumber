@@ -14,8 +14,10 @@ import { gherkinTags } from "./packages/vitest/src/GherkinTags.ts"
  * The hand-written half of the tag universe. These WIN a name collision against the derived half,
  * so a tag that appears in both places keeps whatever this entry says about it rather than being
  * flattened to a bare `{ name }`.
+ *
+ * Not exported (ADR-EC-051/knip): only `declaredTags` below, in this same file, uses it.
  */
-export const declaredByHand = [
+const declaredByHand = [
   { name: "@skip" },
   { name: "@only" },
   { name: "@slow" },

@@ -1,0 +1,47 @@
+{
+  // Monorepo-wide dead-export detection (ADR-EC-051), wired into `pnpm lint` as `pnpm run lint:knip`.
+  // Every published package's real public surface is its `exports["."]`, which both
+  // `packages/gherkin/package.json` and `packages/vitest/package.json` point at `./src/index.ts` —
+  // so that file is the one legitimate entry per package, and everything it does not reach
+  // (transitively) through a real import is dead.
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/*": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    // The benchmark harness (ADR-EC-051) is its own private workspace member, never published.
+    // Real entries: `compare.ts` (produces `results/latest.json`) and `report.ts` (renders it),
+    // both invoked as standalone `tsx` scripts, never imported from one another's module graph in
+    // a way that would let one serve as the other's entry; `test/**/*.ts`, since nothing imports a
+    // test file either — it is run standalone by the test runner, the same way a suite's `*.test.ts`
+    // is its own entry in `packages/*`'s own suites (excluded there only because `project` is
+    // scoped to `src/**` for those two workspaces). `cucumber/**/*.ts` is ALSO effectively an entry
+    // set: every file there is loaded by `@cucumber/cucumber`'s own `--import` CLI flag
+    // (`src/runners.ts`'s `runCucumberJs`), a runtime string reference knip's static import graph
+    // cannot see. `effect-cucumber/**/*.ts` needs no such listing: knip's vitest-config-aware
+    // plugin already treats `vitest.config.ts`'s `test.include` glob as real entries.
+    "benchmarks": {
+      "entry": ["src/compare.ts", "src/report.ts", "cucumber/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "cucumber/**/*.ts", "effect-cucumber/**/*.ts", "test/**/*.ts"]
+    }
+  },
+  "ignore": [
+    // Run only by path from `scripts/verify-rerun-failed-only.sh`
+    // (`node scripts/templates/write-rerun-manifest.mjs ...`) — a shell-script reference knip's
+    // static import graph cannot see, and outside any `project` glob this repo declares for the
+    // root workspace, so `entry` alone does not resolve it. One file, named explicitly — not a
+    // blanket directory ignore.
+    "scripts/templates/write-rerun-manifest.mjs"
+  ],
+  "ignoreDependencies": [
+    // The STRING `"@effect/language-service"` in `tsconfig.base.json`'s `plugins` array is a
+    // plugin-registration NAME, not a separate installable package — `@effect/tsgo` (already a
+    // real devDependency) registers itself under this legacy name (ADR-EC-016's documented
+    // finding, quoting Effect-TS/effect's own tsconfig.base.json). Nothing to install.
+    "@effect/language-service",
+    // Used only via `pnpm exec publint "$pkgdir"` inside `scripts/verify-pack.sh` — a shell-script
+    // invocation, not a JS import, so knip's static graph cannot see it as used.
+    "publint"
+  ]
+}

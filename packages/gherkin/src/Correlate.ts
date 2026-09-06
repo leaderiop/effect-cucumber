@@ -74,15 +74,26 @@ export interface AstRuleInfo {
   readonly scenarioIds: ReadonlyArray<string>
 }
 
-/** One `Examples:` tableBody row's header and values — the ONE place both are recovered from the AST,
- * reused by `correlateFeature` to build `ParsedScenario.exampleRow` (ADR-EC-032). */
-export interface AstExamplesRowInfo {
+/**
+ * One `Examples:` tableBody row's header and values — the ONE place both are recovered from the AST,
+ * reused by `correlateFeature` to build `ParsedScenario.exampleRow` (ADR-EC-032).
+ *
+ * Not exported (ADR-EC-051/knip): nothing outside this file imports it by name — `CorrelationResult`
+ * embeds `AstIndex`, which embeds this, structurally, and TypeScript needs no explicit import of a
+ * nested type's own name for that.
+ */
+interface AstExamplesRowInfo {
   readonly header: ReadonlyArray<string>
   readonly values: ReadonlyArray<string>
 }
 
-/** Everything one AST walk plus one pass over the pickles produces. */
-export interface AstIndex {
+/**
+ * Everything one AST walk plus one pass over the pickles produces.
+ *
+ * Not exported (ADR-EC-051/knip): only `CorrelationResult.index`'s field type reaches it, and that
+ * happens structurally — no other file imports `AstIndex` by name.
+ */
+interface AstIndex {
   /** AST step id to its recovered keyword, origin and enclosing Rule. */
   readonly byStepId: ReadonlyMap<string, AstStepInfo>
   /** AST scenario id to its pickles — an array, since an Outline's rows share `astNodeIds[0]`; a missing key
@@ -236,9 +247,13 @@ const indexPicklesByScenario = (pickles: ReadonlyArray<Pickle>): ReadonlyMap<str
   return byScenarioId
 }
 
-/** Walk `document` once and index `pickles` once; `astScenarios` comes out in document order, Rule members in
- * place. */
-export const buildAstIndex = (
+/**
+ * Walk `document` once and index `pickles` once; `astScenarios` comes out in document order, Rule
+ * members in place.
+ *
+ * Not exported (ADR-EC-051/knip): called only by `correlateFeature` below, in this same file.
+ */
+const buildAstIndex = (
   document: GherkinDocument,
   pickles: ReadonlyArray<Pickle>,
   uri: string

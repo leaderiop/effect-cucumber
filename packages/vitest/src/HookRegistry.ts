@@ -42,9 +42,3 @@ export const createHookRegistry = <Fn>() => {
 
   return { register, hooks }
 }
-
-/**
- * Derived from the factory rather than hand-written, following `RegistryShape<Fn>`'s precedent, so
- * the shape and the thing it describes cannot drift apart.
- */
-export type HookRegistryShape<Fn> = ReturnType<typeof createHookRegistry<Fn>>

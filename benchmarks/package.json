@@ -1,0 +1,29 @@
+{
+  "name": "effect-cucumber-benchmarks",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Black-box wall-clock benchmark suite comparing this library against the real @cucumber/cucumber npm package (ADR-EC-051). Not part of the published packages.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json --noEmit",
+    "bench": "pnpm run bench:smoke",
+    "bench:smoke": "tsx src/compare.ts --iterations 1 --warmups 0 --suite counter && tsx src/report.ts",
+    "bench:compare": "tsx src/compare.ts && tsx src/report.ts",
+    "bench:pressure": "tsx src/compare.ts --iterations 1 --warmups 0 --pressure-scenarios 200 && tsx src/report.ts"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "13.2.1",
+    "@effect-cucumber/gherkin": "workspace:^",
+    "@effect-cucumber/vitest": "workspace:^",
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "tsx": "4.23.13",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

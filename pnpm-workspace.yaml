@@ -1,5 +1,8 @@
 packages:
   - "packages/*"
+  # Private, unpublished — the black-box @cucumber/cucumber comparison benchmark suite
+  # (ADR-EC-051). Never touches packages/gherkin or packages/vitest's manifests.
+  - "benchmarks"
 
 # Exact pins — devDependencies only. This is the single bump point for an
 # Effect rc upgrade (ADR-EC-012).
