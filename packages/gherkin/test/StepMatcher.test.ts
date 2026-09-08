@@ -9,6 +9,7 @@ import type { StepArgs } from "../src/StepArgs.ts"
 import {
   compileExpression,
   createStepMatcher,
+  describeCause,
   type StepMatch,
   type StepPatternEntry,
   undefinedParameterTypeNameOf
@@ -377,13 +378,30 @@ describe("StepMatcher positive control", () => {
 
 describe("undefinedParameterTypeNameOf", () => {
   // Every real throw site in the installed @cucumber/cucumber-expressions raises a genuine Error
-  // object (verified by reading its source), so neither case below is reachable through
-  // `constructExpression`'s own catch — driven directly against the two `typeof`/`null` guards.
+  // object (verified by reading its source), so none of the cases below are reachable through
+  // `constructExpression`'s own catch — driven directly against `Predicate.hasProperty`'s guard
+  // and `Predicate.isString`'s ternary.
   it("returns undefined for a thrown primitive", () => {
     expect(undefinedParameterTypeNameOf("boom")).toBeUndefined()
   })
 
   it("returns undefined for a thrown null", () => {
     expect(undefinedParameterTypeNameOf(null)).toBeUndefined()
+  })
+
+  it("returns the name for a thrown object carrying it as a string", () => {
+    expect(undefinedParameterTypeNameOf({ undefinedParameterTypeName: "money" })).toBe("money")
+  })
+
+  it("returns undefined for a thrown object carrying the property as a non-string", () => {
+    expect(undefinedParameterTypeNameOf({ undefinedParameterTypeName: 42 })).toBeUndefined()
+  })
+})
+
+describe("describeCause", () => {
+  // Same "not reachable through constructExpression's own catch" note as `undefinedParameterTypeNameOf`
+  // above — driven directly against `Predicate.isError`'s false branch.
+  it("stringifies a non-Error cause", () => {
+    expect(describeCause("boom")).toBe("boom")
   })
 })
