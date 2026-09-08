@@ -43,6 +43,7 @@
  */
 import type * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
+import * as Predicate from "effect/Predicate"
 import type * as Scope from "effect/Scope"
 import type { Attachments } from "./Attachments.ts"
 import type {
@@ -88,7 +89,7 @@ const narrowTaggedHookRegistrar = <Wide, Narrow>(
   kind: HookKind
 ): TaggedHookRegistrar<Narrow> =>
   ((tagExprOrFn: string | (() => any), maybeFn?: () => any) => {
-    const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
+    const tagExpr = Predicate.isString(tagExprOrFn) ? tagExprOrFn : null
     const fn = (maybeFn ?? tagExprOrFn) as () => any
     const normalized = registerHook(kind, fn)
     const wrapped = () => wrapWithProjection(normalized(), project)

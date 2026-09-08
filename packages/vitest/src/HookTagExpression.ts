@@ -23,6 +23,8 @@
  *   "declared tag universe" rule [ADR-EC-026](../../../spec/decisions/026-registration-time-tag-filtering-and-declared-tag-universe.md)
  *   already established for `includeTags`/`excludeTags`, rediscovered here for a different call site.
  */
+import * as Data from "effect/Data"
+import * as Predicate from "effect/Predicate"
 import type { HookKind } from "./HookRegistry.ts"
 import { compileTagExpression, featureTagUniverse, type TagMatcher } from "./TagExpression.ts"
 
@@ -39,32 +41,39 @@ export type { TagMatcher }
  * the "dead code, not a broken Scenario" case [ADR-EC-019](../../../spec/decisions/019-fail-loudly-on-unmatched-or-ambiguous-steps.md)
  * already fails loudly for.
  *
- * A real `Error` subclass — like `StepFailureLocation` — never decoded or compared by tag, printed
- * as-is by whatever collects `describeFeature`'s define callback.
+ * A real `Error` subclass (via `Data.TaggedError`) — like `StepFailureLocation` — never decoded or
+ * compared by tag, printed as-is by whatever collects `describeFeature`'s define callback.
  */
-export class HookTagExpressionError extends Error {
+export class HookTagExpressionError extends Data.TaggedError("HookTagExpressionError")<{
   readonly kind: HookKind
   readonly tagExpr: string
   readonly featureUri: string
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
-  constructor(
-    args: { readonly kind: HookKind; readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }
-  ) {
-    const underlying = args.cause instanceof Error ? args.cause.message : String(args.cause)
-    super(
-      `${args.featureUri}: a ${args.kind} hook's tag expression ${JSON.stringify(args.tagExpr)} `
-        + `references a tag this Feature never declares. ${underlying} Every tag literal a hook's tag `
-        + "expression names must appear on at least one Scenario in this Feature — the same declared "
-        + "tag universe rule ADR-EC-026 already requires for describeFeature's own includeTags/excludeTags, "
-        + "applied here to Before/After/BeforeStep/AfterStep tag expressions (ADR-EC-035). Check the "
-        + "expression for a typo, or add the missing tag to a Scenario in this .feature file.",
-      { cause: args.cause }
-    )
-    this.name = "HookTagExpressionError"
-    this.kind = args.kind
-    this.tagExpr = args.tagExpr
-    this.featureUri = args.featureUri
-  }
+/**
+ * Builds a `HookTagExpressionError`, computing its message from the same template the constructor used to.
+ * Exported so `test/HookTagExpression.test.ts` can drive the non-Error-cause stringify fallback directly —
+ * the real `createTagsFilter` always throws an `Error`, so nothing on the public `compileHookTagExpr` path
+ * ever reaches that branch.
+ */
+export const makeHookTagExpressionError = (
+  args: { readonly kind: HookKind; readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }
+): HookTagExpressionError => {
+  const underlying = Predicate.isError(args.cause) ? args.cause.message : String(args.cause)
+  return new HookTagExpressionError({
+    kind: args.kind,
+    tagExpr: args.tagExpr,
+    featureUri: args.featureUri,
+    cause: args.cause,
+    message: `${args.featureUri}: a ${args.kind} hook's tag expression ${JSON.stringify(args.tagExpr)} `
+      + `references a tag this Feature never declares. ${underlying} Every tag literal a hook's tag `
+      + "expression names must appear on at least one Scenario in this Feature — the same declared "
+      + "tag universe rule ADR-EC-026 already requires for describeFeature's own includeTags/excludeTags, "
+      + "applied here to Before/After/BeforeStep/AfterStep tag expressions (ADR-EC-035). Check the "
+      + "expression for a typo, or add the missing tag to a Scenario in this .feature file."
+  })
 }
 
 /**
@@ -90,6 +99,6 @@ export const compileHookTagExpr = (
   try {
     return compileTagExpression(tagExpr, args.availableTags)
   } catch (cause) {
-    throw new HookTagExpressionError({ kind: args.kind, tagExpr, featureUri: args.featureUri, cause })
+    throw makeHookTagExpressionError({ kind: args.kind, tagExpr, featureUri: args.featureUri, cause })
   }
 }

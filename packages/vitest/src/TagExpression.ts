@@ -19,6 +19,8 @@
  * `TagExpressionError` below).
  */
 import { createTagsFilter } from "@vitest/runner/utils"
+import * as Data from "effect/Data"
+import * as Predicate from "effect/Predicate"
 
 /**
  * A compiled tag-expression matcher: given a Scenario's own fully-flattened tags, does the
@@ -64,28 +66,33 @@ export const compileTagExpression = (
  * `VitestTestApi.ts`'s own `UndeclaredTagWarning` seam has for a Scenario's native tags — this
  * module compiles the expression itself, with nothing else positioned to intercept a typo.
  *
- * A real `Error` subclass, like `HookTagExpressionError` — never decoded or compared by tag,
- * printed as-is by whatever collects `describeFeature`'s define callback.
+ * A real `Error` subclass (via `Data.TaggedError`), like `HookTagExpressionError` — never decoded or
+ * compared by tag, printed as-is by whatever collects `describeFeature`'s define callback.
  */
-export class TagExpressionError extends Error {
+export class TagExpressionError extends Data.TaggedError("TagExpressionError")<{
   readonly tagExpr: string
   readonly featureUri: string
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
-  constructor(args: { readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }) {
-    const underlying = args.cause instanceof Error ? args.cause.message : String(args.cause)
-    super(
+/** Builds a `TagExpressionError`, computing its message from the same template the constructor used to. */
+const makeTagExpressionError = (
+  args: { readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }
+): TagExpressionError => {
+  const underlying = Predicate.isError(args.cause) ? args.cause.message : String(args.cause)
+  return new TagExpressionError({
+    tagExpr: args.tagExpr,
+    featureUri: args.featureUri,
+    cause: args.cause,
+    message:
       `${args.featureUri}: describeFeature's tagExpression option ${JSON.stringify(args.tagExpr)} references a tag `
-        + `this Feature never declares, or is malformed. ${underlying} Every tag literal a tagExpression names must `
-        + "appear on at least one Scenario in this Feature — the same declared tag universe rule this library "
-        + "already requires for tag-expression-scoped hooks (ADR-EC-035), applied here to describeFeature's own "
-        + "registration filter (ADR-EC-054). Check the expression for a typo, or add the missing tag to a "
-        + "Scenario in this .feature file.",
-      { cause: args.cause }
-    )
-    this.name = "TagExpressionError"
-    this.tagExpr = args.tagExpr
-    this.featureUri = args.featureUri
-  }
+      + `this Feature never declares, or is malformed. ${underlying} Every tag literal a tagExpression names must `
+      + "appear on at least one Scenario in this Feature — the same declared tag universe rule this library "
+      + "already requires for tag-expression-scoped hooks (ADR-EC-035), applied here to describeFeature's own "
+      + "registration filter (ADR-EC-054). Check the expression for a typo, or add the missing tag to a "
+      + "Scenario in this .feature file."
+  })
 }
 
 /**
@@ -104,6 +111,6 @@ export const compileFeatureTagExpression = (
   try {
     return compileTagExpression(args.tagExpr, args.availableTags)
   } catch (cause) {
-    throw new TagExpressionError({ tagExpr: args.tagExpr, featureUri: args.featureUri, cause })
+    throw makeTagExpressionError({ tagExpr: args.tagExpr, featureUri: args.featureUri, cause })
   }
 }

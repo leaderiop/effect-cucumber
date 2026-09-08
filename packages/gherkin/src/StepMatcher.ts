@@ -9,7 +9,7 @@
  *
  * Compilation is memoised per `(registry, pattern)`, never per pattern: an expression snapshots the registry it
  * was built against (`test/expressions-pin.test.ts`), and `createParameterTypeStore().buildRegistry()` is fresh
- * per call — as is any customized store's. `ParameterTypeStore.Default`'s zero-customization case is the one
+ * per call — as is any customized store's. `ParameterTypeStore.layerDefault`'s zero-customization case is the one
  * exception (ADR-EC-045): it hands every such call the SAME registry object on purpose, so this cache actually
  * shares compiled expressions across Feature files that use no custom parameter types. Either way, this module
  * only ever sees whatever registry object it is given and keys on its identity — it has no opinion on how that
@@ -19,6 +19,7 @@
  * escape synchronously (`test/expressions-pin.test.ts`). `D` is an opaque caller payload, never inspected.
  */
 import { type Argument, CucumberExpression, type ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
+import * as Predicate from "effect/Predicate"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /** Registry instance → (pattern → compiled expression). A pattern-only key would serve an expression bound to a
@@ -28,29 +29,26 @@ const expressionCache = new WeakMap<ParameterTypeRegistry, Map<string, CucumberE
 
 /** The parameter type an upstream construction failure names, read STRUCTURALLY off the published
  * `undefinedParameterTypeName` property (`test/expressions-pin.test.ts`); the class is not exported and its
- * `name` is `"Error"`. The `typeof thrown !== "object"` guard is not reachable against the installed
- * `@cucumber/cucumber-expressions`: every throw site in its `CucumberExpression` construction path raises a
- * real `Error` subclass, never a primitive — kept because `thrown` is `unknown` at the call site and nothing
- * in the upstream contract promises that stays true across a version. Exported (not re-exported
- * from `index.ts`) so `test/StepMatcher.test.ts` can drive that unreachable-today guard directly. */
+ * `name` is `"Error"`. `Predicate.hasProperty` accepts both non-null objects AND functions (unlike a bare
+ * `typeof thrown !== "object"` guard) — not reachable against the installed `@cucumber/cucumber-expressions`:
+ * every throw site in its `CucumberExpression` construction path raises a real `Error` subclass, never a
+ * function or other primitive — kept because `thrown` is `unknown` at the call site and nothing in the
+ * upstream contract promises that stays true across a version. Exported (not re-exported from `index.ts`)
+ * so `test/StepMatcher.test.ts` can drive that unreachable-today guard directly. */
 export const undefinedParameterTypeNameOf = (thrown: unknown): string | undefined => {
-  if (typeof thrown !== "object" || thrown === null) {
+  if (!Predicate.hasProperty(thrown, "undefinedParameterTypeName")) {
     return undefined
   }
-  const candidate = (thrown as { readonly undefinedParameterTypeName?: unknown }).undefinedParameterTypeName
-  return typeof candidate === "string" ? candidate : undefined
+  const { undefinedParameterTypeName } = thrown
+  return Predicate.isString(undefinedParameterTypeName) ? undefinedParameterTypeName : undefined
 }
 
-/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). */
-const describeCause = (thrown: unknown): string => thrown instanceof Error ? thrown.message : String(thrown)
-
-/** Structural thenable check: any promise implementation reaches the step body equally unwrapped. */
-const isThenable = (value: unknown): boolean => {
-  if ((typeof value !== "object" || value === null) && typeof value !== "function") {
-    return false
-  }
-  return typeof (value as { readonly then?: unknown }).then === "function"
-}
+/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). The
+ * `Predicate.isError` guard's false branch is not reachable through `constructExpression`'s own catch —
+ * every real throw site in the installed `@cucumber/cucumber-expressions` raises a genuine `Error`. Exported
+ * (not re-exported from `index.ts`), same reason as `undefinedParameterTypeNameOf` above, so
+ * `test/StepMatcher.test.ts` can drive that guard directly. */
+export const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
 
 /** Construct one expression, re-raising every upstream throw as a named `StepPatternError`. */
 const constructExpression = (registry: ParameterTypeRegistry, pattern: string): CucumberExpression => {
@@ -130,7 +128,7 @@ const extractValue = (pattern: string, argument: Argument): unknown => {
   }
 
   // The type already forbids a thenable; this guards the `any`-cast escape route.
-  if (isThenable(value)) {
+  if (Predicate.isPromiseLike(value)) {
     return fail({
       reason: "AsyncParameterTransform",
       parameterTypeName,

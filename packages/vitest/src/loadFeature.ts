@@ -16,5 +16,5 @@ const runtime = ManagedRuntime.make(NodeFileSystem.layer)
  */
 export const loadFeature = (
   path: string,
-  parameterTypes: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.Default
+  parameterTypes: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.layerDefault
 ): Promise<ParsedFeature> => runtime.runPromise(gherkinLoadFeature(path).pipe(Effect.provide(parameterTypes)))
