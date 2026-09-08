@@ -24,6 +24,7 @@ import {
   type Step,
   StepKeywordType
 } from "@cucumber/messages"
+import * as Arr from "effect/Array"
 import * as Option from "effect/Option"
 import { LoadFeatureError } from "./Errors.ts"
 import { makeExamplesRow } from "./ExamplesRow.ts"
@@ -144,7 +145,7 @@ export const stepKeywords = (language: string): ReadonlyArray<string> => {
   const dialect = dialectOf(language)
   if (dialect === undefined) return []
   const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
-  return [...new Set(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))]
+  return Arr.dedupe(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))
 }
 
 /** Whether `keyword` is a plain Scenario keyword in `language`. */
@@ -229,23 +230,18 @@ const recordScenario = (acc: AstAccumulator, scenario: Scenario, ruleId: string 
 }
 
 /** Pickles by the AST scenario id they compiled from — built from the PICKLES, so a scenario that compiled to
- * nothing has no key. The `astNodeIds[0]` guard is what `noUncheckedIndexedAccess` requires. */
-const indexPicklesByScenario = (pickles: ReadonlyArray<Pickle>): ReadonlyMap<string, ReadonlyArray<Pickle>> => {
-  const byScenarioId = new Map<string, Array<Pickle>>()
-  for (const pickle of pickles) {
-    const key = pickle.astNodeIds[0]
-    if (key === undefined) {
-      continue
-    }
-    const bucket = byScenarioId.get(key)
-    if (bucket === undefined) {
-      byScenarioId.set(key, [pickle])
-    } else {
-      bucket.push(pickle)
-    }
-  }
-  return byScenarioId
-}
+ * nothing has no key. The `astNodeIds[0]` guard is what `noUncheckedIndexedAccess` requires. Grouping keys come
+ * from `@cucumber/gherkin`'s internal sequential `IdGenerator`, never from untrusted input, so `Arr.groupBy`'s
+ * plain-object accumulator carries no prototype-pollution risk here. */
+const indexPicklesByScenario = (pickles: ReadonlyArray<Pickle>): ReadonlyMap<string, ReadonlyArray<Pickle>> =>
+  new Map(
+    Object.entries(
+      Arr.groupBy(
+        pickles.filter((pickle) => pickle.astNodeIds[0] !== undefined),
+        (pickle) => pickle.astNodeIds[0]!
+      )
+    )
+  )
 
 /**
  * Walk `document` once and index `pickles` once; `astScenarios` comes out in document order, Rule
@@ -360,8 +356,6 @@ export const correlateFeature = (
   const index = buildAstIndex(document, pickles, uri)
 
   const allScenarios: Array<ParsedScenario> = []
-  const featureScenarios: Array<ParsedScenario> = []
-  const scenariosByRule = new Map<string, Array<ParsedScenario>>()
 
   for (const node of index.astScenarios) {
     for (const pickle of index.byScenarioId.get(node.id) ?? []) {
@@ -389,19 +383,21 @@ export const correlateFeature = (
           : Option.some(makeExamplesRow(rowInfo.header, rowInfo.values, uri, location.line))
       }
       allScenarios.push(scenario)
-
-      if (node.ruleId === undefined) {
-        featureScenarios.push(scenario)
-      } else {
-        const bucket = scenariosByRule.get(node.ruleId)
-        if (bucket === undefined) {
-          scenariosByRule.set(node.ruleId, [scenario])
-        } else {
-          bucket.push(scenario)
-        }
-      }
     }
   }
+
+  // Rule ids come from `@cucumber/gherkin`'s AST, never from untrusted input, so `Arr.groupBy`'s plain-object
+  // accumulator carries no prototype-pollution risk here. `scenario.ruleId` is the same `Option` set from
+  // `node.ruleId` a few lines above, per scenario — not re-derived independently.
+  const featureScenarios = allScenarios.filter((scenario) => Option.isNone(scenario.ruleId))
+  const scenariosByRule = new Map(
+    Object.entries(
+      Arr.groupBy(
+        allScenarios.filter((scenario) => Option.isSome(scenario.ruleId)),
+        (scenario) => Option.getOrThrow(scenario.ruleId)
+      )
+    )
+  )
 
   const rules: ReadonlyArray<ParsedRule> = index.astRules.map((rule) => ({
     id: rule.id,

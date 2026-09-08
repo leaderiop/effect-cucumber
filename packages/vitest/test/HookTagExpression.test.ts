@@ -4,7 +4,12 @@
  * Carries: ADR-EC-035, BEH-EC-027.
  */
 import { describe, expect, it } from "vitest"
-import { compileHookTagExpr, featureTagUniverse, HookTagExpressionError } from "../src/HookTagExpression.ts"
+import {
+  compileHookTagExpr,
+  featureTagUniverse,
+  HookTagExpressionError,
+  makeHookTagExpressionError
+} from "../src/HookTagExpression.ts"
 
 describe("featureTagUniverse", () => {
   it("returns every literal tag across every Scenario handed to it, deduplicated", () => {
@@ -28,10 +33,10 @@ describe("featureTagUniverse", () => {
 
 describe("HookTagExpressionError", () => {
   it("stringifies a non-Error cause rather than reading a .message that does not exist", () => {
-    // The real createTagsFilter always throws an Error, but the constructor itself does not assume
-    // that — this fixture proves the fallback branch, not merely the common one compileHookTagExpr
+    // The real createTagsFilter always throws an Error, but makeHookTagExpressionError itself does not
+    // assume that — this fixture proves the fallback branch, not merely the common one compileHookTagExpr
     // ever actually reaches.
-    const error = new HookTagExpressionError({
+    const error = makeHookTagExpressionError({
       kind: "Before",
       tagExpr: "@nonexistent",
       featureUri: "checkout.feature",

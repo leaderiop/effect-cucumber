@@ -13,7 +13,7 @@
  * one `ParsedFeature` — never persist or compare them across calls. One `ParameterTypeRegistry` is obtained EAGERLY
  * per call from the provided store, by calling `buildRegistry()` — BEH-EC-015 requires a store carrying custom
  * parameter types to build fresh every call, and `ParameterTypeStore.layer(...)`/`createParameterTypeStore()`
- * still do; `ParameterTypeStore.Default`'s zero-customization case instead returns one process-wide shared
+ * still do; `ParameterTypeStore.layerDefault`'s zero-customization case instead returns one process-wide shared
  * registry (ADR-EC-045), which is what lets Feature files with no custom parameter types share `StepMatcher.ts`'s
  * compiled-expression cache. Markdown feature files are out of scope.
  */

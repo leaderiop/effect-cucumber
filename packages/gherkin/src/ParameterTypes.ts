@@ -3,12 +3,13 @@
  * `buildRegistry()` constructs a FRESH `ParameterTypeRegistry` and replays the records into it. No registry is
  * touched at definition time, so nothing can double-register or outlive the build that made it.
  *
- * There is no process-wide store: `ParameterTypeStore.Default` builds a fresh built-ins-only store per Layer build,
+ * There is no process-wide store: `ParameterTypeStore.layerDefault` builds a fresh built-ins-only store per Layer
+ * build (`ParameterTypeStore.Default` is a deprecated alias for the same layer),
  * `ParameterTypeStore.layer(definitions)` one carrying custom types, `createParameterTypeStore()` a plain one. The
  * store is a `Context.Service` so `loadFeature`/`parseFeature` receive it ambiently.
  *
- * **`ParameterTypeStore.Default`'s registry is the one exception to "fresh per build"** (ADR-EC-045): when a
- * `Default`-provided store's `buildRegistry()` is called while it still carries zero records — the ordinary case,
+ * **`ParameterTypeStore.layerDefault`'s registry is the one exception to "fresh per build"** (ADR-EC-045): when a
+ * `layerDefault`-provided store's `buildRegistry()` is called while it still carries zero records — the ordinary case,
  * since nothing customizes it — it returns a single process-wide, built-ins-only `ParameterTypeRegistry` shared by
  * every such call, instead of constructing a new one every time. This is what lets `StepMatcher.ts`'s
  * registry-keyed expression cache actually share compiled expressions across Feature files that use no custom
@@ -28,6 +29,7 @@ import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
 import { StepPatternError } from "./Errors.ts"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
@@ -97,7 +99,7 @@ const listBuiltInNames = (): string =>
 
 /** Normalise the three accepted `regexp` shapes to one list, without copying an array needlessly. */
 const toRegexpList = (regexp: ParameterTypeDefinition<unknown>["regexp"]): ReadonlyArray<string | RegExp> =>
-  typeof regexp === "string" || regexp instanceof RegExp ? [regexp] : regexp
+  Predicate.isString(regexp) || Predicate.isRegExp(regexp) ? [regexp] : regexp
 
 /** The upstream value for one record — a NEW instance per build. `null` type: the prototype-coercion path is
  * never used; `false`: never a built-in. */
@@ -167,7 +169,7 @@ export const createParameterTypeStore = () => {
     for (const entry of toRegexpList(definition.regexp)) {
       // A string source is compiled once here so a malformed one fails at DEFINITION time, not later inside
       // `new CucumberExpression` as an `InvalidStepPattern` blaming the step author.
-      if (typeof entry === "string") {
+      if (Predicate.isString(entry)) {
         try {
           RegExp(entry)
         } catch (cause) {
@@ -176,14 +178,14 @@ export const createParameterTypeStore = () => {
             parameterTypeName: name,
             sentences: [
               `the regexp source ${JSON.stringify(entry)} supplied for ${describeName(name)}`,
-              `is not a valid regular expression: ${cause instanceof Error ? cause.message : String(cause)}.`,
+              `is not a valid regular expression: ${Predicate.isError(cause) ? cause.message : String(cause)}.`,
               "Fix the source, or pass a RegExp literal so the mistake is a syntax error at the call site."
             ],
             cause
           })
         }
       }
-      if (entry instanceof RegExp) {
+      if (Predicate.isRegExp(entry)) {
         for (const flag of rejectedRegexpFlags) {
           if (entry.flags.includes(flag)) {
             fail({
@@ -265,7 +267,7 @@ export const createParameterTypeStore = () => {
           parameterTypeName: record.name,
           sentences: [
             `@cucumber/cucumber-expressions rejected ${describeName(record.name)} while registering it`,
-            `into a fresh registry: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `into a fresh registry: ${Predicate.isError(cause) ? cause.message : String(cause)}`,
             "A type with `preferForRegexpMatch` set may not share a regexp source with another",
             "preferential type, the built-ins included. Drop `preferForRegexpMatch` or change the regexp.",
             "The original failure is attached as `cause`."
@@ -285,7 +287,7 @@ export type ParameterTypeStoreShape = ReturnType<typeof createParameterTypeStore
 
 /**
  * Lazily built once per process, never rebuilt or mutated afterward: the built-ins-only registry every
- * zero-customization `ParameterTypeStore.Default` store shares (ADR-EC-045). Built from a throwaway
+ * zero-customization `ParameterTypeStore.layerDefault` store shares (ADR-EC-045). Built from a throwaway
  * `createParameterTypeStore()` carrying no records, so it is exactly what a fresh built-ins-only
  * `buildRegistry()` call would have produced — this module never registers a custom type into it.
  */
@@ -300,10 +302,10 @@ const sharedDefaultParameterTypeRegistry = (): ParameterTypeRegistry => {
 }
 
 /**
- * The store `ParameterTypeStore.Default` provides: a FRESH `createParameterTypeStore()`, so `define`/`definitions`
+ * The store `ParameterTypeStore.layerDefault` provides: a FRESH `createParameterTypeStore()`, so `define`/`definitions`
  * behave exactly as they always have, with `buildRegistry` overridden to return the shared singleton above WHEN
  * this particular store still has zero records at call time. A store that has had `define` called on it — not
- * how `ParameterTypeStore.Default` is meant to be used, but the shape permits it, and `test/ParameterTypes.test.ts`
+ * how `ParameterTypeStore.layerDefault` is meant to be used, but the shape permits it, and `test/ParameterTypes.test.ts`
  * exercises exactly this — falls through to `inner.buildRegistry()`, a genuinely fresh, unshared registry, so a
  * definition never leaks into the shared instance.
  */
@@ -332,11 +334,20 @@ export class ParameterTypeStore
    * (`test/ParameterTypes.test.ts`). Its `buildRegistry()` shares one process-wide registry across every build
    * that never customizes it (ADR-EC-045) — the two are independent guarantees, and this one only narrows how
    * many distinct `ParameterTypeRegistry` objects the common case allocates, never what a store can see.
+   *
+   * Named `layerDefault` (not `Default`), per v4's layer-naming convention (effect/migration/services.md:
+   * "v4 adopts the convention of naming layers with `layer` ... instead of v3's `Default` or `Live`. Use
+   * `layer` for the primary layer and descriptive suffixes for variants, e.g. `layerTest`, `layerConfig`.")
+   * — `layer` itself is already this class's customizable-definitions variant below, so `layerDefault` is
+   * the descriptive-suffix form for the zero-configuration variant.
    */
-  static readonly Default: Layer.Layer<ParameterTypeStore> = Layer.sync(
+  static readonly layerDefault: Layer.Layer<ParameterTypeStore> = Layer.sync(
     ParameterTypeStore,
     () => ParameterTypeStore.of(createDefaultParameterTypeStore())
   )
+
+  /** @deprecated Use `ParameterTypeStore.layerDefault`. Kept as an alias so existing consumers don't break. */
+  static readonly Default: Layer.Layer<ParameterTypeStore> = ParameterTypeStore.layerDefault
 
   /**
    * The consumer-facing way to declare custom parameter types: a fresh store carrying the built-ins plus

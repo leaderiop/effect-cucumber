@@ -2,8 +2,9 @@
  * BEH-EC-015: a custom parameter type declared once as data is present in every registry built
  * afterwards, repeated builds in one process never throw, and each name a registry already
  * provides is rejected by the `define` call itself. Also covers ADR-EC-045: a
- * `ParameterTypeStore.Default` build that never customizes shares one process-wide registry with
- * every other such build, while one that does still gets a fresh, unshared registry.
+ * `ParameterTypeStore.layerDefault` build that never customizes shares one process-wide registry with
+ * every other such build, while one that does still gets a fresh, unshared registry. `.Default` is
+ * a deprecated alias for `.layerDefault` (see the dedicated test near the end of this file).
  */
 import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
@@ -23,13 +24,13 @@ import {
 const amount = (...match: Array<string>): number => Number(match[0])
 
 /**
- * The store one build of `ParameterTypeStore.Default` provides — a plain Effect, not a thunk:
+ * The store one build of `ParameterTypeStore.layerDefault` provides — a plain Effect, not a thunk:
  * `yield*`-ing it twice inside one `Effect.gen` body runs the Layer's build Effect twice, giving
  * two independent stores, exactly as calling a `buildStore()` function twice used to.
  */
 const freshStore: Effect.Effect<ParameterTypeStoreShape> = Effect.gen(function*() {
   return yield* ParameterTypeStore
-}).pipe(Effect.provide(ParameterTypeStore.Default))
+}).pipe(Effect.provide(ParameterTypeStore.layerDefault))
 
 /**
  * Runs `action`, asserts it threw a `StepPatternError`, and returns it.
@@ -526,9 +527,9 @@ describe("stores share no state", () => {
     expect(second.definitions()).toHaveLength(1)
   })
 
-  it.effect("ParameterTypeStore.Default builds a FRESH store per Layer build, so two builds share nothing", () =>
+  it.effect("ParameterTypeStore.layerDefault builds a FRESH store per Layer build, so two builds share nothing", () =>
     Effect.gen(function*() {
-      // mutation: turning `Default` back into a Layer over one module-level store turns this red
+      // mutation: turning `layerDefault` back into a Layer over one module-level store turns this red
       // — the second build would then see the first build's definition.
       const first = yield* freshStore
       first.define({
@@ -547,17 +548,21 @@ describe("stores share no state", () => {
     }))
 
   it.effect(
-    "ParameterTypeStore.Default's registry is a shared singleton across builds that never customize it (ADR-EC-045)",
+    "ParameterTypeStore.layerDefault's registry is a shared singleton across builds that never customize it (ADR-EC-045)",
     () =>
       Effect.gen(function*() {
-        // mutation: reverting ParameterTypeStore.Default's buildRegistry to `createParameterTypeStore()`'s plain,
-        // always-fresh implementation turns this red — two builds would then produce two distinct objects.
+        // mutation: reverting ParameterTypeStore.layerDefault's buildRegistry to `createParameterTypeStore()`'s
+        // plain, always-fresh implementation turns this red — two builds would then produce two distinct objects.
         const first = yield* freshStore
         const second = yield* freshStore
 
         assert.strictEqual(first.buildRegistry(), second.buildRegistry())
       })
   )
+
+  it("ParameterTypeStore.Default is a deprecated alias for the same layer as ParameterTypeStore.layerDefault", () => {
+    assert.strictEqual(ParameterTypeStore.Default, ParameterTypeStore.layerDefault)
+  })
 
   it.effect(
     "a store that defines a custom type before its first buildRegistry() call is NOT given the shared singleton",

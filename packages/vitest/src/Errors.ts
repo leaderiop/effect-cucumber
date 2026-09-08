@@ -9,6 +9,7 @@
  * separately below rather than folded into this header. Both share one private mutate-and-wrap
  * helper (`attachFailureLocation`), generic over which concrete located-error class to construct.
  */
+import * as Data from "effect/Data"
 import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
 import type { HookKind } from "./HookRegistry.ts"
@@ -18,53 +19,61 @@ import type { HookKind } from "./HookRegistry.ts"
  * in, and its line within that file — attached as `.cause` on the step's own failure value before
  * it reaches vitest's reporter (ADR-EC-033).
  *
- * A real `Error` subclass, deliberately NOT a `Schema.TaggedError` like `StepMatchError` above:
- * nothing here is ever decoded or compared by `reason` tag, it exists purely to be PRINTED, and
- * vitest's own default reporter (`BaseReporter.printErrorInner`, confirmed against the installed
- * `vitest@4.1.11` — see ADR-EC-033) only recurses into an error's `.cause` and renders it as a
- * nested "Caused by:" block when that value is an object carrying a `.name` — a real `Error`
- * instance satisfies that for free, by being one, rather than by carrying a `reason` field nothing
- * reads.
+ * A real `Error` subclass (via `Data.TaggedError`), deliberately NOT a `Schema.TaggedError` like
+ * `StepMatchError` above: nothing here is ever decoded or compared by `reason` tag, it exists purely
+ * to be PRINTED, and vitest's own default reporter (`BaseReporter.printErrorInner`, confirmed against
+ * the installed `vitest@4.1.11` — see ADR-EC-033) only recurses into an error's `.cause` and renders
+ * it as a nested "Caused by:" block when that value is an object carrying a `.name` — a real `Error`
+ * instance satisfies that for free, by being one (`Data.TaggedError` stamps `.name` to the tag),
+ * rather than by carrying a `reason` field nothing reads.
  */
-export class StepFailureLocation extends Error {
+export class StepFailureLocation extends Data.TaggedError("StepFailureLocation")<{
   readonly step: string
   readonly file: string
   readonly line: number
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
-  constructor(
-    args: { readonly step: string; readonly file: string; readonly line: number; readonly cause?: unknown }
-  ) {
-    super(`${args.file}:${args.line}: step ${JSON.stringify(args.step)}`, { cause: args.cause })
-    this.name = "StepFailureLocation"
-    this.step = args.step
-    this.file = args.file
-    this.line = args.line
-  }
-}
+/** Builds a `StepFailureLocation`, computing its message from the same template the constructor used to. */
+const makeStepFailureLocation = (
+  args: { readonly step: string; readonly file: string; readonly line: number; readonly cause?: unknown }
+): StepFailureLocation =>
+  new StepFailureLocation({
+    step: args.step,
+    file: args.file,
+    line: args.line,
+    cause: args.cause,
+    message: `${args.file}:${args.line}: step ${JSON.stringify(args.step)}`
+  })
 
 /**
  * A failing hook's own kind, its `.feature` file and the line ITS OWN registration call (`Before(...)`,
  * `After(...)`, and so on — never the Scenario it happened to be running for) sits on — the hook
  * counterpart of `StepFailureLocation` above, attached the same way and for the identical reason
  * (ADR-EC-052, closing ADR-EC-033's own "out of scope" carve-out for hooks). Same real-`Error`-subclass
- * shape, for the identical reason: vitest's default reporter only recurses into `.cause` when it
- * carries a `.name`.
+ * shape (via `Data.TaggedError`), for the identical reason: vitest's default reporter only recurses
+ * into `.cause` when it carries a `.name`.
  */
-export class HookFailureLocation extends Error {
+export class HookFailureLocation extends Data.TaggedError("HookFailureLocation")<{
   readonly hookKind: HookKind
   readonly file: string
   readonly line: number
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
-  constructor(
-    args: { readonly hookKind: HookKind; readonly file: string; readonly line: number; readonly cause?: unknown }
-  ) {
-    super(`${args.file}:${args.line}: ${args.hookKind} hook`, { cause: args.cause })
-    this.name = "HookFailureLocation"
-    this.hookKind = args.hookKind
-    this.file = args.file
-    this.line = args.line
-  }
-}
+/** Builds a `HookFailureLocation`, computing its message from the same template the constructor used to. */
+const makeHookFailureLocation = (
+  args: { readonly hookKind: HookKind; readonly file: string; readonly line: number; readonly cause?: unknown }
+): HookFailureLocation =>
+  new HookFailureLocation({
+    hookKind: args.hookKind,
+    file: args.file,
+    line: args.line,
+    cause: args.cause,
+    message: `${args.file}:${args.line}: ${args.hookKind} hook`
+  })
 
 /**
  * The shared mutate-and-wrap mechanics behind `attachStepFailureLocation`/`attachHookFailureLocation`
@@ -103,7 +112,7 @@ const attachFailureLocation = (value: unknown, makeLocation: (cause: unknown) =>
 export const attachStepFailureLocation = (
   value: unknown,
   location: { readonly step: string; readonly file: string; readonly line: number }
-): unknown => attachFailureLocation(value, (cause) => new StepFailureLocation({ ...location, cause }))
+): unknown => attachFailureLocation(value, (cause) => makeStepFailureLocation({ ...location, cause }))
 
 /**
  * Attach a `HookFailureLocation` to `value` as `.cause`, and return the result to re-fail/re-die
@@ -113,7 +122,7 @@ export const attachStepFailureLocation = (
 export const attachHookFailureLocation = (
   value: unknown,
   location: { readonly hookKind: HookKind; readonly file: string; readonly line: number }
-): unknown => attachFailureLocation(value, (cause) => new HookFailureLocation({ ...location, cause }))
+): unknown => attachFailureLocation(value, (cause) => makeHookFailureLocation({ ...location, cause }))
 
 /**
  * Why a `StepMatchError` was raised.
