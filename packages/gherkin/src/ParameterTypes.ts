@@ -188,18 +188,18 @@ export const createParameterTypeStore = () => {
         }
       }
       if (Predicate.isRegExp(entry)) {
-        for (const flag of rejectedRegexpFlags) {
-          if (entry.flags.includes(flag)) {
-            fail({
-              reason: "InvalidParameterTypeRegexp",
-              parameterTypeName: name,
-              sentences: [
-                `the regexp /${entry.source}/${entry.flags} supplied for ${describeName(name)}`,
-                `carries the ${flag} flag, which upstream's ParameterType constructor rejects.`,
-                `Drop the ${flag} flag.`
-              ]
-            })
-          }
+        const rejectedFlag = Arr.findFirst(rejectedRegexpFlags, (flag) => entry.flags.includes(flag))
+        if (Option.isSome(rejectedFlag)) {
+          const flag = rejectedFlag.value
+          fail({
+            reason: "InvalidParameterTypeRegexp",
+            parameterTypeName: name,
+            sentences: [
+              `the regexp /${entry.source}/${entry.flags} supplied for ${describeName(name)}`,
+              `carries the ${flag} flag, which upstream's ParameterType constructor rejects.`,
+              `Drop the ${flag} flag.`
+            ]
+          })
         }
       }
     }

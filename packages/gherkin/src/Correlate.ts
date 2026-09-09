@@ -368,9 +368,10 @@ export const correlateFeature = (
       location,
       ruleId: Option.fromUndefinedOr(node.ruleId),
       pickle,
-      exampleRow: rowInfo === undefined
-        ? Option.none()
-        : Option.some(makeExamplesRow(rowInfo.header, rowInfo.values, uri, location.line))
+      exampleRow: Option.map(
+        Option.fromUndefinedOr(rowInfo),
+        (info) => makeExamplesRow(info.header, info.values, uri, location.line)
+      )
     }
   }
 

@@ -224,10 +224,14 @@ export const rowDecodeFailed = (
   const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
   const offending = Predicate.isNumber(index) ? rows[index] : undefined
 
-  const opening = Option.isSome(row)
-    ? `Row ${row.value} of the DataTable at ${table.uri}:${table.line} failed to decode`
-    : `The DataTable at ${table.uri}:${table.line} failed to decode`
-  const located = Option.isSome(column) ? `${opening}, column ${JSON.stringify(column.value)}` : opening
+  const opening = Option.match(row, {
+    onNone: () => `The DataTable at ${table.uri}:${table.line} failed to decode`,
+    onSome: (r) => `Row ${r} of the DataTable at ${table.uri}:${table.line} failed to decode`
+  })
+  const located = Option.match(column, {
+    onNone: () => opening,
+    onSome: (c) => `${opening}, column ${JSON.stringify(c)}`
+  })
   // Reproduced whole, no ellipsis, per `Errors.ts`.
   const subject = offending === undefined
     ? `The rows were ${JSON.stringify(rows)}.`

@@ -3,6 +3,8 @@
  * Never module-level: two `describeFeature` calls in one file must not see each other's steps
  * (`test/Registry.test.ts`).
  */
+import * as Arr from "effect/Array"
+import * as Option from "effect/Option"
 
 /**
  * The four Gherkin constructs that can own step definitions.
@@ -47,17 +49,16 @@ export const createRegistry = <Fn>(featureName: string) => {
   const stack: Array<RegistryScope> = [{ kind: "feature", name: featureName, ruleId: null }]
   const records: Array<StepDefinition<Fn>> = []
 
-  const currentScope = (): RegistryScope => {
-    const top = stack[stack.length - 1]
-    // Unreachable: `popScope` refuses to remove the root frame, so the stack is never empty.
-    if (top === undefined) {
-      throw new Error(
-        "Registry scope stack is empty, which popScope() is supposed to make impossible. "
-          + "This is a bug in Registry.ts, not in the feature being defined."
-      )
-    }
-    return top
-  }
+  // Unreachable: `popScope` refuses to remove the root frame, so the stack is never empty.
+  const currentScope = (): RegistryScope =>
+    Option.getOrThrowWith(
+      Arr.last(stack),
+      () =>
+        new Error(
+          "Registry scope stack is empty, which popScope() is supposed to make impossible. "
+            + "This is a bug in Registry.ts, not in the feature being defined."
+        )
+    )
 
   const pushScope = (scope: RegistryScope): void => {
     stack.push(scope)
