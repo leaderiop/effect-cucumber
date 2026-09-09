@@ -45,8 +45,12 @@ export const undefinedParameterTypeNameOf = (thrown: unknown): string | undefine
   return Predicate.isString(undefinedParameterTypeName) ? undefinedParameterTypeName : undefined
 }
 
-/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). */
-const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
+/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). The
+ * `Predicate.isError` guard's false branch is not reachable through `constructExpression`'s own catch —
+ * every real throw site in the installed `@cucumber/cucumber-expressions` raises a genuine `Error`. Exported
+ * (not re-exported from `index.ts`), same reason as `undefinedParameterTypeNameOf` above, so
+ * `test/StepMatcher.test.ts` can drive that guard directly. */
+export const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
 
 /** Construct one expression, re-raising every upstream throw as a named `StepPatternError`. */
 const constructExpression = (registry: ParameterTypeRegistry, pattern: string): CucumberExpression => {
