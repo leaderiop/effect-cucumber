@@ -46,8 +46,10 @@ export const rerunKeysForPlan = (plan: FeaturePlan): ReadonlyMap<string, string>
   }
   const keys = new Map<string, string>()
   for (const scenarioPlan of plan.scenarios) {
-    const ruleId = Option.getOrNull(scenarioPlan.ruleId)
-    const ruleName = ruleId === null ? null : ruleNameById.get(ruleId) ?? null
+    const ruleName = Option.match(scenarioPlan.ruleId, {
+      onNone: () => null,
+      onSome: (ruleId) => ruleNameById.get(ruleId) ?? null
+    })
     const title = titles.get(scenarioPlan.scenarioId) ?? scenarioPlan.name
     keys.set(scenarioPlan.scenarioId, rerunKey(plan.feature.uri, ruleName, title))
   }

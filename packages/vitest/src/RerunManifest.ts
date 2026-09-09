@@ -7,6 +7,7 @@
  * runs at vitest CONFIG-LOAD/collection time, which is synchronous end to end — the same constraint
  * ADR-EC-026 already recorded for `GherkinTags.ts`'s `globSync` over the async `glob`.
  */
+import * as Option from "effect/Option"
 import * as Result from "effect/Result"
 import * as Schema from "effect/Schema"
 import { readFileSync } from "node:fs"
@@ -25,25 +26,25 @@ const RerunManifestSchema = Schema.fromJsonString(
 )
 
 /**
- * `null` means "no filter" — covers `rerunFailedOnly` being unset, AND the manifest file simply not
- * existing yet (the very first run, before any manifest has ever been written: a rerun-only mode
- * that could not run without a prior successful run of its own would be useless) AND a manifest that
- * fails to parse or does not match the expected shape. Every one of those degrades to "run
- * everything" with a `console.warn` for the two failure cases — never a thrown error — the same
- * "warn, don't silently ignore, and don't fail the Feature either" posture `UndeclaredTagWarning`
- * already established (ADR-EC-026).
+ * `Option.none()` means "no filter" — covers `rerunFailedOnly` being unset, AND the manifest file
+ * simply not existing yet (the very first run, before any manifest has ever been written: a
+ * rerun-only mode that could not run without a prior successful run of its own would be useless)
+ * AND a manifest that fails to parse or does not match the expected shape. Every one of those
+ * degrades to "run everything" with a `console.warn` for the two failure cases — never a thrown
+ * error — the same "warn, don't silently ignore, and don't fail the Feature either" posture
+ * `UndeclaredTagWarning` already established (ADR-EC-026).
  *
  * @param path - the manifest file's path, resolved against `process.cwd()` the same way `node:fs`
  * resolves any relative path
  */
-export const readRerunManifest = (path: string): ReadonlySet<string> | null => {
+export const readRerunManifest = (path: string): Option.Option<ReadonlySet<string>> => {
   let raw: string
   try {
     raw = readFileSync(path, "utf8")
   } catch {
     // Missing file: the ordinary "no manifest has ever been written for this Feature" case, not a
     // warning-worthy one.
-    return null
+    return Option.none()
   }
 
   const decoded = Schema.decodeUnknownResult(RerunManifestSchema)(raw)
@@ -52,8 +53,8 @@ export const readRerunManifest = (path: string): ReadonlySet<string> | null => {
       `${JSON.stringify(path)}: MalformedRerunManifest: ${decoded.failure.message} ` +
         `Treating this run as "no filter" — every Scenario will register normally. Regenerate the manifest.`
     )
-    return null
+    return Option.none()
   }
 
-  return new Set(decoded.success.failed)
+  return Option.some(new Set(decoded.success.failed))
 }

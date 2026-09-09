@@ -27,6 +27,7 @@ import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import * as Match from "effect/Match"
 import * as Option from "effect/Option"
+import * as Order from "effect/Order"
 import { compareCallSites, formatCallSite } from "./CallSite.ts"
 import { makeUnusedStepDefinitionWarning, StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
 import type { RegistryScopeKind, StepDefinition } from "./Registry.ts"
@@ -162,7 +163,10 @@ const ambiguousStep = (args: {
   readonly matches: ReadonlyArray<StepDefinition<StepBody>>
 }): StepMatchError => {
   const { feature, matches, scenario, step } = args
-  const ordered = matches.toSorted((left, right) => compareCallSites(left.definedAt, right.definedAt))
+  const ordered = Arr.sort(
+    matches,
+    Order.mapInput(Order.make(compareCallSites), (definition: StepDefinition<StepBody>) => definition.definedAt)
+  )
   const sites = ordered.map((definition) =>
     `${quoted(definition.pattern)} was registered as a ${definition.keyword} at `
     + `${formatCallSite(definition.definedAt)}.`
@@ -341,13 +345,13 @@ export const planFeature = (args: {
 
   // Sorted for determinism, so a test can assert by position rather than by searching, and so the
   // list a developer reads does not reorder itself under an unrelated refactor.
-  const warnings = definitions
-    .filter((definition) => !used.has(definition))
-    .toSorted((left, right) => {
-      const bySite = compareCallSites(left.definedAt, right.definedAt)
-      return bySite === 0 ? left.pattern.localeCompare(right.pattern) : bySite
-    })
-    .map((definition) => unusedStepDefinition({ feature, definition }))
+  const warnings = Arr.sort(
+    definitions.filter((definition) => !used.has(definition)),
+    Order.combine(
+      Order.mapInput(Order.make(compareCallSites), (definition: StepDefinition<StepBody>) => definition.definedAt),
+      Order.mapInput(Order.String, (definition: StepDefinition<StepBody>) => definition.pattern)
+    )
+  ).map((definition) => unusedStepDefinition({ feature, definition }))
 
   return { feature, scenarios, warnings }
 }

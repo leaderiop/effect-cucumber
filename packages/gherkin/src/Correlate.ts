@@ -129,32 +129,36 @@ export interface CorrelationResult {
 const tagNames = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray<string> => tags.map((tag) => tag.name)
 
 /**
- * A dialect by language, through `Object.hasOwn`: a bare index on `"constructor"` reads through to
- * `Object.prototype`. `Parser.ts` rejects an unknown language first; this is for the exported helpers.
+ * A dialect by language, through `Record.get` (which itself guards with `Object.hasOwn`: a bare index on
+ * `"constructor"` reads through to `Object.prototype`). `Parser.ts` rejects an unknown language first; this
+ * is for the exported helpers.
  */
-const dialectOf = (language: string): Dialect | undefined =>
-  Object.hasOwn(dialects, language) ? dialects[language] : undefined
+const dialectOf = (language: string): Option.Option<Dialect> => Rec.get(dialects, language)
 
 /** Whether `keyword` is a Scenario Outline keyword in `language` — the only exact way to tell, since
  * `compile()` never branches on the keyword. */
-export const isOutlineKeyword = (language: string, keyword: string): boolean => {
-  const dialect = dialectOf(language)
-  return dialect === undefined ? false : dialect.scenarioOutline.includes(keyword.trim())
-}
+export const isOutlineKeyword = (language: string, keyword: string): boolean =>
+  Option.match(dialectOf(language), {
+    onNone: () => false,
+    onSome: (dialect) => dialect.scenarioOutline.includes(keyword.trim())
+  })
 
 /** Every step keyword of `language`, trimmed, without the wildcard `*` (a bullet in ordinary prose). */
-export const stepKeywords = (language: string): ReadonlyArray<string> => {
-  const dialect = dialectOf(language)
-  if (dialect === undefined) return []
-  const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
-  return Arr.dedupe(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))
-}
+export const stepKeywords = (language: string): ReadonlyArray<string> =>
+  Option.match(dialectOf(language), {
+    onNone: () => [],
+    onSome: (dialect) => {
+      const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
+      return Arr.dedupe(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))
+    }
+  })
 
 /** Whether `keyword` is a plain Scenario keyword in `language`. */
-export const isScenarioKeyword = (language: string, keyword: string): boolean => {
-  const dialect = dialectOf(language)
-  return dialect === undefined ? false : dialect.scenario.includes(keyword.trim())
-}
+export const isScenarioKeyword = (language: string, keyword: string): boolean =>
+  Option.match(dialectOf(language), {
+    onNone: () => false,
+    onSome: (dialect) => dialect.scenario.includes(keyword.trim())
+  })
 
 /** Narrow `document.feature` (`undefined` for a comment-only file). `Parser.ts` rejects that case as
  * `NoFeature`; reaching this throw is a library defect. */
@@ -354,8 +358,11 @@ export const correlateFeature = (
     // `[0]` (that one is the Outline's own AST id, shared by every row). A plain Scenario's sole
     // `astNodeIds` entry IS its own scenario id, which `rowById` never contains, so the lookup
     // below is naturally `undefined` for it — the same discriminator `OutlineTitle.ts` already
-    // relied on before this field existed.
-    const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1) ?? "")
+    // relied on before this field existed. The `!` is safe, never a live risk: every `pickle` reaching
+    // this closure came from `index.byScenarioId`, which `indexPicklesByScenario` only ever populates
+    // with pickles that already passed its own `astNodeIds[0] !== undefined` filter above — so
+    // `astNodeIds` is never empty here, and `.at(-1)` is never `undefined`.
+    const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1)!)
     return {
       id: pickle.id,
       astId: node.id,

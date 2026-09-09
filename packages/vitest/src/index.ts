@@ -18,7 +18,7 @@
  * whole design assumes a consumer calls `collectFeature()` themselves, across every Feature in
  * their suite, so the collector it feeds must be public API, not test-only-via-relative-import.
  */
-export { collectFeature, describeFeature } from "./describeFeature.ts"
+export { collectFeature, describeFeature, MutuallyExclusiveTagFilterError } from "./describeFeature.ts"
 export type { FeatureCollection } from "./describeFeature.ts"
 
 /**
@@ -98,7 +98,7 @@ export type { StepModule } from "./StepModule.ts"
  * (ADR-EC-039, BEH-EC-031). Called from inside `RuleRegistrar`'s third-overload `narrow`
  * callback: `Rule(name, extraLayer, (dsl) => narrowRuleDsl(dsl, project), define)`.
  */
-export { narrowRuleDsl } from "./RuleNarrowing.ts"
+export { narrowRuleDsl, UnsupportedScenarioExtraLayerError } from "./RuleNarrowing.ts"
 export type { WorldProjection } from "./RuleNarrowing.ts"
 
 /**

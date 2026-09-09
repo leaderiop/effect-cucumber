@@ -52,9 +52,9 @@
  *   UNCONDITIONALLY (every run, not only a `rerunFailedOnly` one), because the write-side script
  *   that produces a manifest for a LATER run needs the key present in an ORDINARY run's own
  *   `--reporter=json` output.
- * - `rerunFilter === null` means no filter at all (`rerunFailedOnly` unset, or its manifest was
- *   absent/unreadable) — every Scenario survives it, mirroring `Tags.ts`'s own `noTagFilter`
- *   sentinel. When it is NOT null and it excludes every Scenario this walk would otherwise emit for
+ * - `rerunFilter` being `Option.none()` means no filter at all (`rerunFailedOnly` unset, or its
+ *   manifest was absent/unreadable) — every Scenario survives it, mirroring `Tags.ts`'s own
+ *   `noTagFilter` sentinel. When it is `Option.some(...)` and it excludes every Scenario this walk would otherwise emit for
  *   a Feature or a Rule, ONE synthetic skipped node is emitted in that block instead of nothing —
  *   the rough edge the roadmap's "Rerun-failed-only" entry names: an emptied `describe` block trips
  *   vitest's own "no test found in suite" failure, worse than what the filter was trying to avoid.
@@ -149,8 +149,8 @@ const scenarioKeyFor = (scenarioPlan: ScenarioPlan): string =>
  * @param args.tagFilter - the caller's normalised registration filter, applied inside this walk and
  * @param args.rerunKeys - one rerun key per `ScenarioPlan.scenarioId`, from `RerunKey.ts`'s
  * `rerunKeysForPlan` — computed once by `describeFeature.ts` and handed in already built.
- * @param args.rerunFilter - the caller's normalised `rerunFailedOnly` manifest, or `null` for no
- * filter at all (ADR-EC-038).
+ * @param args.rerunFilter - the caller's normalised `rerunFailedOnly` manifest, or `Option.none()`
+ * for no filter at all (ADR-EC-038).
  * @param args.onEmitted - called ONCE with the final `EmitOutcome`, as the last statement inside the
  */
 export const emitFeature = (
@@ -164,7 +164,7 @@ export const emitFeature = (
     readonly scenarioLayers: ReadonlyMap<string, ErasedExtraLayer>
     readonly tagFilter: TagFilter
     readonly rerunKeys: ReadonlyMap<string, string>
-    readonly rerunFilter: ReadonlySet<string> | null
+    readonly rerunFilter: Option.Option<ReadonlySet<string>>
     readonly onEmitted?: ((outcome: EmitOutcome) => void) | undefined
     // Normalised (an absent/`false` `DescribeFeatureOptions.strict` collapsed to `false`) by
     // `describeFeature.ts` before this call — required, never optional, at this internal layer
@@ -195,11 +195,11 @@ export const emitFeature = (
   let rerunExcludedScenarioCount = 0
   let attempted = false
 
-  // `rerunFilter === null` (no filter) always passes; otherwise a Scenario survives only when its
-  // OWN precomputed key (never recomputed here — `rerunKeys` is the single source of truth) is a
-  // member.
+  // `rerunFilter` being `Option.none()` (no filter) always passes; otherwise a Scenario survives
+  // only when its OWN precomputed key (never recomputed here — `rerunKeys` is the single source of
+  // truth) is a member.
   const passesRerunFilter = (scenarioPlan: ScenarioPlan): boolean =>
-    rerunFilter === null || rerunFilter.has(rerunKeys.get(scenarioPlan.scenarioId) ?? "")
+    Option.isNone(rerunFilter) || rerunFilter.value.has(rerunKeys.get(scenarioPlan.scenarioId) ?? "")
 
   // Built once, before anything is emitted: the walk visits every Scenario exactly once.
   const planById = new Map<string, ScenarioPlan>()
@@ -397,7 +397,7 @@ export const emitFeature = (
         }
         // The Rule-level twin of the Feature-level synthetic node below: this Rule's own block would
         // otherwise end up with zero children, purely because of the rerun filter.
-        if (rerunFilter !== null && ruleEmittedCount === 0 && ruleRerunExcludedCount > 0) {
+        if (Option.isSome(rerunFilter) && ruleEmittedCount === 0 && ruleRerunExcludedCount > 0) {
           api.effect(rerunEmptyBlockTitle, () => Effect.void, rerunEmptyBlockEmitOptions)
         }
       })
@@ -426,7 +426,7 @@ export const emitFeature = (
     // was rerun-excluded specifically. Without this, an emptied Feature block trips vitest's own
     // "no test found in suite" — the roadmap's named rough edge (ADR-EC-038).
     if (
-      rerunFilter !== null &&
+      Option.isSome(rerunFilter) &&
       rerunExcludedScenarioCount > 0 &&
       plan.scenarios.length - excludedScenarioCount - rerunExcludedScenarioCount === 0
     ) {
