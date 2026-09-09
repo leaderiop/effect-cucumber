@@ -67,7 +67,7 @@ const splitLayerArgument = (
   readonly shared: ErasedLayer | null
   readonly perScenario: ErasedExtraLayer
 } =>
-  "perScenario" in argument
+  Predicate.hasProperty(argument, "perScenario")
     ? { shared: argument.shared, perScenario: argument.perScenario }
     : { shared: null, perScenario: argument }
 const invokeDefine = <Dsl>(

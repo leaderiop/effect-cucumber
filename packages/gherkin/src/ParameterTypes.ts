@@ -25,12 +25,14 @@
  * `any` escape route at run time. This module constructs no regular expression of its own.
  */
 import { ParameterType, ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
+import * as Arr from "effect/Array"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import { StepPatternError } from "./Errors.ts"
+import { describeCause } from "./StepMatcher.ts"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
 /**
@@ -178,7 +180,7 @@ export const createParameterTypeStore = () => {
             parameterTypeName: name,
             sentences: [
               `the regexp source ${JSON.stringify(entry)} supplied for ${describeName(name)}`,
-              `is not a valid regular expression: ${Predicate.isError(cause) ? cause.message : String(cause)}.`,
+              `is not a valid regular expression: ${describeCause(cause)}.`,
               "Fix the source, or pass a RegExp literal so the mistake is a syntax error at the call site."
             ],
             cause
@@ -203,7 +205,7 @@ export const createParameterTypeStore = () => {
     }
 
     // A copy of the array form: `regexp` is replayed on every build, so the caller's array must not alias it.
-    const record: ParameterTypeDefinition<unknown> = Array.isArray(definition.regexp)
+    const record: ParameterTypeDefinition<unknown> = Arr.isArray<typeof definition.regexp>(definition.regexp)
       ? { ...definition, regexp: [...definition.regexp] }
       : definition
 
@@ -267,7 +269,7 @@ export const createParameterTypeStore = () => {
           parameterTypeName: record.name,
           sentences: [
             `@cucumber/cucumber-expressions rejected ${describeName(record.name)} while registering it`,
-            `into a fresh registry: ${Predicate.isError(cause) ? cause.message : String(cause)}`,
+            `into a fresh registry: ${describeCause(cause)}`,
             "A type with `preferForRegexpMatch` set may not share a regexp source with another",
             "preferential type, the built-ins included. Drop `preferForRegexpMatch` or change the regexp.",
             "The original failure is attached as `cause`."

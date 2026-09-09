@@ -4,6 +4,7 @@
  * (`test/GherkinTags.test.ts`).
  */
 import * as Arr from "effect/Array"
+import * as Data from "effect/Data"
 import * as Order from "effect/Order"
 import * as Predicate from "effect/Predicate"
 import * as fs from "node:fs"
@@ -16,6 +17,16 @@ import { globSync } from "tinyglobby"
 export interface GherkinTagDefinition {
   readonly name: string
 }
+
+/**
+ * Thrown by `gherkinTags` when its `pattern` argument is empty — a real `Error` subclass (via
+ * `Data.TaggedError`), consistent with this package's other registration-time argument-validation
+ * throws.
+ */
+export class InvalidGherkinTagsPatternError extends Data.TaggedError("InvalidGherkinTagsPatternError")<{
+  readonly pattern: string | ReadonlyArray<string>
+  readonly message: string
+}> {}
 
 /**
  * Options for `gherkinTags`.
@@ -46,11 +57,12 @@ export const gherkinTags = (
   const cwd = options.cwd ?? process.cwd()
 
   if (patterns.length === 0 || patterns.some((entry) => entry.trim() === "")) {
-    throw new Error(
-      `gherkinTags: a glob pattern is required and must not be empty (received ${
+    throw new InvalidGherkinTagsPatternError({
+      pattern,
+      message: `gherkinTags: a glob pattern is required and must not be empty (received ${
         JSON.stringify(pattern)
       }). Pass the pattern that matches your .feature files, for example gherkinTags("features/**/*.feature"). There is deliberately no default: a helper that scanned the whole working directory would declare tags nobody asked it to look for, and a helper that returned an empty list here would leave every tag in the suite undeclared without saying so.`
-    )
+    })
   }
 
   const names: Array<string> = []

@@ -9,7 +9,9 @@
  * (`test/Correlate.test.ts` asserts the raw field carries no accessor).
  */
 import type { PickleStepArgument } from "@cucumber/messages"
+import * as Arr from "effect/Array"
 import * as Option from "effect/Option"
+import * as Order from "effect/Order"
 import { type DataTable, makeDataTable } from "./DataTable.ts"
 
 /** A step's DocString argument: plain data (ADR-EC-008 — `content` IS the value). The `_tag` is the discriminant
@@ -79,5 +81,5 @@ export const stepArgumentsOf = (
     })
   }
 
-  return candidates.toSorted((left, right) => left.order - right.order).map((candidate) => candidate.argument)
+  return Arr.sortWith(candidates, (candidate) => candidate.order, Order.Number).map((candidate) => candidate.argument)
 }

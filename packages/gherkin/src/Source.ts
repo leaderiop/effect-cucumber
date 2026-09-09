@@ -10,18 +10,19 @@
  */
 import * as Effect from "effect/Effect"
 import * as FileSystem from "effect/FileSystem"
+import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import type * as PlatformError from "effect/PlatformError"
 import { LoadFeatureError, type LoadFeatureErrorReason } from "./Errors.ts"
 
 /** The `PlatformError`'s own discriminant decides the reason: `NotFound` → `MissingFile`, `PermissionDenied` →
  * itself, anything else → `ReadFailed`, with the platform error as `cause`. Nothing is inferred from message text. */
-const reasonOf = (platformError: PlatformError.PlatformError): LoadFeatureErrorReason => {
-  const { _tag } = platformError.reason
-  if (_tag === "NotFound") return "MissingFile"
-  if (_tag === "PermissionDenied") return "PermissionDenied"
-  return "ReadFailed"
-}
+const reasonOf = (platformError: PlatformError.PlatformError): LoadFeatureErrorReason =>
+  Match.value(platformError.reason).pipe(
+    Match.tag("NotFound", () => "MissingFile" as const),
+    Match.tag("PermissionDenied", () => "PermissionDenied" as const),
+    Match.orElse(() => "ReadFailed" as const)
+  )
 
 export const readFeatureSource = Effect.fn("readFeatureSource")(function*(path: string) {
   const fs = yield* FileSystem.FileSystem

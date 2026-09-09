@@ -25,6 +25,7 @@ import {
 import * as Arr from "effect/Array"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
+import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import { compareCallSites, formatCallSite } from "./CallSite.ts"
 import { makeUnusedStepDefinitionWarning, StepMatchError, type UnusedStepDefinitionWarning } from "./Errors.ts"
@@ -219,20 +220,23 @@ const isVisibleTo = (
   step: ParsedStep
 ): boolean => {
   const scenarioRuleId = Option.getOrNull(scenario.ruleId)
-  switch (definition.scope.kind) {
-    case "feature":
-      return true
-    case "rule":
-      return scenarioRuleId === definition.scope.ruleId
-    case "background":
-      return step.origin === "feature-background"
-        ? definition.scope.ruleId === null
-        : step.origin === "rule-background" && scenarioRuleId === definition.scope.ruleId
-    case "scenario":
-      return step.origin === "scenario"
-        && definition.scope.name === scenario.astName
-        && scenarioRuleId === definition.scope.ruleId
-  }
+  const scope = definition.scope
+  return Match.value(scope.kind).pipe(
+    Match.when("feature", () => true),
+    Match.when("rule", () => scenarioRuleId === scope.ruleId),
+    Match.when(
+      "background",
+      () =>
+        step.origin === "feature-background"
+          ? scope.ruleId === null
+          : step.origin === "rule-background" && scenarioRuleId === scope.ruleId
+    ),
+    Match.when(
+      "scenario",
+      () => step.origin === "scenario" && scope.name === scenario.astName && scenarioRuleId === scope.ruleId
+    ),
+    Match.exhaustive
+  )
 }
 
 const scopeRank = (kind: RegistryScopeKind): number => kind === "feature" ? 2 : kind === "rule" ? 1 : 0

@@ -120,7 +120,9 @@ export const generateStepSnippet = (args: {
   // `parameterNames` is upstream-disambiguated (`int`, `int2`); `parameterInfos[i].name` is the TYPE name.
   const parameters = parameterNames.map((name, index) => {
     const info = parameterInfos[index]
-    const tsType = info === undefined ? "unknown" : tsTypeByName[info.name] ?? "unknown"
+    const tsType = info === undefined || !Object.hasOwn(tsTypeByName, info.name)
+      ? "unknown"
+      : tsTypeByName[info.name] ?? "unknown"
     const parameterName = isUsableParameterName(name) ? name : `arg${index + 1}`
     return `${parameterName}: ${tsType}`
   })

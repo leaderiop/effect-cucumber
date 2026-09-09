@@ -61,13 +61,13 @@ export { loadFeature } from "./loadFeature.ts"
  */
 export type { DescribeFeatureOptions } from "./describeFeature.ts"
 
-export { gherkinTags } from "./GherkinTags.ts"
+export { gherkinTags, InvalidGherkinTagsPatternError } from "./GherkinTags.ts"
 export type { GherkinTagDefinition, GherkinTagsOptions } from "./GherkinTags.ts"
 
 /**
  * A `.feature` file rerun trigger for watch mode (ADR-EC-030, BEH-EC-022).
  */
-export { gherkinWatchTriggers } from "./GherkinWatchTriggers.ts"
+export { gherkinWatchTriggers, InvalidGherkinWatchTriggersPatternError } from "./GherkinWatchTriggers.ts"
 export type { GherkinWatchTriggersOptions } from "./GherkinWatchTriggers.ts"
 
 /**
@@ -125,7 +125,7 @@ export type {
  * message. Independent of `DescribeFeatureOptions.strict`, the per-Feature half — a consumer may
  * use either, both, or neither.
  */
-export { assertNoUnusedStepDefinitions } from "./StrictMode.ts"
+export { assertNoUnusedStepDefinitions, UnusedStepDefinitionsError } from "./StrictMode.ts"
 
 /**
  * Standalone test-authoring helpers, called directly inside a step body rather than through the
