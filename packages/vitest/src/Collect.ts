@@ -14,7 +14,10 @@
  * - The two Layer tiers are split, never merged (`splitLayerArgument`).
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
+import * as Arr from "effect/Array"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
 import { captureCallSite, formatCallSite } from "./CallSite.ts"
 import type {
   BackgroundDsl,
@@ -74,7 +77,7 @@ const invokeDefine = <Dsl>(
   dsl: Dsl
 ): void => {
   const returned: unknown = define(dsl)
-  if (returned instanceof Promise) {
+  if (Predicate.isPromise(returned)) {
     returned.catch(() => undefined)
     const label = name === null ? container : `${container} "${name}"`
     throw new Error(
@@ -85,10 +88,11 @@ const invokeDefine = <Dsl>(
   }
 }
 const unregisteredRulePrefix = "unregistered-rule:"
-const resolveRuleId = (feature: ParsedFeature, name: string): string => {
-  const match = feature.rules.find((rule) => rule.name === name)
-  return match === undefined ? `${unregisteredRulePrefix}${name}` : match.id
-}
+const resolveRuleId = (feature: ParsedFeature, name: string): string =>
+  Option.match(Arr.findFirst(feature.rules, (rule) => rule.name === name), {
+    onNone: () => `${unregisteredRulePrefix}${name}`,
+    onSome: (rule) => rule.id
+  })
 /**
  * The one implementation both public entry points delegate to.
  */
@@ -128,7 +132,7 @@ export const collect = (
   // passed" check regardless of which kind is calling it.
   const hookRegistrar =
     (kind: HookKind): TaggedHookRegistrar<any> => (tagExprOrFn: string | (() => any), maybeFn?: () => any): void => {
-      const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
+      const tagExpr = Predicate.isString(tagExprOrFn) ? tagExprOrFn : null
       const fn = (maybeFn ?? tagExprOrFn) as () => any
       // The `captureCallSite` call below MUST stay INSIDE this arrow — the one a test author calls as
       // `Before`/`After`/etc. — so the captured stack frame is the author's own call site, not this
@@ -158,12 +162,20 @@ export const collect = (
 
   const noteUnknownScenario = (ruleId: string | null, name: string): void => {
     if (ruleId !== null && ruleId.startsWith(unregisteredRulePrefix)) return
-    const rule = ruleId === null ? null : feature.rules.find((candidate) => candidate.id === ruleId)
-    const scenarios = ruleId === null ? feature.scenarios : rule === undefined || rule === null ? [] : rule.scenarios
-    const known = [...new Set(scenarios.map((scenario) => scenario.astName))]
+    const rule = ruleId === null ? Option.none() : Arr.findFirst(feature.rules, (candidate) => candidate.id === ruleId)
+    const scenarios = ruleId === null
+      ? feature.scenarios
+      : Option.match(rule, { onNone: () => [], onSome: (found) => found.scenarios })
+    const known = Arr.dedupe(scenarios.map((scenario) => scenario.astName))
     if (known.includes(name)) return
     containerWarnings.push(
-      makeUnknownContainerWarning({ uri: feature.uri, kind: "Scenario", name, ruleName: rule?.name ?? null, known })
+      makeUnknownContainerWarning({
+        uri: feature.uri,
+        kind: "Scenario",
+        name,
+        ruleName: Option.getOrUndefined(Option.map(rule, (found) => found.name)),
+        known
+      })
     )
   }
 
@@ -241,7 +253,7 @@ export const collect = (
             uri: feature.uri,
             kind: "Rule",
             name: ruleName,
-            ruleName: null,
+            ruleName: undefined,
             known: feature.rules.map((rule) => rule.name)
           })
         )
@@ -258,7 +270,7 @@ export const collect = (
         tagExprOrFn: string | (() => any),
         maybeFn?: () => any
       ): void => {
-        const tagExpr = typeof tagExprOrFn === "string" ? tagExprOrFn : null
+        const tagExpr = Predicate.isString(tagExprOrFn) ? tagExprOrFn : null
         const fn = (maybeFn ?? tagExprOrFn) as () => any
         // Same requirement as the Feature-level `hookRegistrar` above: `captureCallSite` MUST stay
         // INSIDE this arrow so it captures the author's own `Before`/`After`/etc. call site, not this

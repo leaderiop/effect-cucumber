@@ -19,6 +19,8 @@
  * escape synchronously (`test/expressions-pin.test.ts`). `D` is an opaque caller payload, never inspected.
  */
 import { type Argument, CucumberExpression, type ParameterTypeRegistry } from "@cucumber/cucumber-expressions"
+import * as Arr from "effect/Array"
+import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import { describeParameterTypeName as describeName, raiseStepPatternError as fail } from "./StepPatternMessages.ts"
 
@@ -43,12 +45,8 @@ export const undefinedParameterTypeNameOf = (thrown: unknown): string | undefine
   return Predicate.isString(undefinedParameterTypeName) ? undefinedParameterTypeName : undefined
 }
 
-/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). The
- * `Predicate.isError` guard's false branch is not reachable through `constructExpression`'s own catch —
- * every real throw site in the installed `@cucumber/cucumber-expressions` raises a genuine `Error`. Exported
- * (not re-exported from `index.ts`), same reason as `undefinedParameterTypeNameOf` above, so
- * `test/StepMatcher.test.ts` can drive that guard directly. */
-export const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
+/** Whatever an upstream failure had to say, in full. Never truncated — see `Errors.ts` note (b). */
+const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
 
 /** Construct one expression, re-raising every upstream throw as a named `StepPatternError`. */
 const constructExpression = (registry: ParameterTypeRegistry, pattern: string): CucumberExpression => {
@@ -179,22 +177,19 @@ export const createStepMatcher = <D>(
 ): StepMatcher<D> => {
   const { entries, registry } = args
 
-  const match = (text: string): ReadonlyArray<StepMatch<D>> => {
-    const matches: Array<StepMatch<D>> = []
-    for (const entry of entries) {
+  // No ordering, deduping or preference: zero-or-one result per entry, map to `Option` then `getSomes`
+  // (`Validate.ts`'s established idiom for this shape).
+  const match = (text: string): ReadonlyArray<StepMatch<D>> =>
+    Arr.getSomes(entries.map((entry): Option.Option<StepMatch<D>> => {
       const matched = compileExpression(registry, entry.pattern).match(text)
-      if (matched === null) {
-        continue
-      }
-      matches.push({
-        pattern: entry.pattern,
-        definition: entry.definition,
-        args: matched.map((argument) => extractValue(entry.pattern, argument))
-      })
-    }
-    // No ordering, deduping or preference.
-    return matches
-  }
+      return matched === null
+        ? Option.none()
+        : Option.some({
+          pattern: entry.pattern,
+          definition: entry.definition,
+          args: matched.map((argument) => extractValue(entry.pattern, argument))
+        })
+    }))
 
   return { entries, match }
 }

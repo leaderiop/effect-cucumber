@@ -52,14 +52,14 @@ const withStepFailureLocation =
  * @param args.plan - one Scenario's steps, already resolved by `Plan.ts` and already in run order
  * @param args.hooks - the Feature's registered hooks, grouped by kind, from `FeatureCollection.hooks`
  */
-export const buildScenarioEffect = (
-  args: {
-    readonly plan: ScenarioPlan
-    readonly layer: ErasedExtraLayer
-    readonly hooks: HookSet
-  }
-): Effect.Effect<void, unknown, Scope.Scope> =>
-  Effect.gen(function*() {
+export const buildScenarioEffect = Effect.fnUntraced(
+  function*(
+    args: {
+      readonly plan: ScenarioPlan
+      readonly layer: ErasedExtraLayer
+      readonly hooks: HookSet
+    }
+  ): Effect.fn.Return<void, unknown, Scope.Scope> {
     // This Scenario's own already-flattened, inherited tags — the ONE value every tag-expression-
     // scoped hook batch below is checked against (ADR-EC-035, BEH-EC-027). Read once, not per batch.
     const scenarioTags = args.plan.tags
@@ -85,8 +85,11 @@ export const buildScenarioEffect = (
       )
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.
-  }).pipe(
-    // The finalizer ignores its `exit` on purpose: After hooks receive no exit (ADR-EC-005).
-    Effect.onExit(() => runHookBatch("After", args.hooks.After, args.plan.tags)),
-    Effect.provide(args.layer)
-  )
+  },
+  // The finalizer ignores its `exit` on purpose: After hooks receive no exit (ADR-EC-005).
+  (effect, args) =>
+    effect.pipe(
+      Effect.onExit(() => runHookBatch("After", args.hooks.After, args.plan.tags)),
+      Effect.provide(args.layer)
+    )
+)

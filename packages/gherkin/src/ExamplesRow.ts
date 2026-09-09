@@ -13,8 +13,11 @@
  * `OutlineTitle.ts`'s title suffix already reads a row this same way (`header[i]=values[i]`) and must
  * keep doing so unchanged by this module's arrival.
  */
+import * as Arr from "effect/Array"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
+import * as Rec from "effect/Record"
 import * as Schema from "effect/Schema"
 import { firstIssuePath } from "./DataTable.ts"
 import { ExamplesRowError } from "./Errors.ts"
@@ -41,12 +44,14 @@ export const makeExamplesRow = (
   uri: string,
   line: number
 ): ExamplesRow => {
-  const raw: Record<string, string> = {}
-  header.forEach((name, index) => {
-    if (!Object.hasOwn(raw, name)) {
-      raw[name] = values[index] ?? ""
-    }
-  })
+  // Through `Rec.fromEntries` (= `Object.fromEntries`), never indexed assignment: a header cell named
+  // `__proto__` would otherwise rewrite the record's prototype and vanish, the same hazard `DataTable.ts`'s
+  // `recordOf` avoids. `Arr.dedupeWith` keeps the FIRST occurrence, matching this module's documented rule.
+  const entries = Arr.dedupeWith(
+    header.map((name, index) => [name, values[index] ?? ""] as const),
+    ([left], [right]) => left === right
+  )
+  const raw = Rec.fromEntries(entries)
   return { _tag: "ExamplesRow", uri, line, header, values, raw }
 }
 
@@ -55,7 +60,7 @@ export const makeExamplesRow = (
 const rowDecodeFailed = (row: ExamplesRow, schemaError: Schema.SchemaError): ExamplesRowError => {
   const path = firstIssuePath(schemaError.issue, [])
   const key = path[0]
-  const column: Option.Option<string> = typeof key === "string" ? Option.some(key) : Option.none()
+  const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
   const opening = Option.isSome(column)
     ? `The Examples row at ${row.uri}:${row.line} failed to decode, column ${JSON.stringify(column.value)}`
     : `The Examples row at ${row.uri}:${row.line} failed to decode`

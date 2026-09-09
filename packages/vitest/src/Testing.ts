@@ -22,6 +22,7 @@ import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Fiber from "effect/Fiber"
+import * as Predicate from "effect/Predicate"
 import * as TestClock from "effect/testing/TestClock"
 import { inspect } from "node:util"
 
@@ -29,13 +30,8 @@ import { inspect } from "node:util"
  * The shape every `Schema.TaggedError`/`Data.TaggedError` produces, and the shape `failureTag`
  * looks for once a failed `Exit`'s cause has been collapsed to a single value.
  */
-const hasStringTag = (u: unknown): u is { readonly _tag: string } => {
-  if (typeof u !== "object" || u === null || !("_tag" in u)) {
-    return false
-  }
-  const { _tag } = u as { readonly _tag: unknown }
-  return typeof _tag === "string"
-}
+const hasStringTag = (u: unknown): u is { readonly _tag: string } =>
+  Predicate.hasProperty(u, "_tag") && Predicate.isString(u["_tag"])
 
 /**
  * Narrow a failed `Exit`'s typed error to its `_tag`, or fail the current assertion — never a

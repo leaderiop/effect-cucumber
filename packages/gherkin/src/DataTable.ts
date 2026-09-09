@@ -15,6 +15,7 @@
 import type { PickleTable, PickleTableRow } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
 import * as Schema from "effect/Schema"
 import type * as SchemaIssue from "effect/SchemaIssue"
 import { DataTableError, type DataTableErrorReason } from "./Errors.ts"
@@ -226,9 +227,9 @@ export const rowDecodeFailed = (
   const path = firstIssuePath(schemaError.issue, [])
   const index = path[0]
   const key = path[1]
-  const row: Option.Option<number> = typeof index === "number" ? Option.some(index + 1) : Option.none()
-  const column: Option.Option<string> = typeof key === "string" ? Option.some(key) : Option.none()
-  const offending = typeof index === "number" ? rows[index] : undefined
+  const row: Option.Option<number> = Predicate.isNumber(index) ? Option.some(index + 1) : Option.none()
+  const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
+  const offending = Predicate.isNumber(index) ? rows[index] : undefined
 
   const opening = Option.isSome(row)
     ? `Row ${row.value} of the DataTable at ${table.uri}:${table.line} failed to decode`

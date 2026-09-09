@@ -19,7 +19,9 @@
  * `TagExpressionError` below).
  */
 import { createTagsFilter } from "@vitest/runner/utils"
+import * as Arr from "effect/Array"
 import * as Data from "effect/Data"
+import * as Order from "effect/Order"
 import * as Predicate from "effect/Predicate"
 
 /**
@@ -38,7 +40,7 @@ export type TagMatcher = (scenarioTags: ReadonlyArray<string>) => boolean
  */
 export const featureTagUniverse = (
   scenarios: ReadonlyArray<{ readonly tags: ReadonlyArray<string> }>
-): ReadonlyArray<string> => [...new Set(scenarios.flatMap((scenario) => scenario.tags))].toSorted()
+): ReadonlyArray<string> => Arr.sort(Arr.dedupe(scenarios.flatMap((scenario) => scenario.tags)), Order.String)
 
 /**
  * Compile one tag-expression string into a matcher against `availableTags` — vitest's own

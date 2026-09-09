@@ -8,8 +8,8 @@
  * - Zero matches fail the Scenario with `UndefinedStep` and a snippet; more than one at the same
  *   scope level fail it with `AmbiguousStep` listing every site in call-site order; the innermost
  *   scope wins (ADR-EC-019, `test/Plan.test.ts`).
- * - `ErasedLayer` / `ErasedExtraLayer` / `ErasedEffect` are the ONE place the runtime core erases
- *   type parameters, after the dsl has checked every body (INV-EC-003).
+ * - `ErasedLayer` / `ErasedExtraLayer` are the ONE place the runtime core erases type parameters,
+ *   after the dsl has checked every body (INV-EC-003).
  * - Pattern arguments come first, then the step's DataTable/DocString (BEH-EC-016), then — LAST —
  *   the Scenario's own `exampleRow` when it is an Outline row, `[]` for a plain Scenario
  *   (ADR-EC-032, BEH-EC-024).
@@ -22,6 +22,7 @@ import {
   type ParsedStep,
   type StepOwner
 } from "@effect-cucumber/gherkin"
+import * as Arr from "effect/Array"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
@@ -44,8 +45,6 @@ export type ErasedLayer = Layer.Layer<any, any, never>
  * A Layer whose INPUT another tier satisfies at run time — see `ErasedLayer`.
  */
 export type ErasedExtraLayer = Layer.Layer<any, any, any>
-
-export type ErasedEffect = Effect.Effect<void, unknown, any>
 
 /**
  * One Pickle step joined to the single step definition that will run it.
@@ -257,8 +256,9 @@ const planStep = (args: {
   )
   const winning = matches.filter((match) => scopeRank(match.definition.scope.kind) === innermost)
 
-  const only = winning.length === 1 ? winning[0] : undefined
-  if (only !== undefined) {
+  const only = winning.length === 1 ? Arr.head(winning) : Option.none()
+  if (Option.isSome(only)) {
+    const match = only.value
     return {
       _tag: "Resolved",
       step: {
@@ -266,8 +266,8 @@ const planStep = (args: {
         line: step.line,
         keyword: step.keyword,
         origin: step.origin,
-        pattern: only.pattern,
-        body: only.definition.body,
+        pattern: match.pattern,
+        body: match.definition.body,
         uri: feature.uri,
         // `stepArguments` is `[]` for the overwhelming majority of steps, so this spread is the
         // identity for them and the args list is byte-identical to the matcher's output.
@@ -275,7 +275,7 @@ const planStep = (args: {
         // before — because it is SCENARIO-level data (every step of an Outline row shares the one
         // row), coarser than a step's own arguments, and `[]` for a plain Scenario's `Option.none()`
         // (ADR-EC-032, BEH-EC-024).
-        args: [...only.args, ...step.stepArguments, ...Option.toArray(scenario.exampleRow)]
+        args: [...match.args, ...step.stepArguments, ...Option.toArray(scenario.exampleRow)]
       }
     }
   }

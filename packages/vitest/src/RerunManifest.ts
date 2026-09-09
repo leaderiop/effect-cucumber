@@ -7,12 +7,19 @@
  * runs at vitest CONFIG-LOAD/collection time, which is synchronous end to end — the same constraint
  * ADR-EC-026 already recorded for `GherkinTags.ts`'s `globSync` over the async `glob`.
  */
+import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
+import * as Schema from "effect/Schema"
 import { readFileSync } from "node:fs"
 
 export const defaultRerunManifestPath = ".effect-cucumber/rerun-manifest.json"
 
-const isStringArray = (value: unknown): value is ReadonlyArray<string> =>
-  Array.isArray(value) && value.every((entry) => typeof entry === "string")
+/** The manifest's expected shape — decoded synchronously (`Schema.decodeUnknownOption`), never
+ * through `Effect`: `describeFeature` runs at vitest CONFIG-LOAD/collection time (see this module's
+ * header). */
+const RerunManifestSchema = Schema.Struct({
+  failed: Schema.Array(Schema.String)
+})
 
 /**
  * `null` means "no filter" — covers `rerunFailedOnly` being unset, AND the manifest file simply not
@@ -42,17 +49,14 @@ export const readRerunManifest = (path: string): ReadonlySet<string> | null => {
   } catch (cause) {
     console.warn(
       `${JSON.stringify(path)}: MalformedRerunManifest: could not parse as JSON (${
-        cause instanceof Error ? cause.message : String(cause)
+        Predicate.isError(cause) ? cause.message : String(cause)
       }). Treating this run as "no filter" — every Scenario will register normally. Regenerate the manifest.`
     )
     return null
   }
 
-  const failed = typeof parsed === "object" && parsed !== null && "failed" in parsed
-    ? (parsed as { failed: unknown }).failed
-    : undefined
-
-  if (!isStringArray(failed)) {
+  const decoded = Schema.decodeUnknownOption(RerunManifestSchema)(parsed)
+  if (Option.isNone(decoded)) {
     console.warn(
       `${
         JSON.stringify(path)
@@ -61,5 +65,5 @@ export const readRerunManifest = (path: string): ReadonlySet<string> | null => {
     return null
   }
 
-  return new Set(failed)
+  return new Set(decoded.value.failed)
 }

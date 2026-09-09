@@ -3,6 +3,9 @@
  * config load. DocString fences are tracked so a `@word` inside one is not a tag
  * (`test/GherkinTags.test.ts`).
  */
+import * as Arr from "effect/Array"
+import * as Order from "effect/Order"
+import * as Predicate from "effect/Predicate"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import { globSync } from "tinyglobby"
@@ -39,7 +42,7 @@ export const gherkinTags = (
   pattern: string | ReadonlyArray<string>,
   options: GherkinTagsOptions = {}
 ): ReadonlyArray<GherkinTagDefinition> => {
-  const patterns = typeof pattern === "string" ? [pattern] : pattern
+  const patterns = Predicate.isString(pattern) ? [pattern] : pattern
   const cwd = options.cwd ?? process.cwd()
 
   if (patterns.length === 0 || patterns.some((entry) => entry.trim() === "")) {
@@ -50,7 +53,7 @@ export const gherkinTags = (
     )
   }
 
-  const names = new Set<string>()
+  const names: Array<string> = []
 
   for (const file of globSync(patterns, { cwd, dot: false, onlyFiles: true })) {
     let fence: DocStringFence = null
@@ -72,10 +75,10 @@ export const gherkinTags = (
       if (fence !== null || !trimmed.startsWith("@")) continue
 
       for (const token of trimmed.split(/\s+/)) {
-        if (token.startsWith("@")) names.add(token)
+        if (token.startsWith("@")) names.push(token)
       }
     }
   }
 
-  return [...names].toSorted().map((name) => ({ name }))
+  return Arr.sort(Arr.dedupe(names), Order.String).map((name) => ({ name }))
 }
