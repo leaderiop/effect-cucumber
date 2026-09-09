@@ -1,7 +1,7 @@
 import * as Option from "effect/Option"
 import { inspect } from "node:util"
 import { describe, expect, it } from "vitest"
-import { LoadFeatureError, makeWarning, StepPatternError, type StepPatternErrorReason } from "../src/Errors.ts"
+import { LoadFeatureError, LoadFeatureWarning, StepPatternError, type StepPatternErrorReason } from "../src/Errors.ts"
 
 // Imported directly from ../src/Errors.ts, never through ../src/index.ts:
 // `effect/no-import-from-barrel-package` runs with `checkRelativeIndexImports: true` and
@@ -122,8 +122,8 @@ describe("LoadFeatureError", () => {
   })
 })
 
-describe("makeWarning", () => {
-  const warning = makeWarning({
+describe("LoadFeatureWarning", () => {
+  const warning = new LoadFeatureWarning({
     reason: "UnknownPlaceholder",
     uri: "features/outline.feature",
     line: 9,

@@ -18,15 +18,11 @@
  *   now that ADR-EC-052 has closed the hook one.
  */
 import * as Effect from "effect/Effect"
+import * as Match from "effect/Match"
 import type * as Scope from "effect/Scope"
 import { attachStepFailureLocation } from "./Errors.ts"
 import { type HookSet, runHookBatch } from "./Hook.ts"
-import type { ErasedExtraLayer, PlannedStep, ResolvedStep, ScenarioPlan, UnresolvedPlannedStep } from "./Plan.ts"
-
-const isUnresolved = (planned: PlannedStep): planned is UnresolvedPlannedStep => {
-  const { _tag } = planned
-  return _tag === "Unresolved"
-}
+import type { ErasedExtraLayer, ResolvedStep, ScenarioPlan } from "./Plan.ts"
 
 /**
  * Attach `step`'s own pattern/`.feature` location to whatever it fails or dies with, before either
@@ -68,20 +64,25 @@ export const buildScenarioEffect = Effect.fnUntraced(
     // A loop of `yield*` inside ONE generator, and not a combinator over the list: the
     // short-circuit below is the absence of a next iteration, not a check anyone maintains.
     for (const planned of args.plan.steps) {
-      if (isUnresolved(planned)) {
-        // In position, after the steps before it have already run. Note (c).
-        return yield* Effect.fail(planned.error)
-      }
-      // The wrap is unconditional even when both batches are empty: `runHookBatch([], ...)` succeeds
-      // immediately.
-      yield* Effect.gen(function*() {
-        yield* runHookBatch("BeforeStep", args.hooks.BeforeStep, scenarioTags)
-        // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at registration (ADR-EC-005).
-        // The location wrap covers ONLY this call — a BeforeStep/AfterStep hook failure is not a step
-        // failure and gains its OWN `HookFailureLocation` inside `runHookBatch` instead (ADR-EC-052).
-        yield* withStepFailureLocation(planned.step)(planned.step.body(...planned.step.args))
-      }).pipe(
-        Effect.onExit(() => runHookBatch("AfterStep", args.hooks.AfterStep, scenarioTags))
+      // Match.tag/Match.orElse, never an if/switch on `_tag` (project convention). The early
+      // `return` an `if` gave us isn't needed: `yield* Effect.fail(...)` inside `Effect.gen`
+      // already aborts the generator, so later steps still never run after an Unresolved one.
+      yield* Match.value(planned).pipe(
+        Match.tag("Unresolved", (unresolved) => Effect.fail(unresolved.error)),
+        // The wrap is unconditional even when both batches are empty: `runHookBatch([], ...)`
+        // succeeds immediately.
+        Match.orElse((resolved) =>
+          Effect.gen(function*() {
+            yield* runHookBatch("BeforeStep", args.hooks.BeforeStep, scenarioTags)
+            // Called, never re-wrapped: `Step.ts`'s `register` normalised this body at
+            // registration (ADR-EC-005). The location wrap covers ONLY this call — a
+            // BeforeStep/AfterStep hook failure is not a step failure and gains its OWN
+            // `HookFailureLocation` inside `runHookBatch` instead (ADR-EC-052).
+            yield* withStepFailureLocation(resolved.step)(resolved.step.body(...resolved.step.args))
+          }).pipe(
+            Effect.onExit(() => runHookBatch("AfterStep", args.hooks.AfterStep, scenarioTags))
+          )
+        )
       )
     }
     // The success value is discarded on purpose. A Scenario's result is that it finished.

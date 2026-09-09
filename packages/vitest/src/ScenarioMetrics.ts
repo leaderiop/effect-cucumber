@@ -74,15 +74,14 @@ export const scenarioResult = Metric.counter("effect_cucumber.scenario.result", 
  * semantics (a failing Scenario still fails) are preserved. See the module doc comment for exactly
  * where this must compose relative to `flakyTest`, and why.
  */
-export const withScenarioMetrics = (
+export const withScenarioMetrics = Effect.fnUntraced(function*(
   scenarioEffect: Effect.Effect<void, unknown, Scope.Scope>
-): Effect.Effect<void, unknown, Scope.Scope> =>
-  Effect.gen(function*() {
-    const [duration, exit] = yield* Effect.timed(Effect.exit(scenarioEffect))
-    yield* Metric.update(scenarioDuration, duration)
-    yield* Metric.update(
-      Metric.withAttributes(scenarioResult, { outcome: Exit.isSuccess(exit) ? "pass" : "fail" }),
-      1
-    )
-    return yield* exit
-  })
+): Effect.fn.Return<void, unknown, Scope.Scope> {
+  const [duration, exit] = yield* Effect.timed(Effect.exit(scenarioEffect))
+  yield* Metric.update(scenarioDuration, duration)
+  yield* Metric.update(
+    Metric.withAttributes(scenarioResult, { outcome: Exit.isSuccess(exit) ? "pass" : "fail" }),
+    1
+  )
+  return yield* exit
+})

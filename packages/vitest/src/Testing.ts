@@ -20,8 +20,9 @@ import { assert } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
-import * as Exit from "effect/Exit"
+import type * as Exit from "effect/Exit"
 import * as Fiber from "effect/Fiber"
+import * as Match from "effect/Match"
 import * as Predicate from "effect/Predicate"
 import * as TestClock from "effect/testing/TestClock"
 import { inspect } from "node:util"
@@ -50,23 +51,24 @@ const hasStringTag = (u: unknown): u is { readonly _tag: string } =>
  * `Cause.squash`'d value carries a string `_tag` — a success, a defect, an interruption, or an
  * untagged typed error all take this path.
  */
-export const failureTag = <A, E>(exit: Exit.Exit<A, E>): string => {
-  if (Exit.isSuccess(exit)) {
-    return assert.fail(
-      `Testing.failureTag: expected a failed Exit, but it succeeded with: ${inspect(exit.value)}`
-    )
-  }
-
-  const fault: unknown = Cause.squash(exit.cause)
-  if (hasStringTag(fault)) {
-    const { _tag } = fault
-    return _tag
-  }
-
-  return assert.fail(
-    `Testing.failureTag: expected a typed failure with a string "_tag" property, but got: ${inspect(fault)}`
+export const failureTag = <A, E>(exit: Exit.Exit<A, E>): string =>
+  Match.value(exit).pipe(
+    Match.tag("Success", (succeeded) =>
+      assert.fail(
+        `Testing.failureTag: expected a failed Exit, but it succeeded with: ${inspect(succeeded.value)}`
+      )),
+    Match.tag("Failure", (failed) => {
+      const fault: unknown = Cause.squash(failed.cause)
+      if (hasStringTag(fault)) {
+        const { _tag } = fault
+        return _tag
+      }
+      return assert.fail(
+        `Testing.failureTag: expected a typed failure with a string "_tag" property, but got: ${inspect(fault)}`
+      )
+    }),
+    Match.exhaustive
   )
-}
 
 /**
  * Options for `settleThroughClock`. Both default from the real usage that grounds ADR-EC-029:

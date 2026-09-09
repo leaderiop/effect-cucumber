@@ -142,13 +142,13 @@ export const createParameterTypeStore = () => {
     }
 
     // `records` searched directly: a handful of entries, and no second structure to drift.
-    const existing = records.find((recorded) => recorded.name === name)
-    if (existing !== undefined) {
+    const existing = Arr.findFirst(records, (recorded) => recorded.name === name)
+    if (Option.isSome(existing)) {
       fail({
         reason: "DuplicateParameterTypeName",
         parameterTypeName: name,
         sentences: [
-          `${describeName(name)} was already defined in this store at ${locationOf(existing.definedAt)},`,
+          `${describeName(name)} was already defined in this store at ${locationOf(existing.value.definedAt)},`,
           `and is being defined again at ${locationOf(definition.definedAt)}.`,
           "Remove one of the two definitions, or give one of them a different name.",
           "Set `definedAt` on each definition to make both sites appear here by name."

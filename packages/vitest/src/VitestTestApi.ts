@@ -74,6 +74,7 @@ import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, 
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
@@ -278,24 +279,29 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
   // The module-level `describe`, under a name oxlint's vitest rules do not recognise as a test-file
   // call: this is a library adapter forwarding a block, not a test declaring one.
   return {
-    describe: (name, define) => {
-      if (Option.isSome(sharedIt)) {
-        block(name, { shuffle: false }, define)
-        return
-      }
-      // The Feature block is our `describe` (so it carries `shuffle: false`); the framework's
-      // one-argument `layer(...)` is called inside its factory so its hooks land on this block.
-      block(name, { shuffle: false }, () => {
-        // HOLD one memo-map reference to the shared build for the whole block.
-        const hold = Scope.makeUnsafe()
-        beforeAll(() => Effect.runPromise(Effect.asVoid(Layer.buildWithMemoMap(sharedTier, memoMap, hold))))
-        afterAll(() => Effect.runPromise(Scope.close(hold, Exit.void)))
-        layer(sharedTier, { excludeTestServices: true, memoMap })((methods) => {
-          sharedIt = Option.some(methods)
-          define()
-        })
-      })
-    },
+    describe: (name, define) =>
+      // Match.tag/Match.orElse, never an if on `_tag` (project convention) — `Option` is a
+      // `_tag`-discriminated union under the hood just like any other.
+      Match.value(sharedIt).pipe(
+        Match.tag("Some", () => {
+          block(name, { shuffle: false }, define)
+        }),
+        Match.tag("None", () => {
+          // The Feature block is our `describe` (so it carries `shuffle: false`); the framework's
+          // one-argument `layer(...)` is called inside its factory so its hooks land on this block.
+          block(name, { shuffle: false }, () => {
+            // HOLD one memo-map reference to the shared build for the whole block.
+            const hold = Scope.makeUnsafe()
+            beforeAll(() => Effect.runPromise(Effect.asVoid(Layer.buildWithMemoMap(sharedTier, memoMap, hold))))
+            afterAll(() => Effect.runPromise(Scope.close(hold, Exit.void)))
+            layer(sharedTier, { excludeTestServices: true, memoMap })((methods) => {
+              sharedIt = Option.some(methods)
+              define()
+            })
+          })
+        }),
+        Match.exhaustive
+      ),
     effect: (name, self, emitOptions) =>
       emitOptions.contextFree
         // Nothing here can force the shared Layer to build.

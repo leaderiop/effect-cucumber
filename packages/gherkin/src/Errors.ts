@@ -14,39 +14,29 @@
  * byte. `LoadFeatureErrorReason` is closed at ten tags by BEH-EC-014, which is why parameter-type and table
  * failures are separate classes. `.name` is derived from the tag (upstream's classes all report `"Error"`).
  */
+import * as Data from "effect/Data"
 import * as Schema from "effect/Schema"
 
 /** Why a `LoadFeatureError` was raised; one member per fixture-table row. A union, not an enum. */
-export type LoadFeatureErrorReason =
-  | "MissingFile"
-  | "PermissionDenied"
-  | "ReadFailed"
-  | "ParseFailed"
-  | "UnknownDialect"
-  | "NoFeature"
-  | "OutlineWithoutExamples"
-  | "EmptyExamples"
-  | "ZeroStepScenario"
-  | "UninterpolatedPlaceholder"
-  | "ScenarioKeywordWithExamples"
-  | "DuplicateScenarioName"
+const LoadFeatureErrorReasonSchema = Schema.Literals([
+  "MissingFile",
+  "PermissionDenied",
+  "ReadFailed",
+  "ParseFailed",
+  "UnknownDialect",
+  "NoFeature",
+  "OutlineWithoutExamples",
+  "EmptyExamples",
+  "ZeroStepScenario",
+  "UninterpolatedPlaceholder",
+  "ScenarioKeywordWithExamples",
+  "DuplicateScenarioName"
+])
+export type LoadFeatureErrorReason = typeof LoadFeatureErrorReasonSchema.Type
 
 /** A fatal problem found while loading a feature file. `line` is `Option`; `cause` is plain `Error.cause`. */
 export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("LoadFeatureError", {
-  reason: Schema.Literals([
-    "MissingFile",
-    "PermissionDenied",
-    "ReadFailed",
-    "ParseFailed",
-    "UnknownDialect",
-    "NoFeature",
-    "OutlineWithoutExamples",
-    "EmptyExamples",
-    "ZeroStepScenario",
-    "UninterpolatedPlaceholder",
-    "ScenarioKeywordWithExamples",
-    "DuplicateScenarioName"
-  ]),
+  reason: LoadFeatureErrorReasonSchema,
   uri: Schema.String,
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   message: Schema.String,
@@ -65,33 +55,25 @@ export class LoadFeatureError extends Schema.TaggedError<LoadFeatureError>()("Lo
  * - `AsyncParameterTransform` / `ParameterTransformFailed`: a transform returned a thenable, or threw, out of
  *   `Argument.getValue` (`test/expressions-pin.test.ts`).
  */
-export type StepPatternErrorReason =
-  | "BuiltInParameterTypeName"
-  | "DuplicateParameterTypeName"
-  | "IllegalParameterTypeName"
-  | "InvalidParameterTypeRegexp"
-  | "InvalidParameterTypeDefinition"
-  | "UndefinedParameterType"
-  | "InvalidStepPattern"
-  | "AsyncParameterTransform"
-  | "ParameterTransformFailed"
+const StepPatternErrorReasonSchema = Schema.Literals([
+  "BuiltInParameterTypeName",
+  "DuplicateParameterTypeName",
+  "IllegalParameterTypeName",
+  "InvalidParameterTypeRegexp",
+  "InvalidParameterTypeDefinition",
+  "UndefinedParameterType",
+  "InvalidStepPattern",
+  "AsyncParameterTransform",
+  "ParameterTransformFailed"
+])
+export type StepPatternErrorReason = typeof StepPatternErrorReasonSchema.Type
 
 /**
  * A fatal problem with a custom parameter type, or with a step pattern compiled against one. Both locators are
  * `Option`: a definition-time failure has a name and no pattern; a malformed pattern may have no type at all.
  */
 export class StepPatternError extends Schema.TaggedError<StepPatternError>()("StepPatternError", {
-  reason: Schema.Literals([
-    "BuiltInParameterTypeName",
-    "DuplicateParameterTypeName",
-    "IllegalParameterTypeName",
-    "InvalidParameterTypeRegexp",
-    "InvalidParameterTypeDefinition",
-    "UndefinedParameterType",
-    "InvalidStepPattern",
-    "AsyncParameterTransform",
-    "ParameterTransformFailed"
-  ]),
+  reason: StepPatternErrorReasonSchema,
   parameterTypeName: Schema.OptionFromUndefinedOr(Schema.String),
   pattern: Schema.OptionFromUndefinedOr(Schema.String),
   message: Schema.String,
@@ -104,11 +86,13 @@ export class StepPatternError extends Schema.TaggedError<StepPatternError>()("St
  * `DuplicateRowKey`, `RowsHashRequiresTwoColumns` (the parser already rejects inconsistent widths), and
  * `RowDecodeFailed` (`decodeHashes`, ADR-EC-008).
  */
-export type DataTableErrorReason =
-  | "DuplicateHeaderColumn"
-  | "DuplicateRowKey"
-  | "RowsHashRequiresTwoColumns"
-  | "RowDecodeFailed"
+const DataTableErrorReasonSchema = Schema.Literals([
+  "DuplicateHeaderColumn",
+  "DuplicateRowKey",
+  "RowsHashRequiresTwoColumns",
+  "RowDecodeFailed"
+])
+export type DataTableErrorReason = typeof DataTableErrorReasonSchema.Type
 
 /**
  * A fatal problem with a step's DataTable argument. `line` is the STEP's line — a `PickleTableRow` carries no
@@ -116,12 +100,7 @@ export type DataTableErrorReason =
  * fault; `column` the offending column, `Option.none()` when no single column is at fault.
  */
 export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTableError", {
-  reason: Schema.Literals([
-    "DuplicateHeaderColumn",
-    "DuplicateRowKey",
-    "RowsHashRequiresTwoColumns",
-    "RowDecodeFailed"
-  ]),
+  reason: DataTableErrorReasonSchema,
   uri: Schema.String,
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   row: Schema.OptionFromUndefinedOr(Schema.Number),
@@ -136,7 +115,8 @@ export class DataTableError extends Schema.TaggedError<DataTableError>()("DataTa
  * `content` value handed straight to a caller-supplied `Schema` (ADR-EC-046), so `DecodeFailed` is
  * the only failure `decodeDocString` can produce.
  */
-export type DocStringErrorReason = "DecodeFailed"
+const DocStringErrorReasonSchema = Schema.Literals(["DecodeFailed"])
+export type DocStringErrorReason = typeof DocStringErrorReasonSchema.Type
 
 /**
  * A step's DocString argument failed to decode through a caller-supplied `Schema` (ADR-EC-046,
@@ -145,7 +125,7 @@ export type DocStringErrorReason = "DecodeFailed"
  * this module is (ADR-EC-022).
  */
 export class DocStringError extends Schema.TaggedError<DocStringError>()("DocStringError", {
-  reason: Schema.Literals(["DecodeFailed"]),
+  reason: DocStringErrorReasonSchema,
   uri: Schema.String,
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   message: Schema.String,
@@ -158,7 +138,8 @@ export class DocStringError extends Schema.TaggedError<DocStringError>()("DocStr
  * off `Correlate.ts`'s AST walk, never author-supplied cells with a row count to validate), so
  * `RowDecodeFailed` is the only failure `decodeExamplesRow` can produce (ADR-EC-032).
  */
-export type ExamplesRowErrorReason = "RowDecodeFailed"
+const ExamplesRowErrorReasonSchema = Schema.Literals(["RowDecodeFailed"])
+export type ExamplesRowErrorReason = typeof ExamplesRowErrorReasonSchema.Type
 
 /**
  * A Scenario Outline row's `raw` record failed to decode through a caller-supplied `Schema`
@@ -169,7 +150,7 @@ export type ExamplesRowErrorReason = "RowDecodeFailed"
  * for the same reason every other located field in this module does (ADR-EC-022).
  */
 export class ExamplesRowError extends Schema.TaggedError<ExamplesRowError>()("ExamplesRowError", {
-  reason: Schema.Literals(["RowDecodeFailed"]),
+  reason: ExamplesRowErrorReasonSchema,
   uri: Schema.String,
   line: Schema.OptionFromUndefinedOr(Schema.Number),
   column: Schema.OptionFromUndefinedOr(Schema.String),
@@ -190,26 +171,12 @@ export type LoadFeatureWarningReason =
 
 /**
  * A non-fatal finding: plain data, never thrown, surfaced through `ParsedFeature.warnings`. `line` is a plain
- * `number` — every warning is located (ADR-EC-022, as amended).
+ * `number` — every warning is located (ADR-EC-022, as amended). `Data.TaggedClass` supplies the `_tag` field and
+ * the constructor, and gives instances value equality via `Equal`/`Hash` for free.
  */
-export interface LoadFeatureWarning {
-  readonly _tag: "LoadFeatureWarning"
+export class LoadFeatureWarning extends Data.TaggedClass("LoadFeatureWarning")<{
   readonly reason: LoadFeatureWarningReason
   readonly uri: string
   readonly line: number
   readonly message: string
-}
-
-/** Build a `LoadFeatureWarning`. The `_tag` is the one field a call site never spells. */
-export const makeWarning = (args: {
-  reason: LoadFeatureWarningReason
-  uri: string
-  line: number
-  message: string
-}): LoadFeatureWarning => ({
-  _tag: "LoadFeatureWarning",
-  reason: args.reason,
-  uri: args.uri,
-  line: args.line,
-  message: args.message
-})
+}> {}
