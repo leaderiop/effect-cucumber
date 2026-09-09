@@ -14,8 +14,10 @@
  */
 import type { PickleTable, PickleTableRow } from "@cucumber/messages"
 import * as Effect from "effect/Effect"
+import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
+import * as Rec from "effect/Record"
 import * as Schema from "effect/Schema"
 import type * as SchemaIssue from "effect/SchemaIssue"
 import { DataTableError, type DataTableErrorReason } from "./Errors.ts"
@@ -64,7 +66,7 @@ const dataTableError = (args: {
  * named `__proto__` would otherwise rewrite the record's prototype and vanish (`test/DataTable.test.ts`).
  */
 const recordOf = (header: ReadonlyArray<string>, row: PickleTableRow): Readonly<Record<string, string>> =>
-  Object.fromEntries(header.map((name, index) => [name, row.cells[index]?.value ?? ""]))
+  Rec.fromEntries(header.map((name, index) => [name, row.cells[index]?.value ?? ""]))
 
 /** A step's DataTable argument with the three accessors a step body wants; one arm of `StepArgument`. */
 export interface DataTable {
@@ -165,24 +167,10 @@ export const makeDataTable = (table: PickleTable, uri: string, line: number): Da
       }))
     }
 
-    return Effect.succeed(Object.fromEntries(rows.map((row) => [row.cells[0]?.value ?? "", row.cells[1]?.value ?? ""])))
+    return Effect.succeed(Rec.fromEntries(rows.map((row) => [row.cells[0]?.value ?? "", row.cells[1]?.value ?? ""])))
   }
 
   return { _tag: "DataTable", uri, line, rows, raw, hashes, rowsHash }
-}
-
-/**
- * Discriminate on the `_tag` STRING, never `instanceof`: `effect` is a peer dependency and two copies in one
- * graph make `instanceof` false. `test/schema-issue-pin.test.ts` asserts tag and class still agree.
- */
-const isPointerIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Pointer => {
-  const { _tag } = issue
-  return _tag === "Pointer"
-}
-
-const isCompositeIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Composite => {
-  const { _tag } = issue
-  return _tag === "Composite"
 }
 
 /**
@@ -192,25 +180,28 @@ const isCompositeIssue = (issue: SchemaIssue.Issue): issue is SchemaIssue.Compos
  * `test/DataTable.test.ts` can drive its `Composite`-with-multiple-children loop directly: no schema
  * this library builds today produces a `Composite` whose first child is itself path-less, so that
  * branch is otherwise dead against the schemas `decodeHashes` actually compiles.
+ *
+ * Discriminated with `Match.tag` on the `_tag` STRING, never `instanceof`: `effect` is a peer dependency
+ * and two copies in one graph make `instanceof` false. `test/schema-issue-pin.test.ts` asserts tag and
+ * class still agree.
  */
 export const firstIssuePath = (
   issue: SchemaIssue.Issue,
   prefix: ReadonlyArray<PropertyKey>
-): ReadonlyArray<PropertyKey> => {
-  if (isPointerIssue(issue)) {
-    return firstIssuePath(issue.issue, [...prefix, ...issue.path])
-  }
-  if (isCompositeIssue(issue)) {
-    for (const child of issue.issues) {
-      const path = firstIssuePath(child, prefix)
-      if (path.length > 0) {
-        return path
+): ReadonlyArray<PropertyKey> =>
+  Match.value(issue).pipe(
+    Match.tag("Pointer", (pointer) => firstIssuePath(pointer.issue, [...prefix, ...pointer.path])),
+    Match.tag("Composite", (composite) => {
+      for (const child of composite.issues) {
+        const path = firstIssuePath(child, prefix)
+        if (path.length > 0) {
+          return path
+        }
       }
-    }
-    return []
-  }
-  return prefix
-}
+      return []
+    }),
+    Match.orElse(() => prefix)
+  )
 
 /**
  * Convert a `SchemaError` from decoding one table's `hashes()` into a LOCATED `DataTableError`: the path's first

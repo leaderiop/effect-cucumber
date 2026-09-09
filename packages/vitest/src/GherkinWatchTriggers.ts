@@ -6,6 +6,7 @@
  * same `{ cwd }` option, same "no default, never scans a tree you did not name" stance. See
  * ADR-EC-030 and BEH-EC-022.
  */
+import * as Data from "effect/Data"
 import * as Predicate from "effect/Predicate"
 import * as path from "node:path"
 import { globSync } from "tinyglobby"
@@ -17,6 +18,18 @@ import type { Plugin } from "vitest/config"
 export interface GherkinWatchTriggersOptions {
   readonly cwd?: string
 }
+
+/**
+ * Thrown by `gherkinWatchTriggers` when its `pattern` argument is empty — a real `Error` subclass
+ * (via `Data.TaggedError`), consistent with this package's other registration-time
+ * argument-validation throws.
+ */
+export class InvalidGherkinWatchTriggersPatternError
+  extends Data.TaggedError("InvalidGherkinWatchTriggersPatternError")<{
+    readonly pattern: string | ReadonlyArray<string>
+    readonly message: string
+  }>
+{}
 
 // Vitest's own documented default include glob (quoted verbatim in
 // `packages/vitest/test/acceptance/README.md`) — used only when the consumer's OWN `test.include`
@@ -45,11 +58,12 @@ export const gherkinWatchTriggers = (
   const patterns = Predicate.isString(pattern) ? [pattern] : pattern
 
   if (patterns.length === 0 || patterns.some((entry) => entry.trim() === "")) {
-    throw new Error(
-      `gherkinWatchTriggers: a glob pattern is required and must not be empty (received ${
+    throw new InvalidGherkinWatchTriggersPatternError({
+      pattern,
+      message: `gherkinWatchTriggers: a glob pattern is required and must not be empty (received ${
         JSON.stringify(pattern)
       }). Pass the same pattern given to gherkinTags, for example gherkinWatchTriggers("features/**/*.feature").`
-    )
+    })
   }
 
   const cwd = options.cwd ?? process.cwd()

@@ -96,43 +96,42 @@ const defaultMaxSteps = 12
  * `A`, `E` and `R` are carried through from `effect` unchanged; a fork that never settles is a
  * defect (`Effect.die`), never a new member of `E`.
  */
-export const settleThroughClock = <A, E, R>(
+export const settleThroughClock = Effect.fnUntraced(function*<A, E, R>(
   effect: Effect.Effect<A, E, R>,
   options?: SettleThroughClockOptions
-): Effect.Effect<A, E, R> =>
-  Effect.gen(function*() {
-    const step = options?.step ?? defaultStep
-    const maxSteps = options?.maxSteps ?? defaultMaxSteps
+): Effect.fn.Return<A, E, R> {
+  const step = options?.step ?? defaultStep
+  const maxSteps = options?.maxSteps ?? defaultMaxSteps
 
-    const fiber = yield* Effect.forkChild(effect, { startImmediately: true })
+  const fiber = yield* Effect.forkChild(effect, { startImmediately: true })
 
-    // `pollUnsafe` — a raw, non-blocking runtime hook rather than one of Fiber's Effect-returning
-    // operations — is used deliberately: this rc line ships no Effect-returning NON-BLOCKING poll
-    // (`Fiber.await` blocks until completion), so it is the only way to check "is the fork done
-    // yet" without waiting on it. See ADR-EC-029.
-    let steps = 0
-    while (fiber.pollUnsafe() === undefined && steps < maxSteps) {
-      yield* TestClock.adjust(step)
-      steps++
-    }
+  // `pollUnsafe` — a raw, non-blocking runtime hook rather than one of Fiber's Effect-returning
+  // operations — is used deliberately: this rc line ships no Effect-returning NON-BLOCKING poll
+  // (`Fiber.await` blocks until completion), so it is the only way to check "is the fork done
+  // yet" without waiting on it. See ADR-EC-029.
+  let steps = 0
+  while (fiber.pollUnsafe() === undefined && steps < maxSteps) {
+    yield* TestClock.adjust(step)
+    steps++
+  }
 
-    if (fiber.pollUnsafe() === undefined) {
-      // Explicit rather than relying solely on forkChild's auto-supervision, so the fork's own
-      // interruption is deterministic and not merely incidental to how the die below propagates.
-      yield* Fiber.interrupt(fiber)
+  if (fiber.pollUnsafe() === undefined) {
+    // Explicit rather than relying solely on forkChild's auto-supervision, so the fork's own
+    // interruption is deterministic and not merely incidental to how the die below propagates.
+    yield* Fiber.interrupt(fiber)
 
-      const stepDuration = Duration.fromInputUnsafe(step)
-      const totalSimulated = Duration.times(stepDuration, maxSteps)
-      return yield* Effect.die(
-        new Error(
-          `Testing.settleThroughClock: the forked effect did not settle after ${maxSteps} ` +
-            `TestClock advance(s) of ${Duration.format(stepDuration)} each ` +
-            `(${Duration.format(totalSimulated)} of simulated time total). Pass a larger ` +
-            `"maxSteps" or "step" if it genuinely needs more simulated time to settle, or check ` +
-            `whether it is waiting on something the TestClock cannot advance past.`
-        )
+    const stepDuration = Duration.fromInputUnsafe(step)
+    const totalSimulated = Duration.times(stepDuration, maxSteps)
+    return yield* Effect.die(
+      new Error(
+        `Testing.settleThroughClock: the forked effect did not settle after ${maxSteps} ` +
+          `TestClock advance(s) of ${Duration.format(stepDuration)} each ` +
+          `(${Duration.format(totalSimulated)} of simulated time total). Pass a larger ` +
+          `"maxSteps" or "step" if it genuinely needs more simulated time to settle, or check ` +
+          `whether it is waiting on something the TestClock cannot advance past.`
       )
-    }
+    )
+  }
 
-    return yield* Fiber.join(fiber)
-  })
+  return yield* Fiber.join(fiber)
+})

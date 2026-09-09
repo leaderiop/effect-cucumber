@@ -409,15 +409,13 @@ const suspectedSwallowedStep = (
 
 /** Header values appearing more than once, each once, in source order — over the duplicate-preserving array. */
 const duplicatedColumns = (header: ReadonlyArray<string>): ReadonlyArray<string> => {
-  const seen = new Set<string>()
-  const duplicated = new Set<string>()
-  for (const value of header) {
-    if (seen.has(value)) {
-      duplicated.add(value)
+  const duplicated: Array<string> = []
+  for (const [value, occurrences] of Rec.toEntries(Arr.groupBy(header, (name) => name))) {
+    if (occurrences.length > 1) {
+      duplicated.push(value)
     }
-    seen.add(value)
   }
-  return [...duplicated]
+  return duplicated
 }
 
 /**

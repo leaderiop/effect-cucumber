@@ -6,7 +6,19 @@
  * independent of `DescribeFeatureOptions.strict` (`describeFeature.ts`): the two are not layered, a
  * consumer may use either, both, or neither.
  */
+import * as Data from "effect/Data"
 import type { FeatureCollection } from "./Collect.ts"
+
+/**
+ * Thrown by `assertNoUnusedStepDefinitions` — a real `Error` subclass (via `Data.TaggedError`),
+ * carrying the offending messages and Feature count structurally rather than only in `.message`,
+ * consistent with this package's other registration-time argument-validation throws.
+ */
+export class UnusedStepDefinitionsError extends Data.TaggedError("UnusedStepDefinitionsError")<{
+  readonly messages: ReadonlyArray<string>
+  readonly featureCount: number
+  readonly message: string
+}> {}
 
 /**
  * Throw, naming every offending warning's own message verbatim, when any `collections` entry
@@ -20,8 +32,10 @@ export const assertNoUnusedStepDefinitions = (
   if (messages.length === 0) {
     return
   }
-  throw new Error(
-    `${messages.length} unused step definition(s) found across ${collections.length} collected Feature(s):\n\n`
+  throw new UnusedStepDefinitionsError({
+    messages,
+    featureCount: collections.length,
+    message: `${messages.length} unused step definition(s) found across ${collections.length} collected Feature(s):\n\n`
       + messages.join("\n\n")
-  )
+  })
 }
