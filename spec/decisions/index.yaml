@@ -155,3 +155,6 @@ entries:
   - id: "ADR-EC-054"
     file: "054-describefeature-tagexpression-option-reuses-vitests-createtagsfilter.md"
     title: "describeFeature gains a tagExpression registration filter, reusing vitest's own createTagsFilter — the second independent call site for the engine ADR-EC-035 already integrated"
+  - id: "ADR-EC-055"
+    file: "055-data-taggederror-vs-schema-taggederror-vs-data-taggedclass.md"
+    title: "Schema.TaggedError only for values that flow through Effect's typed error channel; Data.TaggedError for synchronous never-decoded throws; Data.TaggedClass for tagged data that is never thrown at all"
