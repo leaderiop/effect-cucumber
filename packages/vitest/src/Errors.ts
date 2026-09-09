@@ -10,6 +10,7 @@
  * helper (`attachFailureLocation`), generic over which concrete located-error class to construct.
  */
 import * as Data from "effect/Data"
+import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import * as Schema from "effect/Schema"
@@ -245,7 +246,11 @@ export const makeUnknownContainerWarning = (args: {
     } (known: ${
       args.known.length === 0 ? "none" : quotedList(args.known)
     }). Everything registered inside that ${args.kind} — ${
-      args.kind === "Rule" ? "steps, Background and hooks" : "steps"
+      Match.value(args.kind).pipe(
+        Match.when("Rule", () => "steps, Background and hooks"),
+        Match.when("Scenario", () => "steps"),
+        Match.exhaustive
+      )
     } — can never run; its steps will be reported as matching no step. Check the name against the .feature file (an Outline is registered by its un-interpolated title).`
   }
 }
@@ -319,13 +324,16 @@ export const makeExcludedScenariosNotice = (args: {
   tagExpression?: string | undefined
 }): ExcludedScenariosNotice => {
   const reason = excludedScenariosNoticeReason(args.includeTags, args.excludeTags, args.tagExpression)
-  const filters = reason === "ExcludedByTagExpression"
-    ? `tagExpression ${quoted(args.tagExpression ?? "")}`
-    : reason === "ExcludedByIncludeTags"
-    ? `includeTags [${quotedList(args.includeTags)}]`
-    : reason === "ExcludedByExcludeTags"
-    ? `excludeTags [${quotedList(args.excludeTags)}]`
-    : `includeTags [${quotedList(args.includeTags)}] and excludeTags [${quotedList(args.excludeTags)}]`
+  const filters = Match.value(reason).pipe(
+    Match.when("ExcludedByTagExpression", () => `tagExpression ${quoted(args.tagExpression ?? "")}`),
+    Match.when("ExcludedByIncludeTags", () => `includeTags [${quotedList(args.includeTags)}]`),
+    Match.when("ExcludedByExcludeTags", () => `excludeTags [${quotedList(args.excludeTags)}]`),
+    Match.when(
+      "ExcludedByBothTagFilters",
+      () => `includeTags [${quotedList(args.includeTags)}] and excludeTags [${quotedList(args.excludeTags)}]`
+    ),
+    Match.exhaustive
+  )
   return {
     _tag: "ExcludedScenariosNotice",
     reason,

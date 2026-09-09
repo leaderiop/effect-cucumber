@@ -77,16 +77,18 @@ const languageHeader = /^\s*#\s*language\s*:\s*([a-zA-Z\-_]+)\s*$/
  */
 const findPrototypeKeyLanguageHeader = (
   source: string
-): { readonly language: string; readonly line: number } | undefined => {
+): Option.Option<{ readonly language: string; readonly line: number }> => {
   const lines = source.split(/\r?\n/)
   for (const [index, text] of lines.entries()) {
     if (text.trim() === "") continue
     const match = languageHeader.exec(text)
-    if (match === null) return undefined
+    if (match === null) return Option.none()
     const language = match[1] ?? ""
-    return !Object.hasOwn(dialects, language) && language in dialects ? { language, line: index + 1 } : undefined
+    return !Object.hasOwn(dialects, language) && language in dialects
+      ? Option.some({ language, line: index + 1 })
+      : Option.none()
   }
-  return undefined
+  return Option.none()
 }
 
 /**
@@ -98,13 +100,13 @@ const findPrototypeKeyLanguageHeader = (
  */
 export const parseDocument = (source: string, uri: string, newId: IdGenerator.NewId): GherkinDocument => {
   const prototypeKeyHeader = findPrototypeKeyLanguageHeader(source)
-  if (prototypeKeyHeader !== undefined) {
+  if (Option.isSome(prototypeKeyHeader)) {
+    const { language, line } = prototypeKeyHeader.value
     throw new LoadFeatureError({
       reason: "UnknownDialect",
       uri,
-      line: Option.some(prototypeKeyHeader.line),
-      message: `Unknown dialect in ${uri}:\n(${prototypeKeyHeader.line}:1): Language not supported: `
-        + `${prototypeKeyHeader.language}`
+      line: Option.some(line),
+      message: `Unknown dialect in ${uri}:\n(${line}:1): Language not supported: ${language}`
     })
   }
   let document: GherkinDocument

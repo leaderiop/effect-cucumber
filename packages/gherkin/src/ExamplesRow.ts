@@ -60,9 +60,10 @@ export const makeExamplesRow = (
 const rowDecodeFailed = (row: ExamplesRow, schemaError: Schema.SchemaError): ExamplesRowError => {
   const path = firstIssuePath(schemaError.issue, [])
   const column = Option.liftPredicate(path[0], Predicate.isString)
-  const opening = Option.isSome(column)
-    ? `The Examples row at ${row.uri}:${row.line} failed to decode, column ${JSON.stringify(column.value)}`
-    : `The Examples row at ${row.uri}:${row.line} failed to decode`
+  const opening = Option.match(column, {
+    onNone: () => `The Examples row at ${row.uri}:${row.line} failed to decode`,
+    onSome: (c) => `The Examples row at ${row.uri}:${row.line} failed to decode, column ${JSON.stringify(c)}`
+  })
   return new ExamplesRowError({
     reason: "RowDecodeFailed",
     uri: row.uri,

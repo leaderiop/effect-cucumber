@@ -239,7 +239,12 @@ const isVisibleTo = (
   )
 }
 
-const scopeRank = (kind: RegistryScopeKind): number => kind === "feature" ? 2 : kind === "rule" ? 1 : 0
+const scopeRank = (kind: RegistryScopeKind): number =>
+  Match.value(kind).pipe(
+    Match.when("feature", () => 2),
+    Match.when("rule", () => 1),
+    Match.orElse(() => 0) // "background" | "scenario"
+  )
 
 const planStep = (args: {
   readonly feature: ParsedFeature
