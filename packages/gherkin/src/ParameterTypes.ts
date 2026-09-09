@@ -62,15 +62,14 @@ export interface ParameterTypeDefinition<T> {
  * The built-in names, read off a real registry rather than hardcoded, so a new upstream built-in is rejected at
  * `define` time by name instead of colliding at replay. `test/expressions-pin.test.ts` pins the current eleven.
  */
-const deriveBuiltInParameterTypeNames = (): ReadonlySet<string> => {
-  const names = new Set<string>()
-  for (const parameterType of new ParameterTypeRegistry().parameterTypes) {
-    if (parameterType.name !== undefined) {
-      names.add(parameterType.name)
-    }
-  }
-  return names
-}
+const deriveBuiltInParameterTypeNames = (): ReadonlySet<string> =>
+  new Set(
+    Arr.getSomes(
+      Arr.fromIterable(new ParameterTypeRegistry().parameterTypes).map((parameterType) =>
+        Option.fromUndefinedOr(parameterType.name)
+      )
+    )
+  )
 
 /**
  * Every name a fresh `ParameterTypeRegistry` already occupies. A custom definition may not use

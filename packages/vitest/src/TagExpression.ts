@@ -78,11 +78,19 @@ export class TagExpressionError extends Data.TaggedError("TagExpressionError")<{
   readonly cause?: unknown
 }> {}
 
+/**
+ * `thrown.message` for a real `Error`, `String(thrown)` otherwise — shared by this module's own
+ * `makeTagExpressionError` below and `HookTagExpression.ts`'s `makeHookTagExpressionError`, the two
+ * "describe an opaque `cause` value" call sites `packages/vitest` has, mirroring `packages/gherkin`'s
+ * own `StepMatcher.ts#describeCause`.
+ */
+export const describeCause = (thrown: unknown): string => Predicate.isError(thrown) ? thrown.message : String(thrown)
+
 /** Builds a `TagExpressionError`, computing its message from the same template the constructor used to. */
 const makeTagExpressionError = (
   args: { readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }
 ): TagExpressionError => {
-  const underlying = Predicate.isError(args.cause) ? args.cause.message : String(args.cause)
+  const underlying = describeCause(args.cause)
   return new TagExpressionError({
     tagExpr: args.tagExpr,
     featureUri: args.featureUri,

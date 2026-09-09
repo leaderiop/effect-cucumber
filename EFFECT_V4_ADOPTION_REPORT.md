@@ -3,334 +3,262 @@
 **Scope:** `packages/gherkin` and `packages/vitest`
 **Effect version in use:** `4.0.0-rc.112` (pinned in `pnpm-workspace.yaml`, ADR-EC-012)
 **Effect V4 source consulted:** `../effect` (local checkout, `packages/effect/src`, `packages/vitest/src`)
-**Method:** 10-agent workflow — 9 file-group deep-dive agents covering all 46 source files across both packages (every finding's proposed API verified against the real `effect` source before being reported; every "before" snippet verified against the real repo files), plus 1 cross-cutting agent that (a) re-diffed PRs #78–#81 and the round-2 commit to check every previously-fixed anti-pattern for recurrence elsewhere in the same package, and (b) ran a repo-wide grep sweep for the six highest-signal anti-patterns (`_tag ===`/`switch` on tag, hand-rolled predicates, `new Date`/`Date.now`, `Math.random()`, `Promise.all`/`new Promise`, `class extends Error`).
-**Result:** 12 confirmed issues (0 High, 2 Medium, 10 Low), plus 5 considered-and-rejected notes recorded for awareness. 0 hallucinated APIs, 0 structural/architectural gaps, 0 regressions in anything the prior two rounds already fixed.
+**Commit audited:** `15891b1` ("Fix CI: coverage threshold, unused export, and API-surface doc gaps"), on top of round 3's resolution commit `3b57a8e`
+**Method:** 10-agent workflow, same design as rounds 1–3 — 9 file-group deep-dive agents plus 1 cross-cutting agent — but the run was interrupted partway through by the account's weekly rate limit, so coverage of all 50 source files (up from 46 in round 3) was completed by two combined methods rather than 9 uniform deep dives:
+
+- **23 files** got a fresh, full deep-dive this round (every proposed API re-verified against the real `effect` source, every "before" snippet re-verified against the current file): `Correlate.ts`, `ParameterTypes.ts`, `Snippet.ts`, `StepMatcher.ts`, `StepPatternMessages.ts`, `DataTable.ts`, `DocString.ts`, `ExamplesRow.ts`, `StepArgs.ts`, `StepArguments.ts` (gherkin); `Tags.ts`, `TagExpression.ts`, `HookTagExpression.ts`, `GherkinTags.ts`, `GherkinWatchTriggers.ts`, `Errors.ts`, `ScenarioEffect.ts`, `ScenarioKey.ts`, `ScenarioMetrics.ts`, `ScenarioSeed.ts`, `Step.ts`, `StepModule.ts`, `OutlineTitle.ts` (vitest). `Parser.ts` got a full fresh review of its one changed region plus a live re-verification of the one new line the cross-cutting sweep flagged.
+- **The remaining 26 files** — `Model.ts`, `Pickles.ts`, `Source.ts`, `loadFeature.ts`, `Errors.ts`, `Validate.ts`, `index.ts` (gherkin); `Attachments.ts`, `CallSite.ts`, `Collect.ts`, `Dsl.ts`, `Hook.ts`, `HookRegistry.ts`, `Plan.ts`, `Registry.ts`, `RerunKey.ts`, `RerunManifest.ts`, `RuleNarrowing.ts`, `Runner.ts`, `StrictMode.ts`, `TestApi.ts`, `Testing.ts`, `VitestTestApi.ts`, `describeFeature.ts`, `index.ts`, `loadFeature.ts` (vitest) — carry forward round 3's verdict (clean, or fixed-and-verified) on the strength of a `git diff 3b57a8e..HEAD` run by the cross-cutting agent, which proved these files are byte-identical to the state round 3 already audited in full. Only `Correlate.ts`, `Parser.ts`, and `Collect.ts` changed at all since round 3's resolution, and all three changes were reviewed fresh (see below).
+
+The cross-cutting agent also completed both of its jobs before the rate limit hit: a full re-diff of `3b57a8e..HEAD` for regressions, and a repo-wide grep sweep (11 anti-pattern categories, both packages, source only).
+
+**Result:** 4 confirmed issues (0 High, 1 Medium, 3 Low), plus a growing list of considered-and-rejected notes. 0 hallucinated APIs, 0 structural/architectural gaps, 0 regressions in anything rounds 1–3 fixed.
 
 ## Executive summary
 
-This is **round 3**, run after the round-2 findings (documented in the previous revision of this file) were resolved and merged (`bdbd010`, "Resolve round-2 Effect V4 builtin-adoption audit findings"). The cross-cutting agent re-verified every category the first two rounds fixed — `Predicate` guards, `Data.TaggedError`/`Schema.TaggedError`, `Array`/`Record` combinators in place of manual loops, `Match.tag`/`Match.orElse`/`Match.exhaustive` in place of `_tag` if-chains, `Schema.fromJsonString` in place of manual `JSON.parse` — and found **all of it still holds, with no regressions**.
+This is **round 4**, run after round 3's findings were resolved and merged (`f521202` / `3b57a8e`, "Resolve round-3 Effect V4 builtin-adoption audit findings"), followed by an unrelated CI-hardening commit (`15891b1`) that made three small non-idiom-related edits. Mid-run, the dispatching session hit its account's weekly rate limit; several of the 9 file-group agents failed outright, one file-group agent misread its own scope and produced a report for the wrong file group (its actual output — accurate, verified findings about `Tags.ts`/`TagExpression.ts`/`HookTagExpression.ts`/`GherkinWatchTriggers.ts`/`GherkinTags.ts`/vitest's `Errors.ts` — is used below regardless of the mismatch, since the content is real and correctly verified), and one agent (assigned `packages/vitest`'s support/state file group) misinterpreted a "fork not available" error as a signal to re-orchestrate the entire audit itself, spawning roughly a dozen duplicate general-purpose agents before the rate limit stopped those too. None of the duplicate spawns produced findings beyond what the legitimate agents already covered; this is noted here for transparency, not because it changed the result.
 
-What round 3 found is narrower and lower-stakes than round 2: this codebase is now deep enough into its Effect V4 adoption that most remaining gaps are single, isolated spots in otherwise-idiomatic files — a lookup helper in `Correlate.ts` that doesn't use the `Record.get` the rest of the same file already imports, a `T | null` return in `RerunManifest.ts` sitting next to files that model the identical "no filter configured" concept as `Option`, and a family of five hand-rolled tagged "notice" types in `Errors.ts` that never got the same `Data.TaggedClass` treatment their sibling `StepFailureLocation`/`HookFailureLocation` types already received. Nothing found is a correctness bug; every finding is a maintainability/consistency cleanup with a verified drop-in (or near drop-in) replacement.
+What actually survived to produce verified findings this round is narrower than round 3, and all of it is the same shape as round 3's remaining gaps: single, isolated spots in otherwise fully-idiomatic files, plus one recurring same-package duplication (a `Predicate.isError` ternary copy-pasted across two files instead of factored into a shared helper, the same category round 1 already fixed once in `packages/gherkin`). Nothing found is a correctness bug. The repo-wide grep sweep (Job B, cross-cutting agent) re-confirmed all six round-3 anti-pattern categories still sit at zero hits repo-wide, plus five newly-added categories (`JSON.parse`/`stringify`, bare wrap-only `Effect.gen`, native `.toSorted`/`.sort` with inline comparators, `Object.hasOwn` lookup-then-index, `?? null`/ternary null-as-absence) — all either zero hits or already-reviewed, known-accepted exceptions.
 
-Five additional patterns were seriously considered and explicitly **not** recommended, because they're either governed by a documented file-level design constraint (`Snippet.ts`'s "no `effect` import" rule, `Registry.ts`/`CallSite.ts`'s synchronous-registration boundary) or because forcing the "builtin" version would add ceremony without fixing anything real (`Runner.ts`'s closure-mutated counters, a dual-`instanceof` check with one shared outcome). These are recorded below so a future round doesn't re-flag them without new evidence.
+One item from round 3 remains explicitly open: round 3 §5 flagged that the `Data.TaggedError`-vs-`Schema.TaggedError` split, while consistently applied in code, is still not written down anywhere authoritative — only as inline comments repeated per-file (now 7 ADRs: 021, 022, 025, 033, 046, 053, 054) and never mentioned in `LLMS.md` at all. This round re-confirmed the split is still being applied correctly and is still undocumented as a general rule. Worth closing out in an ADR or an `LLMS.md` addendum rather than carrying it forward a third time.
 
 | Priority | Count |
 | -------- | ----- |
 | High     | 0     |
-| Medium   | 2     |
-| Low      | 10    |
+| Medium   | 1     |
+| Low      | 3     |
 
 | Package | Count |
 | ------- | ----- |
-| gherkin | 4     |
-| vitest  | 8     |
+| gherkin | 2     |
+| vitest  | 2     |
 
 ---
 
-## 1. Manual lookups/absence-checks duplicating `Record`/`Option` combinators
+## 1. Manual `Predicate` ternaries duplicating `Option.liftPredicate`
 
-**Category priority:** Medium/Low. Each file below already imports the combinator it's missing — this is one holdout spot, not a missing import.
+### 1.1 `DataTable.ts` — hand-rolled `Predicate.is*` ternaries instead of `Option.liftPredicate` (Low)
 
-### 1.1 `RerunManifest.ts` — `ReadonlySet<string> | null` instead of `Option<ReadonlySet<string>>` (Medium)
-
-**File:** `packages/vitest/src/RerunManifest.ts:39, 46, 58`
+**File:** `packages/gherkin/src/DataTable.ts:220-238` (function `rowDecodeFailed`)
 
 ```ts
 // Before
-export const readRerunManifest = (path: string): ReadonlySet<string> | null => {
-  ...
-  } catch {
-    return null
+const path = firstIssuePath(schemaError.issue, [])
+const index = path[0]
+const key = path[1]
+const row: Option.Option<number> = Predicate.isNumber(index) ? Option.some(index + 1) : Option.none()
+const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
+const offending = Predicate.isNumber(index) ? rows[index] : undefined
+// ...
+const subject = offending === undefined
+  ? `The rows were ${JSON.stringify(rows)}.`
+  : `The row was ${JSON.stringify(offending)}.`
+```
+
+```ts
+// After
+const row = Option.liftPredicate(index, Predicate.isNumber).pipe(Option.map((i) => i + 1))
+const column = Option.liftPredicate(key, Predicate.isString)
+const offending = Option.liftPredicate(index, Predicate.isNumber).pipe(
+  Option.flatMap((i) => Option.fromUndefinedOr(rows[i]))
+)
+// ...
+const subject = Option.match(offending, {
+  onNone: () => `The rows were ${JSON.stringify(rows)}.`,
+  onSome: (o) => `The row was ${JSON.stringify(o)}.`
+})
+```
+
+- **V4 API:** `Option.liftPredicate` (`effect/Option.ts:2031`) — the `(value, refinement) => Option<B>` shape, confirmed present and typed exactly for this "keep value only if predicate holds" pattern. `Option.map`/`Option.match` are already used two lines later in this same function.
+- **Why this is in scope:** the sibling file in the same audit group, `ExamplesRow.ts:62`, already solves the identical "keep `path[i]` only if it's the right primitive type" problem with a one-line `Option.liftPredicate(path[0], Predicate.isString)`. `DataTable.ts`'s `rowDecodeFailed` is the one-level-deeper counterpart of the same function and is the one holdout still writing it by hand.
+- **Blast radius:** none — `row`, `column`, `offending` are all local to `rowDecodeFailed`, never exported.
+- **Risk:** none behaviorally — same `JSON.stringify` output either way.
+
+### 1.2 `ParameterTypes.ts` — manual `for`-loop + `Set` mutation instead of `Array.getSomes` (Low)
+
+**File:** `packages/gherkin/src/ParameterTypes.ts:65-73`
+
+```ts
+// Before
+const deriveBuiltInParameterTypeNames = (): ReadonlySet<string> => {
+  const names = new Set<string>()
+  for (const parameterType of new ParameterTypeRegistry().parameterTypes) {
+    if (parameterType.name !== undefined) {
+      names.add(parameterType.name)
+    }
   }
-  ...
-  if (Result.isFailure(decoded)) {
-    console.warn(...)
-    return null
-  }
-  return new Set(decoded.success.failed)
+  return names
 }
 ```
 
 ```ts
 // After
-export const readRerunManifest = (path: string): Option.Option<ReadonlySet<string>> => {
-  ...
-  } catch {
-    return Option.none()
-  }
-  ...
-  if (Result.isFailure(decoded)) {
-    console.warn(...)
-    return Option.none()
-  }
-  return Option.some(new Set(decoded.success.failed))
-}
+const deriveBuiltInParameterTypeNames = (): ReadonlySet<string> =>
+  new Set(
+    Arr.getSomes(
+      Arr.fromIterable(new ParameterTypeRegistry().parameterTypes).map((parameterType) =>
+        Option.fromUndefinedOr(parameterType.name)
+      )
+    )
+  )
 ```
 
-- **V4 API:** `Option.none`/`Option.some` (`effect/Option.ts`). `null` here means genuine, documented absence ("no filter configured" per the function's own doc comment) — exactly the case `ParsedScenario.ruleId`/`exampleRow` already model as `Option` elsewhere in this same codebase, rather than a trivial default.
-- **Blast radius:** this is a public export with one consumer outside this file — `packages/vitest/src/describeFeature.ts:199` — plus `packages/vitest/test/RerunManifest.test.ts`. Both need a matching `Option.isNone`/`Option.getOrNull` update at the call site alongside this change; not a same-file drop-in.
-- **Risk:** none behaviorally — pure representation change, same three code paths.
+- **V4 API:** `Option.fromUndefinedOr` + `Array.getSomes` (`effect/Option.ts`, `effect/Array.ts`) — the same "map each item to `Option`, then `getSomes`" idiom this file's sibling `StepMatcher.ts` already uses for the identical zero-or-value shape. `Arr` and `Option` are both already imported in this file.
+- **Blast radius:** none — private, single-call-site helper; signature and behavior unchanged.
+- **Risk:** none — order-preserving, behavior-identical.
 
-### 1.2 `Correlate.ts` — hand-rolled `Object.hasOwn` lookup instead of `Record.get` (Low)
+---
 
-**File:** `packages/gherkin/src/Correlate.ts:131-157`
+## 2. `T | null` instead of `Option<T>` for a documented "not configured" default
+
+### 2.1 `Tags.ts` — `TagFilter.expression: (fn) | null` instead of `Option<fn>` (Low/Medium)
+
+**File:** `packages/vitest/src/Tags.ts:105-157`
 
 ```ts
 // Before
-const dialectOf = (language: string): Dialect | undefined =>
-  Object.hasOwn(dialects, language) ? dialects[language] : undefined
-
-export const isOutlineKeyword = (language: string, keyword: string): boolean => {
-  const dialect = dialectOf(language)
-  return dialect === undefined ? false : dialect.scenarioOutline.includes(keyword.trim())
+export interface TagFilter {
+  readonly include: ReadonlyArray<string>
+  readonly exclude: ReadonlyArray<string>
+  readonly expression: ((tags: ReadonlyArray<string>) => boolean) | null
 }
-// ...stepKeywords / isScenarioKeyword follow the same dialectOf(...) === undefined ? ... shape
+
+export const noTagFilter: TagFilter = { include: [], exclude: [], expression: null }
+
+export const makeTagFilter = (options: {...}): TagFilter => ({
+  include: options.includeTags ?? [],
+  exclude: options.excludeTags ?? [],
+  expression: options.expression ?? null
+})
+
+export const shouldEmit = (filter: TagFilter, tags: ReadonlyArray<string>): boolean =>
+  filter.expression !== null
+    ? filter.expression(tags)
+    : (filter.include.length === 0 || filter.include.some((tag) => tags.includes(tag))) &&
+      !filter.exclude.some((tag) => tags.includes(tag))
 ```
 
 ```ts
 // After
-const dialectOf = (language: string): Option.Option<Dialect> => Rec.get(dialects, language)
+import * as Option from "effect/Option"
 
-export const isOutlineKeyword = (language: string, keyword: string): boolean =>
-  Option.match(dialectOf(language), {
-    onNone: () => false,
-    onSome: (dialect) => dialect.scenarioOutline.includes(keyword.trim())
+export interface TagFilter {
+  readonly include: ReadonlyArray<string>
+  readonly exclude: ReadonlyArray<string>
+  readonly expression: Option.Option<(tags: ReadonlyArray<string>) => boolean>
+}
+
+export const noTagFilter: TagFilter = { include: [], exclude: [], expression: Option.none() }
+
+export const makeTagFilter = (options: {...}): TagFilter => ({
+  include: options.includeTags ?? [],
+  exclude: options.excludeTags ?? [],
+  expression: Option.fromNullishOr(options.expression)
+})
+
+export const shouldEmit = (filter: TagFilter, tags: ReadonlyArray<string>): boolean =>
+  Option.match(filter.expression, {
+    onSome: (expression) => expression(tags),
+    onNone: () =>
+      (filter.include.length === 0 || filter.include.some((tag) => tags.includes(tag))) &&
+      !filter.exclude.some((tag) => tags.includes(tag))
   })
 ```
 
-- **V4 API:** `Record.get` (`effect/Record.ts:449-457`), implemented as exactly `Object.hasOwn(self, key) ? Option.some(self[key]) : Option.none()` — a byte-for-byte match for the hand-rolled version. This file already imports `Rec` and already uses `Rec.get` for the identical "safe lookup → `Option`" pattern twice elsewhere in the same file (lines 380, 399) — `dialectOf` is the one local holdout.
-- **Risk:** none — same lookup semantics (`Object.hasOwn` guards against prototype pollution either way).
-
-### 1.3 `RerunKey.ts` — `Option.getOrNull` + manual null-recheck instead of `Option.match` (Low)
-
-**File:** `packages/vitest/src/RerunKey.ts:49-50`
-
-```ts
-// Before
-const ruleId = Option.getOrNull(scenarioPlan.ruleId)
-const ruleName = ruleId === null ? null : ruleNameById.get(ruleId) ?? null
-```
-
-```ts
-// After
-const ruleName = Option.match(scenarioPlan.ruleId, {
-  onNone: () => null,
-  onSome: (ruleId) => ruleNameById.get(ruleId) ?? null
-})
-```
-
-- **V4 API:** `Option.match` (`effect/Option.ts:403`) — already used correctly for the identical shape in `OutlineTitle.ts`. The final `null` stays (it's `rerunKey`'s own public `string | null` parameter, not a smell); the smell is only the intermediate `getOrNull` + re-check this collapses.
-- **Risk:** none — pure consistency cleanup.
-
-### 1.4 `Validate.ts` — `Arr.getSomes([singleOption])` instead of `Option.toArray` (Low)
-
-**File:** `packages/gherkin/src/Validate.ts:547-549`
-
-```ts
-// Before
-const swallowedStepWarning = Arr.getSomes([
-  suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line, keywords)
-])
-```
-
-```ts
-// After
-const swallowedStepWarning = Option.toArray(
-  suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line, keywords)
-)
-```
-
-- **V4 API:** `Option.toArray` (`effect/Option.ts:1764`), implemented as `isNone(self) ? [] : [self.value]` — semantically identical to wrapping a single `Option` in a one-element array purely to run `Arr.getSomes` over it. (The other two `Arr.getSomes(...)`-over-many-`Options` call sites in this same file, lines ~391–397 and ~557–569, are the correct multi-element usage and are not affected.)
-- **Risk:** none — pure simplification.
+- **V4 API:** `Option.none`/`Option.fromNullishOr`/`Option.match` (`effect/Option.ts`) — v4 renamed v3's `Option.fromNullable` to `fromNullishOr` (both `null` and `undefined` absent), alongside the narrower `fromNullOr`/`fromUndefinedOr`; `fromNullishOr` is the one matching `options.expression`'s `| null | undefined` type. The identical "no filter configured, use the default" absence case round 3 §1.1 already established as an `Option` candidate in `RerunManifest.ts`.
+- **Blast radius:** `TagFilter` is exported but never re-exported from `index.ts` — package-internal only, not published API. `Runner.ts` only holds and forwards the value, never touches `.expression` directly. Three test sites need a coordinated update: `Tags.test.ts:59` (`toStrictEqual({..., expression: null})`), `Tags.test.ts:157,164` (`.toBeNull()`), and `Runner.test.ts:1691` (a hand-built literal used to prove `shouldEmit` doesn't care how the filter was constructed).
+- **Risk:** none behaviorally — pure representation change, same two branches.
 
 ---
 
-## 2. Hand-rolled tagged data instead of `Data.TaggedClass`
+## 3. Duplicated `Predicate.isError` ternary, no shared helper (same-package recurrence of a round-1-fixed pattern)
 
-### 2.1 `Errors.ts` (vitest) — five "notice" types built as plain `interface` + factory instead of `Data.TaggedClass` (Medium)
+### 3.1 `TagExpression.ts` / `HookTagExpression.ts` (Low)
 
-**File:** `packages/vitest/src/Errors.ts:160-191, 202-273, 290-350, 362-388`
-
-Affects `UnusedStepDefinitionWarning`, `UndeclaredTagWarning`, `UnknownContainerWarning`, `ExcludedScenariosNotice`, `StaleRerunManifestKeyWarning`.
+**Files:** `packages/vitest/src/TagExpression.ts:85`, `packages/vitest/src/HookTagExpression.ts:64`
 
 ```ts
-// Before (representative — UnknownContainerWarning)
-export interface UnknownContainerWarning {
-  readonly _tag: "UnknownContainerWarning"
-  readonly reason: UnknownContainerWarningReason
-  readonly uri: string
-  readonly kind: "Rule" | "Scenario"
-  readonly name: string
-  readonly ruleName: Option.Option<string>
-  readonly known: ReadonlyArray<string>
-  readonly message: string
-}
-
-export const makeUnknownContainerWarning = (args: {...}): UnknownContainerWarning => ({
-  _tag: "UnknownContainerWarning",
-  reason: "UnknownContainer",
-  ...args
-})
+// Before — identical in both files
+const underlying = Predicate.isError(args.cause) ? args.cause.message : String(args.cause)
 ```
 
-```ts
-// After
-export class UnknownContainerWarning extends Data.TaggedClass("UnknownContainerWarning")<{
-  readonly reason: UnknownContainerWarningReason
-  readonly uri: string
-  readonly kind: "Rule" | "Scenario"
-  readonly name: string
-  readonly ruleName: Option.Option<string>
-  readonly known: ReadonlyArray<string>
-  readonly message: string
-}> {}
-// makeUnknownContainerWarning becomes `new UnknownContainerWarning({ ... })`,
-// or a thin constructor wrapper kept for call-site compatibility.
-```
-
-- **V4 API:** `Data.TaggedClass` (`effect/Data.ts:91-99`) — an immutable, `Pipeable` class carrying `readonly _tag` plus structural `Equal`/`Hash` for free. This is literally the "hand-rolled tagged object" pattern the audit brief calls out, and it's the same package's own `Errors.ts` already applies `Data.TaggedError` correctly to `StepFailureLocation`/`HookFailureLocation` for a documented reason — it just never extended the identical idiom to these five plain-data "notices" (they're never raised through the Effect error channel, so `Data.TaggedClass`, not `Data.TaggedError`/`Schema.TaggedError`, is the right target; they're also never combined into one matched union anywhere in the codebase, so `Data.taggedEnum` doesn't fit either).
-- **Why Medium, not High:** no test or runtime code relies on Effect's `Equal.equals`/`Hash.hash` for these values today — `test/Errors.test.ts` already does plain structural `toEqual` regardless of class. So this is a style-guide-consistency gap, not a live correctness bug.
-- **Blast radius:** touches several out-of-scope consumers/re-exports (`Collect.ts`, `Plan.ts`, `Runner.ts`, `describeFeature.ts`, `VitestTestApi.ts`, `index.ts`) — a coordinated change, not a same-file drop-in.
-
----
-
-## 3. Registration-time validation throws not yet on `Data.TaggedError`
-
-**Category priority:** Low/Medium. Rounds 1–2 already converted this exact class of error — a synchronous throw at registration time describing a caller/config mistake, with structured fields on hand — to `Data.TaggedError` in `GherkinTags.ts`, `GherkinWatchTriggers.ts`, `StrictMode.ts`, and `Tags.ts`. Three more call sites of the identical shape were not touched:
-
-- `packages/vitest/src/describeFeature.ts:148` — the mutually-exclusive `tagExpression` / `includeTags`+`excludeTags` option check, with `feature.name`, `feature.uri`, and both option values available as structured data.
-- `packages/vitest/src/RuleNarrowing.ts:128` (`unsupportedScenarioExtraLayer`) — unsupported Scenario-level extra-`Layer`-under-narrowed-`Rule` combination, with the Scenario `name` available as structured data.
-- `packages/vitest/src/Collect.ts:83` (inside `invokeDefine`) — a `define` callback returned a `Promise`, with `container`/`name`/call-site already computed locally.
-
-```ts
-// Before (shape common to all three)
-throw new Error(`<message built from local structured fields>`)
-```
-
-```ts
-// After (same shape already used for GherkinTags.ts / Tags.ts)
-export class SomeRegistrationError extends Data.TaggedError("SomeRegistrationError")<{
-  readonly /* the locally-available structured fields */
-}> {}
-// ...
-throw new SomeRegistrationError({/* fields */})
-```
-
-- **V4 API:** `Data.TaggedError` (`effect/Data.ts:761`) — confirmed already the established idiom for this exact category in this package.
-- **Not the same as:** the bare `Error`s intentionally kept in `Runner.ts:238`, `Registry.ts:69,~85`, and `Correlate.ts:164` — those guard genuinely unreachable internal-bug invariants ("this is a bug in this file, not in the feature being defined"), already reviewed and confirmed correct as plain `Error` in the round-2 report's appendix. The three above are the opposite: user-facing configuration mistakes, the exact category the existing convention targets.
-- **Risk:** low — same `instanceof`/`.message` shape via `Data.TaggedError`, but each is a caller-visible API; check whether any test asserts `toThrowError(Error)` by base class before merging (the same caveat rounds 1–2 called out for `HookTagExpressionError`).
-
----
-
-## 4. Duplicated helper logic / native methods instead of `effect/Array`
-
-### 4.1 `Pickles.ts` — inline `Predicate.isError` ternary instead of reusing `describeCause` (Low)
-
-**File:** `packages/gherkin/src/Pickles.ts:31`
-
-```ts
-// Before
-message: ;
-;`Failed to compile pickles for ${uri}: ${Predicate.isError(thrown) ? thrown.message : String(thrown)}`
-```
-
-```ts
-// After
-import { describeCause } from "./StepMatcher.ts"
-// ...
-message: ;
-;`Failed to compile pickles for ${uri}: ${describeCause(thrown)}`
-```
-
-- **Why this is in scope:** round 1 (PR #80) fixed the identical duplication in `ParameterTypes.ts` specifically by having it reuse `StepMatcher.ts`'s `describeCause` helper instead of re-inlining the same `Predicate.isError(...) ? ... : String(...)` ternary a second time. `Pickles.ts` is in the same package with the identical inline ternary, left untouched.
+- **Why this is in scope:** `packages/gherkin` already solved this exact duplication by extracting a `describeCause` helper in `StepMatcher.ts`, reused by `ParameterTypes.ts` and `Pickles.ts` (round 1, re-confirmed still correct this round). `packages/vitest` has the identical duplicated ternary across two files with no equivalent shared helper. `HookTagExpression.ts` already imports from `TagExpression.ts` (ADR-EC-054's "shared compile-and-evaluate glue"), so `TagExpression.ts` is the natural home for a `describeCause`-equivalent export.
+- **V4 API:** same `Predicate.isError` (`effect/Predicate.ts`) already in use at both sites — not a missing builtin, a same-package duplication gap with a precedent fix already in the codebase.
+- **Blast radius:** 2 files, same package, no public API change.
 - **Risk:** none — behavior-identical, pure de-duplication.
 
-### 4.2 `Plan.ts` — native `.toSorted(customComparator)` instead of `Arr.sort` + `Order` (Low)
+---
 
-**File:** `packages/vitest/src/Plan.ts:165, 346`
+## 4. Style-consistency note — `Data.TaggedError` vs `Schema.TaggedError` (Low, informational, carried forward a third round)
 
-```ts
-// Before (line 165)
-const ordered = matches.toSorted((left, right) => compareCallSites(left.definedAt, right.definedAt))
-  // Before (line 346)
-  .toSorted((left, right) => {
-    const bySite = compareCallSites(left.definedAt, right.definedAt)
-    return bySite === 0 ? left.pattern.localeCompare(right.pattern) : bySite
-  })
-```
-
-```ts
-// After
-import * as Order from "effect/Order"
-
-const ordered = Arr.sort(matches, Order.make(compareCallSites))
-// ...
-Arr.sort(
-  matches,
-  Order.combine(Order.make(compareCallSites), Order.mapInput(Order.String, (d) => d.pattern))
-)
-```
-
-- **V4 API:** `Arr.sort` + `Order.make`/`Order.combine`/`Order.mapInput` (`effect/Order.ts:111` and neighboring exports). Round 1 (PR #80) fixed this exact shape in `StepArguments.ts` ("swap native `Array.isArray`/`toSorted`/`Object.fromEntries` for their `effect/Array` equivalents"); `TagExpression.ts:43` and `GherkinTags.ts:95` already call `Arr.sort(..., Order.String)` correctly. `Plan.ts` is the one remaining native holdout, now with a custom comparator instead of a lifted `Order`.
-- **Risk:** none — behavior-identical.
+Still unresolved from round 3 §5: `Data.TaggedError` is applied consistently as the accepted alternative to `Schema.TaggedError` for synchronous, never-decoded throws, but the rule for _when_ is still only inline comments repeated per-file, now across 7 ADRs (021, 022, 025, 033, 046, 053, 054) rather than written down once. `LLMS.md` shows only `Schema.TaggedError` examples and never mentions `Data.TaggedError` at all — a newcomer reading `LLMS.md` alone would not learn this project's accepted alternative exists. Recommendation unchanged from round 3: write the distinction down once, in an ADR or an `LLMS.md` addendum.
 
 ---
 
-## 5. Style-consistency note — `Data.TaggedError` vs `Schema.TaggedError` (Low, informational)
+## 5. Confirmed clean or already-fixed-and-holding — no findings
 
-LLMS.md's blanket guidance is "define errors with `Schema.TaggedError`." Rounds 1–2 already established that `Data.TaggedError` is an _accepted alternative_ for errors thrown synchronously outside the Effect error channel (`Runner.ts`'s `UnusedStepDefinitionFailure`, `StrictMode.ts`, `TagExpression.ts`, `HookTagExpression.ts`) — this round re-confirmed that reasoning still holds and is not a violation.
+### Freshly deep-dived this round (verified against the current file content and the real `effect` source)
 
-One nuance surfaced this round: `Schema.TaggedError` (`effect/Schema.ts:13489-13523`) also compiles down to a real `Error` subclass returning `Cause.YieldableError`, so "needs to be a real thrown `Error`" doesn't by itself distinguish the two choices the way `GherkinTags.ts`'s and `GherkinWatchTriggers.ts`'s inline comments imply. This doesn't change the recommendation (the existing `Data.TaggedError` choices are fine and not being asked to change), but if this project wants a crisper rule for the _next_ time this class of error is added, it's worth deciding explicitly: "`Data.TaggedError` for internal/never-decoded synchronous throws, `Schema.TaggedError` for anything that flows through the Effect error channel or could ever need schema decode/encode" — and writing that down in LLMS.md or an ADR rather than leaving it as an inline comment repeated per-file.
+- **gherkin:** `Correlate.ts`, `StepMatcher.ts`, `StepPatternMessages.ts`, `Snippet.ts`, `DocString.ts`, `ExamplesRow.ts`, `StepArgs.ts`, `StepArguments.ts` (aside from §1 above); `ParameterTypes.ts` (aside from §1.2); `Parser.ts` — its one change since round 3 (`match[1] ?? ""` → `match[1]!`, a non-null assertion backed by a documented regex-guarantee comment) is behavior-identical and not a finding; its one new line (`!Object.hasOwn(dialects, language) && language in dialects`, line 90) was checked and rejected below, not a finding.
+- **vitest:** `Tags.ts` (aside from §2.1), `TagExpression.ts` / `HookTagExpression.ts` (aside from §3.1), `GherkinTags.ts`, `GherkinWatchTriggers.ts`, `Errors.ts` — all five round-3 `Data.TaggedClass` conversions (`UnusedStepDefinitionWarning`, `UndeclaredTagWarning`, `UnknownContainerWarning`, `ExcludedScenariosNotice`, `StaleRerunManifestKeyWarning`) confirmed still landed and holding, `StepFailureLocation`/`HookFailureLocation` still correctly `Data.TaggedError`, `StepMatchError` still correctly `Schema.TaggedError`; `ScenarioEffect.ts`, `ScenarioKey.ts`, `ScenarioMetrics.ts`, `ScenarioSeed.ts`, `Step.ts`, `StepModule.ts`, `OutlineTitle.ts`.
 
----
+### Carried forward from round 3 (file unchanged since `3b57a8e`, confirmed via `git diff 3b57a8e..HEAD`)
 
-## 6. Confirmed clean — no findings
-
-The following were reviewed in full against `effect/packages/effect/src` (and, for the `packages/vitest` files, cross-checked against `@effect/vitest`'s own source), with no actionable findings:
-
-- **`packages/gherkin`:** `DataTable.ts`, `DocString.ts`, `ExamplesRow.ts`, `Model.ts`, `ParameterTypes.ts`, `Parser.ts`, `Snippet.ts` (see note below), `Source.ts`, `StepArgs.ts`, `StepArguments.ts`, `StepMatcher.ts`, `StepPatternMessages.ts`, `Errors.ts`, `index.ts`, `loadFeature.ts` (see note below).
-- **`packages/vitest`:** `Attachments.ts`, `CallSite.ts` (see note below), `Collect.ts`, `Dsl.ts`, `GherkinTags.ts` (see note below), `GherkinWatchTriggers.ts`, `Hook.ts`, `HookRegistry.ts`, `HookTagExpression.ts`, `OutlineTitle.ts`, `Registry.ts`, `RuleNarrowing.ts` (aside from §3), `Runner.ts` (aside from §3/note below), `ScenarioEffect.ts`, `ScenarioKey.ts`, `ScenarioMetrics.ts`, `ScenarioSeed.ts`, `Step.ts`, `StepModule.ts`, `StrictMode.ts`, `Tags.ts`, `TagExpression.ts`, `TestApi.ts`, `Testing.ts`, `VitestTestApi.ts`, `describeFeature.ts` (aside from §3), `index.ts`.
+- **gherkin:** `Model.ts`, `Pickles.ts` (round 3 §4.1's `describeCause` reuse fix holds), `Source.ts`, `loadFeature.ts`, `Errors.ts`, `Validate.ts` (round 3 §1.4's `Option.toArray` fix holds), `index.ts`.
+- **vitest:** `Attachments.ts`, `CallSite.ts`, `Collect.ts` (round 3 §3's `Data.TaggedError` fix for `AsyncDefineCallbackError` holds; its one post-round-3 change, `export class` → `class`, is a visibility-only unused-export cleanup with no idiom implication), `Dsl.ts`, `Hook.ts`, `HookRegistry.ts`, `Plan.ts` (round 3 §4.2's `Arr.sort`/`Order` fix holds), `Registry.ts`, `RerunKey.ts` (round 3 §1.3's `Option.match` fix holds), `RerunManifest.ts` (round 3 §1.1's `Option<ReadonlySet<string>>` fix holds — its one external consumer, `describeFeature.ts:199`, and `Runner.ts`'s own handling were both spot-checked this round and remain coordinated), `RuleNarrowing.ts` (round 3 §3's `Data.TaggedError` fix for `unsupportedScenarioExtraLayer` holds), `Runner.ts`, `StrictMode.ts`, `TestApi.ts`, `Testing.ts`, `VitestTestApi.ts`, `describeFeature.ts` (round 3 §3's `Data.TaggedError` fix for the mutually-exclusive tag-filter option check holds), `index.ts`, `loadFeature.ts`.
 
 ### Considered and explicitly rejected (not findings — recorded so a future round doesn't re-flag without new evidence)
 
-- **`Snippet.ts:123-125`** — `Object.hasOwn(tsTypeByName, info.name) ? tsTypeByName[info.name] : "unknown"` is the same shape `Record.get` would replace, but this file's own header states "no `effect` import" as a deliberate, documented design invariant (kept dependency-free on purpose, unlike the rest of the package). Applying the fix would violate that stated constraint — informational only.
-- **`CallSite.ts:27-51, 57-79`** — `DefinitionSite | null` (rather than `Option`) is a real absence-value opportunity, but `DefinitionSite` is defined once in `Registry.ts` and consumed across `Dsl.ts`, `Plan.ts`, and elsewhere — `CallSite.ts` is conforming to an established shared boundary type, not inventing its own null-handling in isolation. Fixing it properly means changing the shared type in `Registry.ts` first, which ripples beyond a single file.
-- **`Runner.ts:194-196, 255, 269, 327, 382, 409`** — closure-mutated counters (`let excludedScenarioCount`, `let attempted`, etc.) look like manual state that `Ref` should replace, but `emitFeature` is a synchronous, framework-agnostic registration walk with no Effect fiber involved (vitest calls the registering callbacks synchronously, outside any `Effect.runSync`). Lifting this into `Ref` would require running the Effect runtime at a seam explicitly designed to stay synchronous — more risk than benefit.
-- **`loadFeature.ts:54`** — `if (thrown instanceof LoadFeatureError || thrown instanceof StepPatternError) return thrown` narrows by `instanceof` rather than `Match.tag`, but both branches produce the _identical_ outcome (return `thrown` unchanged) over an `unknown` input, not per-tag differentiated dispatch — the shape the `Match.tag` house rule targets. Low-confidence; not asserted as a violation.
-- **`GherkinTags.ts:76-84`** — an `if`/`else if` chain branches on a plain `string | null` union (`DocStringFence`), not a `_tag`-discriminated object, so the `Match.tag` house rule (specifically about `_tag` fields) doesn't strictly apply. Could optionally be written as `Match.value(fence).pipe(Match.when(null, ...), Match.orElse(...))` for stylistic consistency, but this is preference, not a violation.
+- **`Parser.ts:90`** — `!Object.hasOwn(dialects, language) && language in dialects` looks like round 3 §1.2's `Object.hasOwn`-lookup shape (`Correlate.ts`'s `dialectOf`), but it isn't: `Object.hasOwn` and `in` test different things (own-property vs. full prototype chain), and the combination is a deliberate detector for a `# language:` header naming a prototype-pollution key (e.g. `constructor`, `toString`) — documented by the function's own comment two lines above. `Record.get` (`effect/Record.ts:450-457`) is built entirely on `hasOwn` and has no way to express "present via prototype but not own"; swapping this line for `Record.get` would silently turn a security-relevant guard into dead code. Not a finding.
+- **`Hook.ts:90`** — `definition.definedAt ?? null` uses the same shared `DefinitionSite | null` boundary type round 3 already reviewed and rejected converting for `CallSite.ts` (defined once in `Registry.ts`, consumed across multiple files as `| null`) — not a same-file fix. Not a finding.
+- **`Runner.ts:340,393`** — `rerunKeys.get(...) ?? null` populates `EmitOptions.rerunKey: string | null`, a deliberate ADR-EC-038 field consumed at an external framework boundary (`VitestTestApi.ts` stamps vitest's own `ctx.task.meta.rerunKey` from it) — not an internal `Option` opportunity. Not a finding.
+- **`DataTable.ts:33-42`** (`firstDuplicate`) — a manual `Set`-tracking loop to find the first _repeated_ value. `effect/Array.ts` has `dedupe`/`dedupeWith`/`dedupeAdjacent(With)` (remove duplicates) but no "return the first value that repeats" combinator. No drop-in builtin exists. Not a finding.
+- **`ParameterTypes.ts:296-304`** (`sharedDefaultRegistry`) — a module-level mutable lazy singleton, required by ADR-EC-045 to be genuinely process-wide across every separate `Layer.sync` build, not memoized per-`Layer`-instance. No builtin models "shared mutable state across independent `Layer` builds" better than this. Not a finding.
+- **`GherkinTags.ts:76-87`** — an `if`/`else if` chain on a plain `string | null` union (`DocStringFence`), not a `_tag`-discriminated object — `Match.tag`'s house rule doesn't strictly target this shape. Unchanged since round 3, not re-flagged.
+- **`Tags.ts:76-102`** (`readScenarioTimeoutTag`) — must validate every `@timeout*`-prefixed tag (throwing on the first invalid one) while keeping only the _last_ valid match's value — a fold with an early-throw side effect on a synchronous, non-Effect path. No `effect/Array` combinator cleanly expresses this without added ceremony. Not a finding.
+- **`GherkinWatchTriggers.ts:82`** — a closure-mutated variable set once inside a Vite plugin's synchronous `config()` hook, outside any Effect fiber. Same rationale as `Runner.ts`'s previously-rejected closure counters. Not a finding.
+- **`ScenarioMetrics.ts:83`** — `Exit.isSuccess(exit) ? "pass" : "fail"`. `Exit.match` exists, but `Exit.isSuccess`'s own doc comment directs it to be used "for simple boolean checks" — exactly this case, a single ternary, not a chain. Not a finding.
+- **`ScenarioKey.ts:10`** — `ruleId: string | null` conforms to the same shared `RegistryScope`/`Collect.ts`/`Plan.ts`/`Runner.ts` boundary type as `Hook.ts`'s `definedAt` above; fixing it means changing the shared boundary type first. Not a finding.
+- **`Step.ts:8-13`** — a `GeneratorFunction` check via `Object.prototype.toString.call`. No `isGeneratorFunction` predicate exists anywhere in `effect/Predicate.ts` or the rest of the Effect source — this is a genuine necessity, not a duplicated builtin.
+- **`StepModule.ts:21-32`** — closures pushing into a mutable array during synchronous DSL registration, outside any Effect fiber. Same rationale as `Runner.ts`'s rejected counters.
 
 ---
 
-## 7. Cross-cutting architecture check (re-run)
+## 6. Cross-cutting architecture check (re-run)
 
-**Result: no structural findings; everything from rounds 1–2 re-confirmed still correct.** Repo-wide grep sweep across all of `packages/gherkin/src` and `packages/vitest/src`:
+**Result: no structural findings; everything from rounds 1–3 re-confirmed still correct, and the repo-wide sweep now covers five additional anti-pattern categories with clean or known-accepted results.**
 
-- `_tag ===` / `switch (x._tag)`: **zero hits.** `Match.tag`/`Match.orElse`/`Match.exhaustive` used consistently everywhere a `_tag`-discriminated value is branched on.
-- Hand-rolled predicates (`isRecord`/`isString`/`typeof x === "string"|"object"`): **zero hits.** `effect/Predicate` used throughout.
-- `new Date(`/`Date.now()`: **zero hits**, either package.
-- `Math.random()`: **zero hits** — scenario seeding goes through `Random.withSeed`, not raw `Math.random`.
-- `Promise.all(`/`new Promise(`: **zero hits** — the only `Promise<...>` usages are type-level signatures at genuine framework-boundary seams (`VitestTestApi.ts`, `loadFeature.ts`), wrapping `Effect.runPromise`.
-- `class ... extends Error`: **zero hits** — every custom error is `Schema.TaggedError` or `Data.TaggedError`; the only `instanceof Error`-adjacent checks discriminate **upstream** `@cucumber/gherkin` exception classes (`Parser.ts`), pinned by `test/upstream-pin.test.ts`.
-- Bare arrow-wrappers around `Effect.gen` (candidates for `Effect.fn`/`Effect.fnUntraced`): **zero hits** — every exported reusable Effect-returning function already uses `Effect.fn`/`Effect.fnUntraced`. The one remaining raw `Effect.gen(function*() {...})` (`ScenarioEffect.ts:75`) sits inside a `Match.orElse` arm that is itself piped through `.pipe(Effect.onExit(...))` — attached to a combinator, not a bare pass-through wrapper.
+`git diff 3b57a8e..HEAD` (round-3 resolution → current HEAD) touches only 3 files, none an idiom regression: `Correlate.ts:361` and `Parser.ts:83-90` (both a documented `?? ""` → `!` non-null-assertion tightening), and `Collect.ts:81` (export visibility only, from the CI-hardening commit). No regressions of anything rounds 1–3 fixed.
 
-`packages/vitest`'s dependency on `@effect/vitest` (peer dependency, delegated `it.effect`/`describe`/`beforeAll`/`afterAll`/`layer(...)`/`flakyTest`) and the one documented exception (`VitestTestApi.ts`'s second `Scope` held open across a Feature block, working around `@effect/vitest`'s `layer()` tearing its scope down from `onTestFinished` before any `afterAll`) were not re-audited in depth this round — no code near that boundary changed since round 2's confirmation.
+Repo-wide grep sweep, `packages/gherkin/src` + `packages/vitest/src` (source only):
+
+- `_tag ===` / `switch` on `._tag`: **zero hits** (unchanged from round 3).
+- Hand-rolled predicates (`typeof`/`Array.isArray`/home-grown `isRecord`-style helpers): **zero hits** (unchanged).
+- `new Date(`/`Date.now()`: **zero hits** (unchanged).
+- `Math.random()`: **zero hits** (unchanged) — scenario seeding still goes through `Random.withSeed`.
+- `Promise.all(`/`new Promise(`: **zero hits** (unchanged) outside genuine framework-boundary type signatures.
+- `class ... extends Error`: **zero hits** (unchanged).
+- `JSON.parse(`/`JSON.stringify(` (new this round): **29 hits**, all `JSON.stringify` for human-readable error/log message interpolation — correct usage, not the "decode untrusted structured data" case `Schema.fromJsonString` targets. Zero `JSON.parse` hits — the one real parse site (`RerunManifest.ts`) already routes through `Schema.decodeUnknownResult` per round 1.
+- Bare wrap-only `Effect.gen(function*() {...})` (new this round): **1 hit** — `ScenarioEffect.ts:75`, re-confirmed round 3's finding that it's attached to a `Match.orElse` arm piped through `.pipe(Effect.onExit(...))`, not a bare pass-through.
+- `.toSorted(`/`.sort(` with an inline comparator (new this round): **zero hits** — all 4 `.sort`-family call sites now go through `Arr.sort(..., Order.String)` or `Arr.sort(..., Order.make/combine)`. Round 3 §4.2's fix confirmed holding, no new native holdouts.
+- `Object.hasOwn(` lookup-then-index (new this round): **2 hits** — `Snippet.ts:123` (round 3's documented "no `effect` import" exception) and `Parser.ts:90` (new since round 3, reviewed and rejected in §5 above as a deliberate security guard, not a `Record.get` candidate).
+- `?? null` / null-as-absence (new this round): **6 hits** — 2 are `JSON.stringify` message formatting (not data modeling), 1 is round 3's own retained public-contract `null` (`RerunKey.ts`, explicitly not a smell), 3 are the `Hook.ts`/`Runner.ts` (×2) spots reviewed and rejected in §5 above.
+
+**LLMS.md compliance:** `Effect.fn`/`Effect.fnUntraced` usage remains consistent repo-wide (9 files use one or the other; zero bare wrap-only `Effect.gen`s per the sweep above). The `Data.TaggedError`-vs-`Schema.TaggedError` split (§4 above) remains correctly applied but still undocumented as a general policy.
 
 ---
 
 ## Adoption plan (priority order)
 
-| # | Change                                                                          | Priority | Files                                                                                                              | Breaking?                                                 |
-| - | ------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| 1 | `ReadonlySet<string> \| null` → `Option<ReadonlySet<string>>`                   | Medium   | `RerunManifest.ts` (+ caller update in `describeFeature.ts`)                                                       | Internal-only, one coordinated call-site update           |
-| 2 | 5 hand-rolled tagged "notice" interfaces → `Data.TaggedClass`                   | Medium   | `Errors.ts` (vitest) (+ consumers: `Collect.ts`, `Plan.ts`, `Runner.ts`, `describeFeature.ts`, `VitestTestApi.ts`) | No                                                        |
-| 3 | 3 registration-time `throw new Error` → `Data.TaggedError`                      | Low/Med  | `describeFeature.ts`, `RuleNarrowing.ts`, `Collect.ts`                                                             | Check tests asserting `toThrowError(Error)` by base class |
-| 4 | `Object.hasOwn` lookup → `Record.get` + `Option.match`                          | Low      | `Correlate.ts`                                                                                                     | No                                                        |
-| 5 | `Option.getOrNull` + null-recheck → `Option.match`                              | Low      | `RerunKey.ts`                                                                                                      | No                                                        |
-| 6 | `Arr.getSomes([single])` → `Option.toArray`                                     | Low      | `Validate.ts`                                                                                                      | No                                                        |
-| 7 | Inline `Predicate.isError` ternary → reuse `describeCause`                      | Low      | `Pickles.ts`                                                                                                       | No                                                        |
-| 8 | Native `.toSorted(customComparator)` (×2) → `Arr.sort` + `Order.make`/`combine` | Low      | `Plan.ts`                                                                                                          | No                                                        |
+| # | Change                                                                       | Priority | Files                                      | Breaking?                                     |
+| - | ---------------------------------------------------------------------------- | -------- | ------------------------------------------ | --------------------------------------------- |
+| 1 | `TagFilter.expression: (fn) \| null` → `Option<fn>`                          | Medium   | `Tags.ts` (+ 3 test call sites)            | Test-only, package-internal, no published API |
+| 2 | Hand-rolled `Predicate.is*` ternaries → `Option.liftPredicate`               | Low      | `DataTable.ts`                             | No                                            |
+| 3 | Manual `for`-loop + `Set` → `Option.fromUndefinedOr` + `Arr.getSomes`        | Low      | `ParameterTypes.ts`                        | No                                            |
+| 4 | Duplicated `Predicate.isError` ternary → shared `describeCause`-style helper | Low      | `TagExpression.ts`, `HookTagExpression.ts` | No                                            |
 
-All 8 changes are internal-only, zero-behavior-change refactors. Items 1–2 are worth their own PR each given the cross-file blast radius; items 3 and 4–8 can each batch into a single PR, mirroring how PRs #80/#81 batched the prior round.
+All 4 changes are internal-only, zero-behavior-change refactors and can batch into a single PR, mirroring how prior rounds batched their Low-priority items. Item 1 is worth a quick look at the 3 affected test files before merging, same caveat as every round-3 `Option`-conversion item.
+
+Separately, unresolved from round 3: write the `Data.TaggedError`-vs-`Schema.TaggedError` split down once (ADR or `LLMS.md` addendum) rather than carrying the open item into a fourth round.
 
 ---
 
@@ -342,4 +270,5 @@ All 8 changes are internal-only, zero-behavior-change refactors. Items 1–2 are
 - `Match.tag`/`Match.orElse`/`Match.exhaustive` in place of `_tag` if-chains in `ScenarioEffect.ts`, `Testing.ts`, `VitestTestApi.ts`, `DataTable.ts`, `Source.ts` (PRs #80, #81).
 - `Schema.fromJsonString` + `Schema.decodeUnknownResult` in place of manual `JSON.parse` (PR #81, `RerunManifest.ts`).
 - `Effect.fnUntraced` in place of functions that only wrapped-and-returned `Effect.gen` (PRs #80, #81).
-- **Round 2** (`bdbd010`): `Option.fromUndefinedOr` + `Option.map` in place of manual `undefined`-ternaries (`Correlate.ts:371-373`); `Option.match` in place of `Option.isSome` ternaries (`DataTable.ts`, `ExamplesRow.ts`); `Option` return type in place of a hand-rolled `undefined` sentinel (`Parser.ts`); `Array.findFirst` in place of a manual find-loop (`ParameterTypes.ts`); `Array.last` + `Option.getOrThrowWith` in place of manual last-element-or-throw (`Registry.ts`); `Match.value`/`Match.when`/`Match.exhaustive` in place of ternary chains on `RegistryScopeKind` and `ExcludedScenariosNoticeReason`/`kind` (`Plan.ts`, `Errors.ts`).
+- **Round 2** (`bdbd010`): `Option.fromUndefinedOr` + `Option.map` in place of manual `undefined`-ternaries (`Correlate.ts`); `Option.match` in place of `Option.isSome` ternaries (`DataTable.ts`, `ExamplesRow.ts`); `Option` return type in place of a hand-rolled `undefined` sentinel (`Parser.ts`); `Array.findFirst` in place of a manual find-loop (`ParameterTypes.ts`); `Array.last` + `Option.getOrThrowWith` in place of manual last-element-or-throw (`Registry.ts`); `Match.value`/`Match.when`/`Match.exhaustive` in place of ternary chains on `RegistryScopeKind` and `ExcludedScenariosNoticeReason`/`kind` (`Plan.ts`, `Errors.ts`).
+- **Round 3** (`3b57a8e`): `Option<ReadonlySet<string>>` in place of `null` (`RerunManifest.ts`, coordinated with `describeFeature.ts`); 5 hand-rolled tagged "notice" interfaces → `Data.TaggedClass` (`Errors.ts`, vitest); 3 registration-time `throw new Error` → `Data.TaggedError` (`describeFeature.ts`, `RuleNarrowing.ts`, `Collect.ts`); `Record.get` + `Option.match` in place of an `Object.hasOwn` lookup (`Correlate.ts`); `Option.match` in place of `Option.getOrNull` + null-recheck (`RerunKey.ts`); `Option.toArray` in place of `Arr.getSomes([single])` (`Validate.ts`); reused `describeCause` in place of an inline `Predicate.isError` ternary (`Pickles.ts`); `Arr.sort` + `Order.make`/`combine` in place of native `.toSorted(customComparator)` (`Plan.ts`).
