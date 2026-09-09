@@ -83,7 +83,10 @@ const findPrototypeKeyLanguageHeader = (
     if (text.trim() === "") continue
     const match = languageHeader.exec(text)
     if (match === null) return Option.none()
-    const language = match[1] ?? ""
+    // `!` is safe: the pattern's one capture group, `([a-zA-Z\-_]+)`, requires at least one character to
+    // match at all, so a successful `match` always has a defined `match[1]` — `noUncheckedIndexedAccess`
+    // cannot see that guarantee through the regex's own type, but the pattern itself enforces it.
+    const language = match[1]!
     return !Object.hasOwn(dialects, language) && language in dialects
       ? Option.some({ language, line: index + 1 })
       : Option.none()

@@ -358,8 +358,11 @@ export const correlateFeature = (
     // `[0]` (that one is the Outline's own AST id, shared by every row). A plain Scenario's sole
     // `astNodeIds` entry IS its own scenario id, which `rowById` never contains, so the lookup
     // below is naturally `undefined` for it — the same discriminator `OutlineTitle.ts` already
-    // relied on before this field existed.
-    const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1) ?? "")
+    // relied on before this field existed. The `!` is safe, never a live risk: every `pickle` reaching
+    // this closure came from `index.byScenarioId`, which `indexPicklesByScenario` only ever populates
+    // with pickles that already passed its own `astNodeIds[0] !== undefined` filter above — so
+    // `astNodeIds` is never empty here, and `.at(-1)` is never `undefined`.
+    const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1)!)
     return {
       id: pickle.id,
       astId: node.id,

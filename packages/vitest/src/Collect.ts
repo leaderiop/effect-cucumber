@@ -78,7 +78,7 @@ const splitLayerArgument = (
  * Effect error channel, consistent with this package's other registration-time argument-validation
  * throws (`GherkinTags.ts`, `GherkinWatchTriggers.ts`, `StrictMode.ts`, `Tags.ts`).
  */
-export class AsyncDefineCallbackError extends Data.TaggedError("AsyncDefineCallbackError")<{
+class AsyncDefineCallbackError extends Data.TaggedError("AsyncDefineCallbackError")<{
   readonly container: string
   readonly name: string | null
   readonly message: string
