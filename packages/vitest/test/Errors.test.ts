@@ -358,13 +358,16 @@ describe("UndeclaredTagWarning", () => {
 
   it("stores no field carrying the caught framework error's own text", () => {
     // src/Errors.ts note (f), second half: upstream prose never becomes this library's contract.
+    // `_tag` is last: `Data.TaggedClass`'s own field initializer assigns it AFTER the constructor
+    // has already assigned every field from `args` (verified against `effect/Data.ts`'s `TaggedClass`/
+    // `Class` implementation), not first as a hand-written object literal would have ordered it.
     expect(Object.keys(undeclaredWarning())).toEqual([
-      "_tag",
       "reason",
       "uri",
       "scenarioName",
       "tags",
-      "message"
+      "message",
+      "_tag"
     ])
   })
 

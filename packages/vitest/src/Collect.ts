@@ -15,6 +15,7 @@
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import * as Arr from "effect/Array"
+import * as Data from "effect/Data"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
@@ -70,6 +71,19 @@ const splitLayerArgument = (
   Predicate.hasProperty(argument, "perScenario")
     ? { shared: argument.shared, perScenario: argument.perScenario }
     : { shared: null, perScenario: argument }
+/**
+ * A registration-time misuse: a `define` callback (`describeFeature`'s own, or one belonging to a
+ * `Scenario`/`Rule`/`Background` container inside it) returned a Promise instead of running
+ * synchronously. A real `Error` subclass (via `Data.TaggedError`), thrown synchronously outside the
+ * Effect error channel, consistent with this package's other registration-time argument-validation
+ * throws (`GherkinTags.ts`, `GherkinWatchTriggers.ts`, `StrictMode.ts`, `Tags.ts`).
+ */
+export class AsyncDefineCallbackError extends Data.TaggedError("AsyncDefineCallbackError")<{
+  readonly container: string
+  readonly name: string | null
+  readonly message: string
+}> {}
+
 const invokeDefine = <Dsl>(
   container: string,
   name: string | null,
@@ -80,11 +94,13 @@ const invokeDefine = <Dsl>(
   if (Predicate.isPromise(returned)) {
     returned.catch(() => undefined)
     const label = name === null ? container : `${container} "${name}"`
-    throw new Error(
-      `${label}'s define callback returned a Promise (at ${formatCallSite(captureCallSite())}). `
+    throw new AsyncDefineCallbackError({
+      container,
+      name,
+      message: `${label}'s define callback returned a Promise (at ${formatCallSite(captureCallSite())}). `
         + "A define callback must be synchronous: every step, hook and container it registers after "
         + "an `await` is never seen, so the Feature would emit fewer tests than were written and pass."
-    )
+    })
   }
 }
 const unregisteredRulePrefix = "unregistered-rule:"

@@ -175,7 +175,7 @@ const noRuleScope = {
 // `strict: true` is opted into explicitly, per call, by the tests that need it (ADR-EC-053).
 const unfiltered = {
   tagFilter: noTagFilter,
-  rerunFilter: null,
+  rerunFilter: Option.none(),
   rerunKeys: new Map<string, string>(),
   strict: false
 }
@@ -1640,7 +1640,7 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       hooks: emptyHooks,
       ...noRuleScope,
       tagFilter,
-      rerunFilter: null,
+      rerunFilter: Option.none(),
       rerunKeys: new Map<string, string>(),
       strict: false
     })
@@ -1737,14 +1737,14 @@ describe("a rerunFailedOnly filter composes after the tag filter, stamps EmitOpt
       hooks: emptyHooks,
       ...noRuleScope,
       tagFilter,
-      rerunFilter,
+      rerunFilter: Option.fromNullOr(rerunFilter),
       rerunKeys: filteringKeys,
       strict: false
     })
     return { records, outcome }
   }
 
-  it("rerunFilter === null means no filter at all — identical to the unfiltered control", () => {
+  it("rerunFilter of Option.none() means no filter at all — identical to the unfiltered control", () => {
     const { outcome, records } = emitRerun(noTagFilter, null)
 
     assert.deepStrictEqual(titlesOf(records), ["slow one", "wip one", "plain one", "slow nested", "wip nested"])
@@ -1853,7 +1853,7 @@ describe("a tag filter cannot change which step definitions are reported unused 
       hooks: emptyHooks,
       ...noRuleScope,
       tagFilter,
-      rerunFilter: null,
+      rerunFilter: Option.none(),
       rerunKeys: new Map<string, string>(),
       strict: false
     })
@@ -1947,7 +1947,7 @@ describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, 
         hooks: afterAllHooks(),
         ...noRuleScope,
         tagFilter: makeTagFilter({ includeTags: ["@exampletag"] }),
-        rerunFilter: null,
+        rerunFilter: Option.none(),
         rerunKeys: new Map<string, string>(),
         strict: false
       })

@@ -544,9 +544,9 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
           (column) => duplicateExamplesColumn(uri, node, column, blockLines[blockIndex] ?? node.location.line)
         )
     )
-    const swallowedStepWarning = Arr.getSomes([
+    const swallowedStepWarning = Option.toArray(
       suspectedSwallowedStep(uri, describeNode(node), node.description, node.location.line, keywords)
-    ])
+    )
     return [...columnWarnings, ...swallowedStepWarning]
   })
 

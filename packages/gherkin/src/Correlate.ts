@@ -129,32 +129,36 @@ export interface CorrelationResult {
 const tagNames = (tags: ReadonlyArray<{ readonly name: string }>): ReadonlyArray<string> => tags.map((tag) => tag.name)
 
 /**
- * A dialect by language, through `Object.hasOwn`: a bare index on `"constructor"` reads through to
- * `Object.prototype`. `Parser.ts` rejects an unknown language first; this is for the exported helpers.
+ * A dialect by language, through `Record.get` (which itself guards with `Object.hasOwn`: a bare index on
+ * `"constructor"` reads through to `Object.prototype`). `Parser.ts` rejects an unknown language first; this
+ * is for the exported helpers.
  */
-const dialectOf = (language: string): Dialect | undefined =>
-  Object.hasOwn(dialects, language) ? dialects[language] : undefined
+const dialectOf = (language: string): Option.Option<Dialect> => Rec.get(dialects, language)
 
 /** Whether `keyword` is a Scenario Outline keyword in `language` — the only exact way to tell, since
  * `compile()` never branches on the keyword. */
-export const isOutlineKeyword = (language: string, keyword: string): boolean => {
-  const dialect = dialectOf(language)
-  return dialect === undefined ? false : dialect.scenarioOutline.includes(keyword.trim())
-}
+export const isOutlineKeyword = (language: string, keyword: string): boolean =>
+  Option.match(dialectOf(language), {
+    onNone: () => false,
+    onSome: (dialect) => dialect.scenarioOutline.includes(keyword.trim())
+  })
 
 /** Every step keyword of `language`, trimmed, without the wildcard `*` (a bullet in ordinary prose). */
-export const stepKeywords = (language: string): ReadonlyArray<string> => {
-  const dialect = dialectOf(language)
-  if (dialect === undefined) return []
-  const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
-  return Arr.dedupe(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))
-}
+export const stepKeywords = (language: string): ReadonlyArray<string> =>
+  Option.match(dialectOf(language), {
+    onNone: () => [],
+    onSome: (dialect) => {
+      const all = [...dialect.given, ...dialect.when, ...dialect.then, ...dialect.and, ...dialect.but]
+      return Arr.dedupe(all.map((keyword) => keyword.trim()).filter((keyword) => keyword !== "*"))
+    }
+  })
 
 /** Whether `keyword` is a plain Scenario keyword in `language`. */
-export const isScenarioKeyword = (language: string, keyword: string): boolean => {
-  const dialect = dialectOf(language)
-  return dialect === undefined ? false : dialect.scenario.includes(keyword.trim())
-}
+export const isScenarioKeyword = (language: string, keyword: string): boolean =>
+  Option.match(dialectOf(language), {
+    onNone: () => false,
+    onSome: (dialect) => dialect.scenario.includes(keyword.trim())
+  })
 
 /** Narrow `document.feature` (`undefined` for a comment-only file). `Parser.ts` rejects that case as
  * `NoFeature`; reaching this throw is a library defect. */

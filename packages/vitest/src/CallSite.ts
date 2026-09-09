@@ -3,6 +3,7 @@
  * package. Paths may contain parentheses (`test/CallSite.test.ts`).
  */
 import * as Order from "effect/Order"
+import type { Ordering } from "effect/Ordering"
 import * as Str from "effect/String"
 import type { DefinitionSite } from "./Registry.ts"
 
@@ -97,7 +98,7 @@ const definitionSiteOrder: Order.Order<DefinitionSite> = Order.Struct({
 /**
  * Rank two definition sites: by file, then line, then column, with an absent site last.
  */
-export const compareCallSites = (left: DefinitionSite | null, right: DefinitionSite | null): number => {
+export const compareCallSites = (left: DefinitionSite | null, right: DefinitionSite | null): Ordering => {
   if (left === null) {
     return right === null ? 0 : 1
   }

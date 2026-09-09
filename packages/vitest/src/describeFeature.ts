@@ -14,7 +14,9 @@
  * - The implementation parameter is `layerArgument`, not `layer`: `layer` is the framework import.
  */
 import type { ParsedFeature } from "@effect-cucumber/gherkin"
+import * as Data from "effect/Data"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import type { FeatureDsl } from "./Dsl.ts"
 import { makeExcludedScenariosNotice, makeStaleRerunManifestKeyWarning } from "./Errors.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
@@ -72,6 +74,22 @@ export interface DescribeFeatureOptions {
    */
   readonly strict?: boolean
 }
+
+/**
+ * A registration-time misuse of `describeFeature`'s options (ADR-EC-054): `tagExpression` was set
+ * alongside `includeTags`/`excludeTags`, which are mutually exclusive registration filters. A real
+ * `Error` subclass (via `Data.TaggedError`), thrown synchronously outside the Effect error channel,
+ * consistent with this package's other registration-time argument-validation throws (`GherkinTags.ts`,
+ * `GherkinWatchTriggers.ts`, `StrictMode.ts`, `Tags.ts`).
+ */
+export class MutuallyExclusiveTagFilterError extends Data.TaggedError("MutuallyExclusiveTagFilterError")<{
+  readonly featureName: string
+  readonly uri: string
+  readonly tagExpression: string
+  readonly includeTags: ReadonlyArray<string> | undefined
+  readonly excludeTags: ReadonlyArray<string> | undefined
+  readonly message: string
+}> {}
 
 /**
  * Collect a Feature's step definitions and normalised Layer, and hand them back instead of running
@@ -145,13 +163,18 @@ export function describeFeature(
     options?.tagExpression !== undefined &&
     (options.includeTags !== undefined || options.excludeTags !== undefined)
   ) {
-    throw new Error(
-      `describeFeature's options set BOTH tagExpression (${JSON.stringify(options.tagExpression)}) and `
+    throw new MutuallyExclusiveTagFilterError({
+      featureName: feature.name,
+      uri: feature.uri,
+      tagExpression: options.tagExpression,
+      includeTags: options.includeTags,
+      excludeTags: options.excludeTags,
+      message: `describeFeature's options set BOTH tagExpression (${JSON.stringify(options.tagExpression)}) and `
         + `includeTags/excludeTags (includeTags: ${JSON.stringify(options.includeTags ?? null)}, `
         + `excludeTags: ${JSON.stringify(options.excludeTags ?? null)}) for Feature ${
           JSON.stringify(feature.name)
         } (${feature.uri}). These are mutually exclusive registration filters — choose one.`
-    )
+    })
   }
   // Compiled against the WHOLE Feature's declared tag universe, the same scope
   // `HookTagExpression.ts`'s own `compileHookTagExpr` already validates a hook's tag expression
@@ -193,21 +216,22 @@ export function describeFeature(
   // this one Feature's own Scenario list.
   const rerunKeys = rerunKeysForPlan(collection.plan)
 
-  // `null` (no filter) unless `rerunFailedOnly` is explicitly `true` — `rerunManifestPath` is never
-  // even read otherwise, mirroring `includeTags`/`excludeTags`'s own "absent costs nothing" shape.
+  // `Option.none()` (no filter) unless `rerunFailedOnly` is explicitly `true` — `rerunManifestPath`
+  // is never even read otherwise, mirroring `includeTags`/`excludeTags`'s own "absent costs nothing"
+  // shape.
   const rerunFilter = options?.rerunFailedOnly === true
     ? readRerunManifest(options.rerunManifestPath ?? defaultRerunManifestPath)
-    : null
+    : Option.none()
 
   // A manifest key under THIS Feature's own uri that matches no Scenario `rerunKeys` computed —
   // renamed, removed, or from a different revision of this file. Detected from this library's own
   // plan data alone, so it follows `plan.warnings`' printing site here rather than
   // `UndeclaredTagWarning`'s adapter-catch pattern, which reacts to a RUNNER rejection instead
   // (ADR-EC-038).
-  if (rerunFilter !== null) {
+  if (Option.isSome(rerunFilter)) {
     const uriPrefix = `${collection.plan.feature.uri}::`
     const knownKeys = new Set(rerunKeys.values())
-    const staleKeys = [...rerunFilter].filter((key) => key.startsWith(uriPrefix) && !knownKeys.has(key))
+    const staleKeys = [...rerunFilter.value].filter((key) => key.startsWith(uriPrefix) && !knownKeys.has(key))
     if (staleKeys.length > 0) {
       console.warn(
         makeStaleRerunManifestKeyWarning({
@@ -252,7 +276,7 @@ export function describeFeature(
   const anyRunnable = collection.plan.scenarios.some((scenarioPlan) =>
     shouldEmit(tagFilter, scenarioPlan.tags) &&
     !isSkipped(scenarioPlan.tags) &&
-    (rerunFilter === null || rerunFilter.has(rerunKeys.get(scenarioPlan.scenarioId) ?? ""))
+    (Option.isNone(rerunFilter) || rerunFilter.value.has(rerunKeys.get(scenarioPlan.scenarioId) ?? ""))
   )
 
   // On the shared path the memo map is made HERE and handed in, so the adapter's hooks can reach

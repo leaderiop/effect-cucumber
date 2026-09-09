@@ -157,8 +157,7 @@ export type UnusedStepDefinitionWarningReason = "UnusedStepDefinition"
 /**
  * A registered step definition no step in the Feature used.
  */
-export interface UnusedStepDefinitionWarning {
-  readonly _tag: "UnusedStepDefinitionWarning"
+export class UnusedStepDefinitionWarning extends Data.TaggedClass("UnusedStepDefinitionWarning")<{
   readonly reason: UnusedStepDefinitionWarningReason
   readonly featureName: string
   readonly uri: string
@@ -166,7 +165,7 @@ export interface UnusedStepDefinitionWarning {
   readonly pattern: string
   readonly definedAt: Option.Option<string>
   readonly message: string
-}
+}> {}
 
 /**
  * Build an `UnusedStepDefinitionWarning`, normalising an omitted `definedAt` to `Option.none()`.
@@ -179,16 +178,16 @@ export const makeUnusedStepDefinitionWarning = (args: {
   pattern: string
   definedAt?: string
   message: string
-}): UnusedStepDefinitionWarning => ({
-  _tag: "UnusedStepDefinitionWarning",
-  reason: args.reason,
-  featureName: args.featureName,
-  uri: args.uri,
-  keyword: args.keyword,
-  pattern: args.pattern,
-  definedAt: Option.fromUndefinedOr(args.definedAt),
-  message: args.message
-})
+}): UnusedStepDefinitionWarning =>
+  new UnusedStepDefinitionWarning({
+    reason: args.reason,
+    featureName: args.featureName,
+    uri: args.uri,
+    keyword: args.keyword,
+    pattern: args.pattern,
+    definedAt: Option.fromUndefinedOr(args.definedAt),
+    message: args.message
+  })
 
 const quoted = (value: string): string => JSON.stringify(value)
 
@@ -199,14 +198,13 @@ const quotedList = (values: ReadonlyArray<string>): string => values.map(quoted)
  */
 export type UndeclaredTagWarningReason = "UndeclaredTag"
 
-export interface UndeclaredTagWarning {
-  readonly _tag: "UndeclaredTagWarning"
+export class UndeclaredTagWarning extends Data.TaggedClass("UndeclaredTagWarning")<{
   readonly reason: UndeclaredTagWarningReason
   readonly uri: string
   readonly scenarioName: string
   readonly tags: ReadonlyArray<string>
   readonly message: string
-}
+}> {}
 
 /**
  * A `Rule(...)` or `Scenario(...)` container was registered under a name the Feature does not
@@ -214,8 +212,7 @@ export interface UndeclaredTagWarning {
  */
 export type UnknownContainerWarningReason = "UnknownContainer"
 
-export interface UnknownContainerWarning {
-  readonly _tag: "UnknownContainerWarning"
+export class UnknownContainerWarning extends Data.TaggedClass("UnknownContainerWarning")<{
   readonly reason: UnknownContainerWarningReason
   readonly uri: string
   readonly kind: "Rule" | "Scenario"
@@ -223,7 +220,7 @@ export interface UnknownContainerWarning {
   readonly ruleName: Option.Option<string>
   readonly known: ReadonlyArray<string>
   readonly message: string
-}
+}> {}
 
 export const makeUnknownContainerWarning = (args: {
   uri: string
@@ -233,8 +230,7 @@ export const makeUnknownContainerWarning = (args: {
   known: ReadonlyArray<string>
 }): UnknownContainerWarning => {
   const ruleName = Option.fromUndefinedOr(args.ruleName)
-  return {
-    _tag: "UnknownContainerWarning",
+  return new UnknownContainerWarning({
     reason: "UnknownContainer",
     uri: args.uri,
     kind: args.kind,
@@ -252,25 +248,25 @@ export const makeUnknownContainerWarning = (args: {
         Match.exhaustive
       )
     } — can never run; its steps will be reported as matching no step. Check the name against the .feature file (an Outline is registered by its un-interpolated title).`
-  }
+  })
 }
 
 export const makeUndeclaredTagWarning = (args: {
   uri: string
   scenarioName: string
   tags: ReadonlyArray<string>
-}): UndeclaredTagWarning => ({
-  _tag: "UndeclaredTagWarning",
-  reason: "UndeclaredTag",
-  uri: args.uri,
-  scenarioName: args.scenarioName,
-  tags: args.tags,
-  message: `${quoted(args.uri)}: UndeclaredTag: Scenario ${
-    quoted(args.scenarioName)
-  } carries ${args.tags.length} tag(s), at least one of which this project's vitest config does not declare: ${
-    quotedList(args.tags)
-  }. The Scenario still ran, but it was emitted UNTAGGED, so a --tagsFilter run naming any of those tags cannot select it. Declare the missing ones under test.tags in your vitest config: https://vitest.dev/guide/test-tags`
-})
+}): UndeclaredTagWarning =>
+  new UndeclaredTagWarning({
+    reason: "UndeclaredTag",
+    uri: args.uri,
+    scenarioName: args.scenarioName,
+    tags: args.tags,
+    message: `${quoted(args.uri)}: UndeclaredTag: Scenario ${
+      quoted(args.scenarioName)
+    } carries ${args.tags.length} tag(s), at least one of which this project's vitest config does not declare: ${
+      quotedList(args.tags)
+    }. The Scenario still ran, but it was emitted UNTAGGED, so a --tagsFilter run naming any of those tags cannot select it. Declare the missing ones under test.tags in your vitest config: https://vitest.dev/guide/test-tags`
+  })
 
 /**
  * Which of `describeFeature`'s registration-time tag options caused an exclusion.
@@ -287,8 +283,7 @@ export type ExcludedScenariosNoticeReason =
   | "ExcludedByBothTagFilters"
   | "ExcludedByTagExpression"
 
-export interface ExcludedScenariosNotice {
-  readonly _tag: "ExcludedScenariosNotice"
+export class ExcludedScenariosNotice extends Data.TaggedClass("ExcludedScenariosNotice")<{
   readonly reason: ExcludedScenariosNoticeReason
   readonly featureName: string
   readonly uri: string
@@ -302,7 +297,7 @@ export interface ExcludedScenariosNotice {
    */
   readonly tagExpression: string | undefined
   readonly message: string
-}
+}> {}
 
 const excludedScenariosNoticeReason = (
   includeTags: ReadonlyArray<string>,
@@ -334,8 +329,7 @@ export const makeExcludedScenariosNotice = (args: {
     ),
     Match.exhaustive
   )
-  return {
-    _tag: "ExcludedScenariosNotice",
+  return new ExcludedScenariosNotice({
     reason,
     featureName: args.featureName,
     uri: args.uri,
@@ -346,7 +340,7 @@ export const makeExcludedScenariosNotice = (args: {
     message: `${quoted(args.uri)}: ${reason}: ${args.count} Scenario(s) in Feature ${
       quoted(args.featureName)
     } were excluded by ${filters}. They were never registered, so they appear nowhere in this run's output — not even as skipped. Widen or remove the filter to run them.`
-  }
+  })
 }
 
 /**
@@ -359,30 +353,29 @@ export const makeExcludedScenariosNotice = (args: {
  */
 export type StaleRerunManifestKeyWarningReason = "StaleRerunManifestKey"
 
-export interface StaleRerunManifestKeyWarning {
-  readonly _tag: "StaleRerunManifestKeyWarning"
+export class StaleRerunManifestKeyWarning extends Data.TaggedClass("StaleRerunManifestKeyWarning")<{
   readonly reason: StaleRerunManifestKeyWarningReason
   readonly uri: string
   readonly featureName: string
   readonly keys: ReadonlyArray<string>
   readonly message: string
-}
+}> {}
 
 export const makeStaleRerunManifestKeyWarning = (args: {
   uri: string
   featureName: string
   keys: ReadonlyArray<string>
-}): StaleRerunManifestKeyWarning => ({
-  _tag: "StaleRerunManifestKeyWarning",
-  reason: "StaleRerunManifestKey",
-  uri: args.uri,
-  featureName: args.featureName,
-  keys: args.keys,
-  message: `${
-    quoted(args.uri)
-  }: StaleRerunManifestKey: the rerun manifest names ${args.keys.length} key(s) under Feature ${
-    quoted(args.featureName)
-  } that match no Scenario in this file: ${
-    quotedList(args.keys)
-  }. Ignored — the Scenario was likely renamed or removed, or the manifest is from a different revision of this file. Regenerate the manifest by re-running the write-side script against a fresh test run.`
-})
+}): StaleRerunManifestKeyWarning =>
+  new StaleRerunManifestKeyWarning({
+    reason: "StaleRerunManifestKey",
+    uri: args.uri,
+    featureName: args.featureName,
+    keys: args.keys,
+    message: `${
+      quoted(args.uri)
+    }: StaleRerunManifestKey: the rerun manifest names ${args.keys.length} key(s) under Feature ${
+      quoted(args.featureName)
+    } that match no Scenario in this file: ${
+      quotedList(args.keys)
+    }. Ignored — the Scenario was likely renamed or removed, or the manifest is from a different revision of this file. Regenerate the manifest by re-running the write-side script against a fresh test run.`
+  })

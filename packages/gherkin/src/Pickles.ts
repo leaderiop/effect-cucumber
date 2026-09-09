@@ -7,8 +7,8 @@
 import { compile } from "@cucumber/gherkin"
 import type { GherkinDocument, IdGenerator, Pickle } from "@cucumber/messages"
 import * as Option from "effect/Option"
-import * as Predicate from "effect/Predicate"
 import { LoadFeatureError } from "./Errors.ts"
+import { describeCause } from "./StepMatcher.ts"
 
 /**
  * Compile every executable Scenario of `document` into a pickle.
@@ -28,7 +28,7 @@ export const compilePickles = (
       reason: "ParseFailed",
       uri,
       line: Option.none(),
-      message: `Failed to compile pickles for ${uri}: ${Predicate.isError(thrown) ? thrown.message : String(thrown)}`,
+      message: `Failed to compile pickles for ${uri}: ${describeCause(thrown)}`,
       cause: thrown
     })
   }

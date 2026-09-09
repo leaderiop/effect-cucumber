@@ -42,6 +42,7 @@
  *   `Error` thrown from inside the narrowed `Scenario(...)` call itself, not a compile error.
  */
 import type * as Context from "effect/Context"
+import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Predicate from "effect/Predicate"
 import type * as Scope from "effect/Scope"
@@ -124,13 +125,26 @@ const narrowScenarioDsl = <Wide, Narrow>(
   use: narrowUse(dsl.use, project)
 })
 
+/**
+ * A registration-time misuse of a narrowed Rule (ADR-EC-039): a Scenario inside it was declared
+ * with its own extra Layer, which World narrowing does not support composing with. A real `Error`
+ * subclass (via `Data.TaggedError`), thrown synchronously outside the Effect error channel,
+ * consistent with this package's other registration-time argument-validation throws (`GherkinTags.ts`,
+ * `GherkinWatchTriggers.ts`, `StrictMode.ts`, `Tags.ts`).
+ */
+export class UnsupportedScenarioExtraLayerError extends Data.TaggedError("UnsupportedScenarioExtraLayerError")<{
+  readonly scenarioName: string
+  readonly message: string
+}> {}
+
 const unsupportedScenarioExtraLayer = (name: string): never => {
-  throw new Error(
-    `Scenario "${name}" was declared with its own extra Layer inside a narrowed Rule. `
+  throw new UnsupportedScenarioExtraLayerError({
+    scenarioName: name,
+    message: `Scenario "${name}" was declared with its own extra Layer inside a narrowed Rule. `
       + "Composing a Scenario-level extra Layer with a Rule's World narrowing is not supported — "
       + "either promote the service to the Rule's own extraLayer (so it is part of what `narrow` "
       + "reshapes), or declare this Scenario without an extra Layer of its own. See ADR-EC-039."
-  )
+  })
 }
 
 /**
