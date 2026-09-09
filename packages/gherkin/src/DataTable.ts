@@ -220,9 +220,11 @@ export const rowDecodeFailed = (
   const path = firstIssuePath(schemaError.issue, [])
   const index = path[0]
   const key = path[1]
-  const row: Option.Option<number> = Predicate.isNumber(index) ? Option.some(index + 1) : Option.none()
-  const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
-  const offending = Predicate.isNumber(index) ? rows[index] : undefined
+  const row = Option.liftPredicate(index, Predicate.isNumber).pipe(Option.map((i) => i + 1))
+  const column = Option.liftPredicate(key, Predicate.isString)
+  const offending = Option.liftPredicate(index, Predicate.isNumber).pipe(
+    Option.flatMap((i) => Option.fromUndefinedOr(rows[i]))
+  )
 
   const opening = Option.match(row, {
     onNone: () => `The DataTable at ${table.uri}:${table.line} failed to decode`,
@@ -233,9 +235,10 @@ export const rowDecodeFailed = (
     onSome: (c) => `${opening}, column ${JSON.stringify(c)}`
   })
   // Reproduced whole, no ellipsis, per `Errors.ts`.
-  const subject = offending === undefined
-    ? `The rows were ${JSON.stringify(rows)}.`
-    : `The row was ${JSON.stringify(offending)}.`
+  const subject = Option.match(offending, {
+    onNone: () => `The rows were ${JSON.stringify(rows)}.`,
+    onSome: (o) => `The row was ${JSON.stringify(o)}.`
+  })
 
   return new DataTableError({
     reason: "RowDecodeFailed",

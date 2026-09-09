@@ -24,9 +24,8 @@
  *   already established for `includeTags`/`excludeTags`, rediscovered here for a different call site.
  */
 import * as Data from "effect/Data"
-import * as Predicate from "effect/Predicate"
 import type { HookKind } from "./HookRegistry.ts"
-import { compileTagExpression, featureTagUniverse, type TagMatcher } from "./TagExpression.ts"
+import { compileTagExpression, describeCause, featureTagUniverse, type TagMatcher } from "./TagExpression.ts"
 
 export { featureTagUniverse }
 export type { TagMatcher }
@@ -61,7 +60,7 @@ export class HookTagExpressionError extends Data.TaggedError("HookTagExpressionE
 export const makeHookTagExpressionError = (
   args: { readonly kind: HookKind; readonly tagExpr: string; readonly featureUri: string; readonly cause: unknown }
 ): HookTagExpressionError => {
-  const underlying = Predicate.isError(args.cause) ? args.cause.message : String(args.cause)
+  const underlying = describeCause(args.cause)
   return new HookTagExpressionError({
     kind: args.kind,
     tagExpr: args.tagExpr,

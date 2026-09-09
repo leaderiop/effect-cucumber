@@ -1690,7 +1690,7 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
   it("an expression-based filter (ADR-EC-054) restricts emission identically to includeTags/excludeTags, across the Rule's nested loop too", () => {
     // A hand-built TagFilter, never `makeTagFilter` — this proves `emitFeature`'s own `shouldEmit`
     // call honours `expression` regardless of how the filter was constructed.
-    const { outcome, records } = emitFiltered({ include: [], exclude: [], expression: isSlowTagged })
+    const { outcome, records } = emitFiltered({ include: [], exclude: [], expression: Option.some(isSlowTagged) })
 
     // Identical to "includeTags restricts emission..." above, by construction: `@slow` selects the
     // same two Scenarios an `includeTags: ["@slow"]` filter already does.

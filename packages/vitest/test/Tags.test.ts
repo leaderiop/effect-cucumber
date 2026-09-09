@@ -5,6 +5,7 @@
  * Carries: BEH-EC-008.
  */
 import { assert, describe, expect, it } from "@effect/vitest"
+import * as Option from "effect/Option"
 import {
   isRetried,
   isSkipped,
@@ -56,7 +57,7 @@ describe("noTagFilter filters nothing", () => {
   })
 
   it("holds both of its arrays empty, and no expression", () => {
-    expect(noTagFilter).toStrictEqual({ include: [], exclude: [], expression: null })
+    expect(noTagFilter).toStrictEqual({ include: [], exclude: [], expression: Option.none() })
   })
 })
 
@@ -154,14 +155,14 @@ describe("expression overrides the plain include/exclude arrays entirely (ADR-EC
 
   it("falls back to plain include/exclude semantics when expression is explicitly null", () => {
     const filter = makeTagFilter({ includeTags: ["@slow"], expression: null })
-    expect(filter.expression).toBeNull()
+    expect(Option.isNone(filter.expression)).toBe(true)
     expect(shouldEmit(filter, ["@slow"])).toBe(true)
     expect(shouldEmit(filter, ["@wip"])).toBe(false)
   })
 
   it("falls back to plain include/exclude semantics when expression is absent (undefined)", () => {
     const filter = makeTagFilter({ excludeTags: ["@wip"] })
-    expect(filter.expression).toBeNull()
+    expect(Option.isNone(filter.expression)).toBe(true)
     expect(shouldEmit(filter, ["@wip"])).toBe(false)
     expect(shouldEmit(filter, ["@other"])).toBe(true)
   })
