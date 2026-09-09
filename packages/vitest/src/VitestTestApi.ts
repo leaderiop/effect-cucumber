@@ -74,6 +74,7 @@ import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, 
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
+import * as Option from "effect/Option"
 import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
@@ -192,6 +193,12 @@ const makeDegradingEffect = (
 }
 const block: typeof describe = describe
 
+/** Runs `self` scoped, against a fresh simulated clock and console, to a Promise — the one body both
+ * `vitestTestApi`'s `beforeAll` and `afterAll` below register (LLMS.md: a reusable Effect-returning
+ * function, not two copies of the same `.pipe` chain). */
+const runInTestEnv = (self: Parameters<TestApi["beforeAll"]>[1]): Promise<void> =>
+  Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv)))
+
 export const vitestTestApi = (featureUri: string): TestApi => ({
   // `shuffle: false`: a Feature's Scenarios run in DOCUMENT order even under `--sequence.shuffle`
   // (BEH-EC-002).
@@ -220,12 +227,12 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
   // fresh simulated clock and console, on its OWN timeout budget (vitest's default hook timeout),
   // never a Scenario's `testTimeout`.
   beforeAll: (_name, self) => {
-    beforeAll(() => Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv))))
+    beforeAll(() => runInTestEnv(self))
   },
   // The framework's own block-level teardown hook, run to a Promise the way its Effect-aware test
   // constructor would run a body: scoped, against a fresh simulated clock and console.
   afterAll: (_name, self) => {
-    afterAll(() => Effect.runPromise(self().pipe(Effect.scoped, Effect.provide(testEnv))))
+    afterAll(() => runInTestEnv(self))
   }
 })
 /**
@@ -236,15 +243,15 @@ export const vitestTestApi = (featureUri: string): TestApi => ({
 export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, memoMap: Layer.MemoMap): TestApi => {
   const contextFreeEffect = vitestTestApi(featureUri).effect
   // Set by the FIRST `describe` — the Feature block — and read by every emission inside it.
-  let sharedIt: Vitest.MethodsNonLive<any> | null = null
-  const requireSharedIt = (member: string): Vitest.MethodsNonLive<any> => {
-    if (sharedIt === null) {
-      throw new Error(
-        `describeFeature: the shared-path TestApi's ${member} was called before its first describe — Runner.ts must open the Feature block before emitting anything into it.`
-      )
-    }
-    return sharedIt
-  }
+  let sharedIt: Option.Option<Vitest.MethodsNonLive<any>> = Option.none()
+  const requireSharedIt = (member: string): Vitest.MethodsNonLive<any> =>
+    Option.getOrThrowWith(
+      sharedIt,
+      () =>
+        new Error(
+          `describeFeature: the shared-path TestApi's ${member} was called before its first describe — Runner.ts must open the Feature block before emitting anything into it.`
+        )
+    )
   const sharedRouteEffect = makeDegradingEffect(featureUri, (name, self, emitOptions) => {
     requireSharedIt("effect").effect(
       name,
@@ -259,11 +266,20 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
       emitOptions
     )
   })
+  // The identical "re-provision the shared tier from `memoMap`, then run `self` against it" body both
+  // `beforeAll` and `afterAll` below register (LLMS.md: a reusable Effect-returning function, not two
+  // copies of the same `Effect.gen`) — see this module's doc comment for why this re-provision, rather
+  // than a plain `Effect.provide(sharedTier)`, is necessary.
+  const runAgainstSharedTier = Effect.fnUntraced(function*(self: Parameters<TestApi["beforeAll"]>[1]) {
+    const scope = yield* Effect.scope
+    const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
+    yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
+  })
   // The module-level `describe`, under a name oxlint's vitest rules do not recognise as a test-file
   // call: this is a library adapter forwarding a block, not a test declaring one.
   return {
     describe: (name, define) => {
-      if (sharedIt !== null) {
+      if (Option.isSome(sharedIt)) {
         block(name, { shuffle: false }, define)
         return
       }
@@ -275,7 +291,7 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
         beforeAll(() => Effect.runPromise(Effect.asVoid(Layer.buildWithMemoMap(sharedTier, memoMap, hold))))
         afterAll(() => Effect.runPromise(Scope.close(hold, Exit.void)))
         layer(sharedTier, { excludeTestServices: true, memoMap })((methods) => {
-          sharedIt = methods
+          sharedIt = Option.some(methods)
           define()
         })
       })
@@ -297,33 +313,13 @@ export const sharedLayerTestApi = (featureUri: string, sharedTier: ErasedLayer, 
     // nothing supplying it at runtime.
     beforeAll: (_name, self) => {
       requireSharedIt("beforeAll")
-      beforeAll(() =>
-        Effect.runPromise(
-          Effect.scoped(
-            Effect.gen(function*() {
-              const scope = yield* Effect.scope
-              const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
-              yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
-            })
-          )
-        )
-      )
+      beforeAll(() => Effect.runPromise(Effect.scoped(runAgainstSharedTier(self))))
     },
     // Registered inside the Feature block after the framework's scope-closing `afterAll`, so under
     // `sequence.hooks: "stack"` it runs before that close.
     afterAll: (_name, self) => {
       requireSharedIt("afterAll")
-      afterAll(() =>
-        Effect.runPromise(
-          Effect.scoped(
-            Effect.gen(function*() {
-              const scope = yield* Effect.scope
-              const services = yield* Layer.buildWithMemoMap(sharedTier, memoMap, scope)
-              yield* self().pipe(Effect.provide(testEnv), Effect.provide(services))
-            })
-          )
-        )
-      )
+      afterAll(() => Effect.runPromise(Effect.scoped(runAgainstSharedTier(self))))
     }
   }
 }

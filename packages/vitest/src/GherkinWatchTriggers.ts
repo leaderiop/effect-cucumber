@@ -6,6 +6,7 @@
  * same `{ cwd }` option, same "no default, never scans a tree you did not name" stance. See
  * ADR-EC-030 and BEH-EC-022.
  */
+import * as Predicate from "effect/Predicate"
 import * as path from "node:path"
 import { globSync } from "tinyglobby"
 import type { Plugin } from "vitest/config"
@@ -41,7 +42,7 @@ export const gherkinWatchTriggers = (
   pattern: string | ReadonlyArray<string>,
   options: GherkinWatchTriggersOptions = {}
 ): Plugin => {
-  const patterns = typeof pattern === "string" ? [pattern] : pattern
+  const patterns = Predicate.isString(pattern) ? [pattern] : pattern
 
   if (patterns.length === 0 || patterns.some((entry) => entry.trim() === "")) {
     throw new Error(

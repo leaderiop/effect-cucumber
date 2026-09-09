@@ -17,6 +17,7 @@
  * The `kind` a batch is being run for is a new LEADING parameter here: every call site already
  * statically knows which `HookSet` key it is pulling, so there is nothing to infer.
  */
+import * as Arr from "effect/Array"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
@@ -24,7 +25,6 @@ import { unrecordedLocation } from "./CallSite.ts"
 import { attachHookFailureLocation } from "./Errors.ts"
 import type { HookDefinition, HookKind } from "./HookRegistry.ts"
 import { compileHookTagExpr, type TagMatcher } from "./HookTagExpression.ts"
-import type { ErasedEffect } from "./Plan.ts"
 import type { DefinitionSite } from "./Registry.ts"
 import { register } from "./Step.ts"
 
@@ -79,13 +79,6 @@ export const groupHooks = (
   availableTags: ReadonlyArray<string>,
   featureUri: string
 ): HookSet => {
-  const before: Array<HookEntry> = []
-  const after: Array<HookEntry> = []
-  const beforeStep: Array<HookEntry> = []
-  const afterStep: Array<HookEntry> = []
-  const beforeAllScenarios: Array<HookEntry> = []
-  const afterAllScenarios: Array<HookEntry> = []
-
   const toEntry = (definition: HookDefinition<HookBody>): HookEntry => ({
     body: definition.body,
     matches: compileHookTagExpr({
@@ -97,42 +90,16 @@ export const groupHooks = (
     definedAt: definition.definedAt ?? null
   })
 
-  for (const definition of definitions) {
-    switch (definition.kind) {
-      case "Before": {
-        before.push(toEntry(definition))
-        break
-      }
-      case "After": {
-        after.push(toEntry(definition))
-        break
-      }
-      case "BeforeStep": {
-        beforeStep.push(toEntry(definition))
-        break
-      }
-      case "AfterStep": {
-        afterStep.push(toEntry(definition))
-        break
-      }
-      case "BeforeAllScenarios": {
-        beforeAllScenarios.push(toEntry(definition))
-        break
-      }
-      case "AfterAllScenarios": {
-        afterAllScenarios.push(toEntry(definition))
-        break
-      }
-    }
-  }
+  const grouped = Arr.groupBy(definitions, (definition) => definition.kind)
+  const entriesFor = (kind: HookKind): ReadonlyArray<HookEntry> => (grouped[kind] ?? []).map(toEntry)
 
   return {
-    Before: before,
-    After: after,
-    BeforeStep: beforeStep,
-    AfterStep: afterStep,
-    BeforeAllScenarios: beforeAllScenarios,
-    AfterAllScenarios: afterAllScenarios
+    Before: entriesFor("Before"),
+    After: entriesFor("After"),
+    BeforeStep: entriesFor("BeforeStep"),
+    AfterStep: entriesFor("AfterStep"),
+    BeforeAllScenarios: entriesFor("BeforeAllScenarios"),
+    AfterAllScenarios: entriesFor("AfterAllScenarios")
   }
 }
 
@@ -184,40 +151,39 @@ export const mergeHookSets = (feature: HookSet, rule: HookSet): HookSet => ({
  * @param scenarioTags - the CURRENT Scenario's own fully-flattened, inherited tags — `[]` for
  * `BeforeAllScenarios`/`AfterAllScenarios`, whose entries never carry a matcher to consult (BEH-EC-027)
  */
-export const runHookBatch = (
+export const runHookBatch = Effect.fnUntraced(function*(
   kind: HookKind,
   entries: ReadonlyArray<HookEntry>,
   scenarioTags: ReadonlyArray<string>
-): ErasedEffect =>
-  Effect.gen(function*() {
-    const failures: Array<Cause.Cause<unknown>> = []
+): Effect.fn.Return<void, unknown, any> {
+  const failures: Array<Cause.Cause<unknown>> = []
 
-    for (const entry of entries) {
-      if (entry.matches !== null && !entry.matches(scenarioTags)) {
-        continue
-      }
-      const location = {
-        hookKind: kind,
-        file: entry.definedAt?.file ?? unrecordedLocation,
-        line: entry.definedAt?.line ?? 0
-      }
-      const located = entry.body().pipe(
-        Effect.mapError((error) => attachHookFailureLocation(error, location)),
-        Effect.catchDefect((defect) => Effect.die(attachHookFailureLocation(defect, location)))
-      )
-      const exit = yield* Effect.exit(located)
-      if (Exit.isFailure(exit)) {
-        failures.push(exit.cause)
-      }
+  for (const entry of entries) {
+    if (entry.matches !== null && !entry.matches(scenarioTags)) {
+      continue
     }
-
-    if (failures.length === 0) {
-      return
+    const location = {
+      hookKind: kind,
+      file: entry.definedAt?.file ?? unrecordedLocation,
+      line: entry.definedAt?.line ?? 0
     }
-
-    const combined = failures.reduce<Cause.Cause<unknown>>(
-      (folded, cause) => Cause.combine(folded, cause),
-      Cause.empty
+    const located = entry.body().pipe(
+      Effect.mapError((error) => attachHookFailureLocation(error, location)),
+      Effect.catchDefect((defect) => Effect.die(attachHookFailureLocation(defect, location)))
     )
-    return yield* Effect.failCause(combined)
-  })
+    const exit = yield* Effect.exit(located)
+    if (Exit.isFailure(exit)) {
+      failures.push(exit.cause)
+    }
+  }
+
+  if (failures.length === 0) {
+    return
+  }
+
+  const combined = failures.reduce<Cause.Cause<unknown>>(
+    (folded, cause) => Cause.combine(folded, cause),
+    Cause.empty
+  )
+  return yield* Effect.failCause(combined)
+})

@@ -11,6 +11,7 @@
  */
 import * as Data from "effect/Data"
 import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
 import * as Schema from "effect/Schema"
 import type { HookKind } from "./HookRegistry.ts"
 
@@ -96,8 +97,8 @@ const makeHookFailureLocation = (
  * located-error instance given the pre-existing cause" step is actually shared.
  */
 const attachFailureLocation = (value: unknown, makeLocation: (cause: unknown) => Error): unknown => {
-  if (typeof value === "object" && value !== null) {
-    const existingCause = "cause" in value ? (value as { cause?: unknown }).cause : undefined
+  if (Predicate.isObjectOrArray(value)) {
+    const existingCause = Predicate.hasProperty(value, "cause") ? value.cause : undefined
     ;(value as { cause?: unknown }).cause = makeLocation(existingCause)
     return value
   }
@@ -218,7 +219,7 @@ export interface UnknownContainerWarning {
   readonly uri: string
   readonly kind: "Rule" | "Scenario"
   readonly name: string
-  readonly ruleName: string | null
+  readonly ruleName: Option.Option<string>
   readonly known: ReadonlyArray<string>
   readonly message: string
 }
@@ -227,24 +228,27 @@ export const makeUnknownContainerWarning = (args: {
   uri: string
   kind: "Rule" | "Scenario"
   name: string
-  ruleName: string | null
+  ruleName: string | undefined
   known: ReadonlyArray<string>
-}): UnknownContainerWarning => ({
-  _tag: "UnknownContainerWarning",
-  reason: "UnknownContainer",
-  uri: args.uri,
-  kind: args.kind,
-  name: args.name,
-  ruleName: args.ruleName,
-  known: args.known,
-  message: `${quoted(args.uri)}: UnknownContainer: no ${args.kind} named ${quoted(args.name)} exists in this Feature${
-    args.ruleName === null ? "" : ` inside Rule ${quoted(args.ruleName)}`
-  } (known: ${
-    args.known.length === 0 ? "none" : quotedList(args.known)
-  }). Everything registered inside that ${args.kind} — ${
-    args.kind === "Rule" ? "steps, Background and hooks" : "steps"
-  } — can never run; its steps will be reported as matching no step. Check the name against the .feature file (an Outline is registered by its un-interpolated title).`
-})
+}): UnknownContainerWarning => {
+  const ruleName = Option.fromUndefinedOr(args.ruleName)
+  return {
+    _tag: "UnknownContainerWarning",
+    reason: "UnknownContainer",
+    uri: args.uri,
+    kind: args.kind,
+    name: args.name,
+    ruleName,
+    known: args.known,
+    message: `${quoted(args.uri)}: UnknownContainer: no ${args.kind} named ${quoted(args.name)} exists in this Feature${
+      Option.match(ruleName, { onNone: () => "", onSome: (name) => ` inside Rule ${quoted(name)}` })
+    } (known: ${
+      args.known.length === 0 ? "none" : quotedList(args.known)
+    }). Everything registered inside that ${args.kind} — ${
+      args.kind === "Rule" ? "steps, Background and hooks" : "steps"
+    } — can never run; its steps will be reported as matching no step. Check the name against the .feature file (an Outline is registered by its un-interpolated title).`
+  }
+}
 
 export const makeUndeclaredTagWarning = (args: {
   uri: string

@@ -2,6 +2,8 @@
  * Records where a step or hook was written, from `Error.stack`, skipping frames inside this
  * package. Paths may contain parentheses (`test/CallSite.test.ts`).
  */
+import * as Order from "effect/Order"
+import * as Str from "effect/String"
 import type { DefinitionSite } from "./Registry.ts"
 
 const framePrefix = /^\s+at (.+)$/
@@ -83,6 +85,16 @@ export const formatCallSite = (site: DefinitionSite | null): string =>
   site === null ? unrecordedLocation : `${site.file}:${site.line}:${site.column}`
 
 /**
+ * File, then line, then column — locale-aware on the file path, matching `String.prototype.localeCompare`'s
+ * original semantics exactly (`Order.String`'s plain `<` is not equivalent).
+ */
+const definitionSiteOrder: Order.Order<DefinitionSite> = Order.Struct({
+  file: Order.make<string>((left, right) => Str.localeCompare(right)(left)),
+  line: Order.Number,
+  column: Order.Number
+})
+
+/**
  * Rank two definition sites: by file, then line, then column, with an absent site last.
  */
 export const compareCallSites = (left: DefinitionSite | null, right: DefinitionSite | null): number => {
@@ -92,10 +104,5 @@ export const compareCallSites = (left: DefinitionSite | null, right: DefinitionS
   if (right === null) {
     return -1
   }
-  const byFile = left.file.localeCompare(right.file)
-  if (byFile !== 0) {
-    return byFile
-  }
-  const byLine = left.line - right.line
-  return byLine === 0 ? left.column - right.column : byLine
+  return definitionSiteOrder(left, right)
 }

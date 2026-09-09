@@ -1139,7 +1139,7 @@ describe("a Rule or Scenario name the Feature does not contain is warned about",
     const warning = collected.containerWarnings[0]
     expect(warning?.kind).toBe("Scenario")
     expect(warning?.name).toBe("Creating a usr")
-    expect(warning?.ruleName).toBeNull()
+    expect(warning?.ruleName).toEqual(Option.none())
     expect(warning?.known).toEqual(["Creating a user", "adding <count>"])
     expect(warning?.message).toContain(
       "\"test/container-names.feature\": UnknownContainer: no Scenario named \"Creating a usr\""
@@ -1164,7 +1164,7 @@ describe("a Rule or Scenario name the Feature does not contain is warned about",
       })
     })
     expect(collected.containerWarnings).toHaveLength(1)
-    expect(collected.containerWarnings[0]?.ruleName).toBe("Limits")
+    expect(collected.containerWarnings[0]?.ruleName).toEqual(Option.some("Limits"))
     expect(collected.containerWarnings[0]?.known).toEqual(["Over the limit"])
   })
 })

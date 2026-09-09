@@ -15,6 +15,8 @@
  */
 import * as Arr from "effect/Array"
 import * as Option from "effect/Option"
+import * as Order from "effect/Order"
+import * as Rec from "effect/Record"
 import {
   type AstRuleInfo,
   type AstScenarioInfo,
@@ -383,10 +385,14 @@ const suspectedSwallowedStep = (
   line: number,
   keywords: ReadonlyArray<string>
 ): Option.Option<LoadFeatureWarning> => {
-  const suspects = description
-    .split("\n")
-    .map((text) => ({ text, keyword: nearMissKeyword(text, keywords) }))
-    .filter((entry): entry is { text: string; keyword: string } => entry.keyword !== undefined)
+  // Zero-or-one result per line: map to `Option` then `getSomes`, this module's established idiom for
+  // the shape (see the warnings assembled at the bottom of `validateFeature`).
+  const suspects = Arr.getSomes(
+    description.split("\n").map((text) => {
+      const keyword = nearMissKeyword(text, keywords)
+      return keyword === undefined ? Option.none() : Option.some({ text, keyword })
+    })
+  )
   if (suspects.length === 0) return Option.none()
   const quoted = suspects.map(({ keyword, text }) => `  ${text.trim()}    (reads like ${keyword})`).join("\n")
   return Option.some(makeWarning({
@@ -479,18 +485,20 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
   const unknownPlaceholderWarnings: Array<LoadFeatureWarning> = []
 
   for (const node of index.astScenarios) {
-    const produced = index.byScenarioId.get(node.id) ?? []
+    const produced = Option.getOrElse(Rec.get(index.byScenarioId, node.id), () => [])
     const isOutline = isOutlineKeyword(index.language, node.keyword)
 
     if (isOutline && node.examplesCount === 0) {
       throw outlineWithoutExamples(uri, node)
     }
 
-    // Per BLOCK: `findIndex`, not `some`, so the FIRST empty block in source order is the one named.
-    const emptyBlockIndex = isOutline ? node.examplesRowCounts.findIndex((count) => count === 0) : -1
-    if (emptyBlockIndex !== -1) {
-      const blockLine = detail.examplesLines.get(node.id)?.[emptyBlockIndex] ?? node.location.line
-      throw emptyExamples(uri, node, emptyBlockIndex, node.examplesCount, blockLine)
+    // Per BLOCK: `findFirstIndex`, not `some`, so the FIRST empty block in source order is the one named.
+    const emptyBlockIndex = isOutline
+      ? Arr.findFirstIndex(node.examplesRowCounts, (count) => count === 0)
+      : Option.none()
+    if (Option.isSome(emptyBlockIndex)) {
+      const blockLine = detail.examplesLines.get(node.id)?.[emptyBlockIndex.value] ?? node.location.line
+      throw emptyExamples(uri, node, emptyBlockIndex.value, node.examplesCount, blockLine)
     } else if (!isOutline && node.examplesCount > 0 && isScenarioKeyword(index.language, node.keyword)) {
       // Positively a plain-scenario keyword, not merely "not an Outline keyword": the error accuses the author.
       throw scenarioKeywordWithExamples(uri, node)
@@ -563,8 +571,7 @@ export const validateFeature = (result: CorrelationResult): ReadonlyArray<LoadFe
     )
   )
 
-  // Document order; `sort` is stable, so two findings on one line keep discovery order.
+  // Document order; `Arr.sortWith` is stable, so two findings on one line keep discovery order.
   const warnings = [...unknownPlaceholderWarnings, ...scenarioWarnings, ...emptyRuleWarnings, ...backgroundWarnings]
-  warnings.sort((left, right) => left.line - right.line)
-  return warnings
+  return Arr.sortWith(warnings, (warning) => warning.line, Order.Number)
 }

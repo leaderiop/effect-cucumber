@@ -12,6 +12,7 @@
 import { AstBuilder, dialects, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import type { GherkinDocument, IdGenerator } from "@cucumber/messages"
 import * as Option from "effect/Option"
+import * as Predicate from "effect/Predicate"
 import { LoadFeatureError, type LoadFeatureErrorReason } from "./Errors.ts"
 
 /** Builds a `LoadFeatureError`, lifting the plain `line` into the `Option` field. */
@@ -36,7 +37,7 @@ const collectErrors = (thrown: unknown): ReadonlyArray<Error> => {
   if (thrown instanceof Errors.GherkinException) {
     return thrown.errors ?? [thrown]
   }
-  return thrown instanceof Error ? [thrown] : []
+  return Predicate.isError(thrown) ? [thrown] : []
 }
 
 /** The 1-based line of an upstream error, read off the FIRST collected error — a composite has none. */

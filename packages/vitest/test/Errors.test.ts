@@ -539,7 +539,7 @@ describe("UnknownContainerWarning", () => {
       uri: "f.feature",
       kind: "Rule",
       name: "Limts",
-      ruleName: null,
+      ruleName: undefined,
       known: []
     })
     expect(withoutKnown.message).toContain("no Rule named \"Limts\" exists in this Feature (known: none)")

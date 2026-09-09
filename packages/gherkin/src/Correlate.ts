@@ -26,6 +26,7 @@ import {
 } from "@cucumber/messages"
 import * as Arr from "effect/Array"
 import * as Option from "effect/Option"
+import * as Rec from "effect/Record"
 import { LoadFeatureError } from "./Errors.ts"
 import { makeExamplesRow } from "./ExamplesRow.ts"
 import type { ParsedFeatureCore, ParsedRule, ParsedScenario, ParsedStep, StepOwner } from "./Model.ts"
@@ -98,8 +99,9 @@ interface AstIndex {
   /** AST step id to its recovered keyword, origin and enclosing Rule. */
   readonly byStepId: ReadonlyMap<string, AstStepInfo>
   /** AST scenario id to its pickles — an array, since an Outline's rows share `astNodeIds[0]`; a missing key
-   * is legal, not a defect. */
-  readonly byScenarioId: ReadonlyMap<string, ReadonlyArray<Pickle>>
+   * is legal, not a defect. A plain `Record`, since `Arr.groupBy` already returns one — no `Map` wrapping
+   * needed. */
+  readonly byScenarioId: Readonly<Record<string, ReadonlyArray<Pickle>>>
   /** AST scenario id to its Examples column names — what makes the leftover-placeholder scan exact. */
   readonly exampleColumns: ReadonlyMap<string, ReadonlySet<string>>
   /**
@@ -198,13 +200,7 @@ const recordScenario = (acc: AstAccumulator, scenario: Scenario, ruleId: string 
   recordSteps(acc.byStepId, scenario.steps, "scenario", ruleId)
 
   const headers = examplesHeadersOf(scenario)
-  const columns = new Set<string>()
-  for (const block of headers) {
-    for (const value of block) {
-      columns.add(value)
-    }
-  }
-  acc.exampleColumns.set(scenario.id, columns)
+  acc.exampleColumns.set(scenario.id, new Set(Arr.flatten(headers)))
 
   // Every tableBody row of every Examples block this Scenario Outline declares, keyed by the row's
   // OWN AST node id — the id a row's Pickle's `astNodeIds.at(-1)` resolves to. A headerless block
@@ -233,14 +229,10 @@ const recordScenario = (acc: AstAccumulator, scenario: Scenario, ruleId: string 
  * nothing has no key. The `astNodeIds[0]` guard is what `noUncheckedIndexedAccess` requires. Grouping keys come
  * from `@cucumber/gherkin`'s internal sequential `IdGenerator`, never from untrusted input, so `Arr.groupBy`'s
  * plain-object accumulator carries no prototype-pollution risk here. */
-const indexPicklesByScenario = (pickles: ReadonlyArray<Pickle>): ReadonlyMap<string, ReadonlyArray<Pickle>> =>
-  new Map(
-    Object.entries(
-      Arr.groupBy(
-        pickles.filter((pickle) => pickle.astNodeIds[0] !== undefined),
-        (pickle) => pickle.astNodeIds[0]!
-      )
-    )
+const indexPicklesByScenario = (pickles: ReadonlyArray<Pickle>): Readonly<Record<string, ReadonlyArray<Pickle>>> =>
+  Arr.groupBy(
+    pickles.filter((pickle) => pickle.astNodeIds[0] !== undefined),
+    (pickle) => pickle.astNodeIds[0]!
   )
 
 /**
@@ -355,48 +347,45 @@ export const correlateFeature = (
   const feature = featureOf(document, uri)
   const index = buildAstIndex(document, pickles, uri)
 
-  const allScenarios: Array<ParsedScenario> = []
-
-  for (const node of index.astScenarios) {
-    for (const pickle of index.byScenarioId.get(node.id) ?? []) {
-      const location = pickle.location ?? node.location
-      // The row id an Outline row's Pickle resolves to — always the LAST `astNodeIds` entry, never
-      // `[0]` (that one is the Outline's own AST id, shared by every row). A plain Scenario's sole
-      // `astNodeIds` entry IS its own scenario id, which `rowById` never contains, so the lookup
-      // below is naturally `undefined` for it — the same discriminator `OutlineTitle.ts` already
-      // relied on before this field existed.
-      const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1) ?? "")
-      const scenario: ParsedScenario = {
-        id: pickle.id,
-        astId: node.id,
-        name: pickle.name,
-        astName: node.name,
-        keyword: node.keyword,
-        tags: tagNames(pickle.tags),
-        steps: pickle.steps.map((pickleStep) => resolveStep(pickleStep, index.byStepId, uri)),
-        // `Pickle.location` is optional upstream though always set; for an Outline it is the Examples row.
-        location,
-        ruleId: Option.fromUndefinedOr(node.ruleId),
-        pickle,
-        exampleRow: rowInfo === undefined
-          ? Option.none()
-          : Option.some(makeExamplesRow(rowInfo.header, rowInfo.values, uri, location.line))
-      }
-      allScenarios.push(scenario)
+  /** One pickle correlated with the AST scenario node it compiled from. */
+  const buildScenario = (node: AstScenarioInfo, pickle: Pickle): ParsedScenario => {
+    const location = pickle.location ?? node.location
+    // The row id an Outline row's Pickle resolves to — always the LAST `astNodeIds` entry, never
+    // `[0]` (that one is the Outline's own AST id, shared by every row). A plain Scenario's sole
+    // `astNodeIds` entry IS its own scenario id, which `rowById` never contains, so the lookup
+    // below is naturally `undefined` for it — the same discriminator `OutlineTitle.ts` already
+    // relied on before this field existed.
+    const rowInfo = index.rowById.get(pickle.astNodeIds.at(-1) ?? "")
+    return {
+      id: pickle.id,
+      astId: node.id,
+      name: pickle.name,
+      astName: node.name,
+      keyword: node.keyword,
+      tags: tagNames(pickle.tags),
+      steps: pickle.steps.map((pickleStep) => resolveStep(pickleStep, index.byStepId, uri)),
+      // `Pickle.location` is optional upstream though always set; for an Outline it is the Examples row.
+      location,
+      ruleId: Option.fromUndefinedOr(node.ruleId),
+      pickle,
+      exampleRow: rowInfo === undefined
+        ? Option.none()
+        : Option.some(makeExamplesRow(rowInfo.header, rowInfo.values, uri, location.line))
     }
   }
+
+  // A pure two-level cross-product (AST scenario × its pickles) with no side effects.
+  const allScenarios: ReadonlyArray<ParsedScenario> = index.astScenarios.flatMap((node) =>
+    Option.getOrElse(Rec.get(index.byScenarioId, node.id), () => []).map((pickle) => buildScenario(node, pickle))
+  )
 
   // Rule ids come from `@cucumber/gherkin`'s AST, never from untrusted input, so `Arr.groupBy`'s plain-object
   // accumulator carries no prototype-pollution risk here. `scenario.ruleId` is the same `Option` set from
   // `node.ruleId` a few lines above, per scenario — not re-derived independently.
   const featureScenarios = allScenarios.filter((scenario) => Option.isNone(scenario.ruleId))
-  const scenariosByRule = new Map(
-    Object.entries(
-      Arr.groupBy(
-        allScenarios.filter((scenario) => Option.isSome(scenario.ruleId)),
-        (scenario) => Option.getOrThrow(scenario.ruleId)
-      )
-    )
+  const scenariosByRule = Arr.groupBy(
+    allScenarios.filter((scenario) => Option.isSome(scenario.ruleId)),
+    (scenario) => Option.getOrThrow(scenario.ruleId)
   )
 
   const rules: ReadonlyArray<ParsedRule> = index.astRules.map((rule) => ({
@@ -406,7 +395,7 @@ export const correlateFeature = (
     tags: rule.tags,
     location: rule.location,
     description: rule.description,
-    scenarios: scenariosByRule.get(rule.id) ?? []
+    scenarios: Option.getOrElse(Rec.get(scenariosByRule, rule.id), () => [])
   }))
 
   const correlated: ParsedFeatureCore = {
