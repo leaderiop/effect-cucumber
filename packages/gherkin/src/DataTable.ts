@@ -13,6 +13,7 @@
  * `Correlate.ts`, where no schema is in hand. Every message quotes content whole (`Errors.ts`).
  */
 import type { PickleTable, PickleTableRow } from "@cucumber/messages"
+import * as Arr from "effect/Array"
 import * as Effect from "effect/Effect"
 import * as Match from "effect/Match"
 import * as Option from "effect/Option"
@@ -129,23 +130,24 @@ export const makeDataTable = (table: PickleTable, uri: string, line: number): Da
 
   const rowsHash = (): Effect.Effect<Readonly<Record<string, string>>, DataTableError> => {
     // Width over EVERY row before any key is read, so the verdict never depends on which row repeated first.
-    for (const [index, row] of rows.entries()) {
-      if (row.cells.length !== 2) {
-        return Effect.fail(dataTableError({
-          reason: "RowsHashRequiresTwoColumns",
-          uri,
-          line,
-          row: Option.some(index + 1),
-          // No single column is at fault: the row's whole width is.
-          column: Option.none(),
-          sentences: [
-            `rowsHash() reads every row of this DataTable as a key/value pair, so each row must be`,
-            `exactly 2 cells wide, but row ${index + 1} is ${row.cells.length} cells wide:`,
-            `${quoteRow(cellsOf(row))}.`,
-            `Use hashes() for a table with a header row and three or more columns.`
-          ]
-        }))
-      }
+    const badWidth = Arr.findFirstIndex(rows, (row) => row.cells.length !== 2)
+    if (Option.isSome(badWidth)) {
+      const index = badWidth.value
+      const row = rows[index]!
+      return Effect.fail(dataTableError({
+        reason: "RowsHashRequiresTwoColumns",
+        uri,
+        line,
+        row: Option.some(index + 1),
+        // No single column is at fault: the row's whole width is.
+        column: Option.none(),
+        sentences: [
+          `rowsHash() reads every row of this DataTable as a key/value pair, so each row must be`,
+          `exactly 2 cells wide, but row ${index + 1} is ${row.cells.length} cells wide:`,
+          `${quoteRow(cellsOf(row))}.`,
+          `Use hashes() for a table with a header row and three or more columns.`
+        ]
+      }))
     }
 
     const keys = rows.map((row) => row.cells[0]?.value ?? "")

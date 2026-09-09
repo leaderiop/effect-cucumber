@@ -6,6 +6,7 @@
  * composing with them — `describeFeature`'s own `tagExpression` option, reusing the identical
  * `createTagsFilter` engine `HookTagExpression.ts` already uses for tag-expression-scoped hooks.
  */
+import * as Data from "effect/Data"
 
 /**
  * `isSkipped` is the only reader.
@@ -48,6 +49,17 @@ export const retryTag = "@retry"
 const timeoutTagPattern = /^@timeout-(\d+)$/
 
 /**
+ * Thrown by `readScenarioTimeoutTag` for a tag that merely LOOKS like an attempt at `@timeout-<ms>`
+ * — a real `Error` subclass (via `Data.TaggedError`), consistent with this package's other
+ * registration-time argument-validation throws (`InvalidGherkinTagsPatternError`,
+ * `HookTagExpressionError`, `TagExpressionError`, `UnusedStepDefinitionsError`).
+ */
+export class MalformedTimeoutTagError extends Data.TaggedError("MalformedTimeoutTagError")<{
+  readonly tag: string
+  readonly message: string
+}> {}
+
+/**
  * Read this Scenario's own `@timeout-<ms>` override, or `null` for "no override — let the Feature's
  * `testTimeout` apply, the same as every Scenario today." `tags` is the Scenario's already-flattened,
  * inherited tag list (Feature, Rule, Scenario, Examples, in that order — ADR-EC-026), so a tag
@@ -69,17 +81,21 @@ export const readScenarioTimeoutTag = (tags: ReadonlyArray<string>): number | nu
     }
     const match = timeoutTagPattern.exec(tag)
     if (match === null) {
-      throw new Error(
-        `Malformed @timeout tag ${
+      throw new MalformedTimeoutTagError({
+        tag,
+        message: `Malformed @timeout tag ${
           JSON.stringify(tag)
         }: expected the exact shape "@timeout-<positive integer milliseconds>", e.g. "@timeout-5000".`
-      )
+      })
     }
     const milliseconds = Number(match[1])
     if (milliseconds <= 0) {
-      throw new Error(
-        `Malformed @timeout tag ${JSON.stringify(tag)}: milliseconds must be a positive integer, got ${milliseconds}.`
-      )
+      throw new MalformedTimeoutTagError({
+        tag,
+        message: `Malformed @timeout tag ${
+          JSON.stringify(tag)
+        }: milliseconds must be a positive integer, got ${milliseconds}.`
+      })
     }
     found = milliseconds
   }

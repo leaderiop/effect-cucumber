@@ -1,7 +1,6 @@
 /**
  * BEH-EC-008's pure half: the two reserved tag constants and the registration-time filter's exact semantics, asserted
- * with no framework, no Layer and no `.feature` file in scope — `Tags.ts` imports nothing, so its tests need nothing
- * either.
+ * with no framework, no Layer and no `.feature` file in scope.
  *
  * Carries: BEH-EC-008.
  */
@@ -10,6 +9,7 @@ import {
   isRetried,
   isSkipped,
   makeTagFilter,
+  MalformedTimeoutTagError,
   noTagFilter,
   onlyTag,
   readScenarioTimeoutTag,
@@ -294,5 +294,17 @@ describe("readScenarioTimeoutTag reads @timeout-<ms> (ADR-EC-040, BEH-EC-032)", 
 
   it("throws for any other tag starting with the reserved \"@timeout\" prefix — a deliberately wide net, not a narrow one, since a near-miss like this is far more likely to be a typo of the reserved tag than an unrelated custom tag someone chose to prefix identically", () => {
     assert.throws(() => readScenarioTimeoutTag(["@timeoutish"]), /Malformed @timeout tag/)
+  })
+
+  it("throws a MalformedTimeoutTagError carrying the offending tag, like every other reserved-tag misuse in this package", () => {
+    let caught: unknown
+    try {
+      readScenarioTimeoutTag(["@timeout-abc"])
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(MalformedTimeoutTagError)
+    const malformed = caught as MalformedTimeoutTagError
+    expect(malformed.tag).toBe("@timeout-abc")
   })
 })

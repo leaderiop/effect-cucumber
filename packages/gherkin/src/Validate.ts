@@ -17,6 +17,7 @@ import * as Arr from "effect/Array"
 import * as Option from "effect/Option"
 import * as Order from "effect/Order"
 import * as Rec from "effect/Record"
+import * as Result from "effect/Result"
 import {
   type AstRuleInfo,
   type AstScenarioInfo,
@@ -26,7 +27,7 @@ import {
   isScenarioKeyword,
   stepKeywords
 } from "./Correlate.ts"
-import { LoadFeatureError, type LoadFeatureWarning, makeWarning } from "./Errors.ts"
+import { LoadFeatureError, LoadFeatureWarning } from "./Errors.ts"
 import type { GherkinDocument, Pickle, PickleStep } from "./Model.ts"
 
 /** Every message is `uri:line: <reason>: what happened, then what to do` — it may be the only thing a
@@ -282,7 +283,7 @@ const unknownPlaceholder = (
   columns: ReadonlySet<string>
 ): LoadFeatureWarning => {
   const line = info?.step.location.line ?? node.location.line
-  return makeWarning({
+  return new LoadFeatureWarning({
     reason: "UnknownPlaceholder",
     uri,
     line,
@@ -304,7 +305,7 @@ const duplicateExamplesColumn = (
   column: string,
   line: number
 ): LoadFeatureWarning =>
-  makeWarning({
+  new LoadFeatureWarning({
     reason: "DuplicateExamplesColumn",
     uri,
     line,
@@ -317,7 +318,7 @@ const duplicateExamplesColumn = (
 /** F13: a `Rule:` with no Scenarios contributes zero pickles in silence (`test/upstream-pin.test.ts`). */
 const emptyRule = (uri: string, rule: AstRuleInfo): LoadFeatureWarning => {
   const line = rule.location.line
-  return makeWarning({
+  return new LoadFeatureWarning({
     reason: "EmptyRule",
     uri,
     line,
@@ -395,28 +396,26 @@ const suspectedSwallowedStep = (
   )
   if (suspects.length === 0) return Option.none()
   const quoted = suspects.map(({ keyword, text }) => `  ${text.trim()}    (reads like ${keyword})`).join("\n")
-  return Option.some(makeWarning({
-    reason: "SuspectedSwallowedStep",
-    uri,
-    line,
-    message: `${at(uri, line)}SuspectedSwallowedStep: ${label} has a description in which `
-      + `${suspects.length === 1 ? "a line begins" : `${suspects.length} lines begin`} with what looks like a `
-      + `misspelled step keyword. A step keyword misspelled before any valid step is absorbed into the description `
-      + `rather than reported, so a step written there does not exist at any layer and nothing fails. `
-      + `A description is legal Gherkin, so this is a heuristic: if the text is prose, ignore this.\n${quoted}`
-  }))
+  return Option.some(
+    new LoadFeatureWarning({
+      reason: "SuspectedSwallowedStep",
+      uri,
+      line,
+      message: `${at(uri, line)}SuspectedSwallowedStep: ${label} has a description in which `
+        + `${suspects.length === 1 ? "a line begins" : `${suspects.length} lines begin`} with what looks like a `
+        + `misspelled step keyword. A step keyword misspelled before any valid step is absorbed into the description `
+        + `rather than reported, so a step written there does not exist at any layer and nothing fails. `
+        + `A description is legal Gherkin, so this is a heuristic: if the text is prose, ignore this.\n${quoted}`
+    })
+  )
 }
 
 /** Header values appearing more than once, each once, in source order — over the duplicate-preserving array. */
-const duplicatedColumns = (header: ReadonlyArray<string>): ReadonlyArray<string> => {
-  const duplicated: Array<string> = []
-  for (const [value, occurrences] of Rec.toEntries(Arr.groupBy(header, (name) => name))) {
-    if (occurrences.length > 1) {
-      duplicated.push(value)
-    }
-  }
-  return duplicated
-}
+const duplicatedColumns = (header: ReadonlyArray<string>): ReadonlyArray<string> =>
+  Arr.filterMap(
+    Rec.toEntries(Arr.groupBy(header, (name) => name)),
+    ([value, occurrences]) => occurrences.length > 1 ? Result.succeed(value) : Result.failVoid
+  )
 
 /**
  * One `Background:` node, reduced to what the F14 heuristic needs.

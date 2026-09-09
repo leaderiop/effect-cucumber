@@ -59,8 +59,7 @@ export const makeExamplesRow = (
  * an `ExamplesRow` decodes to ONE value, so the issue path's first element is already the column. */
 const rowDecodeFailed = (row: ExamplesRow, schemaError: Schema.SchemaError): ExamplesRowError => {
   const path = firstIssuePath(schemaError.issue, [])
-  const key = path[0]
-  const column: Option.Option<string> = Predicate.isString(key) ? Option.some(key) : Option.none()
+  const column = Option.liftPredicate(path[0], Predicate.isString)
   const opening = Option.isSome(column)
     ? `The Examples row at ${row.uri}:${row.line} failed to decode, column ${JSON.stringify(column.value)}`
     : `The Examples row at ${row.uri}:${row.line} failed to decode`
