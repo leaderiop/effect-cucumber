@@ -27,9 +27,6 @@ Layer is built exactly once per Feature while every Scenario still keeps its own
 `.steps.test.ts` pairs under [`packages/vitest/test/acceptance/`](./packages/vitest/test/acceptance), and all 22 v1
 requirements (plus one for step modules) carry an acceptance tag that a traceability check counts on every push.
 
-Still ahead, and stated so nobody discovers it the hard way: the doc-examples compile check is not wired, and
-editing a `.feature` file under a watching runner does not trigger a rerun when the file was loaded by path.
-
 [`spec/roadmap.md`](./spec/roadmap.md) is the single source of truth for what is built versus what is only specified.
 
 ## Install
@@ -73,6 +70,8 @@ only (no step navigation) — not part of the pnpm workspace, not versioned alon
 
 ## Documentation
 
+- [`spec/getting-started.md`](./spec/getting-started.md) — new here? Start with this: one complete worked example
+  and a map of where to read next.
 - [`spec/`](./spec) — the normative specification: [overview](./spec/overview.md), [behaviors](./spec/behaviors),
   [invariants](./spec/invariants.md), [decisions](./spec/decisions), and [roadmap](./spec/roadmap.md).
 - [`AGENTS.md`](./AGENTS.md) — engineering conventions for this repository.
