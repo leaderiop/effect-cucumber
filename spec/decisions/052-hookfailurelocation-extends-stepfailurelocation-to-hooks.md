@@ -191,3 +191,13 @@ deliberate, documented behavior change rather than an accidental regression:
 (rare, no real hook body in this codebase produces one) loses identity in exchange for a genuine
 `.cause`-carrying location every OTHER hook failure gets, in favor of closing a real, named gap between
 what a step's failure panel shows and what a hook's shows.
+
+---
+
+> **Correction (2026-09-10, extended by [ADR-EC-056](056-withfailurelocation-combinator-unifies-the-step-hook-wrap.md)):**
+> the **Decision** section above shows `runHookBatch` calling `Effect.mapError`/`Effect.catchDefect`
+> inline, per entry. As of ADR-EC-056, it instead calls the same shared `withFailureLocation`
+> combinator (`Errors.ts`) `ScenarioEffect.ts`'s `withStepFailureLocation` calls, rather than each
+> hand-copying the identical two-line wrap. This is a pure internal refactor: `attachHookFailureLocation`'s
+> signature and every observable behavior described above are unchanged, proven by this ADR's own
+> tests passing unmodified.
