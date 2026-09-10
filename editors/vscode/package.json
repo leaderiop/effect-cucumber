@@ -1,0 +1,29 @@
+{
+  "name": "effect-cucumber-gherkin",
+  "displayName": "Gherkin syntax highlighting (effect-cucumber)",
+  "description": "Minimal, dependency-free .feature syntax highlighting: Feature/Rule/Background/Scenario/Scenario Outline/Examples, Given/When/Then/And/But, tags, comments, doc strings, and data tables.",
+  "version": "0.1.0",
+  "publisher": "effect-cucumber",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "gherkin",
+        "aliases": ["Gherkin", "Cucumber", "gherkin"],
+        "extensions": [".feature"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gherkin",
+        "scopeName": "source.gherkin",
+        "path": "./syntaxes/gherkin.tmLanguage.json"
+      }
+    ]
+  }
+}
