@@ -42,3 +42,7 @@ packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-*.json
 
 # Fences extracted from spec/ by scripts/verify-doc-examples.sh, regenerated every run.
 packages/vitest/test/doc-examples/generated/
+
+# Written by scripts/verify-junit-reporter.sh's own fixture run (GherkinJUnitReporter, ADR-EC-060).
+# The script removes it on exit; this entry only guards against a hard kill leaving it on disk.
+packages/vitest/test/junit-reporter-fixture/junit-report.xml

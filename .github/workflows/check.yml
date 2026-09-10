@@ -214,6 +214,18 @@ jobs:
       # invokes vitest once against its own dedicated standalone config.
       - if: matrix.node-version == 24
         run: pnpm verify:attachments-panel
+      # `pnpm test` exiting 0 does NOT prove GherkinJUnitReporter (ADR-EC-060) actually writes a
+      # correct file to disk when run through a real `vitest run` — only that an in-process test
+      # observed its serializer functions produce the right strings. The claim is about a real,
+      # written FILE a CI tool would actually ingest, the identical "real output, not the types
+      # alone" shape `verify-failure-panel.sh`/`verify-attachments-panel.sh` above prove for the
+      # DEFAULT reporter's own panel. See scripts/verify-junit-reporter.sh.
+      #
+      # AFTER `pnpm test`, for the identical reason `verify:attachments-panel` above is. Node 24
+      # ONLY: a structural claim about what a real vitest run produces, which does not vary by Node
+      # version, and the gate invokes vitest once against its own dedicated standalone config.
+      - if: matrix.node-version == 24
+        run: pnpm verify:junit-reporter
       # `pnpm test` exiting 0 does NOT prove that a manifest written from one
       # real `vitest run`'s own `--reporter=json` output correctly filters a
       # SECOND, separately-invoked `vitest run` over the same files — only

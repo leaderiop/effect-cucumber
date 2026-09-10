@@ -584,17 +584,44 @@ One caveat worth knowing: every Scenario runs under the ambient SIMULATED `TestC
 unless a step itself calls `TestClock.adjust(...)` — a real, documented limitation of running under a simulated
 clock, not a bug.
 
+## Reporting: JUnit XML for Allure, ReportPortal, and other CI dashboards
+
+You don't need anything from this package to get real, per-Scenario JUnit XML: `describeFeature` already registers a
+real `describe(Feature name)` → `it(Scenario title)` hierarchy, so vitest's own built-in `--reporter=junit` already
+produces a correct `<testcase>` per Scenario, with `.feature:line` failure detail included (see below). Add it like
+any other vitest reporter:
+
+```ts
+export default defineConfig({ test: { reporters: ["default", "junit"], outputFile: "junit.xml" } })
+```
+
+If you also want a Scenario's tags as structured `<properties>` and any `attach()`ed evidence as `<system-out>` —
+neither of which the built-in reporter has a configuration hook to add — register `GherkinJUnitReporter` alongside it
+instead:
+
+```ts
+import { GherkinJUnitReporter } from "@effect-cucumber/vitest"
+import { defineConfig } from "vitest/config"
+
+export default defineConfig({
+  test: { reporters: ["default", new GherkinJUnitReporter({ outputFile: "junit.xml" })] }
+})
+```
+
+See [ADR-EC-060](../../spec/decisions/060-gherkinjunitreporter-adds-properties-and-system-out-vitests-built-in-junit-reporter-has-no-hook-for.md).
+
 **This package now runs its own spec.** The dogfooded acceptance suite is built: real `.feature` files under
 [`test/acceptance/`](./test/acceptance), paired with `.steps.test.ts` modules, driven by the real `describeFeature`
 and producing real passing `it.effect` tests as part of the ordinary `pnpm test`. The three worked examples from
 `spec/behaviors/01`–`03` are among them, so the specification's examples are executed rather than merely read. All 22
 v1 requirements carry a `@REQ-EC-NNN` acceptance tag.
 
-**Two limitations are worth knowing before you rely on this package.** Editing a `.feature` file under a watching
-runner does **not** trigger a rerun when the file was loaded by path, because a filesystem read is invisible to
-Vite's module graph — the `?raw` import form does rerun. And a failing step's entry in the runner's failure panel
-names the Scenario and the assertion, but neither the step text nor the `.feature` file and line — the step pattern
-does reach a separate stdout block (`Effect.fn(pattern)`'s own span), which is not the same thing. See
+Two things once documented here as open limitations are both resolved. Editing a `.feature` file under a watching
+runner reruns the suite even when the file was loaded by path — add `gherkinWatchTriggers` to your Vite plugins (see
+above, ADR-EC-030). And a failing step's own pattern and its `.feature` file:line already reach the runner's default
+failure panel, in a `Caused by: StepFailureLocation: <file>:<line>: step "<pattern>"` block (ADR-EC-033) — a failing
+hook gets the same treatment (ADR-EC-052). Want that same tags/attachment detail in a JUnit-XML file for Allure,
+ReportPortal, or another CI dashboard? See `GherkinJUnitReporter` above (ADR-EC-060). See
 [`spec/roadmap.md`](../../spec/roadmap.md) for what is built versus what is only specified — it remains the single
 authority on build status.
 
