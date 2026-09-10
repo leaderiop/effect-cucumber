@@ -35,12 +35,14 @@ editing a `.feature` file under a watching runner does not trigger a rerun when 
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc @effect/platform-node@rc vitest
+pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc vitest
 ```
 
 > **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
 > no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/vitest` and `@effect/platform-node`, whose `latest` tags are also on the v3 line.
+> library. The same applies to `@effect/platform-node`, whose `latest` tag is also on the v3 line. `vitest` needs no
+> tag — its `latest` is already 5.x, which is what `@effect-cucumber/vitest` requires (ADR-EC-059). There is no
+> separate `@effect/vitest` install: `@effect-cucumber/vitest` re-exports its own `it`/`layer`/`assert`/etc. directly.
 
 A Feature file is then three lines before the first step definition:
 
@@ -56,8 +58,8 @@ does the rest. See [`packages/vitest/README.md`](./packages/vitest/README.md) fo
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.112` or newer, with `@effect/vitest` and `@effect/platform-node` on the same rc line) and
-vitest `>=4.1.0 <5.0.0`. Node `>=20`.
+Requires Effect v4 (`4.0.0-rc.112` or newer, with `@effect/platform-node` on the same rc line) and
+vitest `>=5.0.0 <6.0.0`. Node `>=20`.
 
 ## Packages
 

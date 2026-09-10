@@ -10,10 +10,10 @@
  * any test nodes — the same "collect, don't run" boundary `describeFeature.test.ts` itself relies on.
  */
 import { ParameterTypeStore, type ParsedFeature, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { collectFeature } from "../src/describeFeature.ts"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { rerunKey, rerunKeysForPlan } from "../src/RerunKey.ts"
 
 // The `OutlineTitle.test.ts`/`Runner.test.ts` fixture convention: the real parser, at module scope,

@@ -4,7 +4,6 @@
  * Carries: ADR-EC-010, ADR-EC-023, BEH-EC-007, INV-EC-005.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
@@ -12,6 +11,7 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import { collectFeature, describeFeature, type FeatureCollection } from "../src/describeFeature.ts"
 import type { ScenarioDsl } from "../src/Dsl.ts"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import { TagExpressionError } from "../src/TagExpression.ts"
 
 // A service both candidate Layers below provide, carrying a value that says which one built it.

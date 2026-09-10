@@ -10,11 +10,11 @@
  * file serves every real `vitest run` invocation the verify script makes (the plain first run, and
  * the `RERUN_FAILED_ONLY=1` second run) with no code change between them.
  */
-import { assert } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { rerunOptionsFromEnv } from "./rerunOptions.ts"
 

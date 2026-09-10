@@ -48,7 +48,6 @@
  * MAY require what `shared` provides" shape BEH-EC-007 already documents — rebuilt fresh every
  * Scenario (INV-EC-002), writing into the one `Ref` the `shared` tier holds for the whole Feature.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -56,6 +55,7 @@ import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { attach, Attachments } from "../../src/Attachments.ts"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than `process.cwd()`.

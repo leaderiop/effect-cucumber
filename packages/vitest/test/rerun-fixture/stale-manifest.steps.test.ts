@@ -6,11 +6,11 @@
  * skip node AND the `StaleRerunManifestKeyWarning` fire together for a manifest entry that is
  * genuinely stale, distinct from `calculator-b`'s "passed last run, so correctly absent" case.
  */
-import { assert } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { rerunOptionsFromEnv } from "./rerunOptions.ts"
 

@@ -1,11 +1,11 @@
 /**
  * Pins the verified decode-failure shape of `effect@4.0.0-rc.112`'s `Schema` module.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 import * as SchemaIssue from "effect/SchemaIssue"
+import { assert, describe, it } from "./support/EffectVitestIt.ts"
 
 /** One data table row: a plain string column and a column that must transform to a real number. */
 const Row = Schema.Struct({ name: Schema.String, age: Schema.FiniteFromString })

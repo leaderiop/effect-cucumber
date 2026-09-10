@@ -2,8 +2,8 @@
  * Tests for `OutlineTitle`.
  */
 import { ParameterTypeStore, type ParsedFeature, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { buildScenarioTitles } from "../src/OutlineTitle.ts"
 
 // The `test/Runner.test.ts` fixture convention: the real parser, at module scope, run with `runSync`.

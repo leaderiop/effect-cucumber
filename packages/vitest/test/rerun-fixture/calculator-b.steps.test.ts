@@ -4,11 +4,11 @@
  * file, whose own step assertion is CORRECT — always passes. See that file's header comment for the
  * full rationale.
  */
-import { assert } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { rerunOptionsFromEnv } from "./rerunOptions.ts"
 

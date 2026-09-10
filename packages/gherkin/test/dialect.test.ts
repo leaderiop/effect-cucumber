@@ -2,11 +2,11 @@
  * Gap 5: a `# language:` non-English feature file parses, correlates and validates with ZERO
  * special handling.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import { fileURLToPath } from "node:url"
 import { isOutlineKeyword, isScenarioKeyword } from "../src/Correlate.ts"
 import type { ParsedScenario, ParsedStep } from "../src/Model.ts"
+import { assert, describe, it } from "./support/EffectVitestIt.ts"
 import { load, parse } from "./support/loadFixture.ts"
 
 const frenchPath = fileURLToPath(new URL("./fixtures/dialect-fr.feature", import.meta.url))

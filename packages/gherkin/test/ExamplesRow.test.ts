@@ -3,7 +3,6 @@
  * `Correlate.ts`'s population of `ParsedScenario.exampleRow` end to end through the real parser.
  */
 import { IdGenerator } from "@cucumber/messages"
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
@@ -15,6 +14,7 @@ import { parseFeature } from "../src/loadFeature.ts"
 import { ParameterTypeStore } from "../src/ParameterTypes.ts"
 import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
+import { assert, describe, expect, it } from "./support/EffectVitestIt.ts"
 
 const parse = (source: string, uri: string) =>
   parseFeature(source, uri).pipe(Effect.provide(ParameterTypeStore.Default))

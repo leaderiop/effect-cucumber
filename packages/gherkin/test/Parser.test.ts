@@ -5,7 +5,6 @@
 import { AstBuilder, Errors, GherkinClassicTokenMatcher, Parser as GherkinParser } from "@cucumber/gherkin"
 import { IdGenerator } from "@cucumber/messages"
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
-import { assert, describe, it, vi } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as FileSystem from "effect/FileSystem"
@@ -16,6 +15,7 @@ import { LoadFeatureError } from "../src/Errors.ts"
 import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
 import { readFeatureSource } from "../src/Source.ts"
+import { assert, describe, it, vi } from "./support/EffectVitestIt.ts"
 
 const fixturePath = (name: string): string => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
 

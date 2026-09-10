@@ -5,11 +5,11 @@
  *
  * Carries: ADR-EC-028, ADR-EC-029, BEH-EC-020, BEH-EC-021.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Result from "effect/Result"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import { failureTag, settleThroughClock } from "../src/Testing.ts"
 
 class Boom extends Data.TaggedError("Boom")<{ readonly detail: string }> {}

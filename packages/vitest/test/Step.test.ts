@@ -3,10 +3,10 @@
  *
  * Carries: ADR-EC-005.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import { register } from "../src/Step.ts"
 
 // A bare generator step body, at module scope because it captures nothing (`unicorn/consistent-function-scoping`).

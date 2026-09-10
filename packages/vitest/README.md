@@ -93,7 +93,7 @@ worker-isolation caveat this library's Feature-scoped `beforeAll`/`afterAll` hoo
 **Both Layer scopes are real at run time, not only in the types.** `describeFeature`'s second argument takes either a
 plain `Layer` — the default, per-Scenario scope, built fresh for every Scenario, so nothing one Scenario's Layer built
 is visible to the next — or `{ shared, perScenario }`, where `shared` is built exactly once for the whole Feature
-through `@effect/vitest`'s own `layer(...)` helper and released when the Feature's block ends (before the next Feature
+through `@effect-cucumber/vitest`'s own `layer(...)` helper and released when the Feature's block ends (before the next Feature
 in the same file starts), while `perScenario` beside it is still rebuilt every Scenario.
 `perScenario` is a **required** key even for a Feature with no per-Scenario-fresh state at all: write
 `perScenario: Layer.empty`. `perScenario` may be built **from** `shared` — its input type is bounded by the shared
@@ -122,7 +122,7 @@ Nothing to import beyond `effect/testing/TestConsole`; no library change makes t
 
 One constraint comes
 with `shared`, and it is a type error rather than advice: its error channel must be `never`.
-`@effect/vitest` builds a shared Layer with `Effect.orDie`, so a typed failure there — a testcontainer that will not
+`@effect-cucumber/vitest` builds a shared Layer with `Effect.orDie`, so a typed failure there — a testcontainer that will not
 start, the realistic case — becomes an unrecoverable defect raised out of a setup hook, attributed to no Scenario, no
 step and no `.feature` file. Handle it where the types can see the choice instead: `Layer.catchAll` to substitute a
 fallback, or `Layer.orDie` to make the collapse explicit in your own source. One capability does not carry across
@@ -136,7 +136,7 @@ Scenarios in the Feature below read the same build:
 
 ```ts
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -377,7 +377,7 @@ Feature and the option that removed them prints whenever the filter removed anyt
 strings — never the runner's boolean tag-expression grammar — and `undefined` and `[]` both mean no filter. The
 runner's own `--tagsFilter` still works independently on whatever was registered; the two compose.
 
-**`@retry` wraps a Scenario in `@effect/vitest`'s own `flakyTest`, fixed at its own defaults.** Up to 10 attempts
+**`@retry` wraps a Scenario in `@effect-cucumber/vitest`'s own `flakyTest`, fixed at its own defaults.** Up to 10 attempts
 (`Schedule.recurs(10)`), bounded by a 30-second wall-clock cap — no numeric parameter, the same convention `@skip`/
 `@only` already carry:
 
@@ -735,13 +735,13 @@ It replaces the hand-rolled `fault instanceof Error && "_tag" in fault ? String(
 "Unknown"` ternary a consumer otherwise writes against `Cause.squash(exit.cause)` — a pattern that
 silently degrades a defect, an interruption, an untagged error, or an unexpected success to the same
 opaque `"Unknown"` string. `Testing.failureTag` is a plain synchronous function — call it directly,
-the same way `@effect/vitest`'s own `assert.*` is already called inside a step body, never
+the same way `@effect-cucumber/vitest`'s own `assert.*` is already called inside a step body, never
 `yield*`'d — and it fails loudly, naming the actual value, on anything that isn't a failed `Exit`
 whose squashed value carries a string `_tag`:
 
 ```ts
 import { Testing } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert } from "@effect-cucumber/vitest"
 import * as Effect from "effect/Effect"
 
 // Inside a step body (a bare generator, or one already wrapped with Effect.fn):
@@ -763,7 +763,7 @@ indefinitely the way the duplicated helper it replaces would have:
 
 ```ts
 import { describeFeature, loadFeature, Testing } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert } from "@effect-cucumber/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { fileURLToPath } from "node:url"
@@ -937,7 +937,7 @@ Layer through `describeFeature`'s second argument, with no bridge and no manual 
 
 ```ts
 import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -1121,16 +1121,21 @@ above) are the same kind of gain: capability the migration adds, not merely pres
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/vitest@rc @effect/platform-node@rc vitest
+pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc vitest
 ```
 
 > **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
 > no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/vitest` and `@effect/platform-node`, whose `latest` tags are also on the v3 line.
+> library. The same applies to `@effect/platform-node`, whose `latest` tag is also on the v3 line. `vitest` needs no
+> tag — its `latest` is already 5.x. There is no separate `@effect/vitest` install (ADR-EC-059): `it`, `layer`,
+> `assert`, `flakyTest` and the rest come straight from `@effect-cucumber/vitest` itself — see below.
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=4.1.0 <5.0.0`. Node `>=20`.
+Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=20`.
 
-`effect`, `@effect/vitest`, `@effect/platform-node` and `vitest` are peer dependencies — you install them, this package
-does not bundle its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file through.
+`effect`, `@effect/platform-node` and `vitest` are peer dependencies — you install them, this package does not bundle
+its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file through. `it`, `layer`,
+`assert`, `flakyTest` and vitest's own re-exports (`describe`, `expect`, `vi`, …) come from `@effect-cucumber/vitest`
+directly — this package vendors and maintains its own `@effect/vitest`-equivalent surface (ADR-EC-059) rather than
+depending on the npm package, so there is nothing else to install for those.

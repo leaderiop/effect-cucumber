@@ -2,7 +2,6 @@
  * BEH-EC-014, asserted row by row on the F21 fixture.
  */
 import { type GherkinDocument, IdGenerator, type Pickle, StepKeywordType } from "@cucumber/messages"
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { readFileSync } from "node:fs"
@@ -18,6 +17,7 @@ import type { ParsedScenario, ParsedStep, PickleStepArgument } from "../src/Mode
 import { parseDocument } from "../src/Parser.ts"
 import { compilePickles } from "../src/Pickles.ts"
 import type { DocString, StepArgument } from "../src/StepArguments.ts"
+import { assert, describe, expect, it } from "./support/EffectVitestIt.ts"
 
 const readFixture = (name: string): string => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8")
 

@@ -5,7 +5,6 @@
  * Carries: ADR-EC-006, ADR-EC-009, ADR-EC-010, ADR-EC-018, ADR-EC-019, ADR-EC-023, ADR-EC-034, BEH-EC-007, BEH-EC-012, BEH-EC-026, INV-EC-001, INV-EC-002, INV-EC-005.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, beforeAll, describe, expect, it } from "@effect/vitest"
 import * as Clock from "effect/Clock"
 import * as Console from "effect/Console"
 import * as Context from "effect/Context"
@@ -16,6 +15,7 @@ import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
 import { collectFeature, describeFeature } from "../src/describeFeature.ts"
 import type { ScenarioDsl } from "../src/Dsl.ts"
+import { assert, beforeAll, describe, expect, it } from "../src/EffectVitest.ts"
 
 // Captured BEFORE anything below installs a stub, so the restore assertion can compare by REFERENCE.
 const originalConsoleWarn = globalThis.console.warn

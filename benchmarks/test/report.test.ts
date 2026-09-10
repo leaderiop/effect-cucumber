@@ -3,7 +3,7 @@
  * over a hand-built `BenchmarkResult`, no process spawning. Written and run to fail (module not
  * found) before `../src/report.ts` exists.
  */
-import { assert, describe, it } from "@effect/vitest"
+import { assert, describe, it } from "@effect-cucumber/vitest"
 import { renderHtml, renderMarkdown } from "../src/report.ts"
 import type { BenchmarkResult, DurationStats, RunnerStats } from "../src/types.ts"
 

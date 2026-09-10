@@ -19,8 +19,7 @@ import {
   type DocString,
   ParameterTypeStore
 } from "@effect-cucumber/gherkin"
-import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert, describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"

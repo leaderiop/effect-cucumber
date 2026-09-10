@@ -4,7 +4,6 @@
  * Carries: ADR-EC-019, INV-EC-002, INV-EC-005.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, flakyTest, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -14,6 +13,7 @@ import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import * as Schedule from "effect/Schedule"
 import type * as Scope from "effect/Scope"
+import { assert, describe, flakyTest, it } from "../src/EffectVitest.ts"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import type { HookEntry, HookSet } from "../src/Hook.ts"
 import { type FeaturePlan, planFeature, type PlannedStep, type ScenarioPlan, type StepBody } from "../src/Plan.ts"
@@ -1660,6 +1660,36 @@ describe("`@retry` cannot rescue a Scenario whose BeforeAllScenarios already fai
         // re-running `BeforeAllScenarios` itself. `packages/vitest/README.md`'s "never retried, so a
         // Scenario-level retry cannot make a failed setup pass" statement holds for exactly this reason.
         assert.deepStrictEqual(yield* Ref.get(log), ["beforeAll:start"])
+      })
+  )
+})
+
+// `flakyTest`'s own fixed ceiling (ADR-EC-034: "No code-level option... fixed at flakyTest's own
+// defaults") had never been pinned by an assertion before this block — every other `@retry` test in
+// this file and `emission.test.ts` exercises a Scenario that PASSES by its second attempt, so the
+// "(up to 10)" comment two describe blocks above was prose, not something a regression could catch.
+// `flakyTest` is invoked directly here — no `describeFeature`/`emitFeature` scaffolding needed, since
+// the ceiling under test is the vendored `EffectVitestInternal.ts` default itself, not anything
+// `Runner.ts`/`TestApi.ts` decide (they only ever carry the boolean `EmitOptions.retry` across the
+// seam, per the describe block above this one — no numeric option crosses it).
+describe("flakyTest's fixed Schedule.recurs(10) ceiling, exhausted (ADR-EC-034)", () => {
+  it.effect(
+    "gives up after exactly 11 attempts (1 initial + 10 retries) when the wrapped effect always fails, surfacing a defect",
+    () =>
+      Effect.gen(function*() {
+        let attempts = 0
+        const alwaysFails = Effect.suspend(() => {
+          attempts += 1
+          return Effect.fail(`boom-${attempts}`)
+        })
+
+        const exit = yield* Effect.exit(flakyTest(alwaysFails))
+
+        assert.isTrue(Exit.isFailure(exit))
+        assert.strictEqual(attempts, 11)
+        // `flakyTest`'s own `Effect.orDie` (ADR-EC-034 Consequences) turns the exhausted retry's typed
+        // failure into a DEFECT, never a typed failure a caller's own `Effect.catch` could observe.
+        assert.isTrue(Exit.isFailure(exit) ? Cause.hasDies(exit.cause) : false)
       })
   )
 })

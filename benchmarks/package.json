@@ -19,7 +19,6 @@
     "@effect-cucumber/gherkin": "workspace:^",
     "@effect-cucumber/vitest": "workspace:^",
     "@effect/platform-node": "catalog:",
-    "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
     "tsx": "4.23.13",

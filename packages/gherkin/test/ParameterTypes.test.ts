@@ -6,7 +6,6 @@
  * every other such build, while one that does still gets a fresh, unshared registry. `.Default` is
  * a deprecated alias for `.layerDefault` (see the dedicated test near the end of this file).
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
@@ -19,6 +18,7 @@ import {
   ParameterTypeStore,
   type ParameterTypeStoreShape
 } from "../src/ParameterTypes.ts"
+import { assert, describe, expect, it } from "./support/EffectVitestIt.ts"
 
 /** A transform whose result is trivially checkable, reused by most definitions below. */
 const amount = (...match: Array<string>): number => Number(match[0])

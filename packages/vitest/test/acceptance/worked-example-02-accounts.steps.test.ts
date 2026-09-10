@@ -3,7 +3,6 @@
  *
  * Carries: ADR-EC-006, ADR-EC-009, ADR-EC-017, ADR-EC-018, ADR-EC-024, BEH-EC-007, BEH-EC-008, BEH-EC-012, INV-EC-006, REQ-EC-019, REQ-EC-021.
  */
-import { assert } from "@effect/vitest"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -14,6 +13,7 @@ import * as Schema from "effect/Schema"
 import * as TestClock from "effect/testing/TestClock"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than to `process.cwd()`, so the pair

@@ -3,12 +3,12 @@
  *
  * Carries: ADR-EC-005, ADR-EC-010, ADR-EC-035, ADR-EC-052, BEH-EC-027, BEH-EC-033.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Ref from "effect/Ref"
 import { unrecordedLocation } from "../src/CallSite.ts"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import { HookFailureLocation } from "../src/Errors.ts"
 import {
   emptyHookSet,

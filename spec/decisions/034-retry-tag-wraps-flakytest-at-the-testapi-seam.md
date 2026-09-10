@@ -213,3 +213,7 @@ checking "what does `@retry` NOT reset" would look.
 before it reaches `it.effect`" phrasing, in favor of the composition point the real `scripts/verify-testapi-seam.sh`
 gate actually permits — the same trade every prior roadmap-correction ADR in this series has made, verified
 against the real installed dependency and the real repository gates rather than assumed from the sketch's prose.
+
+A vitest-native, caller-configurable retry-count `TestOptions` field was considered and deliberately deferred
+alongside the "No code-level option" call above — surfacing one would add public API surface this pass never
+requested, so it is recorded here explicitly rather than left for a future audit to re-flag as an oversight.

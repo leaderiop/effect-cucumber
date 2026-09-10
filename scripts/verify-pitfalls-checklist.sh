@@ -261,7 +261,7 @@ cat >"$PROBE_STEPS" <<'PROBE_STEPS_BODY'
 // expose shared mutable state at all. A module-scope counter is one counter
 // however many times the Layer was built, and every row would agree with it.
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
+import { assert } from "../../src/EffectVitest.ts"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -419,7 +419,7 @@ cat >"$FAILING_STEPS" <<'FAILING_STEPS_BODY'
 // GENERATED AND DELETED BY scripts/verify-pitfalls-checklist.sh. Never commit this file.
 // It contains a step that FAILS on purpose; committing it would make `pnpm test` red.
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
+import { assert } from "../../src/EffectVitest.ts"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -583,8 +583,11 @@ for readme in "$ROOT_README" "$VITEST_README"; do
     fail "P-17: $readme contains no install line matching \`pnpm add …\` / \`npm install …\`. The assertions below would have nothing to read, so a README that silently lost its Install section would pass."
   grep -qF -- "effect@rc" <<<"$LINES" ||
     fail "P-17: $readme's install line does not carry \`effect@rc\`:${LINES}. npm's \`latest\` tag for effect still points at the v3 line, so an install without @rc gets a consumer Effect v3 and a wall of type errors against a v4-only library."
-  grep -qF -- "@effect/vitest@rc" <<<"$LINES" ||
-    fail "P-17: $readme's install line does not carry \`@effect/vitest@rc\`:${LINES}. Its \`latest\` is on the v3 line too, and the failure is the same one."
+  grep -qE '( |^)vitest($| )' <<<"$LINES" ||
+    fail "P-17: $readme's install line does not carry \`vitest\`:${LINES}. Bare, no @rc: vitest 5 is npm's \`latest\` (ADR-EC-056)."
+  if grep -qF -- "@effect/vitest" <<<"$LINES"; then
+    fail "P-17: $readme's install line names \`@effect/vitest\`:${LINES}. ADR-EC-056 removed that peer dependency — \`@effect-cucumber/vitest\` now re-exports its own \`it\`/\`layer\`/\`assert\`/etc. directly, so an install line naming it documents a dependency that no longer exists."
+  fi
 done
 
 GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
@@ -593,7 +596,7 @@ GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
 if grep -qE '(^| )effect@|@effect/vitest' <<<"$GHERKIN_LINES"; then
   fail "P-17: $GHERKIN_README's install line names effect or @effect/vitest:${GHERKIN_LINES}. It must name NEITHER — that package declares neither as something a consumer installs alongside it, and an install line that says otherwise is documentation of a dependency that does not exist."
 fi
-echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect and @effect/vitest, and the gherkin README names neither"
+echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect and bare vitest, name no @effect/vitest, and the gherkin README names neither effect nor @effect/vitest"
 
 [[ -f "$RC_BUMP_DOC" ]] ||
  fail "P-18: $RC_BUMP_DOC does not exist. an rc changelog's \`### Patch Changes\` heading does not narrow what broke — every entry lands there in pre-mode regardless of severity — so the bump procedure has to be written down."

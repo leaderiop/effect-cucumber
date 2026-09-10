@@ -11,7 +11,6 @@
  *
  * Carries: ADR-EC-006, ADR-EC-010, ADR-EC-039, BEH-EC-031, REQ-EC-031.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -21,6 +20,7 @@ import * as Scope from "effect/Scope"
 import { fileURLToPath } from "node:url"
 import { Attachments } from "../../src/Attachments.ts"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { narrowRuleDsl, type WorldProjection } from "../../src/RuleNarrowing.ts"
 

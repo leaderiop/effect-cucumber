@@ -2,7 +2,6 @@
  * BEH-EC-016's accessor semantics: `raw()`, `hashes()` and `rowsHash()` over a raw `PickleTable`.
  */
 import type { PickleTable } from "@cucumber/messages"
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
@@ -10,6 +9,7 @@ import * as Schema from "effect/Schema"
 import * as SchemaIssue from "effect/SchemaIssue"
 import { decodeHashes, firstIssuePath, makeDataTable, rowDecodeFailed } from "../src/DataTable.ts"
 import { DataTableError } from "../src/Errors.ts"
+import { assert, describe, expect, it } from "./support/EffectVitestIt.ts"
 
 /** The uri and line every table below is located at, so the locator assertions have a target. */
 const uri = "features/checkout.feature"

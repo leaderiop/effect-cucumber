@@ -3,7 +3,6 @@
  * `DataTable.test.ts`'s `decodeHashes` coverage one level shallower — a `DocString` decodes to ONE
  * value, with no row/column to locate, only uri/line.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
@@ -11,6 +10,7 @@ import * as Schema from "effect/Schema"
 import { decodeDocString } from "../src/DocString.ts"
 import { DocStringError } from "../src/Errors.ts"
 import type { DocString } from "../src/StepArguments.ts"
+import { assert, describe, it } from "./support/EffectVitestIt.ts"
 
 /** The uri and line every DocString below is located at, so the locator assertions have a target. */
 const uri = "features/checkout.feature"

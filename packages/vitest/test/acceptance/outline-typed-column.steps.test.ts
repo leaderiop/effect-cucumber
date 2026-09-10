@@ -49,7 +49,6 @@
  *   check 5, naming `REQ-EC-025` as tagged but with no §5 row.
  */
 import { decodeExamplesRow, type ExamplesRow } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -58,6 +57,7 @@ import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than to `process.cwd()`, so the pair

@@ -4,10 +4,10 @@
  * Carries: ADR-EC-019, ADR-EC-053, BEH-EC-013.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { collectFeature, type FeatureCollection } from "../src/describeFeature.ts"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { assertNoUnusedStepDefinitions } from "../src/StrictMode.ts"
 
 // A step body that touches no service, so it registers against any ambient Layer including empty.

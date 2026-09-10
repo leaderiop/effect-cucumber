@@ -8,11 +8,11 @@
  * direct `globalThis.console.warn` reassignment inside a `try`/`finally`, restored unconditionally,
  * with the original captured up front so the restore can be asserted BY REFERENCE.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Option from "effect/Option"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { defaultRerunManifestPath, readRerunManifest } from "../src/RerunManifest.ts"
 
 // Captured before anything below installs a stub, so the restore assertion can compare by IDENTITY.
