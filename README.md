@@ -68,6 +68,9 @@ vitest `>=5.0.0 <6.0.0`. Node `>=20`.
 | [`@effect-cucumber/vitest`](./packages/vitest)   | `describeFeature`, the Given/When/Then DSL, `Rule`/`Background`/`Scenario` containers with per-Rule and per-Scenario extra Layers, all six hooks, and the `it.effect`-based runner. The package most consumers install directly. |
 | [`@effect-cucumber/gherkin`](./packages/gherkin) | `.feature` parsing and step-text matching, wrapping the official `@cucumber/*` packages. Parsing only.                                                                                                                           |
 
+[`editors/vscode`](./editors/vscode) is a separate, unpublished VS Code extension for `.feature` syntax highlighting
+only (no step navigation) — not part of the pnpm workspace, not versioned alongside the two packages above.
+
 ## Documentation
 
 - [`spec/`](./spec) — the normative specification: [overview](./spec/overview.md), [behaviors](./spec/behaviors),

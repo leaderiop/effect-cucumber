@@ -1,0 +1,110 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Gherkin",
+  "scopeName": "source.gherkin",
+  "fileTypes": ["feature"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#docstring" },
+    { "include": "#section-keyword" },
+    { "include": "#step-keyword" },
+    { "include": "#table-row" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.gherkin",
+      "match": "#.*$"
+    },
+    "tag": {
+      "name": "keyword.other.tag.gherkin",
+      "match": "@[A-Za-z0-9_-]+"
+    },
+    "section-keyword": {
+      "match": "^\\s*(Feature|Rule|Background|Scenario Outline|Scenario Template|Scenario|Examples|Scenarios)(:)(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.section.gherkin" },
+        "2": { "name": "punctuation.separator.colon.gherkin" },
+        "3": { "name": "entity.name.section.gherkin" }
+      }
+    },
+    "step-keyword": {
+      "begin": "^\\s*(Given|When|Then|And|But|\\*)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.step.gherkin" }
+      },
+      "end": "$",
+      "name": "meta.step.gherkin",
+      "patterns": [
+        { "include": "#step-text" }
+      ]
+    },
+    "step-text": {
+      "patterns": [
+        { "include": "#quoted-string" },
+        { "include": "#parameter-placeholder" },
+        {
+          "name": "constant.numeric.gherkin",
+          "match": "(?<![\\w.])-?\\d+(\\.\\d+)?(?![\\w.])"
+        }
+      ]
+    },
+    "quoted-string": {
+      "name": "string.quoted.double.gherkin",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "name": "constant.character.escape.gherkin", "match": "\\\\." }
+      ]
+    },
+    "parameter-placeholder": {
+      "name": "variable.parameter.gherkin",
+      "match": "\\{[A-Za-z][A-Za-z0-9_-]*\\}"
+    },
+    "docstring": {
+      "patterns": [
+        { "include": "#docstring-double" },
+        { "include": "#docstring-single" }
+      ]
+    },
+    "docstring-double": {
+      "name": "string.quoted.triple.gherkin",
+      "begin": "^\\s*(\"\"\")([A-Za-z0-9_+-]*)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.gherkin" },
+        "2": { "name": "entity.name.type.contenttype.gherkin" }
+      },
+      "end": "^\\s*(\"\"\")\\s*$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.gherkin" }
+      }
+    },
+    "docstring-single": {
+      "name": "string.quoted.triple.gherkin",
+      "begin": "^\\s*(''')([A-Za-z0-9_+-]*)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.string.begin.gherkin" },
+        "2": { "name": "entity.name.type.contenttype.gherkin" }
+      },
+      "end": "^\\s*(''')\\s*$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.gherkin" }
+      }
+    },
+    "table-row": {
+      "begin": "^\\s*(?=\\|)",
+      "end": "$",
+      "name": "meta.table-row.gherkin",
+      "patterns": [
+        {
+          "name": "punctuation.definition.table.gherkin",
+          "match": "\\|"
+        },
+        {
+          "name": "constant.character.escape.gherkin",
+          "match": "\\\\[|\\\\n]"
+        }
+      ]
+    }
+  }
+}
