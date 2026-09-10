@@ -5,6 +5,14 @@
 # claim in either direction; only a real `vitest --watch` can. The file is copied to
 # a temp location first and the JSON report is polled with a deadline.
 #
+# TWO independent cycles: the `?raw`-import form (always worked — the file enters
+# Vite's module graph directly) and the path-based `loadFeature(...)` form PLUS
+# `gherkinWatchTriggers` (ADR-EC-030) registered in its own standalone config — the
+# form that measurably did NOT rerun before that plugin existed, and the one this
+# repo's own README/roadmap once (incorrectly, after ADR-EC-030 shipped) still
+# described as an open limitation. Both cycles share the same helper functions below;
+# each cycle's own section names its own variables.
+#
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,6 +22,9 @@ cd "$ROOT_DIR"
 SOURCE_FEATURE="packages/vitest/test/acceptance/worked-example-01-apples.feature"
 WORK_FEATURE="packages/vitest/test/acceptance/watch-rerun-gate.feature"
 WORK_STEPS="packages/vitest/test/acceptance/watch-rerun-gate.gate.test.ts"
+PATH_WORK_FEATURE="packages/vitest/test/acceptance/watch-rerun-path-gate.feature"
+PATH_WORK_STEPS="packages/vitest/test/acceptance/watch-rerun-path-gate.gate.test.ts"
+PATH_WORK_CONFIG="packages/vitest/test/acceptance/watch-rerun-path-gate.vitest.config.ts"
 
 # Use the repo-local runner, never a global `vitest`.
 VITEST="node_modules/.bin/vitest"
@@ -40,13 +51,18 @@ fail() {
 
 TMP_DIR=""
 RUNNER_PID=""
+PATH_RUNNER_PID=""
 
 cleanup() {
   if [[ -n "$RUNNER_PID" ]]; then
     kill "$RUNNER_PID" 2>/dev/null || true
     wait "$RUNNER_PID" 2>/dev/null || true
   fi
-  rm -f "$WORK_FEATURE" "$WORK_STEPS"
+  if [[ -n "$PATH_RUNNER_PID" ]]; then
+    kill "$PATH_RUNNER_PID" 2>/dev/null || true
+    wait "$PATH_RUNNER_PID" 2>/dev/null || true
+  fi
+  rm -f "$WORK_FEATURE" "$WORK_STEPS" "$PATH_WORK_FEATURE" "$PATH_WORK_STEPS" "$PATH_WORK_CONFIG"
   if [[ -n "$TMP_DIR" ]]; then
     rm -rf "$TMP_DIR"
   fi
@@ -56,6 +72,8 @@ trap cleanup EXIT INT TERM
 TMP_DIR="$(mktemp -d)"
 REPORT="$TMP_DIR/watch-report.json"
 LOG="$TMP_DIR/watch.log"
+PATH_REPORT="$TMP_DIR/watch-report-path.json"
+PATH_LOG="$TMP_DIR/watch-path.log"
 
 report_query() {
   local report="$1" mode="$2" title="${3-}"
@@ -102,7 +120,7 @@ report_mtime() {
 # The one precondition that protects the repository rather than the assertion.
 # If either work path is ever committed, the cleanup trap would DELETE a tracked
 # file and this gate would become the thing it exists to avoid being.
-for tracked in "$WORK_FEATURE" "$WORK_STEPS"; do
+for tracked in "$WORK_FEATURE" "$WORK_STEPS" "$PATH_WORK_FEATURE" "$PATH_WORK_STEPS" "$PATH_WORK_CONFIG"; do
   if git ls-files --error-unmatch "$tracked" >/dev/null 2>&1; then
     fail "$tracked is TRACKED BY GIT. This gate writes and then deletes that path, so running it would delete a committed file. Rename the constant at the top of this script; do not delete the committed file to make the gate run."
   fi
@@ -265,6 +283,162 @@ if [[ "$TOTAL_2" == "UNREADABLE" ]] || [[ "$TOTAL_2" -le "$TOTAL_1" ]]; then
   fail "run 2 reported \"$TOTAL_2\" test results against run 1's $TOTAL_1, expected strictly more. A rerun that reports the same set proves nothing about picking up a NEW Scenario — it is equally consistent with a Scenario having been renamed."
 fi
 echo "✓ run 2 total $TOTAL_2 > run 1 total $TOTAL_1 — a Scenario was ADDED, not renamed"
+
+# ===========================================================================
+# CYCLE 2 — the path-based `loadFeature(...)` form, WITH `gherkinWatchTriggers`
+# (ADR-EC-030) registered. Identical shape to cycle 1 above, over a SEPARATE
+# fixture, runner process and report file, so the two cycles cannot mask one
+# another's failure.
+# ===========================================================================
+
+awk -v title="$EXISTING_TITLE" '
+  /^Feature:/ { print; print ""; next }
+  $0 ~ "^[[:space:]]*Scenario: " title "$" { inblock = 1; print; next }
+  inblock && /^[[:space:]]*$/ { inblock = 0; next }
+  inblock { print }
+' "$SOURCE_FEATURE" >"$PATH_WORK_FEATURE"
+
+PATH_EXTRACTED_STEPS="$(grep -cE '^[[:space:]]+(Given|When|Then) ' "$PATH_WORK_FEATURE" || true)"
+if [[ "$PATH_EXTRACTED_STEPS" -ne "$EXPECTED_EXTRACTED_STEPS" ]]; then
+  cat "$PATH_WORK_FEATURE" >&2
+  fail "extracting \"$EXISTING_TITLE\" out of $SOURCE_FEATURE into $PATH_WORK_FEATURE produced $PATH_EXTRACTED_STEPS step line(s), expected exactly $EXPECTED_EXTRACTED_STEPS (content above) — same extraction as cycle 1, run a second time against a separate work path."
+fi
+echo "✓ cycle 2: copied \"Scenario: $EXISTING_TITLE\" ($PATH_EXTRACTED_STEPS steps) out of $SOURCE_FEATURE into $PATH_WORK_FEATURE"
+
+cat >"$PATH_WORK_STEPS" <<'PATH_STEPS_MODULE'
+// GENERATED AND DELETED BY scripts/verify-watch-rerun.sh. Never commit this file.
+//
+// Loads its Gherkin through `loadFeature` (NodeFileSystem, a plain `fs` read) —
+// the form invisible to Vite's module graph on its own. Whether an edit to
+// `watch-rerun-path-gate.feature` reruns THIS file depends entirely on
+// `gherkinWatchTriggers` being registered in `watch-rerun-path-gate.vitest.config.ts`,
+// the file this steps module is collected through.
+import { assert } from "../../src/EffectVitest.ts"
+import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Ref from "effect/Ref"
+import { fileURLToPath } from "node:url"
+import { describeFeature } from "../../src/describeFeature.ts"
+import { loadFeature } from "../../src/loadFeature.ts"
+
+class World extends Context.Service<World, { readonly apples: Ref.Ref<number> }>()("WatchRerunPathGateWorld") {
+  static readonly layer: Layer.Layer<World> = Layer.effect(
+    World,
+    Effect.gen(function*() {
+      return World.of({ apples: yield* Ref.make(0) })
+    })
+  )
+}
+
+const feature = await loadFeature(fileURLToPath(new URL("./watch-rerun-path-gate.feature", import.meta.url)))
+
+describeFeature(feature, World.layer, ({ Given, Then, When }) => {
+  Given("I have {int} apples", function*(count: number) {
+    yield* Ref.set((yield* World).apples, count)
+  })
+  When("I eat {int} apples", function*(count: number) {
+    yield* Ref.update((yield* World).apples, (apples) => apples - count)
+  })
+  Then("I have {int} apples left", function*(count: number) {
+    assert.strictEqual(yield* Ref.get((yield* World).apples), count)
+  })
+})
+PATH_STEPS_MODULE
+
+cat >"$PATH_WORK_CONFIG" <<'PATH_CONFIG_MODULE'
+// GENERATED AND DELETED BY scripts/verify-watch-rerun.sh. Never commit this file.
+//
+// THE CLAIM under test: `gherkinWatchTriggers`, registered here exactly as a real
+// consumer would, is what makes editing `watch-rerun-path-gate.feature` rerun
+// `watch-rerun-path-gate.gate.test.ts` — a file that loads its Gherkin by PATH,
+// which this repo's own `?raw`-import cycle above does not exercise at all.
+import { fileURLToPath } from "node:url"
+import { defineConfig } from "vitest/config"
+import { gherkinWatchTriggers } from "../../src/GherkinWatchTriggers.ts"
+
+const root = fileURLToPath(new URL(".", import.meta.url))
+
+export default defineConfig({
+  plugins: [gherkinWatchTriggers("watch-rerun-path-gate.feature", { cwd: root })],
+  test: {
+    root,
+    include: ["watch-rerun-path-gate.gate.test.ts"]
+  }
+})
+PATH_CONFIG_MODULE
+
+"$VITEST" --watch --config "$PATH_WORK_CONFIG" \
+  --reporter=json \
+  --outputFile="$PATH_REPORT" >"$PATH_LOG" 2>&1 &
+PATH_RUNNER_PID=$!
+
+for _ in $(seq 1 $((RERUN_TIMEOUT_SECONDS * 2))); do
+  [[ -f "$PATH_REPORT" ]] && [[ "$(report_query "$PATH_REPORT" total)" != "UNREADABLE" ]] && break
+  sleep 0.5
+done
+
+if [[ ! -f "$PATH_REPORT" ]]; then
+  cat "$PATH_LOG" >&2
+  fail "cycle 2: the watching runner wrote no report to $PATH_REPORT within ${RERUN_TIMEOUT_SECONDS}s — it never got far enough to report anything (output above)."
+fi
+
+PATH_TOTAL_1="$(report_query "$PATH_REPORT" total)"
+if [[ "$PATH_TOTAL_1" == "UNREADABLE" ]] || [[ "$PATH_TOTAL_1" -eq 0 ]]; then
+  cat "$PATH_LOG" >&2
+  cat "$PATH_WORK_FEATURE" >&2
+  fail "cycle 2: run 1 reported \"$PATH_TOTAL_1\" test results — the copy did not collect, so every assertion below would be vacuously true. Runner output and the copied Gherkin are above."
+fi
+echo "✓ cycle 2, run 1 vacuity control: $PATH_TOTAL_1 test result(s) — the copy collected"
+
+PATH_STATUS_NEW_1="$(report_query "$PATH_REPORT" status "$NEW_TITLE")"
+if [[ "$PATH_STATUS_NEW_1" != "ABSENT" ]]; then
+  cat "$PATH_LOG" >&2
+  fail "cycle 2: the Scenario \"$NEW_TITLE\" is already \"$PATH_STATUS_NEW_1\" in run 1, expected ABSENT."
+fi
+echo "✓ cycle 2, run 1: \"$NEW_TITLE\" is ABSENT — the rerun has something to pick up"
+
+PATH_MTIME_1="$(report_mtime "$PATH_REPORT")"
+PATH_EDIT_STARTED_AT="$(date +%s)"
+
+cat >>"$PATH_WORK_FEATURE" <<EDIT
+
+  Scenario: $NEW_TITLE
+    Given I have 9 apples
+    When I eat 4 apples
+    Then I have 5 apples left
+EDIT
+
+PATH_RERAN=0
+for _ in $(seq 1 $((RERUN_TIMEOUT_SECONDS * 2))); do
+  if [[ "$(report_mtime "$PATH_REPORT")" != "$PATH_MTIME_1" ]]; then
+    PATH_STATUS_NEW_2="$(report_query "$PATH_REPORT" status "$NEW_TITLE")"
+    if [[ "$PATH_STATUS_NEW_2" != "UNREADABLE" ]] && [[ "$PATH_STATUS_NEW_2" != "ABSENT" ]]; then
+      PATH_RERAN=1
+      break
+    fi
+  fi
+  sleep 0.5
+done
+PATH_RERUN_SECONDS=$(($(date +%s) - PATH_EDIT_STARTED_AT))
+
+if [[ "$PATH_RERAN" -eq 0 ]]; then
+  cat "$PATH_LOG" >&2
+  fail "cycle 2: the runner did not rerun within ${RERUN_TIMEOUT_SECONDS}s of \"$PATH_WORK_FEATURE\" (loaded by PATH, via loadFeature) being edited — \"$NEW_TITLE\" never appeared in a fresh report. gherkinWatchTriggers (ADR-EC-030) is registered in $PATH_WORK_CONFIG; either it regressed, or vitest's own test.watchTriggerPatterns mechanics changed. Runner output above; the report is $PATH_REPORT."
+fi
+
+if [[ "$PATH_STATUS_NEW_2" != "passed" ]]; then
+  cat "$PATH_LOG" >&2
+  fail "cycle 2: the rerun picked \"$NEW_TITLE\" up but reported it \"$PATH_STATUS_NEW_2\", expected \"passed\"."
+fi
+echo "✓ cycle 2 — rerun after ~${PATH_RERUN_SECONDS}s: \"$NEW_TITLE\" is PRESENT and passed — gherkinWatchTriggers made a PATH-loaded .feature edit reach the watching runner"
+
+PATH_TOTAL_2="$(report_query "$PATH_REPORT" total)"
+if [[ "$PATH_TOTAL_2" == "UNREADABLE" ]] || [[ "$PATH_TOTAL_2" -le "$PATH_TOTAL_1" ]]; then
+  cat "$PATH_LOG" >&2
+  fail "cycle 2: run 2 reported \"$PATH_TOTAL_2\" test results against run 1's $PATH_TOTAL_1, expected strictly more."
+fi
+echo "✓ cycle 2, run 2 total $PATH_TOTAL_2 > run 1 total $PATH_TOTAL_1 — a Scenario was ADDED, not renamed"
 
 echo ""
 echo "watch rerun gate: ENFORCED"
