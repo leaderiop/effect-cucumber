@@ -65,6 +65,7 @@ import * as Effect from "effect/Effect"
 import type * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import * as Random from "effect/Random"
+import type * as Schedule from "effect/Schedule"
 import type * as Scope from "effect/Scope"
 import type { UnusedStepDefinitionWarning } from "./Errors.ts"
 import { emptyHookSet, type HookSet, mergeHookSets, runHookBatch } from "./Hook.ts"
@@ -113,6 +114,7 @@ const warningEmitOptions: EmitOptions = {
   tags: [],
   skip: false,
   retry: false,
+  retrySchedule: null,
   contextFree: true,
   scenario: false,
   rerunKey: null,
@@ -129,6 +131,7 @@ const rerunEmptyBlockEmitOptions: EmitOptions = {
   tags: [],
   skip: true,
   retry: false,
+  retrySchedule: null,
   contextFree: true,
   scenario: false,
   rerunKey: null,
@@ -173,6 +176,11 @@ export const emitFeature = (
     // is a choice about WHICH Effect this module hands `api.effect`, not about how the framework
     // runs it.
     readonly strict: boolean
+    // ADR-EC-058: `describeFeature`'s own `retry` registration option, normalised to `null` by
+    // `describeFeature.ts` when absent — the SAME value on every Scenario this call emits, unlike
+    // `retry`/`skip`/`timeout` above, which are each Scenario's own tags. Carried across the `TestApi`
+    // seam exactly like those fields, decided here, never applied here.
+    readonly retrySchedule: Schedule.Schedule<any, any, never> | null
   }
 ): EmitOutcome => {
   const {
@@ -183,6 +191,7 @@ export const emitFeature = (
     plan,
     rerunFilter,
     rerunKeys,
+    retrySchedule,
     ruleHooks,
     ruleLayers,
     scenarioLayers,
@@ -335,6 +344,7 @@ export const emitFeature = (
           tags: scenarioPlan.tags,
           skip,
           retry,
+          retrySchedule,
           contextFree: false,
           scenario: true,
           rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null,
@@ -388,6 +398,7 @@ export const emitFeature = (
               tags: scenarioPlan.tags,
               skip,
               retry,
+              retrySchedule,
               contextFree: false,
               scenario: true,
               rerunKey: rerunKeys.get(scenarioPlan.scenarioId) ?? null,

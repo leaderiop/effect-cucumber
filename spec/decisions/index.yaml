@@ -164,3 +164,6 @@ entries:
   - id: "ADR-EC-057"
     file: "057-unified-decode-table-docstring-schema-alongside-the-pattern.md"
     title: "Given/When/Then gain a decode overload — a DataTable/DocString's Schema declared alongside the pattern, decoded before the step body runs"
+  - id: "ADR-EC-058"
+    file: "058-retry-schedule-registration-option-customizes-flakytest.md"
+    title: "describeFeature gains a retry registration option — customizes the Schedule a @retry Scenario retries with, extends ADR-EC-034"
