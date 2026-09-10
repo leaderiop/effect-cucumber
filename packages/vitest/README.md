@@ -1148,21 +1148,24 @@ above) are the same kind of gain: capability the migration adds, not merely pres
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc vitest
+pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc @effect/vitest@rc vitest
 ```
 
 > **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
 > no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/platform-node`, whose `latest` tag is also on the v3 line. `vitest` needs no
-> tag — its `latest` is already 5.x. There is no separate `@effect/vitest` install (ADR-EC-059): `it`, `layer`,
-> `assert`, `flakyTest` and the rest come straight from `@effect-cucumber/vitest` itself — see below.
+> library. The same applies to `@effect/platform-node` and `@effect/vitest`, whose `latest` tags are also on the v3
+> line. `vitest` needs no tag — its `latest` is already 5.x. `it`, `layer`, `assert`, `flakyTest` and the rest still
+> come straight from `@effect-cucumber/vitest` itself (ADR-EC-059) — `@effect/vitest` is a peer dependency this
+> package re-exports from, never something a test file imports directly.
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.112` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=20`.
+Requires Effect v4 (`4.0.0-rc.113` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by
+`@effect/vitest@4.0.0-rc.113` and by `vitest@5.0.0` itself).
 
-`effect`, `@effect/platform-node` and `vitest` are peer dependencies — you install them, this package does not bundle
-its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file through. `it`, `layer`,
-`assert`, `flakyTest` and vitest's own re-exports (`describe`, `expect`, `vi`, …) come from `@effect-cucumber/vitest`
-directly — this package vendors and maintains its own `@effect/vitest`-equivalent surface (ADR-EC-059) rather than
-depending on the npm package, so there is nothing else to install for those.
+`effect`, `@effect/platform-node`, `@effect/vitest` and `vitest` are peer dependencies — you install them, this
+package does not bundle its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file
+through. `it`, `layer`, `assert`, `flakyTest` and vitest's own re-exports (`describe`, `expect`, `vi`, …) come from
+`@effect-cucumber/vitest` directly — this package re-exports `@effect/vitest`'s own surface from its own barrel
+(ADR-EC-059) rather than vendoring a replacement, so a consumer's test files still never import `@effect/vitest`
+by name.

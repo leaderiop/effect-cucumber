@@ -46,7 +46,10 @@ describe("it.effect.each runs every case with its own arg and its own Effect con
       // never the tuple-spread `it.each` would have produced and never `[args]`'s outer array
       // leaking through unwrapped.
       assert.strictEqual(args.length, 1)
-      const [item] = args
+      // `@effect/vitest`'s own `each` types the callback's rest args as `Array<T>`, not a `[T]`
+      // tuple, so TypeScript can't narrow `args[0]` past `T | undefined` on its own — the
+      // `assert.strictEqual(args.length, 1)` above is the real runtime proof of exactly one arg.
+      const item = args[0]!
       assert.include(cases, item)
       seen.push(item)
 

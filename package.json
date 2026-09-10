@@ -58,5 +58,10 @@
     "publint": "0.3.24",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/node": "catalog:"
+    }
   }
 }

@@ -5,7 +5,7 @@
   "description": "Black-box wall-clock benchmark suite comparing this library against the real @cucumber/cucumber npm package (ADR-EC-051). Not part of the published packages.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "check": "tsc -p tsconfig.json --noEmit",

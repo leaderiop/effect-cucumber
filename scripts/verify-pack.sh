@@ -93,10 +93,10 @@ assert_manifest() {
     // Pitfall 20, the reason this script exists.
     if (name === "@effect-cucumber/vitest") {
       const peers = m.peerDependencies === undefined ? {} : m.peerDependencies
-      // `@effect/vitest` dropped from this list with the peer itself (ADR-EC-056): this package
-      // now vendors and re-exports its own `@effect/vitest`-equivalent surface instead of
-      // depending on the npm package, so it is no longer part of the published peer contract.
-      for (const dep of ["effect", "@effect/platform-node"]) {
+      // `@effect/vitest` re-added to this list (ADR-EC-059, third Correction): un-vendored back
+      // into a real dependency at 4.0.0-rc.113, so it is part of the published peer contract again
+      // and needs the same pin-vs-range check as `effect`/`@effect/platform-node`.
+      for (const dep of ["effect", "@effect/platform-node", "@effect/vitest"]) {
         const v = peers[dep]
         if (v === undefined) {
           fails.push("peerDependencies." + dep + " is missing from the packed manifest.")
