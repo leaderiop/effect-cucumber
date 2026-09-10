@@ -17,6 +17,7 @@ import type { ParsedFeature } from "@effect-cucumber/gherkin"
 import * as Data from "effect/Data"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
+import type * as Schedule from "effect/Schedule"
 import type { FeatureDsl } from "./Dsl.ts"
 import { makeExcludedScenariosNotice, makeStaleRerunManifestKeyWarning } from "./Errors.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
@@ -73,6 +74,22 @@ export interface DescribeFeatureOptions {
    * does not disable or subsume the other.
    */
   readonly strict?: boolean
+  /**
+   * Customize the `Schedule` a `@retry`-tagged Scenario retries with, replacing `flakyTest`'s own
+   * fixed `Schedule.recurs(10)`/30s-cap default (ADR-EC-034) — Feature-wide, the SAME schedule for
+   * every `@retry` Scenario this `describeFeature` call registers, never per-Rule or per-Scenario
+   * (ADR-EC-058). Absent/`undefined` (the default): the existing `flakyTest` behavior, byte-for-byte
+   * unchanged.
+   *
+   * Read ONLY when a Scenario actually carries `@retry` — setting this option does not itself make an
+   * otherwise-untagged Scenario retry; it customizes the POLICY, never the DECISION (ADR-EC-034 still
+   * owns the decision, this ADR only widens what policy applies once it fires).
+   *
+   * Constrained to `Schedule.Schedule<any, any, never>`: a schedule needing its own service would have
+   * nowhere to be provided from at the `TestApi` seam — the same no-Layer constraint `shared` already
+   * has for the same reason.
+   */
+  readonly retry?: Schedule.Schedule<any, any, never>
 }
 
 /**
@@ -301,6 +318,9 @@ export function describeFeature(
     onEmitted,
     // Normalised here, the one place a caller-facing `undefined`/`false` is collapsed to a plain
     // boolean before crossing into `Runner.ts`'s own required field (ADR-EC-053).
-    strict: options?.strict === true
+    strict: options?.strict === true,
+    // ADR-EC-058: the same "absent option collapses to the no-op sentinel" normalisation as `strict`
+    // above, `null` rather than `false` since this field carries a value, not a decision.
+    retrySchedule: options?.retry ?? null
   })
 }

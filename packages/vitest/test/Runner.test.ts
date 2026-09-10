@@ -12,6 +12,7 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
+import * as Schedule from "effect/Schedule"
 import type * as Scope from "effect/Scope"
 import { makeUnusedStepDefinitionWarning, type UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import type { HookEntry, HookSet } from "../src/Hook.ts"
@@ -173,11 +174,14 @@ const noRuleScope = {
 
 // `strict: false` here is the ADR-EC-019 default every pre-existing test in this file exercises —
 // `strict: true` is opted into explicitly, per call, by the tests that need it (ADR-EC-053).
+// `retrySchedule: null` is ADR-EC-058's own "no describeFeature({ retry: ... }) option" default —
+// the dedicated `retrySchedule` describe block below overrides it explicitly, per call.
 const unfiltered = {
   tagFilter: noTagFilter,
   rerunFilter: Option.none(),
   rerunKeys: new Map<string, string>(),
-  strict: false
+  strict: false,
+  retrySchedule: null
 }
 
 // The one service every hook and step body in the `BeforeAllScenarios`/`AfterAllScenarios` describe blocks below
@@ -782,7 +786,16 @@ describe("the recording fake itself", () => {
     api.effect(
       "after",
       () => Effect.void,
-      { tags: [], skip: false, retry: false, contextFree: true, scenario: false, rerunKey: null, timeout: null }
+      {
+        tags: [],
+        skip: false,
+        retry: false,
+        retrySchedule: null,
+        contextFree: true,
+        scenario: false,
+        rerunKey: null,
+        timeout: null
+      }
     )
 
     // Without the `finally`, `after` is recorded at depth 1 and so is every record in every assertion that followed —
@@ -1531,6 +1544,34 @@ describe("@retry reaches EmitOptions.retry, and composes independently of @skip/
   })
 })
 
+describe("EmitOptions.retrySchedule carries describeFeature's own retry option, Feature-wide (ADR-EC-058)", () => {
+  it("reaches every Scenario's own EmitOptions BY REFERENCE, regardless of that Scenario's own @retry tag", () => {
+    const { api, records } = makeRecordingApi()
+    // A real Schedule, not a stand-in object: reference-identity is the load-bearing assertion below,
+    // and only a real `Schedule.Schedule` value could ever reach `VitestTestApi.ts`'s `Effect.retry`.
+    const customSchedule = Schedule.recurs(2)
+
+    emitFeature({
+      api,
+      plan: planFeature({ feature: retryTagged, definitions: browseIn("Retry tag") }),
+      layer,
+      hooks: emptyHooks,
+      ...noRuleScope,
+      ...unfiltered,
+      retrySchedule: customSchedule
+    })
+
+    const emitted = records.filter((record) => record.kind === "effect")
+    assert.strictEqual(emitted.length, 2)
+    for (const record of emitted) {
+      // BY REFERENCE: `emitFeature` must hand the SAME Schedule value through, never rebuild or copy
+      // it — the untagged "plain one" gets it too, proving this is genuinely Feature-wide data, not
+      // something derived from each Scenario's own `@retry` tag the way `retry` itself is.
+      assert.strictEqual(record.options?.retrySchedule, customSchedule)
+    }
+  })
+})
+
 describe("EmitOptions.scenario marks a real Scenario, not a warning node (ADR-EC-037, BEH-EC-029)", () => {
   it("marks every Scenario scenario:true and the trailing ⚠ warning node scenario:false — the seam data VitestTestApi.ts's Effect.Metric wrapper reads to avoid measuring a warning node", () => {
     const { api, records } = makeRecordingApi()
@@ -1642,7 +1683,8 @@ describe("a filtered-out Scenario produces no emission record at all", () => {
       tagFilter,
       rerunFilter: Option.none(),
       rerunKeys: new Map<string, string>(),
-      strict: false
+      strict: false,
+      retrySchedule: null
     })
     return { records, outcome }
   }
@@ -1739,7 +1781,8 @@ describe("a rerunFailedOnly filter composes after the tag filter, stamps EmitOpt
       tagFilter,
       rerunFilter: Option.fromNullOr(rerunFilter),
       rerunKeys: filteringKeys,
-      strict: false
+      strict: false,
+      retrySchedule: null
     })
     return { records, outcome }
   }
@@ -1855,7 +1898,8 @@ describe("a tag filter cannot change which step definitions are reported unused 
       tagFilter,
       rerunFilter: Option.none(),
       rerunKeys: new Map<string, string>(),
-      strict: false
+      strict: false,
+      retrySchedule: null
     })
     return records
   }
@@ -1949,7 +1993,8 @@ describe("the AfterAllScenarios teardown is a no-op when nothing was attempted, 
         tagFilter: makeTagFilter({ includeTags: ["@exampletag"] }),
         rerunFilter: Option.none(),
         rerunKeys: new Map<string, string>(),
-        strict: false
+        strict: false,
+        retrySchedule: null
       })
 
       assert.deepStrictEqual(titlesOf(records), [])

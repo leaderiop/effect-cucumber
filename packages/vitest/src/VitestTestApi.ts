@@ -76,6 +76,7 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Match from "effect/Match"
 import * as Option from "effect/Option"
+import type * as Schedule from "effect/Schedule"
 import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
@@ -127,16 +128,29 @@ const attachmentsLive = (ctx: TestContext): Layer.Layer<Attachments> =>
 /**
  * When `retry` is true (the Scenario carried `@retry`), hand back a NEW thunk that calls the
  * original `self` first — so `buildScenarioEffect`'s `Effect.provide(layer)` is already the
- * innermost step of the value it returns (INV-EC-002) — and only THEN wraps that whole value in
- * `flakyTest`, putting `Effect.retry` OUTSIDE the Layer build so it rebuilds fresh on every attempt,
- * not merely on the first (ADR-EC-034). `flakyTest(self())`, never a hoisted `flakyTest(self())`
- * shared across calls: the thunk itself must stay lazy, since `self` runs at TEST time, not at
- * registration time.
+ * innermost step of the value it returns (INV-EC-002) — and only THEN wraps that whole value in a
+ * retry, putting `Effect.retry` OUTSIDE the Layer build so it rebuilds fresh on every attempt, not
+ * merely on the first (ADR-EC-034). The thunk stays lazy either way: the original code below builds
+ * it, never a hoisted value shared across calls, since `self` runs at TEST time, not at registration
+ * time.
+ *
+ * `retrySchedule === null` (no `describeFeature({ retry: ... })` option, the default) keeps calling
+ * `flakyTest(self())` UNCHANGED — byte-for-byte the same wrap this file shipped before ADR-EC-058.
+ * A non-null `retrySchedule` builds the identical `scoped → sandbox → retry → orDie` shape by hand,
+ * parameterised by the CALLER's own `Schedule` instead of `flakyTest`'s internal
+ * `Schedule.recurs(10)`/30s-cap default — `flakyTest` itself takes no `Schedule` parameter, only an
+ * elapsed-time cap, so this is a genuinely separate combinator, not a `flakyTest` call with an extra
+ * argument.
  */
 const withRetry = (
   retry: boolean,
+  retrySchedule: Schedule.Schedule<any, any, never> | null,
   self: Parameters<TestApi["effect"]>[1]
-): Parameters<TestApi["effect"]>[1] => retry ? () => flakyTest(self()) : self
+): Parameters<TestApi["effect"]>[1] => {
+  if (!retry) return self
+  if (retrySchedule === null) return () => flakyTest(self())
+  return () => Effect.orDie(Effect.retry(Effect.sandbox(Effect.scoped(self())), retrySchedule))
+}
 
 /**
  * `self` is CALLED first — the identical "call first, wrap the result" shape `withRetry` above and
@@ -167,7 +181,7 @@ const makeDegradingEffect = (
   // Computed once, before either registration attempt below, so a possible tags-degradation retry
   // of the EMISSION reuses the identical retry-and-metrics-aware thunk rather than re-deriving it.
   // `withMetrics` wraps OUTSIDE `withRetry`'s result, never the reverse (ADR-EC-037).
-  const observedSelf = withMetrics(options.scenario, withRetry(options.retry, self))
+  const observedSelf = withMetrics(options.scenario, withRetry(options.retry, options.retrySchedule, self))
   // `EmitOptions.timeout` is `number | null` (ADR-EC-038's `rerunKey` convention: a required field,
   // explicit `null` for "no override"). `it.effect`'s real `TestOptions.timeout?: number` is an
   // OPTIONAL key under this repo's `exactOptionalPropertyTypes` — an explicit `timeout: undefined`

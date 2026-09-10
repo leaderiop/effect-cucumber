@@ -165,7 +165,8 @@ const emitAll = (collected: FeatureCollection, api: TestApi): void => {
     tagFilter: noTagFilter,
     rerunFilter: Option.none(),
     rerunKeys: new Map<string, string>(),
-    strict: false
+    strict: false,
+    retrySchedule: null
   })
 }
 

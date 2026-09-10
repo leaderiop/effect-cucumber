@@ -16,6 +16,7 @@
  * `@effect/vitest`'s real `it.effect(name, self, TestOptions)` timeout parameter with it.
  */
 import type * as Effect from "effect/Effect"
+import type * as Schedule from "effect/Schedule"
 import type * as Scope from "effect/Scope"
 
 /**
@@ -29,12 +30,19 @@ import type * as Scope from "effect/Scope"
  * plain boolean, `true` for the two real per-Scenario emissions `Runner.ts`'s Feature/Rule loops make
  * and `false` for its trailing unused-step-definition warning nodes — the ONE other caller of
  * `api.effect` — so `VitestTestApi.ts`'s `Effect.Metric` wrapper can measure a real Scenario's
- * terminal outcome without also measuring a warning node's always-`Effect.void` one.
+ * terminal outcome without also measuring a warning node's always-`Effect.void` one. `retrySchedule`
+ * (ADR-EC-058, extends ADR-EC-034) is the SAME Feature-wide value on every emission one `emitFeature`
+ * call makes — `describeFeature`'s own `retry` registration option, or `null` when absent — read only
+ * when `retry` is `true`: it customizes the POLICY a `@retry`-tagged Scenario retries with, it does
+ * not itself make an untagged Scenario retry. `Schedule.Schedule<any, any, never>` mirrors
+ * `flakyTest`'s own no-service-requirement constraint — a schedule needing a Layer would have nowhere
+ * to be provided from at this seam.
  */
 export interface EmitOptions {
   readonly tags: ReadonlyArray<string>
   readonly skip: boolean
   readonly retry: boolean
+  readonly retrySchedule: Schedule.Schedule<any, any, never> | null
   readonly contextFree: boolean
   readonly scenario: boolean
   readonly rerunKey: string | null
