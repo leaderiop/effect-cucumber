@@ -12,6 +12,10 @@
  *   `test/StepRegistrar.types.ts`) and, for a step inside an Outline row, an `ExamplesRow` appended
  *   after those (BEH-EC-024, `Plan.ts`'s `planStep`) — all three share the one unchecked tail slot,
  *   never inferred from the pattern literal.
+ * - `StepRegistrar`'s SECOND overload (ADR-EC-057) is additive: a `decode` argument between the
+ *   pattern and the body, typing the decoded `table`/`docstring` value precisely as the body's own
+ *   trailing parameter instead of `StepParams<P>`'s unchecked-`any` tail. The two-argument overload
+ *   above is untouched — a step never using `decode` compiles and runs exactly as before.
  * - `use`'s parameter is an anonymous structural type whose FIRST property is the `requires`
  *   witness; naming `StepModule<ROut>` there loses the diagnostic (tsgo-gate step-module fixtures).
  * - `BackgroundDsl` is `Given`/`And` only (ADR-EC-017); once-per-Feature hooks are typed by the
@@ -42,6 +46,7 @@
 import type { StepArgs } from "@effect-cucumber/gherkin"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
+import type * as Schema from "effect/Schema"
 import type * as Scope from "effect/Scope"
 import type { Attachments } from "./Attachments.ts"
 
@@ -50,12 +55,62 @@ import type { Attachments } from "./Attachments.ts"
  */
 export type StepParams<P extends string> = [...StepArgs<P, Record<string, any>>, ...ReadonlyArray<any>]
 
+/**
+ * ADR-EC-057: which trailing step argument `StepRegistrar`'s second overload decodes through
+ * `Schema` before the step body runs — `table` (a DataTable) or `docstring` (a DocString), mirroring
+ * a step's own Gherkin shape, which carries at most one of either. Exactly one key: a fresh object
+ * literal carrying both is rejected by excess-property checking against whichever member it's
+ * checked against first.
+ */
+export type DecodeStepArgument<S extends Schema.Constraint> = { readonly table: S } | { readonly docstring: S }
+
+/**
+ * The step body's own decoded parameter type, given a `DecodeStepArgument`. `table` decodes to
+ * `ReadonlyArray<S["Type"]>`, never a bare `S["Type"]`: `decodeHashes` (which the `table` runtime
+ * path delegates to, `DecodeStepArgument.ts`) always wraps its row schema in `Schema.Array` itself
+ * (ADR-EC-008) — a real bug this ADR's own `spec/behaviors/06-datatable-and-docstring-arguments.md`
+ * worked example caught via `verify:doc-examples` before it shipped: `S["Type"]` alone described a
+ * single row, not the array `decodeHashes` actually produces. `docstring` decodes to a bare
+ * `S["Type"]`, one level shallower, mirroring `decodeDocString`'s own shape (ADR-EC-046).
+ */
+type DecodedStepArgument<D> = D extends { readonly table: infer S extends Schema.Constraint } ? ReadonlyArray<S["Type"]>
+  : D extends { readonly docstring: infer S extends Schema.Constraint } ? S["Type"]
+  : never
+
+/**
+ * The decoding services a `DecodeStepArgument`'s schema requires, propagated into the step body's
+ * required context (mirroring `DecodedStepArgument` above, but this half is identical for `table`
+ * and `docstring` — only the decoded VALUE shape differs between the two, never the services shape).
+ */
+type DecodedStepArgumentServices<D> = D extends { readonly table: infer S extends Schema.Constraint } ?
+  S["DecodingServices"]
+  : D extends { readonly docstring: infer S extends Schema.Constraint } ? S["DecodingServices"]
+  : never
+
 export interface StepRegistrar<ROut> {
   <P extends string, A, E>(
     pattern: P,
     fn:
       | ((...p: StepParams<P>) => Effect.gen.Return<A, E, ROut | Scope.Scope | Attachments>)
       | ((...p: StepParams<P>) => Effect.Effect<A, E, ROut | Scope.Scope | Attachments>)
+  ): void
+  /**
+   * ADR-EC-057: declare the DataTable's/DocString's `Schema` alongside the pattern, and the step body
+   * receives the already-decoded value as its own trailing parameter instead of the raw wrapper — no
+   * `yield* decodeHashes(...)`/`decodeDocString(...)` call inside the body. The decode failure
+   * (`DataTableError`/`DocStringError`, unchanged) still reaches the step's own inferred `E` — it just
+   * has no explicit call site left to point at, which is the whole point of "unified decode."
+   */
+  <P extends string, A, E, D extends DecodeStepArgument<any>>(
+    pattern: P,
+    decode: D,
+    fn:
+      | ((
+        ...p: [...StepArgs<P, Record<string, any>>, DecodedStepArgument<D>, ...ReadonlyArray<any>]
+      ) => Effect.gen.Return<A, E, ROut | Scope.Scope | Attachments | DecodedStepArgumentServices<D>>)
+      | ((
+        ...p: [...StepArgs<P, Record<string, any>>, DecodedStepArgument<D>, ...ReadonlyArray<any>]
+      ) => Effect.Effect<A, E, ROut | Scope.Scope | Attachments | DecodedStepArgumentServices<D>>)
   ): void
 }
 

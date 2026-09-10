@@ -20,8 +20,10 @@ import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import { captureCallSite, formatCallSite } from "./CallSite.ts"
+import { wrapWithDecode } from "./DecodeStepArgument.ts"
 import type {
   BackgroundDsl,
+  DecodeStepArgument,
   FeatureDsl,
   RuleDsl,
   ScenarioDsl,
@@ -109,6 +111,7 @@ const resolveRuleId = (feature: ParsedFeature, name: string): string =>
     onNone: () => `${unregisteredRulePrefix}${name}`,
     onSome: (rule) => rule.id
   })
+
 /**
  * The one implementation both public entry points delegate to.
  */
@@ -134,11 +137,21 @@ export const collect = (
   const scenarioLayers = new Map<string, ErasedExtraLayer>()
 
   // One registrar per keyword: normalise the body through `Step.ts`, then record it with its call site.
-  const registrar = (keyword: StepKeyword): StepRegistrar<any> => (pattern, fn) => {
-    // The `captureCallSite` call below MUST stay INSIDE this arrow — the one a test author calls as
-    // `Given`/`When`/`Then`/`And`/`But`.
-    registry.register(keyword, pattern, register(pattern, fn), captureCallSite())
-  }
+  // `StepRegistrar`'s second, `decode`-carrying overload (ADR-EC-057) arrives here as a real THIRD
+  // runtime argument — `maybeFn` is `undefined` for every call the DSL's own first (two-argument)
+  // overload produces, which is what discriminates the two shapes; a `decode` argument is never
+  // itself a function, so this never misreads one call shape as the other.
+  const registrar =
+    (keyword: StepKeyword): StepRegistrar<any> =>
+    (pattern: string, fnOrDecode: unknown, maybeFn?: (...p: ReadonlyArray<any>) => any) => {
+      // The `captureCallSite` call below MUST stay INSIDE this arrow — the one a test author calls as
+      // `Given`/`When`/`Then`/`And`/`But`.
+      const definedAt = captureCallSite()
+      const body = maybeFn === undefined
+        ? register(pattern, fnOrDecode as any)
+        : wrapWithDecode(fnOrDecode as DecodeStepArgument<any>, register(pattern, maybeFn))
+      registry.register(keyword, pattern, body, definedAt)
+    }
 
   // Mirrors `registrar` above, minus `pattern` and minus a call-site capture. Shared by all SIX hook
   // kinds at the `dsl` object literal below: `BeforeAllScenarios`/`AfterAllScenarios` are typed
