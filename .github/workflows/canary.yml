@@ -35,3 +35,10 @@ jobs:
       - run: pnpm typecheck:test
       - run: pnpm test
       - run: pnpm test:shuffle
+      # Separate concern from the rc bump above: this checks whether the two files this repo
+      # VENDORED instead of depending on (ADR-EC-059) have moved upstream — a drift no
+      # `pnpm update` or dependency-bump PR would ever surface, since neither vendored package is
+      # a real dependency anywhere. Same "drift detection, not a release gate" posture as this
+      # whole workflow: a red run here means a re-sync needs real work, found before it's a
+      # surprise. See scripts/verify-vendor-drift.mjs.
+      - run: pnpm verify:vendor-drift

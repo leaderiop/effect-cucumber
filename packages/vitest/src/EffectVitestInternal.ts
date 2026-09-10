@@ -31,6 +31,11 @@
  * imports the other, only `EffectVitestTypes.ts`, keeping every package's `src` tree acyclic. See
  * `EffectVitestTypes.ts`'s own header for why upstream's single-file mutual reference had to be
  * broken up at all.
+ *
+ * `scripts/vendor-provenance.json`'s `effectVitestInternal` entry is this same provenance in
+ * machine-readable form, read by the weekly `scripts/verify-vendor-drift.mjs` gate — see
+ * ADR-EC-059's Correction section for why a version bump alone does not mean it is safe to
+ * un-vendor this file.
  */
 
 import * as Cause from "effect/Cause"

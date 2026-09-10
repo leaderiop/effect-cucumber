@@ -7,7 +7,7 @@
 // the whole point is a throwaway install this repo's own rc pin never sees. See the "Under
 // consideration" -> canary entry this closes in spec/roadmap.md.
 //
-// @effect/vitest dropped from this list with the catalog entries themselves (ADR-EC-056): this
+// @effect/vitest dropped from this list with the catalog entries themselves (ADR-EC-059): this
 // repo no longer depends on it, having vendored the pieces it needs instead.
 //
 // Usage: node scripts/canary-bump-effect-rc.mjs
