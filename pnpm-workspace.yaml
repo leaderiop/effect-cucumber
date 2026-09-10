@@ -19,7 +19,7 @@ catalog:
   # depends on neither this nor any other concrete platform implementation
   # (enforced by scripts/verify-no-runner-dep.sh).
   "@effect/platform-node": 4.0.0-rc.112
-  # `@effect/vitest` and `@vitest/runner` are DELIBERATELY absent from this catalog (ADR-EC-056):
+  # `@effect/vitest` and `@vitest/runner` are DELIBERATELY absent from this catalog (ADR-EC-059):
   # `@effect/vitest`'s last published release (`4.0.0-rc.112`) hard-caps its own peer range below
   # vitest 5, and `@vitest/runner` has no stable vitest-5 release at all (its `latest` dist-tag is
   # still `4.1.11`). `packages/vitest/src/EffectVitest.ts`/`EffectVitestInternal.ts` and
@@ -30,7 +30,7 @@ catalog:
   # above so pnpm always resolves a matching provider/runner pair.
   "@vitest/coverage-v8": ^5.0.0
   typescript: ^7.0.2
-  # Bumped from ^20.0.0 alongside the vitest 5 upgrade (ADR-EC-056): vitest@5.0.0 itself declares a
+  # Bumped from ^20.0.0 alongside the vitest 5 upgrade (ADR-EC-059): vitest@5.0.0 itself declares a
   # peer of `@types/node: "^22.0.0 || >=24.0.0"`. Types only — this repo's own runtime floor stays
   # `"engines": { "node": ">=20" }` in each package.json, unaffected by this devDependency-only bump.
   "@types/node": ^22.0.0
@@ -44,7 +44,7 @@ catalogs:
     # The wrapped `loadFeature` (ADR-EC-024) runs on a ManagedRuntime over `NodeFileSystem.layer`,
     # so the consumer installs the concrete platform package beside `effect`.
     "@effect/platform-node": ^4.0.0-rc.112
-    # `@effect/vitest` dropped from this catalog with the plain one above (ADR-EC-056) — consumers
+    # `@effect/vitest` dropped from this catalog with the plain one above (ADR-EC-059) — consumers
     # now import `it`/`layer`/`assert`/etc. from `@effect-cucumber/vitest` itself, never
     # `@effect/vitest` directly, so it is no longer part of the published peer contract either.
     vitest: ">=5.0.0 <6.0.0"

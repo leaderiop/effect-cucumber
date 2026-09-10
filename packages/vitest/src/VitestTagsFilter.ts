@@ -25,6 +25,9 @@
  * patterns/parens) in a later major, re-extract this from that version's own `@vitest/runner` (or
  * wherever it lives by then) rather than hand-editing this copy out of sync with Vitest's own
  * behavior — `TagExpression.ts`'s own tests exercise this grammar end-to-end and will catch drift.
+ *
+ * `scripts/vendor-provenance.json`'s `vitestTagsFilter` entry is this same provenance in
+ * machine-readable form, read by the weekly `scripts/verify-vendor-drift.mjs` gate.
  */
 
 /**

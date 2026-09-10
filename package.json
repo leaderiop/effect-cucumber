@@ -40,6 +40,7 @@
     "verify:api-surface": "bash scripts/verify-api-surface.sh",
     "verify:doc-examples": "bash scripts/verify-doc-examples.sh",
     "verify:no-planning-refs": "bash scripts/verify-no-planning-refs.sh",
+    "verify:vendor-drift": "node scripts/verify-vendor-drift.mjs",
     "changeset": "changeset",
     "release": "pnpm build && changeset publish"
   },
