@@ -380,6 +380,40 @@ export const registerUsers = Effect.fn("registerUsers")(function*(table: DataTab
 })
 ```
 
+### Unified decode (ADR-EC-057)
+
+`Given`/`When`/`Then` accept a `decode` argument between the pattern and the body, an alternative to
+the manual `yield* decodeHashes(...)`/`decodeDocString(...)` call above: the body receives the
+already-decoded value as its own trailing parameter, and never sees the raw `DataTable`/`DocString`
+wrapper at all.
+
+```typescript
+import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
+import * as Schema from "effect/Schema"
+
+const feature = await loadFeature("./users.feature")
+
+const User = Schema.Struct({ name: Schema.String, email: Schema.String })
+const Payload = Schema.fromJsonString(Schema.Struct({ ok: Schema.Boolean }))
+
+describeFeature(feature, Layer.empty, ({ Given }) => {
+  // `users` is `ReadonlyArray<{ name: string; email: string }>` directly — the SAME DataTableError
+  // this file's worked example above shows still fails the step on a bad row, just with no
+  // `yield* decodeHashes(...)` call site to name it.
+  Given("the following users:", { table: User }, function*(users) {
+    yield* Effect.forEach(users, (user) => Effect.log(user.email))
+  })
+
+  // `{ docstring: Schema }` is the DocString counterpart, one level shallower — no row/column to
+  // locate, mirroring decodeDocString's own shape.
+  Given("the payload:", { docstring: Payload }, function*(payload) {
+    yield* Effect.log(payload.ok)
+  })
+})
+```
+
 ---
 
 _Previous: [05 — Step matching and parameter types](./05-step-matching-and-parameter-types.md)_

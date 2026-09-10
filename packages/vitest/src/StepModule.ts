@@ -5,7 +5,8 @@
  */
 import * as Effect from "effect/Effect"
 import { captureCallSite } from "./CallSite.ts"
-import type { ModuleStep, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
+import { wrapWithDecode } from "./DecodeStepArgument.ts"
+import type { DecodeStepArgument, ModuleStep, ScenarioDsl, StepRegistrar } from "./Dsl.ts"
 import { register } from "./Step.ts"
 
 export interface StepModule<R> {
@@ -18,9 +19,17 @@ export interface StepModule<R> {
  */
 export const defineSteps = <R = never>(define: (dsl: ScenarioDsl<R>) => void): StepModule<R> => {
   const steps: Array<ModuleStep> = []
-  const registrar = (keyword: ModuleStep["keyword"]): StepRegistrar<R> => (pattern, fn) => {
-    steps.push({ keyword, pattern, body: register(pattern, fn), definedAt: captureCallSite() })
-  }
+  // ADR-EC-057: symmetric with `Collect.ts`'s own registrar — a module step gets the same `decode`
+  // overload a Feature/Rule/Scenario-level step does, since both share the identical `ScenarioDsl<R>`
+  // type. `maybeFn === undefined` is the same two-vs-three-argument discriminator `Collect.ts` uses.
+  const registrar =
+    (keyword: ModuleStep["keyword"]): StepRegistrar<R> =>
+    (pattern: string, fnOrDecode: unknown, maybeFn?: (...p: ReadonlyArray<any>) => any) => {
+      const body = maybeFn === undefined
+        ? register(pattern, fnOrDecode as any)
+        : wrapWithDecode(fnOrDecode as DecodeStepArgument<any>, register(pattern, maybeFn))
+      steps.push({ keyword, pattern, body, definedAt: captureCallSite() })
+    }
   const dsl: ScenarioDsl<R> = {
     Given: registrar("Given"),
     When: registrar("When"),

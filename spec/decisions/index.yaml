@@ -161,3 +161,6 @@ entries:
   - id: "ADR-EC-056"
     file: "056-withfailurelocation-combinator-unifies-the-step-hook-wrap.md"
     title: "One withFailureLocation combinator replaces the duplicated step/hook Effect.mapError/catchDefect wrap — extends ADR-EC-033 and ADR-EC-052, no observable behavior change"
+  - id: "ADR-EC-057"
+    file: "057-unified-decode-table-docstring-schema-alongside-the-pattern.md"
+    title: "Given/When/Then gain a decode overload — a DataTable/DocString's Schema declared alongside the pattern, decoded before the step body runs"
