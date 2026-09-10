@@ -14,6 +14,8 @@
  * ADR-EC-052/BEH-EC-033: `runHookBatch` also attaches a `HookFailureLocation` `.cause` to every
  * failing/dying entry before it can propagate — the hook counterpart of `ScenarioEffect.ts`'s own
  * `withStepFailureLocation`, closing ADR-EC-033's own "a hook still carries no location" carve-out.
+ * Both now share one Effect-level wrap, `Errors.ts`'s `withFailureLocation` (ADR-EC-056), instead of
+ * each hand-copying its own `Effect.mapError`/`Effect.catchDefect` pair.
  * The `kind` a batch is being run for is a new LEADING parameter here: every call site already
  * statically knows which `HookSet` key it is pulling, so there is nothing to infer.
  */
@@ -22,7 +24,7 @@ import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import { unrecordedLocation } from "./CallSite.ts"
-import { attachHookFailureLocation } from "./Errors.ts"
+import { attachHookFailureLocation, withFailureLocation } from "./Errors.ts"
 import type { HookDefinition, HookKind } from "./HookRegistry.ts"
 import { compileHookTagExpr, type TagMatcher } from "./HookTagExpression.ts"
 import type { DefinitionSite } from "./Registry.ts"
@@ -136,14 +138,14 @@ export const mergeHookSets = (feature: HookSet, rule: HookSet): HookSet => ({
  * never contributes a failure to combine or drop; it is excluded BEFORE the loop reaches it, not a
  * batch member whose result is discarded afterward.
  *
- * Every surviving entry's body is wrapped so a `HookFailureLocation` naming `kind` and the entry's
- * OWN `definedAt` is attached as `.cause` before its failure/defect can propagate (ADR-EC-052,
- * BEH-EC-033) — covering BOTH lanes a hook body can fail through, mirroring
- * `ScenarioEffect.ts`'s `withStepFailureLocation`: a typed `Effect.fail` (`Effect.mapError`) and a
- * thrown exception, which Effect's runtime turns into a defect (`Effect.catchDefect`). An entry with
- * no recorded `definedAt` (a raw test fixture, or the rare case `captureCallSite()` found nothing)
- * still gets a `HookFailureLocation`, naming the shared `unrecordedLocation` wording and line `0`
- * rather than skipping the wrap.
+ * Every surviving entry's body is wrapped, via `Errors.ts`'s shared `withFailureLocation` combinator
+ * (ADR-EC-056), so a `HookFailureLocation` naming `kind` and the entry's OWN `definedAt` is attached
+ * as `.cause` before its failure/defect can propagate (ADR-EC-052, BEH-EC-033) — the identical
+ * combinator `ScenarioEffect.ts`'s `withStepFailureLocation` calls, covering BOTH lanes a hook body
+ * can fail through: a typed `Effect.fail` and a thrown exception, which Effect's runtime turns into a
+ * defect. An entry with no recorded `definedAt` (a raw test fixture, or the rare case
+ * `captureCallSite()` found nothing) still gets a `HookFailureLocation`, naming the shared
+ * `unrecordedLocation` wording and line `0` rather than skipping the wrap.
  *
  * @param kind - which `HookSet` key `entries` was pulled from — every call site already knows this
  * statically, so it is a plain leading argument, never inferred
@@ -167,10 +169,7 @@ export const runHookBatch = Effect.fnUntraced(function*(
       file: entry.definedAt?.file ?? unrecordedLocation,
       line: entry.definedAt?.line ?? 0
     }
-    const located = entry.body().pipe(
-      Effect.mapError((error) => attachHookFailureLocation(error, location)),
-      Effect.catchDefect((defect) => Effect.die(attachHookFailureLocation(defect, location)))
-    )
+    const located = withFailureLocation((value) => attachHookFailureLocation(value, location))(entry.body())
     const exit = yield* Effect.exit(located)
     if (Exit.isFailure(exit)) {
       failures.push(exit.cause)

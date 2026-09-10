@@ -7,9 +7,13 @@
  * `HookFailureLocation`/`attachHookFailureLocation` are its hook counterpart (ADR-EC-052, closing
  * ADR-EC-033's own hook carve-out) — a different shape from everything else here, and documented
  * separately below rather than folded into this header. Both share one private mutate-and-wrap
- * helper (`attachFailureLocation`), generic over which concrete located-error class to construct.
+ * helper (`attachFailureLocation`), generic over which concrete located-error class to construct,
+ * AND one public Effect-level wrap (`withFailureLocation`) that `ScenarioEffect.ts` and `Hook.ts`
+ * both call instead of each hand-copying its own `Effect.mapError`/`Effect.catchDefect` pair
+ * (ADR-EC-056) — a pure refactor of ADR-EC-033/ADR-EC-052's own mechanism, not a behavior change.
  */
 import * as Data from "effect/Data"
+import * as Effect from "effect/Effect"
 import * as Match from "effect/Match"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
@@ -125,6 +129,29 @@ export const attachHookFailureLocation = (
   value: unknown,
   location: { readonly hookKind: HookKind; readonly file: string; readonly line: number }
 ): unknown => attachFailureLocation(value, (cause) => makeHookFailureLocation({ ...location, cause }))
+
+/**
+ * The one Effect-level wrap a step or hook body's failure/defect passes through before it can
+ * propagate — previously hand-copied identically at both call sites (`ScenarioEffect.ts`'s
+ * `withStepFailureLocation` and `Hook.ts`'s `runHookBatch`), now one shared combinator (ADR-EC-056).
+ * Covers BOTH lanes a body can actually fail through: a typed `Effect.fail` (`Effect.mapError`) and a
+ * thrown exception, which Effect's own runtime turns into a defect (`Effect.catchDefect`) — neither
+ * branch touches an interruption, which is the correct silence, since an interrupted body was never
+ * really "the" failure to attribute a location to.
+ *
+ * Generic over `attach` rather than over which located-error class gets built: the caller supplies
+ * `attachStepFailureLocation`/`attachHookFailureLocation` (or any future call site's own attach
+ * function) already partially applied to its own location, so this combinator itself never branches
+ * on step-vs-hook.
+ *
+ * @param attach - builds the located error given the pre-existing value (see `attachFailureLocation`)
+ */
+export const withFailureLocation =
+  (attach: (value: unknown) => unknown) => <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, unknown, R> =>
+    effect.pipe(
+      Effect.mapError((error) => attach(error)),
+      Effect.catchDefect((defect) => Effect.die(attach(defect)))
+    )
 
 /**
  * Why a `StepMatchError` was raised.

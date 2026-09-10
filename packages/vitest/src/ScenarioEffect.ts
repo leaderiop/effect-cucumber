@@ -20,26 +20,20 @@
 import * as Effect from "effect/Effect"
 import * as Match from "effect/Match"
 import type * as Scope from "effect/Scope"
-import { attachStepFailureLocation } from "./Errors.ts"
+import { attachStepFailureLocation, withFailureLocation } from "./Errors.ts"
 import { type HookSet, runHookBatch } from "./Hook.ts"
 import type { ErasedExtraLayer, ResolvedStep, ScenarioPlan } from "./Plan.ts"
 
 /**
  * Attach `step`'s own pattern/`.feature` location to whatever it fails or dies with, before either
- * can propagate past this point (ADR-EC-033). Covers BOTH channels a real step body can
- * fail through: a typed `Effect.fail` (`Effect.mapError`) and a thrown exception, which Effect's
- * own runtime turns into a DEFECT rather than a typed failure (`Effect.catchDefect`) — the more
- * common of the two in practice, since `assert.strictEqual` and friends THROW rather than
- * `yield* Effect.fail(...)`. Neither branch touches an interruption, which is the correct silence:
- * an interrupted step was never really "the" failure to attribute a location to.
+ * can propagate past this point (ADR-EC-033), via the shared `withFailureLocation` combinator
+ * (ADR-EC-056) both this and `Hook.ts`'s `runHookBatch` call — this wrapper only supplies WHICH
+ * located-error to attach (`attachStepFailureLocation`) and the step's own location.
  */
 const withStepFailureLocation =
   (step: ResolvedStep) => <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, unknown, R> => {
     const location = { step: step.pattern, file: step.uri, line: step.line }
-    return effect.pipe(
-      Effect.mapError((error) => attachStepFailureLocation(error, location)),
-      Effect.catchDefect((defect) => Effect.die(attachStepFailureLocation(defect, location)))
-    )
+    return withFailureLocation((value) => attachStepFailureLocation(value, location))(effect)
   }
 
 /**

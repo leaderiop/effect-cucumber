@@ -158,3 +158,6 @@ entries:
   - id: "ADR-EC-055"
     file: "055-data-taggederror-vs-schema-taggederror-vs-data-taggedclass.md"
     title: "Schema.TaggedError only for values that flow through Effect's typed error channel; Data.TaggedError for synchronous never-decoded throws; Data.TaggedClass for tagged data that is never thrown at all"
+  - id: "ADR-EC-056"
+    file: "056-withfailurelocation-combinator-unifies-the-step-hook-wrap.md"
+    title: "One withFailureLocation combinator replaces the duplicated step/hook Effect.mapError/catchDefect wrap — extends ADR-EC-033 and ADR-EC-052, no observable behavior change"

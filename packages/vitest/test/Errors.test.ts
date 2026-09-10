@@ -3,7 +3,10 @@
  *
  * Carries: ADR-EC-022, BEH-EC-013.
  */
-import { describe, expect, it } from "@effect/vitest"
+import { assert, describe, expect, it } from "@effect/vitest"
+import * as Cause from "effect/Cause"
+import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import { inspect } from "node:util"
 import {
@@ -14,7 +17,8 @@ import {
   makeUnusedStepDefinitionWarning,
   StepMatchError,
   type UndeclaredTagWarningReason,
-  type UnusedStepDefinitionWarningReason
+  type UnusedStepDefinitionWarningReason,
+  withFailureLocation
 } from "../src/Errors.ts"
 
 // Runs `action` and returns whatever it threw.
@@ -548,4 +552,67 @@ describe("UnknownContainerWarning", () => {
     expect(withoutKnown.message).toContain("no Rule named \"Limts\" exists in this Feature (known: none)")
     expect(withoutKnown.message).toContain("steps, Background and hooks")
   })
+})
+
+// A stand-in `attach`, unrelated to `StepFailureLocation`/`HookFailureLocation`: `withFailureLocation`
+// is generic over `attach` and never step-vs-hook-aware itself, so pinning its contract against either
+// real located-error class would test one caller, not the combinator.
+const locatingAttach = (value: unknown): { located: unknown } => ({ located: value })
+
+// ADR-EC-056: the shared Effect-level wrap `ScenarioEffect.ts` and `Hook.ts` both call.
+describe("withFailureLocation", () => {
+  it.effect("covers the typed Effect.fail lane: attach receives the failure, its result becomes the new failure", () =>
+    Effect.gen(function*() {
+      const exit = yield* Effect.exit(withFailureLocation(locatingAttach)(Effect.fail("boom")))
+      assert.isTrue(Exit.isFailure(exit))
+      const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty
+      assert.isTrue(Cause.hasFails(cause))
+      assert.isFalse(Cause.hasDies(cause))
+      assert.deepStrictEqual(Cause.squash(cause), { located: "boom" })
+    }))
+
+  it.effect("covers the thrown-defect lane: attach receives the defect, its result re-DIES rather than fails", () =>
+    Effect.gen(function*() {
+      const exit = yield* Effect.exit(withFailureLocation(locatingAttach)(Effect.die("kaboom")))
+      assert.isTrue(Exit.isFailure(exit))
+      const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty
+      // Still a die, not converted into a typed failure — `Effect.catchDefect`'s own re-die.
+      assert.isTrue(Cause.hasDies(cause))
+      assert.isFalse(Cause.hasFails(cause))
+      assert.deepStrictEqual(Cause.squash(cause), { located: "kaboom" })
+    }))
+
+  it.effect("never touches interruption: an interrupted effect stays interrupted, attach is never called", () =>
+    Effect.gen(function*() {
+      let calls = 0
+      const countingAttach = (value: unknown) => {
+        calls++
+        return { located: value }
+      }
+      const exit = yield* Effect.exit(withFailureLocation(countingAttach)(Effect.interrupt))
+      assert.isTrue(Exit.isFailure(exit))
+      const cause = Exit.isFailure(exit) ? exit.cause : Cause.empty
+      assert.isTrue(Cause.hasInterruptsOnly(cause))
+      assert.strictEqual(calls, 0)
+    }))
+
+  it.effect("is generic over attach: two independently-constructed wrappers never cross-contaminate", () =>
+    Effect.gen(function*() {
+      const seen: { a?: unknown; b?: unknown } = {}
+      const attachA = (value: unknown) => {
+        seen.a = value
+        return "A"
+      }
+      const attachB = (value: unknown) => {
+        seen.b = value
+        return "B"
+      }
+      const exitA = yield* Effect.exit(withFailureLocation(attachA)(Effect.fail("first")))
+      const exitB = yield* Effect.exit(withFailureLocation(attachB)(Effect.fail("second")))
+      const causeA = Exit.isFailure(exitA) ? exitA.cause : Cause.empty
+      const causeB = Exit.isFailure(exitB) ? exitB.cause : Cause.empty
+      assert.strictEqual(Cause.squash(causeA), "A")
+      assert.strictEqual(Cause.squash(causeB), "B")
+      assert.deepStrictEqual(seen, { a: "first", b: "second" })
+    }))
 })

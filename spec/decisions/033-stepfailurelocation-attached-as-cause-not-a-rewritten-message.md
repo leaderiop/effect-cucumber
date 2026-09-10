@@ -174,3 +174,13 @@ assumed from the sketch's prose.
 > this correction is deleted or rewritten — the Decision and the rest of the Negative/Consequences
 > section stand as originally written for what THIS ADR itself shipped (the step-shaped fix); only the
 > one carved-out gap this correction names is now closed, by a separate ADR.
+
+---
+
+> **Correction (2026-09-10, extended by [ADR-EC-056](056-withfailurelocation-combinator-unifies-the-step-hook-wrap.md)):**
+> the **Decision** section above shows `withStepFailureLocation` calling `Effect.mapError`/
+> `Effect.catchDefect` inline. As of ADR-EC-056, it instead calls a shared `withFailureLocation`
+> combinator (`Errors.ts`) that `Hook.ts`'s `runHookBatch` also calls, rather than each hand-copying
+> the identical two-line wrap. This is a pure internal refactor: `attachStepFailureLocation`'s
+> signature and every observable behavior described above are unchanged, proven by this ADR's own
+> tests passing unmodified.
