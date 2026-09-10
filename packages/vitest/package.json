@@ -32,7 +32,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "publishConfig": {
     "access": "public",
@@ -53,11 +53,13 @@
   "peerDependencies": {
     "effect": "catalog:peer",
     "@effect/platform-node": "catalog:peer",
+    "@effect/vitest": "catalog:peer",
     "vitest": "catalog:peer"
   },
   "devDependencies": {
     "effect": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
     "vitest": "catalog:",
     "@types/node": "catalog:"
   }

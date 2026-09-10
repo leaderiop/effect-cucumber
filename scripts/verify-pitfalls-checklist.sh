@@ -584,10 +584,9 @@ for readme in "$ROOT_README" "$VITEST_README"; do
   grep -qF -- "effect@rc" <<<"$LINES" ||
     fail "P-17: $readme's install line does not carry \`effect@rc\`:${LINES}. npm's \`latest\` tag for effect still points at the v3 line, so an install without @rc gets a consumer Effect v3 and a wall of type errors against a v4-only library."
   grep -qE '( |^)vitest($| )' <<<"$LINES" ||
-    fail "P-17: $readme's install line does not carry \`vitest\`:${LINES}. Bare, no @rc: vitest 5 is npm's \`latest\` (ADR-EC-056)."
-  if grep -qF -- "@effect/vitest" <<<"$LINES"; then
-    fail "P-17: $readme's install line names \`@effect/vitest\`:${LINES}. ADR-EC-056 removed that peer dependency — \`@effect-cucumber/vitest\` now re-exports its own \`it\`/\`layer\`/\`assert\`/etc. directly, so an install line naming it documents a dependency that no longer exists."
-  fi
+    fail "P-17: $readme's install line does not carry \`vitest\`:${LINES}. Bare, no @rc: vitest 5 is npm's \`latest\` (ADR-EC-059)."
+  grep -qF -- "@effect/vitest@rc" <<<"$LINES" ||
+    fail "P-17: $readme's install line does not carry \`@effect/vitest@rc\`:${LINES}. ADR-EC-059's third Correction re-added that peer dependency at \`4.0.0-rc.113\` — \`@effect-cucumber/vitest\` re-exports its surface, but a consumer still installs it directly, so an install line missing it under-documents a real peer dependency."
 done
 
 GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
@@ -596,7 +595,7 @@ GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
 if grep -qE '(^| )effect@|@effect/vitest' <<<"$GHERKIN_LINES"; then
   fail "P-17: $GHERKIN_README's install line names effect or @effect/vitest:${GHERKIN_LINES}. It must name NEITHER — that package declares neither as something a consumer installs alongside it, and an install line that says otherwise is documentation of a dependency that does not exist."
 fi
-echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect and bare vitest, name no @effect/vitest, and the gherkin README names neither effect nor @effect/vitest"
+echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect, @effect/vitest, and bare vitest; the gherkin README names neither effect nor @effect/vitest"
 
 [[ -f "$RC_BUMP_DOC" ]] ||
  fail "P-18: $RC_BUMP_DOC does not exist. an rc changelog's \`### Patch Changes\` heading does not narrow what broke — every entry lands there in pre-mode regardless of severity — so the bump procedure has to be written down."

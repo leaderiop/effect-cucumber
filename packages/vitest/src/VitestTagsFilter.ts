@@ -14,7 +14,7 @@
  * this exact parser against a mismatched task/tag shape. Vendoring the (small, pure, dependency-free)
  * parser instead removes the coupling entirely: it is plain string/tree logic with no dependency on
  * `@vitest/runner`'s own task types, `vitest`'s runtime, or any Effect module. See
- * `spec/decisions/056-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md`.
+ * `spec/decisions/059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md`.
  *
  * UNCHANGED from the vendored source except for TypeScript types (the original is untyped JS
  * compiled from Vitest's own internal, unpublished TS sources) and stripping `validateTags`/

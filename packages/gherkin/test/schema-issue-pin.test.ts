@@ -1,5 +1,7 @@
 /**
- * Pins the verified decode-failure shape of `effect@4.0.0-rc.112`'s `Schema` module.
+ * Pins the verified decode-failure shape of `effect`'s `Schema` module — first verified against
+ * `4.0.0-rc.112`, confirmed unchanged through `4.0.0-rc.113` (this repo's pinned version as of
+ * ADR-EC-059's third Correction).
  */
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"

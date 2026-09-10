@@ -1,16 +1,9 @@
 {
-  "//": "Machine-readable companion to the vendoring headers in packages/vitest/src/{VitestTagsFilter,EffectVitestInternal}.ts (ADR-EC-059). Read by scripts/verify-vendor-drift.mjs; kept in sync by hand with each file's own header prose whenever either is re-diffed against upstream.",
+  "//": "Machine-readable companion to the vendoring header in packages/vitest/src/VitestTagsFilter.ts (ADR-EC-059). Read by scripts/verify-vendor-drift.mjs; kept in sync by hand with the file's own header prose whenever it is re-diffed against upstream. `@effect/vitest` is no longer vendored (re-adopted as a real dependency at 4.0.0-rc.113, ADR-EC-059's second Correction) and so is no longer tracked here — its version is a normal `pnpm outdated`-visible catalog entry, not drift this script needs to surface.",
   "vitestTagsFilter": {
     "file": "packages/vitest/src/VitestTagsFilter.ts",
     "package": "@vitest/runner",
     "latestKnownStable": "4.1.11",
-    "reSyncNotes": "spec/decisions/059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md"
-  },
-  "effectVitestInternal": {
-    "file": "packages/vitest/src/EffectVitestInternal.ts",
-    "package": "@effect/vitest",
-    "distTag": "rc",
-    "vendoredAtVersion": "4.0.0-rc.112",
     "reSyncNotes": "spec/decisions/059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md"
   }
 }

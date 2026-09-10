@@ -7,15 +7,15 @@
 // the whole point is a throwaway install this repo's own rc pin never sees. See the "Under
 // consideration" -> canary entry this closes in spec/roadmap.md.
 //
-// @effect/vitest dropped from this list with the catalog entries themselves (ADR-EC-059): this
-// repo no longer depends on it, having vendored the pieces it needs instead.
+// @effect/vitest re-added to this list (ADR-EC-059's third Correction): un-vendored back into a
+// real dependency at 4.0.0-rc.113, tracking the same `rc` dist-tag as `effect` itself.
 //
 // Usage: node scripts/canary-bump-effect-rc.mjs
 import { readFile, writeFile } from "node:fs/promises"
 
 const WORKSPACE_FILE = new URL("../pnpm-workspace.yaml", import.meta.url)
 
-const PACKAGES = ["effect", "@effect/platform-node"]
+const PACKAGES = ["effect", "@effect/platform-node", "@effect/vitest"]
 
 const fetchRcVersion = async (name) => {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`)

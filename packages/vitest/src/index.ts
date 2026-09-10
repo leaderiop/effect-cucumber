@@ -1,16 +1,16 @@
 /**
  * Public entry point of `@effect-cucumber/vitest`: `describeFeature`, `collectFeature`,
  * `assertNoUnusedStepDefinitions`, `loadFeature`, `defineSteps`, `gherkinTags`, `Testing`,
- * `Attachments`/`attach`, the dsl types, the error/warning types, and — since ADR-EC-059 — the
- * vendored `@effect/vitest` replacement (`it`, `layer`, `assert`, `flakyTest`, etc., plus vitest's
- * own re-exports). One barrel, no subpath exports; its rows are gate-checked against
+ * `Attachments`/`attach`, the dsl types, the error/warning types, and `@effect/vitest`'s own
+ * surface (`it`, `layer`, `assert`, `flakyTest`, etc., plus vitest's own re-exports), re-exported via
+ * `EffectVitest.ts` (ADR-EC-059). One barrel, no subpath exports; its rows are gate-checked against
  * `spec/overview.md` by `scripts/verify-api-surface.sh`.
  *
  * Deliberately NOT exported (internal stages of `describeFeature` with no consumer contract):
  * `Registry.ts`, `Step.ts`, `CallSite.ts`, `Plan.ts`, `ScenarioEffect.ts`, `Runner.ts`, `Hook.ts`,
  * `HookRegistry.ts`, `HookTagExpression.ts`, `Tags.ts`, `TestApi.ts`, `Collect.ts`, `VitestTestApi.ts`,
- * `OutlineTitle.ts`, `ScenarioKey.ts`, `RerunKey.ts`, `RerunManifest.ts`, `EffectVitestInternal.ts`,
- * `VitestTagsFilter.ts`. Tests import them by relative path.
+ * `OutlineTitle.ts`, `ScenarioKey.ts`, `RerunKey.ts`, `RerunManifest.ts`, `VitestTagsFilter.ts`. Tests
+ * import them by relative path.
  */
 
 /**
