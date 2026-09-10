@@ -170,3 +170,6 @@ entries:
   - id: "ADR-EC-059"
     file: "059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md"
     title: "Vendor @effect/vitest and @vitest/runner's tag-expression parser in-tree to upgrade to vitest 5 — @effect-cucumber/vitest now re-exports its own replacement instead of depending on either package"
+  - id: "ADR-EC-060"
+    file: "060-gherkinjunitreporter-adds-properties-and-system-out-vitests-built-in-junit-reporter-has-no-hook-for.md"
+    title: "GherkinJUnitReporter adds <properties> (tags) and <system-out> (attachments) that vitest's own built-in JUnit reporter has no hook for"

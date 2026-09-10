@@ -30,12 +30,17 @@ the configuration a consumer sets in their own build to keep it intact is in
 the first failing step — no separate "skip remaining steps" mechanism to get
 wrong.
 
-**No plugin, no custom reporter.** Everything reduces to real vitest
+**No plugin, no custom reporter required.** Everything reduces to real vitest
 `describe`/`it.effect`/`layer(...)` calls (`@effect-cucumber/vitest`'s own vendored
 `@effect/vitest`-equivalent surface, ADR-EC-059). A `.feature`
 file is plain data read by `loadFeature`; vitest's file discovery only ever
 sees the `.steps.ts` module that calls it. `vitest run -t "<pattern>"`, watch
-mode, and reporters all work unmodified.
+mode, and reporters all work unmodified — including vitest's own built-in
+`--reporter=junit`, which already produces real Feature/Scenario-named JUnit
+XML with full `.feature:line` failure detail, with zero code from this
+package. `GherkinJUnitReporter` (ADR-EC-060) is a distinct, OPTIONAL addition
+for a consumer who specifically wants Scenario tags and `attach()` output in
+that XML too — never a requirement to use this library at all.
 
 **Reuse the official Gherkin toolchain.** Parsing and step-text matching
 (`{int}`, `{string}`, custom parameter types) come from `@cucumber/gherkin` and
@@ -93,6 +98,7 @@ The tables are located by the HTML comment markers above them; keep those.
 | `Testing` — a namespace re-export holding failureTag, settleThroughClock and SettleThroughClockOptions                                                                        | namespace | [BEH-EC-020](./behaviors/09-testing-helpers.md#beh-ec-020-testingfailuretag-narrows-a-failed-exits-tag-or-fails-loudly), [BEH-EC-021](./behaviors/09-testing-helpers.md#beh-ec-021-testingsettlethroughclock-forks-advances-the-testclock-and-joins-or-dies-naming-the-bound)                                                                                                             |
 | `attach` / `Attachments` / `AttachmentsShape`                                                                                                                                 | function  | [BEH-EC-028](./behaviors/15-attachments.md#beh-ec-028-attach-reaches-every-per-scenario-body-kind-is-rendered-in-the-real-failure-panel-is-rejected-at-compile-time-from-beforeallscenariosafterallscenarios-and-accumulates-across-retry-attempts)                                                                                                                                       |
 | `narrowRuleDsl` / `WorldProjection` / `UnsupportedScenarioExtraLayerError`                                                                                                    | function  | [BEH-EC-031](./behaviors/18-rule-world-narrowing.md#beh-ec-031-a-rule-can-narrow-or-replace-the-ambient-world-its-own-scenarios-see) (ADR-EC-039)                                                                                                                                                                                                                                         |
+| `GherkinJUnitReporter` / `GherkinJUnitReporterOptions`                                                                                                                        | class     | [BEH-EC-034](./behaviors/20-junit-reporter.md#beh-ec-034-gherkinjunitreporter-writes-a-real-junit-xml-file-whose-testcase-carries-a-scenarios-tags-as-properties-and-attach-output-as-system-out) (ADR-EC-060)                                                                                                                                                                            |
 
 The dsl `define` receives is not exported piecewise; its members are:
 

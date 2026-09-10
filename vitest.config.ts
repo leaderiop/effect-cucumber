@@ -22,14 +22,17 @@ export default defineConfig({
     // `scripts/verify-rerun-failed-only.sh`. `concurrent-fixture` is the identical shape once more
     // for ADR-EC-040's real-two-`vitest-run`-cycle proof (a failing Feature, and the ONE place in
     // this repository that opts into `sequence.concurrent: true`), reached only via
-    // `scripts/verify-concurrent-execution.sh`.
+    // `scripts/verify-concurrent-execution.sh`. `junit-reporter-fixture` is the identical shape once
+    // more for ADR-EC-060's real-vitest-output proof, reached only via
+    // `scripts/verify-junit-reporter.sh`.
     exclude: [
       ...configDefaults.exclude,
       "**/.claude/**",
       "**/test/failure-panel-fixture/**",
       "**/test/attachments-fixture/**",
       "**/test/rerun-fixture/**",
-      "**/test/concurrent-fixture/**"
+      "**/test/concurrent-fixture/**",
+      "**/test/junit-reporter-fixture/**"
     ],
     // The universe is computed from THIS file's directory, so `pnpm test` from the root and
     // `pnpm -r test` from a package directory declare the same list. `./vitest.tags.ts` holds the

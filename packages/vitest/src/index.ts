@@ -144,3 +144,11 @@ export * as Testing from "./Testing.ts"
  * themselves — see `packages/vitest/README.md`'s installation section.
  */
 export * from "./EffectVitest.ts"
+
+/**
+ * An optional, richer JUnit-XML reporter, adding Scenario tags and `attach()` output as
+ * `<properties>`/`<system-out>` on top of what vitest's own built-in `--reporter=junit` already
+ * provides for free (ADR-EC-060).
+ */
+export { GherkinJUnitReporter } from "./JUnitReporter.ts"
+export type { GherkinJUnitReporterOptions } from "./JUnitReporter.ts"

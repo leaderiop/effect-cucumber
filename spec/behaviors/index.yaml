@@ -78,3 +78,7 @@ entries:
     file: "19-concurrent-execution-and-scenario-timeout.md"
     title: "Concurrent Scenario execution and per-Scenario timeout"
     id_range: "032"
+  - id: "BEH-EC-034"
+    file: "20-junit-reporter.md"
+    title: "GherkinJUnitReporter: tags and attachments in JUnit XML"
+    id_range: "034"

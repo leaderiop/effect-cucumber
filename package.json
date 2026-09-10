@@ -32,6 +32,7 @@
     "verify:watch-rerun": "bash scripts/verify-watch-rerun.sh",
     "verify:failure-panel": "bash scripts/verify-failure-panel.sh",
     "verify:attachments-panel": "bash scripts/verify-attachments-panel.sh",
+    "verify:junit-reporter": "bash scripts/verify-junit-reporter.sh",
     "verify:rerun-failed-only": "bash scripts/verify-rerun-failed-only.sh",
     "verify:concurrent-execution": "bash scripts/verify-concurrent-execution.sh",
     "verify:coverage-subprocess": "bash scripts/verify-coverage-subprocess.sh",
