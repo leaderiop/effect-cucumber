@@ -37,6 +37,8 @@ coverage/
 packages/vitest/test/acceptance/*.gate.test.ts
 packages/vitest/test/acceptance/pitfalls-gate-*.feature
 packages/vitest/test/acceptance/watch-rerun-gate.feature
+packages/vitest/test/acceptance/watch-rerun-path-gate.feature
+packages/vitest/test/acceptance/watch-rerun-path-gate.vitest.config.ts
 packages/vitest/test/tsgo-gate/src/pitfalls-gate-*.ts
 packages/vitest/test/tsgo-gate/tsconfig.pitfalls-gate-*.json
 
