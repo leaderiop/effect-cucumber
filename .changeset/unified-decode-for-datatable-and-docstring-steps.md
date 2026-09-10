@@ -12,8 +12,7 @@ already-decoded value as its own trailing parameter — `ReadonlyArray<S["Type"]
 Given("the following items:", { table: ItemSchema }, (items) =>
   Effect.gen(function*() {
     yield* Cart.addAll(items) // already ReadonlyArray<Item> — no decode call
-  })
-)
+  }))
 ```
 
 A decode failure still surfaces as the existing `DataTableError`/`DocStringError` in the step's
