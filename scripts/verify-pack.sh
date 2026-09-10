@@ -2,10 +2,10 @@
 #
 # Asserts the shape of what reaches consumers — the packed tarball — not the source
 # manifest: `publishConfig.exports` applied, no `catalog:`/`workspace:` protocol left,
-# peer ranges (not pins) for effect/@effect/vitest/@effect/platform-node, gherkin
-# free of runners and concrete platforms (ADR-EC-021), dist and README and LICENSE
-# present, publint clean. The source manifest is byte-identical whether the catalog
-# holds a range or a pin, so only the packed manifest can show the difference.
+# peer ranges (not pins) for effect/@effect/platform-node, gherkin free of runners
+# and concrete platforms (ADR-EC-021), dist and README and LICENSE present, publint
+# clean. The source manifest is byte-identical whether the catalog holds a range or
+# a pin, so only the packed manifest can show the difference.
 #
 set -euo pipefail
 
@@ -93,7 +93,10 @@ assert_manifest() {
     // Pitfall 20, the reason this script exists.
     if (name === "@effect-cucumber/vitest") {
       const peers = m.peerDependencies === undefined ? {} : m.peerDependencies
-      for (const dep of ["effect", "@effect/vitest", "@effect/platform-node"]) {
+      // `@effect/vitest` dropped from this list with the peer itself (ADR-EC-056): this package
+      // now vendors and re-exports its own `@effect/vitest`-equivalent surface instead of
+      // depending on the npm package, so it is no longer part of the published peer contract.
+      for (const dep of ["effect", "@effect/platform-node"]) {
         const v = peers[dep]
         if (v === undefined) {
           fails.push("peerDependencies." + dep + " is missing from the packed manifest.")

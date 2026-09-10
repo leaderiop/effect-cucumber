@@ -5,10 +5,10 @@
  *
  * Carries: ADR-EC-027, BEH-EC-019, REQ-EC-023.
  */
-import { assert } from "@effect/vitest"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { defineSteps } from "../../src/StepModule.ts"
 import { applesSteps, World } from "./step-modules.module.ts"

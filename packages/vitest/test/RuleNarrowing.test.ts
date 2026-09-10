@@ -9,12 +9,12 @@
  *
  * Carries: ADR-EC-039, BEH-EC-031.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Scope from "effect/Scope"
 import { Attachments } from "../src/Attachments.ts"
 import type { BackgroundDsl, ModuleStep, RuleDsl, ScenarioDsl } from "../src/Dsl.ts"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { narrowRuleDsl, type WorldProjection } from "../src/RuleNarrowing.ts"
 
 // A minimal Wide/Narrow pair, disjoint in shape — mirrors the acceptance pair's own

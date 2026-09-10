@@ -4,8 +4,8 @@
  *
  * Carries: BEH-EC-008.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Option from "effect/Option"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import {
   isRetried,
   isSkipped,

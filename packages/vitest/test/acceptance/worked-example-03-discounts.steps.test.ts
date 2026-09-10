@@ -6,7 +6,6 @@
  * Carries: ADR-EC-006, ADR-EC-008, ADR-EC-009, ADR-EC-017, ADR-EC-024, BEH-EC-009, BEH-EC-010, BEH-EC-012, BEH-EC-016, BEH-EC-018, INV-EC-005, INV-EC-006, REQ-EC-004, REQ-EC-014, REQ-EC-015.
  */
 import { type DataTable, decodeHashes } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
 import * as Duration from "effect/Duration"
@@ -18,6 +17,7 @@ import * as Schema from "effect/Schema"
 import * as TestClock from "effect/testing/TestClock"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than to `process.cwd()`, so the pair

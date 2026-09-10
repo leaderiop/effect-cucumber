@@ -9,14 +9,13 @@
  * - `settleThroughClock` replaces a byte-for-byte-duplicated fork/`TestClock.adjust`/poll/join
  *   helper, parameterized on the one axis real usage proved varies (ADR-EC-029).
  *
- * Both import `@effect/vitest` directly — a peer dependency of this package already, and the
- * documented reason `Testing.failureTag` exists at all is to sit beside `@effect/vitest`'s own
+ * Both import `EffectVitest.ts` directly — this package's own vendored `@effect/vitest` replacement
+ * (ADR-EC-059), and the documented reason `Testing.failureTag` exists at all is to sit beside its
  * `assert` as a peer helper. This is unrelated to the `Runner.ts`/`TestApi.ts` framework-
  * independence seam `scripts/verify-testapi-seam.sh` enforces: that seam protects the internal
  * register → plan → emit pipeline from depending on a concrete test framework, which this module,
  * a standalone consumer-facing helper never on that pipeline, has no part of.
  */
-import { assert } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
@@ -26,6 +25,7 @@ import * as Match from "effect/Match"
 import * as Predicate from "effect/Predicate"
 import * as TestClock from "effect/testing/TestClock"
 import { inspect } from "node:util"
+import { assert } from "./EffectVitest.ts"
 
 /**
  * The shape every `Schema.TaggedError`/`Data.TaggedError` produces, and the shape `failureTag`

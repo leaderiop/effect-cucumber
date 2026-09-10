@@ -4,11 +4,11 @@
  *
  * Carries: BEH-EC-019.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
+import { assert } from "../../src/EffectVitest.ts"
 import { defineSteps } from "../../src/StepModule.ts"
 
 export class World extends Context.Service<World, { readonly apples: Ref.Ref<number> }>()("StepModules/World") {

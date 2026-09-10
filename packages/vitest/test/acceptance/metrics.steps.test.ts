@@ -42,7 +42,6 @@
  * suite recorded sits in the same unshuffled block as that suite, never as a later sibling"), mirroring
  * `../../test/emission.test.ts`'s own `orderedBlock` technique.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -50,6 +49,7 @@ import * as Metric from "effect/Metric"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert, describe, it } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 import { scenarioDuration, scenarioResult } from "../../src/ScenarioMetrics.ts"
 

@@ -5,12 +5,12 @@
  * Carries: ADR-EC-027, BEH-EC-019.
  */
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { describe, expect, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { collectFeature } from "../src/describeFeature.ts"
+import { describe, expect, it } from "../src/EffectVitest.ts"
 import type { PlannedStep, UnresolvedPlannedStep } from "../src/Plan.ts"
 import { defineSteps } from "../src/StepModule.ts"
 

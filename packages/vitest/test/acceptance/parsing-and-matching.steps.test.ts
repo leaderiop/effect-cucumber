@@ -12,7 +12,6 @@ import {
   type DocString,
   ParameterTypeStore
 } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
@@ -20,6 +19,7 @@ import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than `process.cwd()`.

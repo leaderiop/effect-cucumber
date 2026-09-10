@@ -1,5 +1,6 @@
 /**
- * The two concrete `TestApi` adapters over `@effect/vitest`: `vitestTestApi` (plain path) and
+ * The two concrete `TestApi` adapters over `EffectVitest.ts` (this package's own vendored
+ * `@effect/vitest` replacement, ADR-EC-059): `vitestTestApi` (plain path) and
  * `sharedLayerTestApi` (shared path). This module and `describeFeature.ts` are the only ones that
  * may name a test framework (`scripts/verify-testapi-seam.sh`).
  *
@@ -70,7 +71,6 @@
  *   `makeDegradingEffect`'s reduced options object, converting the library's `number | null` to the
  *   `number | undefined` `TestOptions.timeout` itself accepts.
  */
-import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
@@ -81,6 +81,7 @@ import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
 import { Attachments } from "./Attachments.ts"
+import { afterAll, beforeAll, describe, flakyTest, it, layer, type TestContext, type Vitest } from "./EffectVitest.ts"
 import { makeUndeclaredTagWarning } from "./Errors.ts"
 // `StepBody` is declared in `Plan.ts` and imported here, never the reverse (`pnpm circular`).
 import type { ErasedLayer } from "./Plan.ts"

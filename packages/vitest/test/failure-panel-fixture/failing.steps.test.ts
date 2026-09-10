@@ -18,13 +18,13 @@
  * is ever collected is this directory's own standalone `vitest.config.ts`, reached explicitly via
  * `--config`, never by directory discovery.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 const featurePath = fileURLToPath(new URL("./failing.feature", import.meta.url))

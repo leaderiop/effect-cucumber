@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 //
 // Rewrites pnpm-workspace.yaml's exact-pin `catalog:` entries and range `catalogs: peer:` entries
-// for effect, @effect/vitest and @effect/platform-node to whatever each package's own npm `rc`
-// dist-tag resolves to RIGHT NOW, then exits. Run only inside the scheduled canary workflow
+// for effect and @effect/platform-node to whatever each package's own npm `rc` dist-tag resolves
+// to RIGHT NOW, then exits. Run only inside the scheduled canary workflow
 // (.github/workflows/canary.yml) — never committed back, never run against a PR or a real release:
 // the whole point is a throwaway install this repo's own rc pin never sees. See the "Under
 // consideration" -> canary entry this closes in spec/roadmap.md.
+//
+// @effect/vitest dropped from this list with the catalog entries themselves (ADR-EC-056): this
+// repo no longer depends on it, having vendored the pieces it needs instead.
 //
 // Usage: node scripts/canary-bump-effect-rc.mjs
 import { readFile, writeFile } from "node:fs/promises"
 
 const WORKSPACE_FILE = new URL("../pnpm-workspace.yaml", import.meta.url)
 
-const PACKAGES = ["effect", "@effect/vitest", "@effect/platform-node"]
+const PACKAGES = ["effect", "@effect/platform-node"]
 
 const fetchRcVersion = async (name) => {
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`)

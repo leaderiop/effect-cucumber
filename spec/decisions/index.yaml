@@ -167,3 +167,6 @@ entries:
   - id: "ADR-EC-058"
     file: "058-retry-schedule-registration-option-customizes-flakytest.md"
     title: "describeFeature gains a retry registration option — customizes the Schedule a @retry Scenario retries with, extends ADR-EC-034"
+  - id: "ADR-EC-059"
+    file: "059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md"
+    title: "Vendor @effect/vitest and @vitest/runner's tag-expression parser in-tree to upgrade to vitest 5 — @effect-cucumber/vitest now re-exports its own replacement instead of depending on either package"

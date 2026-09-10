@@ -2,7 +2,6 @@
  * Pins the `@effect/vitest` and vitest behaviours the runtime relies on (F-23), the way
  * `packages/gherkin/test/upstream-pin.test.ts` pins `@cucumber/*`.
  */
-import { afterAll, assert, beforeAll, describe, it, layer, type Vitest } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Clock from "effect/Clock"
 import * as Context from "effect/Context"
@@ -13,6 +12,7 @@ import * as Layer from "effect/Layer"
 import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
+import { afterAll, assert, beforeAll, describe, it, layer, type Vitest } from "../src/EffectVitest.ts"
 import { testEnv } from "../src/VitestTestApi.ts"
 
 class Probe extends Context.Service<Probe, {

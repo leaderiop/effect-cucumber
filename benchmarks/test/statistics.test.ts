@@ -3,7 +3,7 @@
  * spawning, no vitest/cucumber-js involved. Written and run to fail (module not found) before
  * `../src/statistics.ts` exists.
  */
-import { assert, describe, it } from "@effect/vitest"
+import { assert, describe, it } from "@effect-cucumber/vitest"
 import { durationStats, measurementStability, percentDelta } from "../src/statistics.ts"
 
 describe("durationStats", () => {

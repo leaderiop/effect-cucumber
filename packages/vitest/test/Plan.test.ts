@@ -11,9 +11,9 @@ import {
   type ParsedFeature,
   parseFeature
 } from "@effect-cucumber/gherkin"
-import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
+import { describe, expect, it } from "../src/EffectVitest.ts"
 import type { UnusedStepDefinitionWarning } from "../src/Errors.ts"
 import {
   type FeaturePlan,

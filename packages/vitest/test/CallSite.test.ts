@@ -1,8 +1,8 @@
 /**
  * Tests for `CallSite`.
  */
-import { describe, expect, it } from "@effect/vitest"
 import { captureCallSite, compareCallSites, formatCallSite } from "../src/CallSite.ts"
+import { describe, expect, it } from "../src/EffectVitest.ts"
 import type { DefinitionSite } from "../src/Registry.ts"
 
 // A recorded site, spelled once so the ordering tests read as data rather than as object literals.

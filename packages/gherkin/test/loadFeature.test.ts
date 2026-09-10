@@ -3,7 +3,6 @@
  * the test run by itself.
  */
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem"
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
@@ -15,6 +14,7 @@ import { loadFeature, parseFeature } from "../src/loadFeature.ts"
 import type { ParsedFeature } from "../src/Model.ts"
 import { createParameterTypeStore, ParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import rawFixture from "./fixtures/correlation-full.feature?raw"
+import { assert, describe, expect, it } from "./support/EffectVitestIt.ts"
 
 const fixtureUrl = new URL("./fixtures/correlation-full.feature", import.meta.url)
 const fixturePath = fileURLToPath(fixtureUrl)
@@ -119,7 +119,7 @@ describe("loadFeature returns an Effect requiring FileSystem", () => {
     //
     // A direct `Effect.runSync` call, not `it.effect`: the call itself, and what it throws, IS
     // the assertion — using `it.effect` here would replace the exact thing being pinned with
-    // `@effect/vitest`'s own (async-capable) execution instead of it.
+    // its own (async-capable) execution instead of it.
     expect(() => Effect.runSync(load(fixturePath))).toThrowError(
       /asynchronous Effect was executed with Effect\.runSync/
     )

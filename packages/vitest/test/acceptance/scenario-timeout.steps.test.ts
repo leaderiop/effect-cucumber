@@ -24,13 +24,13 @@
  *
  * Carries: ADR-EC-040, BEH-EC-032, REQ-EC-032.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert, describe, it } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 const featurePath = fileURLToPath(new URL("./scenario-timeout.feature", import.meta.url))

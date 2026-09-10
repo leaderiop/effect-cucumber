@@ -11,8 +11,7 @@
  * what lets `../src/compare.ts`'s generated "pressure" suite (`../src/generatedSuites.ts`) reuse
  * this exact step vocabulary against a scaled-up feature file, with no new step definitions.
  */
-import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert, describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"

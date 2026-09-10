@@ -145,7 +145,7 @@ cat >"$WORK_STEPS" <<'STEPS_MODULE'
 // trigger a rerun. The committed acceptance pairs load
 // their Gherkin through NodeFileSystem instead, and measurably do NOT rerun.
 import { ParameterTypeStore, parseFeature } from "@effect-cucumber/gherkin"
-import { assert } from "@effect/vitest"
+import { assert } from "../../src/EffectVitest.ts"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"

@@ -8,7 +8,6 @@ packages:
 # Effect rc upgrade (ADR-EC-012).
 catalog:
   effect: 4.0.0-rc.112
-  "@effect/vitest": 4.0.0-rc.112
   # `FileSystem`/`Path` are core-`effect` service interfaces as of v4, not
   # `@effect/platform` exports — `@effect/platform` (the aggregate package)
   # genuinely has no v4-compatible release, but the PER-RUNTIME packages do,
@@ -20,17 +19,21 @@ catalog:
   # depends on neither this nor any other concrete platform implementation
   # (enforced by scripts/verify-no-runner-dep.sh).
   "@effect/platform-node": 4.0.0-rc.112
-  vitest: ^4.1.0
-  # `vitest`'s OWN runner package, pinned to the exact SAME version `vitest@4.1.11` itself declares
-  # as a dependency (verified: `node_modules/vitest/package.json`'s own `"@vitest/runner"` entry) —
-  # ADR-EC-035 imports its public `./utils` export (`createTagsFilter`) directly, so it is a real,
-  # named dependency of this package now, not a transitive one relied on implicitly.
-  "@vitest/runner": ^4.1.0
+  # `@effect/vitest` and `@vitest/runner` are DELIBERATELY absent from this catalog (ADR-EC-056):
+  # `@effect/vitest`'s last published release (`4.0.0-rc.112`) hard-caps its own peer range below
+  # vitest 5, and `@vitest/runner` has no stable vitest-5 release at all (its `latest` dist-tag is
+  # still `4.1.11`). `packages/vitest/src/EffectVitest.ts`/`EffectVitestInternal.ts` and
+  # `VitestTagsFilter.ts` vendor the pieces of each this repo actually needs, tracking vitest 5
+  # directly instead. See spec/decisions/056-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md.
+  vitest: ^5.0.0
   # Coverage tooling, never a consumer-facing dependency — kept on the same range as `vitest`
   # above so pnpm always resolves a matching provider/runner pair.
-  "@vitest/coverage-v8": ^4.1.0
+  "@vitest/coverage-v8": ^5.0.0
   typescript: ^7.0.2
-  "@types/node": ^20.0.0
+  # Bumped from ^20.0.0 alongside the vitest 5 upgrade (ADR-EC-056): vitest@5.0.0 itself declares a
+  # peer of `@types/node: "^22.0.0 || >=24.0.0"`. Types only — this repo's own runtime floor stays
+  # `"engines": { "node": ">=20" }` in each package.json, unaffected by this devDependency-only bump.
+  "@types/node": ^22.0.0
 
 # Ranges — peerDependencies only. `catalog:` expands verbatim at pack time
 # (ADR-EC-015), so an exact pin here would publish an exact peer
@@ -38,14 +41,10 @@ catalog:
 catalogs:
   peer:
     effect: ^4.0.0-rc.112
-    "@effect/vitest": ^4.0.0-rc.112
     # The wrapped `loadFeature` (ADR-EC-024) runs on a ManagedRuntime over `NodeFileSystem.layer`,
     # so the consumer installs the concrete platform package beside `effect`.
     "@effect/platform-node": ^4.0.0-rc.112
-    # Copied verbatim from @effect/vitest@4.0.0-rc.112's own published peer
-    # range. vitest 5 exists as a prerelease and is NOT supported — do not
-    # widen this.
-    vitest: ">=4.1.0 <5.0.0"
-    # `@vitest/runner` ships as part of the SAME `vitest` release train, at the identical version
-    # `vitest` itself depends on — kept on `vitest`'s own peer range (ADR-EC-035).
-    "@vitest/runner": ">=4.1.0 <5.0.0"
+    # `@effect/vitest` dropped from this catalog with the plain one above (ADR-EC-056) — consumers
+    # now import `it`/`layer`/`assert`/etc. from `@effect-cucumber/vitest` itself, never
+    # `@effect/vitest` directly, so it is no longer part of the published peer contract either.
+    vitest: ">=5.0.0 <6.0.0"

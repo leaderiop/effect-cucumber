@@ -3,12 +3,12 @@
  *
  * Carries: ADR-EC-022, BEH-EC-013.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Option from "effect/Option"
 import { inspect } from "node:util"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import {
   type ExcludedScenariosNoticeReason,
   makeExcludedScenariosNotice,

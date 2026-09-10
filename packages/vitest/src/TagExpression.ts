@@ -1,11 +1,12 @@
 /**
  * Shared compile-and-evaluate glue for vitest's own boolean tag-expression grammar
- * (`createTagsFilter`, `@vitest/runner/utils` — `and`/`or`/`not`/`&&`/`||`/`!`/parens, ADR-EC-035),
- * reused by TWO independent call sites: `HookTagExpression.ts`'s per-hook `tagExpr`
- * (`Before`/`After`/`BeforeStep`/`AfterStep`, ADR-EC-035, BEH-EC-027) and `describeFeature.ts`'s own
- * registration-time `tagExpression` option (ADR-EC-054, BEH-EC-008). Neither call site OWNS this
- * module — it exists purely so the compile-and-wrap mechanics are written exactly once rather than
- * duplicated a second time when this job added the second consumer.
+ * (`createTagsFilter`, vendored in `VitestTagsFilter.ts` — `and`/`or`/`not`/`&&`/`||`/`!`/parens,
+ * ADR-EC-035, ADR-EC-059), reused by TWO independent call sites: `HookTagExpression.ts`'s per-hook
+ * `tagExpr` (`Before`/`After`/`BeforeStep`/`AfterStep`, ADR-EC-035, BEH-EC-027) and
+ * `describeFeature.ts`'s own registration-time `tagExpression` option (ADR-EC-054, BEH-EC-008).
+ * Neither call site OWNS this module — it exists purely so the compile-and-wrap mechanics are
+ * written exactly once rather than duplicated a second time when this job added the second
+ * consumer.
  *
  * `featureTagUniverse` lived in `HookTagExpression.ts` until ADR-EC-054; that module now re-exports
  * it from here for backward compatibility with its own existing importers (`Collect.ts`,
@@ -17,12 +18,16 @@
  * caller wraps that in its OWN located error, naming its OWN call site (a hook's kind and Feature
  * for `HookTagExpressionError`; `describeFeature`'s own Feature and option name for
  * `TagExpressionError` below).
+ *
+ * `createTagsFilter` came from `@vitest/runner/utils` until ADR-EC-059: that standalone package has
+ * no stable vitest-5 release, and vitest 5 folded the engine in without re-exporting it publicly, so
+ * `VitestTagsFilter.ts` now vendors the same (small, dependency-free) parser directly.
  */
-import { createTagsFilter } from "@vitest/runner/utils"
 import * as Arr from "effect/Array"
 import * as Data from "effect/Data"
 import * as Order from "effect/Order"
 import * as Predicate from "effect/Predicate"
+import { createTagsFilter } from "./VitestTagsFilter.ts"
 
 /**
  * A compiled tag-expression matcher: given a Scenario's own fully-flattened tags, does the

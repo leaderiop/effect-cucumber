@@ -1,7 +1,6 @@
 /**
  * BEH-EC-015 (roadmap success criterion 2) end to end, through the REAL `loadFeature`.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import { fileURLToPath } from "node:url"
@@ -9,6 +8,7 @@ import { StepPatternError } from "../src/Errors.ts"
 import type { ParameterTypeRegistry } from "../src/Model.ts"
 import { createParameterTypeStore, ParameterTypeStore, type ParameterTypeStoreShape } from "../src/ParameterTypes.ts"
 import { createStepMatcher, type StepMatch } from "../src/StepMatcher.ts"
+import { assert, describe, it } from "./support/EffectVitestIt.ts"
 import { load, parse } from "./support/loadFixture.ts"
 
 /**

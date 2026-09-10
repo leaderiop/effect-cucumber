@@ -50,13 +50,13 @@
  *   silently stopped rebuilding the `perScenario` Layer would not merely produce a quieter wrong answer, it
  *   would make the Scenario un-passable within `flakyTest`'s own attempt budget.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than to `process.cwd()`, so the pair

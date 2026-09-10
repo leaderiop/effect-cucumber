@@ -31,7 +31,8 @@ the first failing step — no separate "skip remaining steps" mechanism to get
 wrong.
 
 **No plugin, no custom reporter.** Everything reduces to real vitest
-`describe`/`it.effect`/`layer(...)` calls (from `@effect/vitest`). A `.feature`
+`describe`/`it.effect`/`layer(...)` calls (`@effect-cucumber/vitest`'s own vendored
+`@effect/vitest`-equivalent surface, ADR-EC-059). A `.feature`
 file is plain data read by `loadFeature`; vitest's file discovery only ever
 sees the `.steps.ts` module that calls it. `vitest run -t "<pattern>"`, watch
 mode, and reporters all work unmodified.
@@ -109,6 +110,7 @@ The dsl `define` receives is not exported piecewise; its members are:
 
 ### Not listed above
 
-| Item                                     | Reason                                                                                                                                                                          |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@effect-cucumber/gherkin`'s own exports | That package's public surface (`loadFeature`'s implementation, the step-matcher) isn't finalized independently of `@effect-cucumber/vitest`'s needs yet — see `spec/roadmap.md` |
+| Item                                                                                                                                                                                               | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@effect-cucumber/gherkin`'s own exports                                                                                                                                                           | That package's public surface (`loadFeature`'s implementation, the step-matcher) isn't finalized independently of `@effect-cucumber/vitest`'s needs yet — see `spec/roadmap.md`                                                                                                                                                                                                                                                                                                                   |
+| `it` / `layer` / `assert` / `flakyTest` / `describeWrapped` / `addEqualityTesters` / `makeMethods`, plus vitest's own re-exported surface (`describe`, `beforeAll`, `afterAll`, `expect`, `vi`, …) | Forwarded verbatim from `EffectVitest.ts` via a bare `export * from "./EffectVitest.ts"` (ADR-EC-059) — this package's own vendored `@effect/vitest` replacement, itself re-exporting vitest wholesale (`export * from "vitest"`). A bare `export *` has no `as Name` for `scripts/verify-api-surface.sh`'s barrel scan to see, and itemizing vitest's ENTIRE public surface by name here would just duplicate vitest's own docs — see `packages/vitest/README.md`'s installation section instead |

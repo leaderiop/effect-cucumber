@@ -11,7 +11,6 @@
  * `DocString` argument and running the Effect it returns.
  */
 import { type DataTable, DataTableError, type DocString, makeDataTable } from "@effect-cucumber/gherkin"
-import { assert, describe, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
@@ -21,6 +20,7 @@ import * as Schema from "effect/Schema"
 import { fileURLToPath } from "node:url"
 import { collectFeature } from "../src/describeFeature.ts"
 import type { ScenarioDsl } from "../src/Dsl.ts"
+import { assert, describe, it } from "../src/EffectVitest.ts"
 import { loadFeature } from "../src/loadFeature.ts"
 
 const featurePath = fileURLToPath(new URL("./acceptance/worked-example-03-discounts.feature", import.meta.url))

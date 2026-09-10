@@ -4,13 +4,13 @@
  *
  * Carries: ADR-EC-009, ADR-EC-021, ADR-EC-024, BEH-EC-001, BEH-EC-002, BEH-EC-003, BEH-EC-004, INV-EC-006, REQ-EC-022.
  */
-import { assert } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // The `.feature` file beside this one, resolved relative to this module rather than to `process.cwd()`, so the pair

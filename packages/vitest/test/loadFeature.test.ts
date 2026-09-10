@@ -4,9 +4,9 @@
  * Carries: ADR-EC-024.
  */
 import { createParameterTypeStore, LoadFeatureError, ParameterTypeStore } from "@effect-cucumber/gherkin"
-import { describe, expect, it } from "@effect/vitest"
 import * as Option from "effect/Option"
 import { fileURLToPath } from "node:url"
+import { describe, expect, it } from "../src/EffectVitest.ts"
 import { loadFeature } from "../src/loadFeature.ts"
 
 const fixture = fileURLToPath(new URL("./fixtures/load-feature.feature", import.meta.url))

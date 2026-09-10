@@ -24,13 +24,13 @@
  *
  * Carries: ADR-EC-038, BEH-EC-030, REQ-EC-030.
  */
-import { assert, describe, it } from "@effect/vitest"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import { fileURLToPath } from "node:url"
 import { describeFeature } from "../../src/describeFeature.ts"
+import { assert, describe, it } from "../../src/EffectVitest.ts"
 import { loadFeature } from "../../src/loadFeature.ts"
 
 // Repo-root-relative — see the header comment above for why this differs from every sibling pair.

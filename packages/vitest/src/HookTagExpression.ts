@@ -1,8 +1,9 @@
 /**
  * Compiles ONE hook's own tag-expression string into a matcher against a Scenario's tags, reusing
- * vitest's OWN `createTagsFilter` (`@vitest/runner/utils`) — the exact parser/evaluator backing its
- * `--tagsFilter` (`and`/`or`/`not`/`&&`/`||`/`!`/parens) — rather than a second, hand-rolled grammar
- * or `@cucumber/tag-expressions` (not in this repo's dependency tree at all, ADR-EC-035).
+ * vitest's OWN `createTagsFilter` (vendored in `VitestTagsFilter.ts`, ADR-EC-059; originally
+ * `@vitest/runner/utils`) — the exact parser/evaluator backing its `--tagsFilter` (`and`/`or`/`not`/
+ * `&&`/`||`/`!`/parens) — rather than a second, hand-rolled grammar or `@cucumber/tag-expressions`
+ * (not in this repo's dependency tree at all, ADR-EC-035).
  *
  * The actual compile-and-wrap-on-throw mechanics now live in `TagExpression.ts` (ADR-EC-054),
  * shared with `describeFeature.ts`'s own `tagExpression` option — the second, independent call

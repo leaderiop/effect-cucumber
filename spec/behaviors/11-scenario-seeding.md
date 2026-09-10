@@ -55,8 +55,7 @@ REQUIREMENT: The seed wrap MUST compose OUTSIDE the per-Scenario Layer
 ### Worked example
 
 ```typescript
-import { describeFeature, loadFeature } from "@effect-cucumber/vitest"
-import { assert } from "@effect/vitest"
+import { assert, describeFeature, loadFeature } from "@effect-cucumber/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Random from "effect/Random"

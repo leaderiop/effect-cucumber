@@ -36,11 +36,11 @@
  * BEFORE/AFTER delta instead of an absolute count, which is correct regardless of this caching
  * behavior and needs no isolation at all.
  */
-import { assert, describe, flakyTest, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Metric from "effect/Metric"
 import type * as Scope from "effect/Scope"
+import { assert, describe, flakyTest, it } from "../src/EffectVitest.ts"
 import { scenarioDuration, scenarioResult, withScenarioMetrics } from "../src/ScenarioMetrics.ts"
 
 // Isolation for the COUNTER only — see the module doc comment for why `scenarioDuration` cannot use

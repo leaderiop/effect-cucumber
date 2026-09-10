@@ -8,7 +8,6 @@
  *
  * Carries: ADR-EC-004, ADR-EC-019, ADR-EC-033, ADR-EC-052, BEH-EC-025, BEH-EC-033, INV-EC-001, INV-EC-002, INV-EC-004.
  */
-import { assert, describe, expect, it } from "@effect/vitest"
 import * as Cause from "effect/Cause"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
@@ -16,6 +15,7 @@ import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Ref from "effect/Ref"
+import { assert, describe, expect, it } from "../src/EffectVitest.ts"
 import { HookFailureLocation, StepFailureLocation, StepMatchError } from "../src/Errors.ts"
 import type { HookEntry, HookSet } from "../src/Hook.ts"
 import type { PlannedStep, ScenarioPlan, StepBody } from "../src/Plan.ts"
