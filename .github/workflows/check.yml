@@ -92,6 +92,26 @@ jobs:
       # instrumentation cost is not worth paying three times over to re-prove the same numbers.
       - if: matrix.node-version == 24
         run: pnpm coverage
+      # `pnpm coverage` above only proves the top-level `pnpm coverage` invocation enforces
+      # thresholds — several other verify:* gates in this job spawn vitest as a CHILD process
+      # (verify-watch-rerun.sh, verify-concurrent-execution.sh, verify-rerun-failed-only.sh,
+      # verify-sharding.sh below, ...) without ever turning `--coverage` on, so whether the v8
+      # provider and this repo's per-file threshold shape survive that child-process path was
+      # unverified. Node 24 ONLY, for the same reason `pnpm coverage` above is: coverage is a
+      # property of the source, not of which Node version ran it. See
+      # scripts/verify-coverage-subprocess.sh.
+      - if: matrix.node-version == 24
+        run: pnpm verify:coverage-subprocess
+      # Neither `pnpm test` nor any gate above ever runs this suite with `--shard` +
+      # `--mergeReports`, so shard-safety of the wrapper's per-file collection-time state (the
+      # module-scoped ManagedRuntime for loadFeature, ADR-EC-024; BeforeAllScenarios's real
+      # vitest beforeAll, ADR-EC-040) was unverified — sharding is the one execution mode that
+      # guarantees different files land in wholly separate `vitest run` processes, not just
+      # different workers of one. Node 24 ONLY: a structural claim about process isolation that
+      # does not vary by Node version, and the gate invokes vitest four times. See
+      # scripts/verify-sharding.sh.
+      - if: matrix.node-version == 24
+        run: pnpm verify:sharding
       # `pnpm test` exiting 0 does NOT prove the suite is free of declaration-order
       # coupling: vitest runs a file's suites in order unless told otherwise, and
       # an observer `describe` that reads what an earlier Feature recorded passes
