@@ -57,8 +57,8 @@ does the rest. See [`packages/vitest/README.md`](./packages/vitest/README.md) fo
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.113` or newer, with `@effect/platform-node` and `@effect/vitest` on the
-same rc line) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by `@effect/vitest@4.0.0-rc.113`
+Requires Effect v4 (`4.0.0-rc.115` or newer, with `@effect/platform-node` and `@effect/vitest` on the
+same rc line) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by `@effect/vitest@4.0.0-rc.115`
 and by `vitest@5.0.0` itself).
 
 ## Packages
