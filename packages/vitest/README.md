@@ -1160,8 +1160,8 @@ pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc @effect/v
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.113` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by
-`@effect/vitest@4.0.0-rc.113` and by `vitest@5.0.0` itself).
+Requires Effect v4 (`4.0.0-rc.115` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by
+`@effect/vitest@4.0.0-rc.115` and by `vitest@5.0.0` itself).
 
 `effect`, `@effect/platform-node`, `@effect/vitest` and `vitest` are peer dependencies — you install them, this
 package does not bundle its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file

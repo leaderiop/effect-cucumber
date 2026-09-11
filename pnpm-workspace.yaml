@@ -7,7 +7,7 @@ packages:
 # Exact pins — devDependencies only. This is the single bump point for an
 # Effect rc upgrade (ADR-EC-012).
 catalog:
-  effect: 4.0.0-rc.113
+  effect: 4.0.0-rc.115
   # `FileSystem`/`Path` are core-`effect` service interfaces as of v4, not
   # `@effect/platform` exports — `@effect/platform` (the aggregate package)
   # genuinely has no v4-compatible release, but the PER-RUNTIME packages do,
@@ -18,13 +18,13 @@ catalog:
   # own test suite needs a concrete Layer to run against; the shipped package
   # depends on neither this nor any other concrete platform implementation
   # (enforced by scripts/verify-no-runner-dep.sh).
-  "@effect/platform-node": 4.0.0-rc.113
+  "@effect/platform-node": 4.0.0-rc.115
   # `@effect/vitest` re-adopted at rc.113 (ADR-EC-059 Correction, 2026-09-10): upstream's first
   # release with a clean `vitest: ">=5.0.0 <6.0.0"` peer range, replacing the vendored
   # `EffectVitestInternal.ts`/`EffectVitestTypes.ts`. `@vitest/runner` remains vendored
   # (`VitestTagsFilter.ts`) — it still has no stable vitest-5 release (`latest` dist-tag is still
   # `4.1.11`). See spec/decisions/059-vendor-effect-vitest-and-vitest-runner-tag-filter-for-vitest-5.md.
-  "@effect/vitest": 4.0.0-rc.113
+  "@effect/vitest": 4.0.0-rc.115
   vitest: ^5.0.0
   # Coverage tooling, never a consumer-facing dependency — kept on the same range as `vitest`
   # above so pnpm always resolves a matching provider/runner pair.
@@ -40,13 +40,13 @@ catalog:
 # range and strand every consumer sitting on a different rc.
 catalogs:
   peer:
-    effect: ^4.0.0-rc.113
+    effect: ^4.0.0-rc.115
     # The wrapped `loadFeature` (ADR-EC-024) runs on a ManagedRuntime over `NodeFileSystem.layer`,
     # so the consumer installs the concrete platform package beside `effect`.
-    "@effect/platform-node": ^4.0.0-rc.113
+    "@effect/platform-node": ^4.0.0-rc.115
     # Restored to the peer contract at rc.113 (ADR-EC-059 Correction) — `@effect-cucumber/vitest`
     # re-exports `@effect/vitest` directly again instead of vendoring it, so consumers must have a
     # compatible `@effect/vitest` present even though they still only ever import from
     # `@effect-cucumber/vitest` itself.
-    "@effect/vitest": ^4.0.0-rc.113
+    "@effect/vitest": ^4.0.0-rc.115
     vitest: ">=5.0.0 <6.0.0"
