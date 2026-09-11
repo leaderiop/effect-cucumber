@@ -1,5 +1,20 @@
 # @effect-cucumber/vitest
 
+## 0.10.0
+
+### Minor Changes
+
+- 854f5a3: Bumps `effect`/`@effect/platform-node`/`@effect/vitest` from `4.0.0-rc.113` to `4.0.0-rc.115`,
+  moving both packages' `peerDependencies.effect` range to `^4.0.0-rc.115` (and, for
+  `@effect-cucumber/vitest`, `@effect/platform-node`/`@effect/vitest` alongside it). No source changes
+  were needed — rc.114/rc.115 touch no API either package uses (checked against both packages'
+  upstream CHANGELOG.md entries).
+
+### Patch Changes
+
+- Updated dependencies [854f5a3]
+  - @effect-cucumber/gherkin@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
