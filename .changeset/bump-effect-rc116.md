@@ -1,6 +1,6 @@
 ---
-"@effect-cucumber/gherkin": minor
-"@effect-cucumber/vitest": minor
+"@effect-cucumber/gherkin": patch
+"@effect-cucumber/vitest": patch
 ---
 
 Bumps `effect`/`@effect/platform-node`/`@effect/vitest` from `4.0.0-rc.115` to `4.0.0-rc.116`,
