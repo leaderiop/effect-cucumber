@@ -1,6 +1,6 @@
 ---
-"@effect-cucumber/gherkin": minor
-"@effect-cucumber/vitest": minor
+"@effect-cucumber/gherkin": patch
+"@effect-cucumber/vitest": patch
 ---
 
 Effect v4 is stable, so the supported range is now stable Effect v4: the `effect`, `@effect/platform-node`
