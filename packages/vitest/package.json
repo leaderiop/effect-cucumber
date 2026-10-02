@@ -1,6 +1,6 @@
 {
   "name": "@effect-cucumber/vitest",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Effect-native Gherkin/Cucumber runner for vitest.",
   "keywords": [
     "effect",
