@@ -31,18 +31,23 @@ previews the _next_ rc) before bumping; note that the changelog is not shipped i
 
 ### 2. Only `pnpm-workspace.yaml` is edited
 
-Every version lives in that one file (ADR-EC-012), and **no `packages/*/package.json` is touched by a
-bump.** They all read `catalog:` or `catalog:peer` and are byte-identical before and after.
+Every version _specifier_ lives in that one file (ADR-EC-012), and **no `packages/*/package.json` is
+touched by a bump.** They all read `catalog:` or `catalog:peer` and are byte-identical before and after.
 
 ### 3. The two catalogs are separate, and they are not the same edit
 
 `pnpm-workspace.yaml` carries two blocks and they mean different things:
 
-- `catalog:` — **exact pins, devDependencies only.** This is what the repository's own build and test
-  run against.
+- `catalog:` — **the `rc` dist-tag, devDependencies only** (`effect: rc`, and likewise
+  `@effect/platform-node` and `@effect/vitest`). This is what the repository's own build and test run
+  against. The tag is not a pin: `pnpm-lock.yaml` is, and a bump is
+  `pnpm update --recursive effect @effect/platform-node @effect/vitest`, which moves the lockfile to
+  whatever the `rc` tag resolves to that day.
 - `catalogs.peer:` — **ranges, peerDependencies only.** This is what a consumer resolves against. A
   `catalog:` specifier expands **verbatim** at pack time (Pitfall 20), so an exact pin written here
-  would publish an exact peer range and strand every consumer sitting on a different rc.
+  would publish an exact peer range and strand every consumer sitting on a different rc. The peer
+  ranges are floors (`^4.0.0-rc.116`): a caret over a prerelease matches every later rc **and** stable
+  `4.0.0`, so they only move when this repository starts depending on something newer than the floor.
 
 Bumping the pin without widening the range, or copying the pin into the range, are two different
 mistakes and both are one keystroke away.

@@ -48,3 +48,14 @@ v4 now avoids that churn, accepting beta-instability risk in its place.
 > `@effect-cucumber/gherkin` too, pinned to the same v4 range this ADR
 > establishes — no separate version policy for `gherkin`. Every consequence
 > and trade-off above now applies to both packages equally.
+
+> **Amendment (2026-10-02, Effect v4 reached stable `4.0.0`):** "Pin an exact v4 beta version" no longer
+> describes the repository. The `catalog:` block in `pnpm-workspace.yaml` now holds the npm **`rc`
+> dist-tag** for `effect`, `@effect/platform-node` and `@effect/vitest` (devDependencies only), and
+> `pnpm-lock.yaml` is what makes a given checkout reproducible. The `peer` catalog stays a range, floored
+> at `^4.0.0-rc.116`, which admits any later rc and stable `4.0.0` alike (npm's `latest` tag is `4.0.0`
+> for all three packages; the README install lines are untagged, asserted by P-17). The tag stops moving
+> once Effect stops publishing rcs; at that point switch the dev catalog to `latest`. The canary workflow
+> now runs `pnpm update` rather than rewriting pins, and `scripts/canary-bump-effect-rc.mjs` is removed.
+> `@effect/vitest@4.0.0` also forwards vitest's test context as a second argument to
+> `it.effect.each` callbacks (present from rc.117 or rc.118); `EffectVitestEach.test.ts` asserts it.

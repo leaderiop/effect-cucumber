@@ -581,12 +581,17 @@ for readme in "$ROOT_README" "$VITEST_README"; do
   LINES="$(p17_install_line "$readme")"
   [[ -n "$LINES" ]] ||
     fail "P-17: $readme contains no install line matching \`pnpm add …\` / \`npm install …\`. The assertions below would have nothing to read, so a README that silently lost its Install section would pass."
-  grep -qF -- "effect@rc" <<<"$LINES" ||
-    fail "P-17: $readme's install line does not carry \`effect@rc\`:${LINES}. npm's \`latest\` tag for effect still points at the v3 line, so an install without @rc gets a consumer Effect v3 and a wall of type errors against a v4-only library."
+  grep -qE '( |^)effect($| )' <<<"$LINES" ||
+    fail "P-17: $readme's install line does not carry a bare \`effect\`:${LINES}. A consumer installs effect beside this package, so an install line missing it under-documents a real peer dependency."
+  grep -qF -- "@effect/platform-node" <<<"$LINES" ||
+    fail "P-17: $readme's install line does not carry \`@effect/platform-node\`:${LINES}. \`loadFeature\` reads the .feature file through it, so it is a real peer dependency."
   grep -qE '( |^)vitest($| )' <<<"$LINES" ||
-    fail "P-17: $readme's install line does not carry \`vitest\`:${LINES}. Bare, no @rc: vitest 5 is npm's \`latest\` (ADR-EC-059)."
-  grep -qF -- "@effect/vitest@rc" <<<"$LINES" ||
-    fail "P-17: $readme's install line does not carry \`@effect/vitest@rc\`:${LINES}. ADR-EC-059's third Correction re-added that peer dependency at \`4.0.0-rc.113\` — \`@effect-cucumber/vitest\` re-exports its surface, but a consumer still installs it directly, so an install line missing it under-documents a real peer dependency."
+    fail "P-17: $readme's install line does not carry \`vitest\`:${LINES}. Bare: vitest 5 is npm's \`latest\` (ADR-EC-059)."
+  grep -qE '( |^)@effect/vitest($| )' <<<"$LINES" ||
+    fail "P-17: $readme's install line does not carry a bare \`@effect/vitest\`:${LINES}. ADR-EC-059's third Correction re-added that peer dependency — \`@effect-cucumber/vitest\` re-exports its surface, but a consumer still installs it directly, so an install line missing it under-documents a real peer dependency."
+  if grep -qF -- "@rc" <<<"$LINES"; then
+    fail "P-17: $readme's install line still carries an \`@rc\` tag:${LINES}. Effect v4 is stable and npm's \`latest\` tag is 4.0.x for effect, @effect/platform-node and @effect/vitest, so the tag would install an older release candidate than a bare install does."
+  fi
 done
 
 GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
@@ -595,7 +600,7 @@ GHERKIN_LINES="$(p17_install_line "$GHERKIN_README")"
 if grep -qE '(^| )effect@|@effect/vitest' <<<"$GHERKIN_LINES"; then
   fail "P-17: $GHERKIN_README's install line names effect or @effect/vitest:${GHERKIN_LINES}. It must name NEITHER — that package declares neither as something a consumer installs alongside it, and an install line that says otherwise is documentation of a dependency that does not exist."
 fi
-echo "✓ P-17 — both consumer-facing READMEs carry @rc on effect, @effect/vitest, and bare vitest; the gherkin README names neither effect nor @effect/vitest"
+echo "✓ P-17 — both consumer-facing READMEs install effect, @effect/platform-node, @effect/vitest and vitest untagged (no @rc); the gherkin README names neither effect nor @effect/vitest"
 
 [[ -f "$RC_BUMP_DOC" ]] ||
  fail "P-18: $RC_BUMP_DOC does not exist. an rc changelog's \`### Patch Changes\` heading does not narrow what broke — every entry lands there in pre-mode regardless of severity — so the bump procedure has to be written down."

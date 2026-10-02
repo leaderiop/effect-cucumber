@@ -4,7 +4,7 @@
 // VitestTagsFilter.ts` (from `@vitest/runner`). `@vitest/runner` is not a dependency anywhere
 // reachable from a published package, so `pnpm update` never surfaces when it has moved upstream —
 // this script is that missing signal, run only from the scheduled `canary.yml` workflow (never a
-// PR/release gate, matching `scripts/canary-bump-effect-rc.mjs`'s own philosophy: a red run here
+// PR/release gate, matching `.github/workflows/canary.yml`'s own philosophy: a red run here
 // means a re-sync needs real work, found before it lands as a surprise).
 //
 // `@effect/vitest` was un-vendored back into a real dependency at `4.0.0-rc.113` (ADR-EC-059's

@@ -2,10 +2,11 @@ name: Canary against effect@rc
 
 # Drift detection, not a release gate: never blocks a PR or the release workflow. Runs on a
 # schedule (and on demand) against whatever `effect`, `@effect/vitest` and `@effect/platform-node`
-# publish under their own `rc` npm dist-tag TODAY, rather than this repo's own committed pin
-# (ADR-EC-012 pins an exact rc for everyone else, on purpose). A red run here means the next rc
-# bump will need real work, found before it lands as a surprise in that bump's own PR. See
-# spec/roadmap.md's "Under consideration" -> canary entry, and scripts/canary-bump-effect-rc.mjs.
+# publish under their own `rc` npm dist-tag TODAY, rather than the versions the committed
+# pnpm-lock.yaml resolved (ADR-EC-012: the dev catalog follows the `rc` dist-tag and the lockfile
+# is what pins it). A red run here means the next lockfile refresh will need real work, found
+# before it lands as a surprise in that refresh's own PR. See spec/roadmap.md's "Under
+# consideration" -> canary entry.
 
 on:
   schedule:
@@ -26,11 +27,12 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Point the pnpm catalog at today's effect rc
-        run: node scripts/canary-bump-effect-rc.mjs
-      # Not --frozen-lockfile: the bump above deliberately moves the workspace off the lockfile's
-      # committed versions, only inside this ephemeral checkout.
+      # Not --frozen-lockfile, and followed by an explicit update: the catalog's `rc` tag is
+      # already resolved by the committed lockfile, so only `pnpm update` moves the workspace to
+      # today's tag, and only inside this ephemeral checkout.
       - run: pnpm install --no-frozen-lockfile
+      - name: Move the lockfile to today's effect rc
+        run: pnpm update --recursive effect @effect/platform-node @effect/vitest
       - run: pnpm build
       - run: pnpm typecheck:test
       - run: pnpm test
