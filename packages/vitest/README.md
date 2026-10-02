@@ -1148,20 +1148,18 @@ above) are the same kind of gain: capability the migration adds, not merely pres
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc @effect/vitest@rc vitest
+pnpm add -D @effect-cucumber/vitest effect @effect/platform-node @effect/vitest vitest
 ```
 
-> **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
-> no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/platform-node` and `@effect/vitest`, whose `latest` tags are also on the v3
-> line. `vitest` needs no tag — its `latest` is already 5.x. `it`, `layer`, `assert`, `flakyTest` and the rest still
+> Effect v4 is stable: npm's `latest` tag is `4.0.x` for `effect`, `@effect/platform-node` and `@effect/vitest`, so no
+> tag is needed. `vitest` is likewise on `latest` (5.x). `it`, `layer`, `assert`, `flakyTest` and the rest still
 > come straight from `@effect-cucumber/vitest` itself (ADR-EC-059) — `@effect/vitest` is a peer dependency this
 > package re-exports from, never something a test file imports directly.
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.116` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by
-`@effect/vitest@4.0.0-rc.116` and by `vitest@5.0.0` itself).
+Requires Effect v4 (stable `4.0.0`, or `4.0.0-rc.116` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0`
+(required by `@effect/vitest@4` and by `vitest@5.0.0` itself).
 
 `effect`, `@effect/platform-node`, `@effect/vitest` and `vitest` are peer dependencies — you install them, this
 package does not bundle its own copies. `@effect/platform-node` is what `loadFeature` reads the `.feature` file

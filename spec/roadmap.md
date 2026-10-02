@@ -558,9 +558,8 @@ below. Kept for history:
   [`.github/workflows/canary.yml`](../.github/workflows/canary.yml) runs
   weekly (and on demand) against whatever `effect`, `@effect/vitest` and
   `@effect/platform-node` publish under their own `rc` dist-tag that day,
-  via [`scripts/canary-bump-effect-rc.mjs`](../scripts/canary-bump-effect-rc.mjs)
-  — never this repo's own committed pin, and never a gate on a PR or a
-  release.
+  via `pnpm update` — never the versions this repo's committed lockfile
+  resolved, and never a gate on a PR or a release.
 - **dprint's `semiColons: "asi"` (no-semicolon) house style** — already
   decided and live: `dprint.json`'s `typescript.semiColons` has been `"asi"`
   since Phase 0 (`0831e31`, "adopt Effect's dprint config"), enforced by

@@ -42,13 +42,15 @@ const seen: Array<Case> = []
 describe("it.effect.each runs every case with its own arg and its own Effect context", { shuffle: false }, () => {
   it.effect.each(cases)("$label", (...args) =>
     Effect.gen(function*() {
-      // THE load-bearing shape assertion: exactly one positional arg (the case object itself),
-      // never the tuple-spread `it.each` would have produced and never `[args]`'s outer array
-      // leaking through unwrapped.
-      assert.strictEqual(args.length, 1)
-      // `@effect/vitest`'s own `each` types the callback's rest args as `Array<T>`, not a `[T]`
-      // tuple, so TypeScript can't narrow `args[0]` past `T | undefined` on its own — the
-      // `assert.strictEqual(args.length, 1)` above is the real runtime proof of exactly one arg.
+      // THE load-bearing shape assertion: the per-case value arrives as the FIRST positional arg,
+      // whole and unspread (never the tuple-spread `it.each` would have produced, never `[args]`'s
+      // outer array leaking through), followed by vitest's test context. `@effect/vitest@4.0.0`
+      // began forwarding that context as a second arg (`run(ctx, [args, ctx], self)`); through
+      // rc.116 the callback received the case alone.
+      assert.strictEqual(args.length, 2)
+      // `@effect/vitest`'s own `each` types the callback's rest args as `Array<T>`, not a tuple, so
+      // TypeScript can't narrow `args[0]` past `T | undefined` on its own — the length assertion
+      // above plus `assert.include(cases, item)` below are the real runtime proof.
       const item = args[0]!
       assert.include(cases, item)
       seen.push(item)

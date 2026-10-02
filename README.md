@@ -32,14 +32,12 @@ requirements (plus one for step modules) carry an acceptance tag that a traceabi
 ## Install
 
 ```sh
-pnpm add -D @effect-cucumber/vitest effect@rc @effect/platform-node@rc @effect/vitest@rc vitest
+pnpm add -D @effect-cucumber/vitest effect @effect/platform-node @effect/vitest vitest
 ```
 
-> **The `@rc` tags are required.** npm's `latest` tag for `effect` still points at the v3 line (`3.22.x`); `4.0.0` has
-> no stable release yet. Installing without `@rc` gets you Effect v3 and a wall of type errors against a v4-only
-> library. The same applies to `@effect/platform-node` and `@effect/vitest`, whose `latest` tags are also on the v3
-> line. `vitest` needs no tag — its `latest` is already 5.x, which is what `@effect-cucumber/vitest` requires
-> (ADR-EC-059). `@effect-cucumber/vitest` re-exports `@effect/vitest`'s own `it`/`layer`/`assert`/etc. from its own
+> Effect v4 is stable: npm's `latest` tag is `4.0.x` for `effect`, `@effect/platform-node` and `@effect/vitest`, so no
+> tag is needed. `vitest` is likewise on `latest` (5.x, which is what `@effect-cucumber/vitest` requires,
+> ADR-EC-059). `@effect-cucumber/vitest` re-exports `@effect/vitest`'s own `it`/`layer`/`assert`/etc. from its own
 > barrel, so a consumer's test files still only ever import from `@effect-cucumber/vitest` — `@effect/vitest` just
 > needs to be present as a peer dependency.
 
@@ -57,8 +55,8 @@ does the rest. See [`packages/vitest/README.md`](./packages/vitest/README.md) fo
 
 ## Requirements
 
-Requires Effect v4 (`4.0.0-rc.116` or newer, with `@effect/platform-node` and `@effect/vitest` on the
-same rc line) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by `@effect/vitest@4.0.0-rc.116`
+Requires Effect v4 (stable `4.0.0` or any `4.0.0-rc.116` or newer release candidate, with `@effect/platform-node`
+and `@effect/vitest` on the same line) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by `@effect/vitest@4`
 and by `vitest@5.0.0` itself).
 
 ## Packages

@@ -28,7 +28,7 @@ The workspace scaffolded under ADR-EC-013 declared `effect` as a regular `depend
 **Negative**:
 
 - A peerDependency puts the burden on the consumer to have a compatible `effect`/`@effect/vitest` installed themselves — no "just works" zero-config install the way a hard dependency would give.
-- The caret-on-a-prerelease range (`^4.0.0-rc.112`) needs to be revisited once `effect` v4 ships stable — this is a deliberately temporary window, not a permanent versioning strategy.
+- The caret-on-a-prerelease range (`^4.0.0-rc.112`) needs to be revisited once `effect` v4 ships stable — this is a deliberately temporary window, not a permanent versioning strategy. **Revisited 2026-10-02 (`4.0.0` is stable):** the Decision's claim that this range excludes stable `4.0.0` was wrong — a caret over a prerelease (`>=4.0.0-rc.N <5.0.0`) matches stable `4.0.0` and every later 4.x. The peer range is now `^4.0.0-rc.116` and needs no change to admit stable; see ADR-EC-012's amendment.
 
 **Trade-off accepted**: the consumer-side burden of providing a compatible peer is the standard, correct cost of avoiding silent multi-instance bugs in a framework whose core guarantee (`Context.Service` identity, and by extension this library's own Layer-checking value proposition) depends on there being exactly one `effect` in the tree.
 
