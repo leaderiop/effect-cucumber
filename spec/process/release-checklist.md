@@ -38,16 +38,15 @@ touched by a bump.** They all read `catalog:` or `catalog:peer` and are byte-ide
 
 `pnpm-workspace.yaml` carries two blocks and they mean different things:
 
-- `catalog:` — **the `rc` dist-tag, devDependencies only** (`effect: rc`, and likewise
+- `catalog:` — **the `latest` dist-tag, devDependencies only** (`effect: latest`, and likewise
   `@effect/platform-node` and `@effect/vitest`). This is what the repository's own build and test run
   against. The tag is not a pin: `pnpm-lock.yaml` is, and a bump is
   `pnpm update --recursive effect @effect/platform-node @effect/vitest`, which moves the lockfile to
-  whatever the `rc` tag resolves to that day.
+  whatever the `latest` tag resolves to that day.
 - `catalogs.peer:` — **ranges, peerDependencies only.** This is what a consumer resolves against. A
   `catalog:` specifier expands **verbatim** at pack time (Pitfall 20), so an exact pin written here
   would publish an exact peer range and strand every consumer sitting on a different rc. The peer
-  ranges are floors (`^4.0.0-rc.116`): a caret over a prerelease matches every later rc **and** stable
-  `4.0.0`, so they only move when this repository starts depending on something newer than the floor.
+  ranges are floors (`^4.0.0`, stable Effect v4 and any later 4.x), so they only move when this repository starts depending on something newer than the floor.
 
 Bumping the pin without widening the range, or copying the pin into the range, are two different
 mistakes and both are one keystroke away.
@@ -85,7 +84,7 @@ pnpm --filter @effect-cucumber/vitest  pack --pack-destination /tmp/rc-bump
 
 mkdir -p /tmp/rc-bump/consumer-pnpm && cd /tmp/rc-bump/consumer-pnpm
 pnpm init
-pnpm add -D /tmp/rc-bump/effect-cucumber-vitest-*.tgz effect@rc @effect/vitest@rc vitest
+pnpm add -D /tmp/rc-bump/effect-cucumber-vitest-*.tgz effect @effect/vitest vitest
 pnpm list --depth Infinity effect vitest
 ```
 
@@ -95,7 +94,7 @@ worth the second run:
 ```sh
 mkdir -p /tmp/rc-bump/consumer-npm && cd /tmp/rc-bump/consumer-npm
 npm init -y
-npm install --save-dev /tmp/rc-bump/effect-cucumber-vitest-*.tgz effect@rc @effect/vitest@rc vitest
+npm install --save-dev /tmp/rc-bump/effect-cucumber-vitest-*.tgz effect @effect/vitest vitest
 npm ls effect vitest --all
 ```
 
@@ -108,7 +107,7 @@ consumer's suite, not anything visible in this repository.
 ### 7. Update the READMEs if the floor moved
 
 The root [`README.md`](../../README.md) and [`packages/vitest/README.md`](../../packages/vitest/README.md)
-each state a minimum Effect version in prose ("Requires Effect v4 (`4.0.0-rc.NNN` or newer)"). If the
+each state a minimum Effect version in prose ("Requires Effect v4 (`4.0.0` or any later 4.x)"). If the
 bump moved that floor, both say so in the same commit. Their `@rc` install lines are asserted by
 checklist item **P-17**; the prose version floor beside them is not, and is the thing most likely to
 go stale.

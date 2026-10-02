@@ -539,7 +539,7 @@ Every step and hook already runs inside an `Effect.fn(stepText)` span (ADR-EC-00
 reachable from inside a step body via `yield* Effect.annotateCurrentSpan("key", value)` — the current span at that
 point is exactly the one `Effect.fn` created for that step, so no library change is needed to enrich it. Getting those
 spans to a real backend is one Layer, not new code from this package: install `@effect/opentelemetry` (pinned to the
-same rc line as `effect`) plus whichever OTel-JS exporter you want, and provide `NodeSdk.layer({ ... })` (or
+same 4.x line as `effect`) plus whichever OTel-JS exporter you want, and provide `NodeSdk.layer({ ... })` (or
 `WebSdk.layer` in a browser target) alongside your own ambient Layer —
 
 ```ts
@@ -1158,7 +1158,7 @@ pnpm add -D @effect-cucumber/vitest effect @effect/platform-node @effect/vitest 
 
 ## Requirements
 
-Requires Effect v4 (stable `4.0.0`, or `4.0.0-rc.116` or newer) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0`
+Requires Effect v4 (stable `4.0.0` or any later 4.x) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0`
 (required by `@effect/vitest@4` and by `vitest@5.0.0` itself).
 
 `effect`, `@effect/platform-node`, `@effect/vitest` and `vitest` are peer dependencies — you install them, this

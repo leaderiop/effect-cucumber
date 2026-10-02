@@ -554,10 +554,10 @@ below. Kept for history:
   the wiring silently rotting into a no-op. `no-unused-internal` stays
   excluded (its one rule requiring `typescript <7.0.0`, incompatible with
   this project's TS 7).
-- **A scheduled canary CI job against a floating `effect@rc`** — shipped:
+- **A scheduled canary CI job against the latest `effect`** — shipped:
   [`.github/workflows/canary.yml`](../.github/workflows/canary.yml) runs
   weekly (and on demand) against whatever `effect`, `@effect/vitest` and
-  `@effect/platform-node` publish under their own `rc` dist-tag that day,
+  `@effect/platform-node` publish under their own `latest` dist-tag that day,
   via `pnpm update` — never the versions this repo's committed lockfile
   resolved, and never a gate on a PR or a release.
 - **dprint's `semiColons: "asi"` (no-semicolon) house style** — already

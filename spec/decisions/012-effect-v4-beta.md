@@ -59,3 +59,11 @@ v4 now avoids that churn, accepting beta-instability risk in its place.
 > now runs `pnpm update` rather than rewriting pins, and `scripts/canary-bump-effect-rc.mjs` is removed.
 > `@effect/vitest@4.0.0` also forwards vitest's test context as a second argument to
 > `it.effect.each` callbacks (present from rc.117 or rc.118); `EffectVitestEach.test.ts` asserts it.
+
+> **Amendment (2026-10-02, supersedes the previous amendment's `rc` choice):** with `4.0.0` stable there
+> is no reason to follow the `rc` tag, which stops at `4.0.0-rc.118`. The `catalog:` block now holds the
+> npm **`latest`** dist-tag for `effect`, `@effect/platform-node` and `@effect/vitest`, so the repository
+> always tracks the newest stable release without a pin; `pnpm-lock.yaml` still makes a checkout
+> reproducible. The `peer` catalog is `^4.0.0` (stable Effect v4 and any later 4.x). Both packages keep
+> Effect as a **peer** dependency, which is correct for libraries: the consumer owns the one `effect`
+> instance. Release candidates are no longer a supported range.
