@@ -55,7 +55,7 @@ does the rest. See [`packages/vitest/README.md`](./packages/vitest/README.md) fo
 
 ## Requirements
 
-Requires Effect v4 (stable `4.0.0` or any `4.0.0-rc.116` or newer release candidate, with `@effect/platform-node`
+Requires Effect v4 (stable `4.0.0` or any later 4.x, with `@effect/platform-node`
 and `@effect/vitest` on the same line) and vitest `>=5.0.0 <6.0.0`. Node `>=22.12.0` (required by `@effect/vitest@4`
 and by `vitest@5.0.0` itself).
 
